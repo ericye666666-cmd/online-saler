@@ -50,10 +50,20 @@
 - Weekly settlement.
 - Core dashboards.
 
-## v0.7 Kikuyu MVP Launch
+## v0.7 Integration & Production Readiness
 
-- 1,000 online items.
-- 10 to 20 active affiliates.
-- Real M-Pesa orders.
-- Pickup and delivery.
-- Daily review.
+- Full end-to-end test from product digitization to delivered order.
+- Concurrent inventory reservation and anti-oversell test.
+- M-Pesa callback idempotency and reconciliation test.
+- Picking, packing, pickup, delivery, return, and refund test.
+- Affiliate attribution, commission confirmation, reversal, and weekly settlement test.
+- Production database, storage, secrets, backup, monitoring, and rollback readiness.
+- 1,000-item production data import readiness.
+- Production deployment checklist and release candidate sign-off.
+
+## Outside Software Roadmap
+
+The Kikuyu market launch, 2B and 2C promotion, 10 to 20 affiliate activation,
+daily business review, and 30-day commercial validation are operational launch
+plans. They depend on the software being production-ready, but they are not
+software version deliverables and should be tracked in a separate operations plan.
