@@ -7,7 +7,7 @@ Use separate Google Cloud projects or clearly separated resources:
 - `online-saler-staging`
 - `online-saler-production`
 
-Staging is for test products, sandbox payment, and integration checks. Production is for real customers, real inventory, real M-Pesa, and real commission records.
+Staging is for test products, sandbox payment, integration checks, and extended pre-production validation. Production is for real customers, real inventory, real M-Pesa, and real commission records.
 
 ## Initial Google Cloud Resources
 
@@ -27,6 +27,32 @@ Not required for the first MVP:
 - BigQuery.
 - GPU services.
 - Multi-region deployment.
+
+## Staging API Database Binding
+
+The staging API deployment is configured by `.github/workflows/deploy-api-staging.yml`.
+
+Staging resources:
+
+- Cloud Run service: `online-saler-api-staging`
+- Runtime service account: `online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com`
+- Cloud SQL instance connection name: `online-saler-staging:africa-south1:online-saler-staging-db`
+- PostgreSQL database: `online_saler_staging`
+- PostgreSQL application user: `online_saler_app`
+- Secret Manager secret: `STAGING_DATABASE_URL`
+- Runtime environment variable: `DATABASE_URL`
+
+The workflow must:
+
+1. Build and push the API image.
+2. Deploy Cloud Run with the dedicated runtime service account.
+3. Attach the Cloud SQL instance with the Cloud SQL connector.
+4. Inject `DATABASE_URL` from `STAGING_DATABASE_URL:latest`.
+5. Verify the public `/health` endpoint.
+
+The secret value must never be committed to GitHub or written into documentation. The GitHub deployment identity must have permission to deploy Cloud Run and act as the runtime service account. The runtime service account requires only the permissions needed to connect to Cloud SQL and read the required secret.
+
+Pull-request CI should use an ephemeral PostgreSQL service container. It must not connect directly to the long-lived staging Cloud SQL instance.
 
 ## Suggested Buckets
 
