@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "node -e \"require('./dist/app.module.js'); console.log('api smoke ok')\"",
+    "test": "node -e \"require('./dist/app.module.js'); console.log('api smoke ok')\" && node --import tsx --test src/product/product-domain.spec.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -15,6 +15,7 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@online-saler/business-rules": "0.1.0",
+    "@online-saler/database": "0.1.0",
     "@online-saler/shared-types": "0.1.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.0"
