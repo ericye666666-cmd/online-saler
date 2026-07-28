@@ -1,0 +1,31 @@
+FROM node:20-slim AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY apps ./apps
+COPY packages ./packages
+
+RUN npm ci
+RUN npm run build:api
+RUN npm prune --omit=dev --workspaces
+
+FROM node:20-slim AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=4000
+
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build /app/packages/business-rules/package.json ./packages/business-rules/package.json
+COPY --from=build /app/packages/business-rules/dist ./packages/business-rules/dist
+COPY --from=build /app/packages/shared-types/package.json ./packages/shared-types/package.json
+COPY --from=build /app/packages/shared-types/dist ./packages/shared-types/dist
+
+EXPOSE 4000
+
+CMD ["node", "apps/api/dist/main.js"]
