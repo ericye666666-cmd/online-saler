@@ -6,6 +6,7 @@
   "scripts": {
     "check:repo": "node scripts/check-repo.mjs",
     "build": "npm run build --workspaces --if-present",
+    "build:api": "npm run build -w @online-saler/shared-types && npm run build -w @online-saler/business-rules && npm run build -w @online-saler/api",
     "dev:storefront": "npm run dev -w @online-saler/storefront",
     "dev:operations": "npm run dev -w @online-saler/operations",
     "dev:admin": "npm run dev -w @online-saler/admin",
@@ -16,6 +17,8 @@
     "db:push": "npm run db:push -w @online-saler/database",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck:api": "npm run typecheck -w @online-saler/shared-types && npm run typecheck -w @online-saler/business-rules && npm run typecheck -w @online-saler/api",
+    "start:api": "npm run start -w @online-saler/api",
     "ci": "npm run check:repo && npm run db:generate && npm run build && npm run test"
   },
   "workspaces": [
