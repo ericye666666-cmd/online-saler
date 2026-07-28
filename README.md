@@ -70,13 +70,42 @@ All work should target `develop` first. Release candidates are promoted from `de
 
 ## Local Check
 
-This skeleton has no runtime dependencies yet. Run:
+Install dependencies and run the foundation checks:
 
 ```bash
+npm install
 npm run check:repo
+npm run ci
 ```
 
-The check validates that the expected monorepo folders and governance files exist.
+The check validates that the expected monorepo folders and governance files exist, generates the Prisma client, builds all workspaces, and runs smoke tests.
+
+## Local Development
+
+Copy `.env.example` to `.env`, then start the local database:
+
+```bash
+docker compose up -d
+npm run db:generate
+npm run db:push
+```
+
+Run apps in separate terminals:
+
+```bash
+npm run dev:storefront
+npm run dev:operations
+npm run dev:admin
+npm run dev:api
+npm run dev:worker
+```
+
+Default local ports:
+
+- Storefront: `http://localhost:3000`
+- Operations: `http://localhost:3001`
+- Admin: `http://localhost:3002`
+- API health: `http://localhost:4000/health`
 
 ## Documentation
 

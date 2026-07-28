@@ -1,0 +1,23 @@
+{
+  "name": "@online-saler/operations",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --port 3001",
+    "start": "next start --port 3001",
+    "test": "node -e \"console.log('operations smoke ok')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@online-saler/business-rules": "0.1.0",
+    "@online-saler/shared-types": "0.1.0",
+    "next": "^16.2.12",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}

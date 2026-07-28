@@ -9,3 +9,9 @@ Planned jobs:
 - Payment reconciliation retries.
 - Commission confirmation.
 - Notification delivery.
+
+Foundation command:
+
+```bash
+npm run dev:worker
+```

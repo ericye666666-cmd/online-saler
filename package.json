@@ -5,12 +5,29 @@
   "description": "Second-hand Digital Platform monorepo.",
   "scripts": {
     "check:repo": "node scripts/check-repo.mjs",
-    "ci": "npm run check:repo"
+    "build": "npm run build --workspaces --if-present",
+    "dev:storefront": "npm run dev -w @online-saler/storefront",
+    "dev:operations": "npm run dev -w @online-saler/operations",
+    "dev:admin": "npm run dev -w @online-saler/admin",
+    "dev:api": "npm run dev -w @online-saler/api",
+    "dev:worker": "npm run dev -w @online-saler/worker",
+    "db:generate": "npm run db:generate -w @online-saler/database",
+    "db:migrate": "npm run db:migrate -w @online-saler/database",
+    "db:push": "npm run db:push -w @online-saler/database",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "ci": "npm run check:repo && npm run db:generate && npm run build && npm run test"
   },
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prisma": "^6.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
   "engines": {
     "node": ">=20"
   }

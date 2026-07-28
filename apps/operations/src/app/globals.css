@@ -1,0 +1,78 @@
+:root {
+  --background: #f4f7f5;
+  --foreground: #151716;
+  --muted: #5f6863;
+  --line: #d7dfda;
+  --surface: #ffffff;
+  --accent: #0f5c4a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.shell {
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 28px 18px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.title {
+  margin: 0;
+  font-size: 30px;
+}
+
+.subtitle {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+.status {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px 12px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.board {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.tile {
+  min-height: 132px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.tile h2 {
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+.tile p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}

@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  SUSPENDED
+  LEFT
+}
+
+enum ActorType {
+  EMPLOYEE
+  SYSTEM
+  CUSTOMER
+  AFFILIATE
+}
+
+enum SourceApp {
+  STOREFRONT
+  OPERATIONS
+  ADMIN
+  API
+  WORKER
+}
+
+model Employee {
+  id           String         @id @default(uuid())
+  employeeCode String         @unique
+  name         String
+  phone        String?        @unique
+  status       EmployeeStatus @default(ACTIVE)
+  roles        EmployeeRole[]
+  auditLogs    AuditLog[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  description String?
+  employees   EmployeeRole[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  module      String
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model EmployeeRole {
+  employeeId String
+  roleId     String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  role       Role     @relation(fields: [roleId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@id([employeeId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  actorType  ActorType
+  actorId    String?
+  employee   Employee? @relation(fields: [actorId], references: [id])
+  sourceApp  SourceApp
+  module     String
+  entityType String
+  entityId   String?
+  action     String
+  beforeJson Json?
+  afterJson  Json?
+  reason     String?
+  createdAt  DateTime  @default(now())
+
+  @@index([module, entityType, entityId])
+  @@index([actorType, actorId])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key                 String   @id
+  valueJson           Json
+  scope               String   @default("GLOBAL")
+  updatedByEmployeeId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
