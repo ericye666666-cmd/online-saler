@@ -126,9 +126,9 @@ Filters:
 
 ## Product APIs
 
-### `POST /api/v1/operations/products/barcode`
+### `POST /api/v1/operations/products/:productCode/barcode`
 
-Assign or validate a unique barcode.
+Assign or validate a unique formal barcode after human calibration.
 
 Permission: product create.
 
@@ -136,7 +136,8 @@ Request:
 
 ```json
 {
-  "barcode": "DLF-26-000001"
+  "barcode": "DLF-26-000001",
+  "mode": "ASSIGN"
 }
 ```
 
@@ -155,8 +156,14 @@ Response:
 State change:
 
 ```text
-DRAFT or new product -> BARCODE_ASSIGNED
+CALIBRATED -> BARCODE_ASSIGNED
 ```
+
+Rules:
+
+- Product must already be `CALIBRATED`.
+- Barcode must be globally unique.
+- New product shells and photographed-only products cannot receive a formal barcode.
 
 ### `POST /api/v1/operations/products/:productCode/images`
 
@@ -249,6 +256,12 @@ Rules:
 - AI raw values are not overwritten.
 - Audit log records field changes.
 
+State change:
+
+```text
+AI_PROCESSED or CALIBRATION_PENDING or REWORK_REQUIRED -> CALIBRATED
+```
+
 ### `POST /api/v1/operations/products/:productCode/review`
 
 Approve or return product to rework.
@@ -279,7 +292,7 @@ Permission: product publish.
 
 Rules:
 
-- Product must be approved.
+- Product must be `READY_FOR_STORAGE`.
 - Inventory must be `AVAILABLE`.
 
 ## Public Product APIs
@@ -756,7 +769,7 @@ Worker jobs are not public APIs but must use the same state-machine rules.
 
 Before production, the API must pass these flows:
 
-1. Create product with barcode, upload images, save calibration, approve.
+1. Create product shell, upload images, run AI extraction, save calibration, assign barcode, approve.
 2. Check product into location and publish.
 3. Browse product publicly.
 4. Create order and reserve item.

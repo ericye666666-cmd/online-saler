@@ -28,16 +28,85 @@ enum SourceApp {
   WORKER
 }
 
+enum ProductStatus {
+  DRAFT
+  PHOTOGRAPHED
+  AI_PROCESSING
+  AI_PROCESSED
+  CALIBRATION_PENDING
+  CALIBRATED
+  BARCODE_ASSIGNED
+  REVIEW_PENDING
+  REWORK_REQUIRED
+  APPROVED
+  READY_FOR_STORAGE
+  PUBLISHED
+  UNPUBLISHED
+  ARCHIVED
+}
+
+enum ProductImageType {
+  FRONT
+  BACK
+  LABEL
+  DEFECT
+  DETAIL
+  SOCIAL_CARD
+}
+
+enum ProductGender {
+  WOMEN
+  MEN
+  KIDS
+  UNISEX
+}
+
+enum ConditionGrade {
+  LIKE_NEW
+  EXCELLENT
+  GOOD
+  FAIR
+}
+
+enum AIExtractionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum ReviewResult {
+  APPROVED
+  REWORK_REQUIRED
+  REJECTED
+}
+
+enum MeasurementSource {
+  AI_ACCEPTED
+  HUMAN_EDITED
+  HUMAN_ENTERED
+}
+
+enum DefectSeverity {
+  MINOR
+  MAJOR
+}
+
 model Employee {
-  id           String         @id @default(uuid())
-  employeeCode String         @unique
-  name         String
-  phone        String?        @unique
-  status       EmployeeStatus @default(ACTIVE)
-  roles        EmployeeRole[]
-  auditLogs    AuditLog[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id                    String               @id @default(uuid())
+  employeeCode          String               @unique
+  name                  String
+  phone                 String?              @unique
+  status                EmployeeStatus       @default(ACTIVE)
+  roles                 EmployeeRole[]
+  auditLogs             AuditLog[]
+  createdProducts       Product[]            @relation("ProductCreatedBy")
+  approvedProducts      Product[]            @relation("ProductApprovedBy")
+  uploadedProductImages ProductImage[]       @relation("ProductImageUploadedBy")
+  reviewedMeasurements  ProductMeasurement[] @relation("ProductMeasurementReviewedBy")
+  productReviews        ProductReview[]      @relation("ProductReviewReviewer")
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 }
 
 model Role {
@@ -108,4 +177,125 @@ model SystemSetting {
   updatedByEmployeeId String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model Product {
+  id                   String               @id @default(uuid())
+  productCode          String               @unique
+  barcode              String?              @unique
+  status               ProductStatus        @default(DRAFT)
+  title                String?
+  category             String?
+  brand                String?
+  color                String?
+  gender               ProductGender?
+  tagSize              String?
+  finalSizeLabel       String?
+  conditionGrade       ConditionGrade?
+  priceKsh             Int?
+  createdByEmployeeId  String?
+  approvedByEmployeeId String?
+  createdBy            Employee?            @relation("ProductCreatedBy", fields: [createdByEmployeeId], references: [id])
+  approvedBy           Employee?            @relation("ProductApprovedBy", fields: [approvedByEmployeeId], references: [id])
+  images               ProductImage[]
+  measurements         ProductMeasurement[]
+  aiExtractions        AIExtraction[]
+  defects              ProductDefect[]
+  reviews              ProductReview[]
+  publishedAt          DateTime?
+  unpublishedAt        DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([category, finalSizeLabel, priceKsh])
+  @@index([conditionGrade])
+}
+
+model ProductImage {
+  id                   String           @id @default(uuid())
+  productId            String
+  type                 ProductImageType
+  originalUrl          String
+  publicUrl            String?
+  sortOrder            Int              @default(0)
+  isRequired           Boolean          @default(false)
+  uploadedByEmployeeId String?
+  product              Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  uploadedBy           Employee?        @relation("ProductImageUploadedBy", fields: [uploadedByEmployeeId], references: [id])
+  defects              ProductDefect[]
+  createdAt            DateTime         @default(now())
+
+  @@index([productId, type])
+  @@index([uploadedByEmployeeId])
+}
+
+model ProductMeasurement {
+  id                   String             @id @default(uuid())
+  productId            String
+  measurementType      String
+  aiValueCm            Decimal?           @db.Decimal(6, 2)
+  aiConfidence         Decimal?           @db.Decimal(4, 3)
+  finalValueCm         Decimal?           @db.Decimal(6, 2)
+  finalSource          MeasurementSource?
+  reviewedByEmployeeId String?
+  reviewedAt           DateTime?
+  product              Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reviewedBy           Employee?          @relation("ProductMeasurementReviewedBy", fields: [reviewedByEmployeeId], references: [id])
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@unique([productId, measurementType])
+  @@index([measurementType])
+  @@index([reviewedByEmployeeId])
+}
+
+model AIExtraction {
+  id                   String             @id @default(uuid())
+  productId            String
+  provider             String?
+  model                String?
+  inputImageIds        Json?
+  rawOutputJson        Json?
+  normalizedOutputJson Json?
+  status               AIExtractionStatus @default(PENDING)
+  errorMessage         String?
+  product              Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  completedAt          DateTime?
+
+  @@index([productId, status])
+  @@index([createdAt])
+}
+
+model ProductDefect {
+  id                      String         @id @default(uuid())
+  productId               String
+  defectType              String
+  severity                DefectSeverity
+  description             String
+  customerSafeDescription String?
+  imageId                 String?
+  product                 Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  image                   ProductImage?  @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  createdAt               DateTime       @default(now())
+
+  @@index([productId])
+  @@index([defectType])
+  @@index([imageId])
+}
+
+model ProductReview {
+  id                 String       @id @default(uuid())
+  productId          String
+  reviewerEmployeeId String?
+  result             ReviewResult
+  reason             String?
+  product            Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reviewer           Employee?    @relation("ProductReviewReviewer", fields: [reviewerEmployeeId], references: [id])
+  createdAt          DateTime     @default(now())
+
+  @@index([productId, createdAt])
+  @@index([reviewerEmployeeId])
 }

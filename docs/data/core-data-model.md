@@ -163,7 +163,7 @@ Digital product record for one physical item.
 | --- | --- |
 | `id` | UUID primary key. |
 | `productCode` | Public product code, unique, for example `DLF-26-000001`. |
-| `barcode` | Unique barcode, may equal product code in MVP. |
+| `barcode` | Nullable until human calibration is complete; unique formal barcode assigned before review. |
 | `title` | Generated or reviewed title. |
 | `category` | Controlled category. |
 | `gender` | `WOMEN`, `MEN`, `KIDS`, `UNISEX`, nullable. |
@@ -183,7 +183,7 @@ Digital product record for one physical item.
 Suggested unique constraints:
 
 - `productCode`
-- `barcode`
+- `barcode` when present
 
 Suggested indexes:
 
@@ -660,6 +660,7 @@ Suggested indexes:
 
 - Product barcode is globally unique.
 - Inventory item barcode is globally unique.
+- Product barcode is assigned after human calibration, before review and inventory check-in.
 - One product has at most one inventory item.
 - Published product must have customer-safe public images.
 - Available inventory must have a location.
