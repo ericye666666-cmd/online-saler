@@ -22,10 +22,12 @@ Product state describes the digital product record and content readiness.
 
 ```text
 DRAFT
-  -> BARCODE_ASSIGNED
   -> PHOTOGRAPHED
   -> AI_PROCESSING
   -> AI_PROCESSED
+  -> CALIBRATION_PENDING
+  -> CALIBRATED
+  -> BARCODE_ASSIGNED
   -> REVIEW_PENDING
   -> REWORK_REQUIRED
   -> APPROVED
@@ -40,11 +42,13 @@ DRAFT
 | State | Meaning |
 | --- | --- |
 | `DRAFT` | Product shell exists but has no assigned barcode. |
-| `BARCODE_ASSIGNED` | Unique barcode is assigned. |
 | `PHOTOGRAPHED` | Required images are uploaded. |
 | `AI_PROCESSING` | AI extraction job is running. |
 | `AI_PROCESSED` | AI raw output is saved. |
-| `REVIEW_PENDING` | Human review and calibration are required. |
+| `CALIBRATION_PENDING` | AI values are ready for human calibration. |
+| `CALIBRATED` | Human final data is saved; no formal barcode has been assigned yet. |
+| `BARCODE_ASSIGNED` | Unique formal barcode is assigned after calibration. |
+| `REVIEW_PENDING` | Calibrated and barcoded product is ready for review. |
 | `REWORK_REQUIRED` | Review failed; product needs new photos, data, or condition correction. |
 | `APPROVED` | Human reviewer approved final product data. |
 | `READY_FOR_STORAGE` | Product is approved and ready for check-in. |
@@ -54,15 +58,20 @@ DRAFT
 
 ### Product Transition Rules
 
-- `DRAFT -> BARCODE_ASSIGNED` requires unique barcode.
-- `BARCODE_ASSIGNED -> PHOTOGRAPHED` requires front, back, and label images.
+- Formal barcode is assigned only after human calibration is complete.
+- `DRAFT -> PHOTOGRAPHED` requires front, back, and label images tied to the product shell or capture batch item.
 - Defect images are required if any defect is recorded.
 - `PHOTOGRAPHED -> AI_PROCESSING` can be automatic or manual.
 - `AI_PROCESSING -> AI_PROCESSED` saves AI output and confidence values.
-- `AI_PROCESSED -> REVIEW_PENDING` exposes AI values to reviewer.
-- `REVIEW_PENDING -> APPROVED` requires final category, price, condition, and measurements.
+- `AI_PROCESSED -> CALIBRATION_PENDING` exposes AI values to the human calibrator.
+- `CALIBRATION_PENDING -> CALIBRATED` requires final category, price, condition, and measurements.
+- `CALIBRATED -> BARCODE_ASSIGNED` requires unique formal barcode.
+- `BARCODE_ASSIGNED -> REVIEW_PENDING` requires barcode and final data to be complete.
+- `REVIEW_PENDING -> APPROVED` requires reviewer approval of final category, price, condition, measurements, and barcode.
 - `REVIEW_PENDING -> REWORK_REQUIRED` requires reason.
-- `APPROVED -> READY_FOR_STORAGE` is allowed only when barcode and final data are complete.
+- `REWORK_REQUIRED -> PHOTOGRAPHED` is allowed when new photos are required.
+- `REWORK_REQUIRED -> CALIBRATION_PENDING` is allowed when only data or condition correction is required.
+- `APPROVED -> READY_FOR_STORAGE` is allowed only when formal barcode and final data are complete.
 - `READY_FOR_STORAGE -> PUBLISHED` requires inventory state `AVAILABLE`.
 - `PUBLISHED -> UNPUBLISHED` is allowed for admin and system rules.
 - `ARCHIVED` cannot return to normal states without admin exception.
