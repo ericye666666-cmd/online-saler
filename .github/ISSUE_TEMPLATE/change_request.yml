@@ -1,0 +1,31 @@
+name: Change request
+description: Request a change to shared rules, data contracts, or state machines.
+title: "[CR]: "
+labels:
+  - change-request
+body:
+  - type: textarea
+    id: current
+    attributes:
+      label: Current rule or contract
+    validations:
+      required: true
+  - type: textarea
+    id: requested
+    attributes:
+      label: Requested change
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impacted modules
+      description: List affected frontends, middle-platform modules, database tables, APIs, reports, or SOPs.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk and rollback
+    validations:
+      required: true
