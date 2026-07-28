@@ -78,7 +78,6 @@ jobs:
             --max-instances=2
           env_vars: |
             NODE_ENV=staging
-            PORT=4000
 
       - name: Verify health endpoint
         run: |
