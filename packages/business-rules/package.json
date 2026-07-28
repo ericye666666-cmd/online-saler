@@ -1,0 +1,12 @@
+{
+  "name": "@online-saler/business-rules",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node -e \"const r=require('./dist/index.js'); if(r.RESERVATION_MINUTES!==15) process.exit(1); console.log('business-rules smoke ok')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

@@ -11,3 +11,9 @@ Planned capabilities:
 - Order lookup.
 - WhatsApp inquiry and product sharing.
 - Affiliate referral capture.
+
+Foundation command:
+
+```bash
+npm run dev:storefront
+```
