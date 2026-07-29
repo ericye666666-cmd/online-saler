@@ -50,6 +50,8 @@ export class AIJobService {
             normalizedOutputJson: output.normalizedOutput as unknown as Prisma.InputJsonValue,
             status: AIExtractionStatus.SUCCEEDED,
             latencyMs: output.latencyMs,
+            inputTokens: output.inputTokens,
+            outputTokens: output.outputTokens,
             completedAt
           }
         }),
@@ -84,7 +86,7 @@ export class AIJobService {
           completedAt: new Date()
         }
       });
-      throw error;
+      throw new BadRequestException(message);
     }
   }
 
