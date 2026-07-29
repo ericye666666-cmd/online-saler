@@ -26,10 +26,11 @@ env:
   MIGRATION_JOB_NAME: online-saler-db-migrate-staging
   STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
   STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
+  PRODUCT_IMAGE_BUCKET: online-saler-staging-product-images
 
 jobs:
   deploy:
-    name: Bootstrap schema, build and deploy API
+    name: Bootstrap schema, storage, build and deploy API
     runs-on: ubuntu-latest
 
     steps:
@@ -45,6 +46,24 @@ jobs:
 
       - name: Set up Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure product image bucket
+        run: |
+          if ! gcloud storage buckets describe "gs://${PRODUCT_IMAGE_BUCKET}" --project "${{ vars.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            gcloud storage buckets create "gs://${PRODUCT_IMAGE_BUCKET}" \
+              --project "${{ vars.GCP_PROJECT_ID }}" \
+              --location "${{ vars.GCP_REGION }}" \
+              --uniform-bucket-level-access
+          fi
+
+          gcloud storage buckets update "gs://${PRODUCT_IMAGE_BUCKET}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --uniform-bucket-level-access
+
+          gcloud storage buckets add-iam-policy-binding "gs://${PRODUCT_IMAGE_BUCKET}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --member "serviceAccount:${STAGING_RUNTIME_SERVICE_ACCOUNT}" \
+            --role "roles/storage.objectAdmin"
 
       - name: Configure Docker for Artifact Registry
         run: |
@@ -107,6 +126,7 @@ jobs:
             --add-cloudsql-instances=${{ env.STAGING_CLOUD_SQL_INSTANCE }}
           env_vars: |
             NODE_ENV=staging
+            PRODUCT_IMAGE_BUCKET=${{ env.PRODUCT_IMAGE_BUCKET }}
           secrets: |
             DATABASE_URL=STAGING_DATABASE_URL:latest
 
@@ -142,3 +162,33 @@ jobs:
           echo "${RESPONSE}"
           echo "${RESPONSE}" | grep -q '"status":"DRAFT"'
           echo "${RESPONSE}" | grep -q '"createdByEmployeeId":"00000000-0000-4000-8000-000000000001"'
+
+      - name: Verify real image upload and retrieval
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          PRODUCT_CODE="UPLOAD-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          PRODUCT_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\"}" \
+            "${SERVICE_URL}/products")"
+          PRODUCT_ID="$(printf '%s' "${PRODUCT_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
+
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2ZQAAAABJRU5ErkJggg==' | base64 --decode > /tmp/product-test.png
+
+          IMAGE_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Content-Type: image/png" \
+            --header "X-Image-Type: FRONT" \
+            --header "X-Employee-Id: 00000000-0000-4000-8000-000000000001" \
+            --data-binary @/tmp/product-test.png \
+            "${SERVICE_URL}/products/${PRODUCT_ID}/images/upload")"
+
+          echo "${IMAGE_RESPONSE}"
+          IMAGE_ID="$(printf '%s' "${IMAGE_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
+          echo "${IMAGE_RESPONSE}" | grep -q "gs://${PRODUCT_IMAGE_BUCKET}/staging/products/${PRODUCT_ID}/"
+
+          curl --fail --silent --show-error \
+            "${SERVICE_URL}/products/${PRODUCT_ID}/images/${IMAGE_ID}/content" \
+            --output /tmp/product-test-downloaded.png
+          cmp /tmp/product-test.png /tmp/product-test-downloaded.png
