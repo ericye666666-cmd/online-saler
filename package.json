@@ -14,6 +14,7 @@
     "dev:worker": "npm run dev -w @online-saler/worker",
     "db:generate": "npm run db:generate -w @online-saler/database",
     "db:migrate": "npm run db:migrate -w @online-saler/database",
+    "db:deploy": "npm run db:deploy -w @online-saler/database",
     "db:push": "npm run db:push -w @online-saler/database",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
