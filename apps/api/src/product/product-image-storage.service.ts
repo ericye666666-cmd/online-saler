@@ -37,6 +37,9 @@ export class ProductImageStorageService {
     url.searchParams.set("uploadType", "media");
     url.searchParams.set("name", objectName);
 
+    const payload = new Uint8Array(body.length);
+    payload.set(body);
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -45,7 +48,7 @@ export class ProductImageStorageService {
         "Content-Length": String(body.length),
         "Cache-Control": "private, max-age=31536000, immutable"
       },
-      body
+      body: payload.buffer
     });
 
     if (!response.ok) {
