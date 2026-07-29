@@ -5,11 +5,12 @@ import { ProductBarcodeService } from "./product-barcode.service";
 import { ProductCalibrationController } from "./product-calibration.controller";
 import { ProductCalibrationService } from "./product-calibration.service";
 import { PRODUCT_REPOSITORY } from "./product.repository";
+import { ProductSetupController } from "./product-setup.controller";
 import { PrismaProductRepository } from "./prisma-product.repository";
 import { ProductStateMachine } from "./product-state-machine";
 
 @Module({
-  controllers: [ProductCalibrationController, ProductBarcodeController],
+  controllers: [ProductSetupController, ProductCalibrationController, ProductBarcodeController],
   providers: [
     ProductApplicationService,
     ProductCalibrationService,
