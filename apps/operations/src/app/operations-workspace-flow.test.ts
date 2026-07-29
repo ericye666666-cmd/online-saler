@@ -14,8 +14,11 @@ const job: JsonRecord = {
   status: "SUCCEEDED",
   normalizedOutput: {
     title: { value: "Black Short Sleeve Dress" },
-    category: { value: "DRESS" },
+    category: { value: "DRESSES" },
+    subcategory: { value: "SHORT_DRESSES_SKIRTS" },
     primaryColor: { value: "BLACK" },
+    audience: { value: "WOMEN" },
+    kidsAgeRange: { value: "NOT_APPLICABLE" },
     brandLabel: { value: "Mock Brand" },
     sizeLabel: { value: "M" },
     pattern: { value: "SOLID" },
@@ -25,6 +28,9 @@ const job: JsonRecord = {
 
 const fromAi = formFromProductAndAi(product, job);
 assert.equal(fromAi.title, "Black Short Sleeve Dress");
+assert.equal(fromAi.category, "DRESSES");
+assert.equal(fromAi.subcategory, "SHORT_DRESSES_SKIRTS");
+assert.equal(fromAi.audience, "WOMEN");
 assert.equal(fromAi.brand, "Mock Brand");
 assert.equal(fromAi.sizeLabel, "M");
 
@@ -53,13 +59,25 @@ assert.equal(barcoded.label, "Complete");
 const body = buildCalibrationBody({
   employeeId: "employee-1",
   extractionId: "ai-1",
-  form: { ...completeForm, defects: "small stain on cuff" }
+  form: { ...completeForm, shoulderWidthCm: "39", defects: "small stain on cuff" }
 });
 assert.deepEqual(body.measurements, [
   { type: "LENGTH", valueCm: 92 },
-  { type: "CHEST_WIDTH", valueCm: 48 }
+  { type: "CHEST_WIDTH", valueCm: 48 },
+  { type: "SHOULDER_WIDTH", valueCm: 39 }
 ]);
+assert.equal(body.subcategory, "SHORT_DRESSES_SKIRTS");
+assert.equal(body.gender, "WOMEN");
 assert.equal(body.defects[0].description, "small stain on cuff");
+
+const kidsForm = {
+  ...completeForm,
+  audience: "KIDS",
+  kidsAgeRange: "NOT_APPLICABLE"
+};
+const missingKidsAge = workspaceReadiness({ product, image, job, form: kidsForm });
+assert.equal(missingKidsAge.canSaveAndNext, false);
+assert.equal(missingKidsAge.label, "Add kids age");
 
 assert.throws(() =>
   buildCalibrationBody({

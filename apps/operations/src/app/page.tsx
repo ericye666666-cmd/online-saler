@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AI_COLORS, AI_PATTERNS, AI_PRODUCT_CATEGORIES, AI_SLEEVE_TYPES } from "@online-saler/shared-types";
+import {
+  AI_AUDIENCES,
+  AI_COLORS,
+  AI_KIDS_AGE_RANGES,
+  AI_PATTERNS,
+  AI_SLEEVE_TYPES,
+  PRODUCT_CATEGORY_OPTIONS,
+  PRODUCT_SUBCATEGORIES_BY_CATEGORY
+} from "@online-saler/shared-types";
 import {
   buildCalibrationBody,
   formFromProductAndAi,
@@ -29,8 +37,10 @@ const COMPLETED_PRODUCT_KEY = "operations.workspace.completedProductId";
 const SESSION_DONE_KEY = "operations.workspace.sessionDone";
 const SESSION_TARGET = 10;
 
-const categories = AI_PRODUCT_CATEGORIES;
+const categories = PRODUCT_CATEGORY_OPTIONS;
 const colors = AI_COLORS;
+const audiences = AI_AUDIENCES;
+const kidsAgeRanges = AI_KIDS_AGE_RANGES;
 const patterns = AI_PATTERNS;
 const sleeves = AI_SLEEVE_TYPES;
 const conditions = ["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"];
@@ -353,7 +363,17 @@ export default function OperationsWorkspace() {
   }
 
   function updateForm(key: keyof WorkspaceForm, value: string) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "category") {
+        const options = subcategoriesFor(value);
+        next.subcategory = options.includes(next.subcategory) ? next.subcategory : options[0] ?? "OTHER";
+      }
+      if (key === "audience" && value !== "KIDS") {
+        next.kidsAgeRange = "NOT_APPLICABLE";
+      }
+      return next;
+    });
   }
 
   if (!loaded) {
@@ -446,7 +466,7 @@ export default function OperationsWorkspace() {
                 <span>{readiness.hasAi ? "Ready to check" : readiness.hasPhoto ? "Reading photo" : "Waiting for photo"}</span>
               </div>
               <div className="ai-strip">
-                {["category", "primaryColor", "brandLabel", "sizeLabel"].map((field) => {
+                {["category", "primaryColor", "audience", "kidsAgeRange", "brandLabel", "sizeLabel"].map((field) => {
                   const value = aiField(job, field);
                   return (
                     <div key={field}>
@@ -465,32 +485,62 @@ export default function OperationsWorkspace() {
                 <div className="two-column">
                   <Field label="Category">
                     <select value={form.category} onChange={(event) => updateForm("category", event.target.value)}>
-                      {categories.map((value) => <option key={value}>{value}</option>)}
+                      {categories.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
                     </select>
                   </Field>
-                  <Field label="Color">
-                    <select value={form.color} onChange={(event) => updateForm("color", event.target.value)}>
-                      {colors.map((value) => <option key={value}>{value}</option>)}
+                  <Field label="Subcategory">
+                    <select value={form.subcategory} onChange={(event) => updateForm("subcategory", event.target.value)}>
+                      {subcategoriesFor(form.category, form.subcategory).map((value) => (
+                        <option key={value} value={value}>{optionLabel(value)}</option>
+                      ))}
                     </select>
                   </Field>
                 </div>
                 <div className="two-column">
+                  <Field label="Gender">
+                    <select value={form.audience} onChange={(event) => updateForm("audience", event.target.value)}>
+                      {audiences.map((value) => <option key={value} value={value}>{audienceLabel(value)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Kids age">
+                    <select
+                      value={form.kidsAgeRange}
+                      disabled={form.audience !== "KIDS"}
+                      onChange={(event) => updateForm("kidsAgeRange", event.target.value)}
+                    >
+                      {kidsAgeRanges.map((value) => <option key={value} value={value}>{kidsAgeLabel(value)}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <div className="two-column">
+                  <Field label="Color">
+                    <select value={form.color} onChange={(event) => updateForm("color", event.target.value)}>
+                      {colors.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
+                    </select>
+                  </Field>
                   <Field label="Brand">
                     <input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} />
                   </Field>
+                </div>
+                <div className="two-column">
                   <Field label="Size">
                     <input value={form.sizeLabel} onChange={(event) => updateForm("sizeLabel", event.target.value)} />
                   </Field>
-                </div>
-                <div className="two-column">
                   <Field label="Pattern">
                     <select value={form.pattern} onChange={(event) => updateForm("pattern", event.target.value)}>
-                      {patterns.map((value) => <option key={value}>{value}</option>)}
+                      {patterns.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
                     </select>
                   </Field>
+                </div>
+                <div className="two-column">
                   <Field label="Sleeve">
                     <select value={form.sleeveType} onChange={(event) => updateForm("sleeveType", event.target.value)}>
-                      {sleeves.map((value) => <option key={value}>{value}</option>)}
+                      {sleeves.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Condition">
+                    <select value={form.conditionGrade} onChange={(event) => updateForm("conditionGrade", event.target.value)}>
+                      {conditions.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
                     </select>
                   </Field>
                 </div>
@@ -502,13 +552,16 @@ export default function OperationsWorkspace() {
                   <Field label="Chest width cm">
                     <input inputMode="decimal" value={form.chestWidthCm} onChange={(event) => updateForm("chestWidthCm", event.target.value)} />
                   </Field>
+                  <Field label="Shoulder cm">
+                    <input inputMode="decimal" value={form.shoulderWidthCm} onChange={(event) => updateForm("shoulderWidthCm", event.target.value)} />
+                  </Field>
+                  <Field label="Waist cm">
+                    <input inputMode="decimal" value={form.waistCm} onChange={(event) => updateForm("waistCm", event.target.value)} />
+                  </Field>
+                  <Field label="Hip cm">
+                    <input inputMode="decimal" value={form.hipCm} onChange={(event) => updateForm("hipCm", event.target.value)} />
+                  </Field>
                 </div>
-
-                <Field label="Condition">
-                  <select value={form.conditionGrade} onChange={(event) => updateForm("conditionGrade", event.target.value)}>
-                    {conditions.map((value) => <option key={value}>{value}</option>)}
-                  </select>
-                </Field>
 
                 <Field label="Defects">
                   <textarea
@@ -600,8 +653,47 @@ function fieldLabel(field: string): string {
   const labels: Record<string, string> = {
     category: "Category",
     primaryColor: "Color",
+    audience: "Gender",
+    kidsAgeRange: "Kids age",
     brandLabel: "Brand",
     sizeLabel: "Size"
   };
   return labels[field] ?? field;
+}
+
+function subcategoriesFor(category: string, current = ""): string[] {
+  const lookup = PRODUCT_SUBCATEGORIES_BY_CATEGORY as Record<string, readonly string[]>;
+  const options = [...(lookup[category] ?? ["OTHER"])];
+  return current && !options.includes(current) ? [current, ...options] : options;
+}
+
+function optionLabel(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function audienceLabel(value: string): string {
+  const labels: Record<string, string> = {
+    WOMEN: "Women",
+    MEN: "Men",
+    KIDS: "Kids",
+    UNISEX: "Unisex"
+  };
+  return labels[value] ?? optionLabel(value);
+}
+
+function kidsAgeLabel(value: string): string {
+  const labels: Record<string, string> = {
+    NOT_APPLICABLE: "Not kids",
+    NEWBORN: "Newborn",
+    BABY_0_12M: "Baby 0-12m",
+    TODDLER_1_3Y: "Toddler 1-3y",
+    PRESCHOOL_3_5Y: "Age 3-5",
+    KIDS_6_8Y: "Age 6-8",
+    KIDS_9_12Y: "Age 9-12",
+    TEEN_13_16Y: "Teen 13-16"
+  };
+  return labels[value] ?? optionLabel(value);
 }
