@@ -1,11 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  getDigitizationFlowState,
+  type JsonRecord,
+  type StepStatus
+} from "./ai-digitization-flow";
 
 const API_PROXY_URL = "/api-proxy";
 const STAGING_TEST_EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
-
-type JsonRecord = Record<string, unknown>;
 
 async function request(path: string, options?: RequestInit): Promise<JsonRecord> {
   const response = await fetch(`${API_PROXY_URL}${path}`, {
@@ -23,9 +26,23 @@ async function request(path: string, options?: RequestInit): Promise<JsonRecord>
   return body;
 }
 
+function makeProductCode(): string {
+  return `TEST-${Date.now()}`;
+}
+
+function statusClass(status: StepStatus): string {
+  return status.toLowerCase();
+}
+
+function buttonLabel(status: StepStatus, idle: string, busy: string, isBusy: boolean): string {
+  if (isBusy) return busy;
+  if (status === "Done") return "Done";
+  return idle;
+}
+
 export default function OperationsHome() {
   const [employeeId, setEmployeeId] = useState(STAGING_TEST_EMPLOYEE_ID);
-  const [productCode, setProductCode] = useState(`TEST-${Date.now()}`);
+  const [productCode, setProductCode] = useState(makeProductCode);
   const [imageUrl, setImageUrl] = useState("https://example.com/front.jpg");
   const [product, setProduct] = useState<JsonRecord | null>(null);
   const [image, setImage] = useState<JsonRecord | null>(null);
@@ -34,10 +51,24 @@ export default function OperationsHome() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
-  const productId = String(product?.id ?? "");
-  const extractionId = String(job?.extractionId ?? "");
-  const imageId = String(image?.id ?? "");
+  const flow = useMemo(
+    () => getDigitizationFlowState({ employeeId, product, image, job, barcode }),
+    [employeeId, product, image, job, barcode]
+  );
   const result = useMemo(() => JSON.stringify({ product, image, job, barcode }, null, 2), [product, image, job, barcode]);
+  const isBusy = Boolean(busy);
+
+  function resetTest() {
+    setEmployeeId(STAGING_TEST_EMPLOYEE_ID);
+    setProductCode(makeProductCode());
+    setImageUrl("https://example.com/front.jpg");
+    setProduct(null);
+    setImage(null);
+    setJob(null);
+    setBarcode(null);
+    setBusy("");
+    setError("");
+  }
 
   async function run(label: string, action: () => Promise<void>) {
     setBusy(label);
@@ -51,14 +82,78 @@ export default function OperationsHome() {
     }
   }
 
+  async function createShell() {
+    const createdProduct = await request("/products", {
+      method: "POST",
+      body: JSON.stringify({ productCode, employeeId: employeeId.trim() })
+    });
+    setProduct(createdProduct);
+    setImage(null);
+    setJob(null);
+    setBarcode(null);
+  }
+
+  async function saveImage() {
+    setImage(await request(`/products/${flow.ids.productId}/images`, {
+      method: "POST",
+      body: JSON.stringify({ type: "FRONT", originalUrl: imageUrl, employeeId: employeeId.trim() })
+    }));
+  }
+
+  async function runMockAI() {
+    setJob(await request("/ai-jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        productId: flow.ids.productId,
+        imageIds: [flow.ids.imageId],
+        promptVersion: "product-v1"
+      })
+    }));
+  }
+
+  async function confirmCalibration() {
+    setProduct(await request(`/products/${flow.ids.productId}/calibrate`, {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId: employeeId.trim(),
+        extractionId: flow.ids.extractionId,
+        title: "Black Short Sleeve Dress",
+        category: "DRESS",
+        color: "BLACK",
+        pattern: "SOLID",
+        sleeveType: "SHORT",
+        brand: "Mock Brand",
+        sizeLabel: "M",
+        conditionGrade: "GOOD",
+        measurements: [
+          { type: "LENGTH", valueCm: 92 },
+          { type: "CHEST_WIDTH", valueCm: 48 }
+        ],
+        defects: []
+      })
+    }));
+  }
+
+  async function generateBarcode() {
+    const barcodeProduct = await request(`/products/${flow.ids.productId}/barcode`, {
+      method: "POST",
+      body: JSON.stringify({ employeeId: employeeId.trim() })
+    });
+    setBarcode(barcodeProduct);
+    setProduct(barcodeProduct);
+  }
+
   return (
     <main className="shell">
       <header className="header">
         <div>
           <h1 className="title">AI Digitization Test</h1>
-          <p className="subtitle">Create shell → register photo → mock AI → calibrate → generate formal barcode.</p>
+          <p className="subtitle">Create shell - register photo - mock AI - calibrate - generate formal barcode.</p>
         </div>
-        <div className="status">MVP test flow</div>
+        <div className="header-actions">
+          <div className="status">MVP test flow</div>
+          <button className="secondary-button" type="button" disabled={isBusy} onClick={resetTest}>Reset test</button>
+        </div>
       </header>
 
       <section className="panel form-grid">
@@ -69,24 +164,34 @@ export default function OperationsHome() {
 
       <section className="steps">
         <article className="step">
-          <span>1</span><h2>Create product shell</h2>
-          <button disabled={Boolean(busy)} onClick={() => run("create", async () => setProduct(await request("/products", { method: "POST", body: JSON.stringify({ productCode, employeeId }) })))}>{busy === "create" ? "Creating…" : "Create shell"}</button>
+          <span>1</span>
+          <div className="step-copy"><h2>Create product shell</h2></div>
+          <strong className={`step-status ${statusClass(flow.steps.create)}`}>{flow.steps.create}</strong>
+          <button disabled={!flow.canCreateProduct || isBusy} onClick={() => run("create", createShell)}>{buttonLabel(flow.steps.create, "Create shell", "Creating...", busy === "create")}</button>
         </article>
         <article className="step">
-          <span>2</span><h2>Register front photo</h2>
-          <button disabled={!productId || Boolean(busy)} onClick={() => run("image", async () => setImage(await request(`/products/${productId}/images`, { method: "POST", body: JSON.stringify({ type: "FRONT", originalUrl: imageUrl, employeeId }) })))}>{busy === "image" ? "Saving…" : "Save image"}</button>
+          <span>2</span>
+          <div className="step-copy"><h2>Register front photo</h2></div>
+          <strong className={`step-status ${statusClass(flow.steps.image)}`}>{flow.steps.image}</strong>
+          <button disabled={!flow.canSaveImage || isBusy} onClick={() => run("image", saveImage)}>{buttonLabel(flow.steps.image, "Save image", "Saving...", busy === "image")}</button>
         </article>
         <article className="step">
-          <span>3</span><h2>Run mock AI</h2>
-          <button disabled={!productId || !imageId || Boolean(busy)} onClick={() => run("ai", async () => setJob(await request("/ai-jobs", { method: "POST", body: JSON.stringify({ productId, imageIds: [imageId], promptVersion: "product-v1" }) })))}>{busy === "ai" ? "Recognizing…" : "Run mock AI"}</button>
+          <span>3</span>
+          <div className="step-copy"><h2>Run mock AI</h2></div>
+          <strong className={`step-status ${statusClass(flow.steps.ai)}`}>{flow.steps.ai}</strong>
+          <button disabled={!flow.canRunMockAI || isBusy} onClick={() => run("ai", runMockAI)}>{buttonLabel(flow.steps.ai, "Run mock AI", "Recognizing...", busy === "ai")}</button>
         </article>
         <article className="step">
-          <span>4</span><h2>Confirm calibration</h2>
-          <button disabled={!productId || !extractionId || !employeeId || Boolean(busy)} onClick={() => run("calibrate", async () => setProduct(await request(`/products/${productId}/calibrate`, { method: "POST", body: JSON.stringify({ employeeId, extractionId, title: "Black Short Sleeve Dress", category: "DRESS", color: "BLACK", pattern: "SOLID", sleeveType: "SHORT", brand: "Mock Brand", sizeLabel: "M", conditionGrade: "GOOD", measurements: [{ type: "LENGTH", valueCm: 92 }, { type: "CHEST_WIDTH", valueCm: 48 }], defects: [] }) })))}>{busy === "calibrate" ? "Saving…" : "Confirm calibration"}</button>
+          <span>4</span>
+          <div className="step-copy"><h2>Confirm calibration</h2></div>
+          <strong className={`step-status ${statusClass(flow.steps.calibration)}`}>{flow.steps.calibration}</strong>
+          <button disabled={!flow.canConfirmCalibration || isBusy} onClick={() => run("calibrate", confirmCalibration)}>{buttonLabel(flow.steps.calibration, "Confirm calibration", "Saving...", busy === "calibrate")}</button>
         </article>
         <article className="step">
-          <span>5</span><h2>Generate formal barcode</h2>
-          <button disabled={!productId || !employeeId || Boolean(busy)} onClick={() => run("barcode", async () => setBarcode(await request(`/products/${productId}/barcode`, { method: "POST", body: JSON.stringify({ employeeId }) })))}>{busy === "barcode" ? "Generating…" : "Generate barcode"}</button>
+          <span>5</span>
+          <div className="step-copy"><h2>Generate formal barcode</h2></div>
+          <strong className={`step-status ${statusClass(flow.steps.barcode)}`}>{flow.steps.barcode}</strong>
+          <button disabled={!flow.canGenerateBarcode || isBusy} onClick={() => run("barcode", generateBarcode)}>{buttonLabel(flow.steps.barcode, "Generate barcode", "Generating...", busy === "barcode")}</button>
         </article>
       </section>
 
