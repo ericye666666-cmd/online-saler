@@ -23,6 +23,6 @@ import { ProductStateMachine } from "./product-state-machine";
       useClass: PrismaProductRepository
     }
   ],
-  exports: [ProductApplicationService]
+  exports: [ProductApplicationService, ProductImageStorageService]
 })
 export class ProductModule {}

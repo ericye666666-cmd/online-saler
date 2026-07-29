@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { AI_COLORS, AI_PATTERNS, AI_PRODUCT_CATEGORIES, AI_SLEEVE_TYPES } from "@online-saler/shared-types";
 import {
   buildCalibrationBody,
   formFromProductAndAi,
@@ -17,10 +18,10 @@ const ACTIVE_PRODUCT_KEY = "operations.workspace.activeProductId";
 const SESSION_DONE_KEY = "operations.workspace.sessionDone";
 const SESSION_TARGET = 10;
 
-const categories = ["DRESS", "TOP", "SHIRT", "TROUSER", "SKIRT", "JACKET", "SWEATER", "SHORTS", "OTHER"];
-const colors = ["BLACK", "WHITE", "GREY", "BROWN", "BEIGE", "RED", "YELLOW", "GREEN", "BLUE", "NAVY", "MULTICOLOR", "OTHER"];
-const patterns = ["SOLID", "STRIPED", "CHECKED", "FLORAL", "GRAPHIC", "POLKA_DOT", "OTHER"];
-const sleeves = ["SLEEVELESS", "SHORT", "THREE_QUARTER", "LONG", "NOT_APPLICABLE", "OTHER"];
+const categories = AI_PRODUCT_CATEGORIES;
+const colors = AI_COLORS;
+const patterns = AI_PATTERNS;
+const sleeves = AI_SLEEVE_TYPES;
 const conditions = ["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"];
 
 type WorkspaceSummary = {
@@ -353,7 +354,7 @@ export default function OperationsWorkspace() {
 
             <section className="editor-panel">
               <div className="section-heading">
-                <h3>AI result</h3>
+                <h3>Photo reading</h3>
                 <span>{readiness.hasAi ? "Ready to check" : readiness.hasPhoto ? "Reading photo" : "Waiting for photo"}</span>
               </div>
               <div className="ai-strip">

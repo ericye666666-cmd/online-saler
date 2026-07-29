@@ -6,6 +6,8 @@ export interface AIProviderResult {
   rawOutput: unknown;
   normalizedOutput: AIExtractionNormalizedOutput;
   latencyMs: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export interface AIProvider {
