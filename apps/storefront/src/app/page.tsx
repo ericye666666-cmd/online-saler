@@ -1,47 +1,69 @@
-import { KIKUYU_DELIVERY_FEE_KSH, RESERVATION_MINUTES } from "@online-saler/business-rules";
+import Link from "next/link";
+import { KIKUYU_DELIVERY_FEE_KSH } from "@online-saler/business-rules";
+import {
+  fetchPublicProducts,
+  moneyKsh,
+  productImageSrc,
+  productMeta
+} from "./storefront-products";
 
-const capabilities = [
-  {
-    title: "Real item cards",
-    body: "Each product will show real photos, exact measurements, condition, price, and one-piece availability."
-  },
-  {
-    title: "Simple checkout",
-    body: `Payment initiation will reserve one item for ${RESERVATION_MINUTES} minutes before M-Pesa confirmation.`
-  },
-  {
-    title: "Kikuyu fulfillment",
-    body: `Pickup is free. Local delivery starts at ${KIKUYU_DELIVERY_FEE_KSH} KSh inside the defined Kikuyu zone.`
-  }
-];
+export const dynamic = "force-dynamic";
 
-export default function StorefrontHome() {
+export default async function StorefrontHome() {
+  const products = await fetchPublicProducts();
+
   return (
     <main className="shell">
       <header className="topbar">
-        <div className="brand">Online Saler</div>
-        <nav className="nav">
+        <Link className="brand" href="/">Online Saler</Link>
+        <nav className="nav" aria-label="Storefront navigation">
           <span>New arrivals</span>
-          <span>Sizes</span>
-          <span>Pickup</span>
+          <span>One piece each</span>
+          <span>Pickup Kikuyu</span>
         </nav>
       </header>
-      <section className="hero">
-        <p className="badge">Customer Storefront Foundation</p>
-        <h1 className="headline">Browse real second-hand clothes from Kikuyu.</h1>
-        <p className="copy">
-          This foundation page confirms the Storefront app is running. Product listing, item detail, checkout,
-          M-Pesa, order tracking, and affiliate-aware links will attach to the middle-platform API.
-        </p>
+
+      <section className="storefront-heading">
+        <div>
+          <h1>Fresh second-hand finds in Kikuyu.</h1>
+          <p>
+            Every item is photographed, measured, priced, and available as a single piece.
+            Pickup is free; local delivery starts at {KIKUYU_DELIVERY_FEE_KSH} KSh.
+          </p>
+        </div>
+        <span>{products.length} live items</span>
       </section>
-      <section className="grid" aria-label="Foundation capabilities">
-        {capabilities.map((capability) => (
-          <article className="card" key={capability.title}>
-            <h2>{capability.title}</h2>
-            <p>{capability.body}</p>
-          </article>
-        ))}
-      </section>
+
+      {products.length ? (
+        <section className="product-grid" aria-label="Published products">
+          {products.map((product) => (
+            <Link className="product-card" href={`/products/${product.id}`} key={product.id}>
+              <div className="product-photo">
+                {productImageSrc(product) ? (
+                  <img src={productImageSrc(product)} alt={product.title ?? "Second-hand clothing item"} />
+                ) : (
+                  <span>No photo</span>
+                )}
+              </div>
+              <div className="product-body">
+                <div>
+                  <h2>{product.title ?? "Second-hand item"}</h2>
+                  <p>{productMeta(product)}</p>
+                </div>
+                <div className="product-footer">
+                  <strong>{moneyKsh(product.priceKsh)}</strong>
+                  <span>Only one available</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </section>
+      ) : (
+        <section className="empty-store">
+          <h2>No live items yet</h2>
+          <p>Published warehouse-ready products will appear here automatically.</p>
+        </section>
+      )}
     </main>
   );
 }

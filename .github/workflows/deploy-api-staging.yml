@@ -240,6 +240,14 @@ jobs:
             "${SERVICE_URL}/operations/product-control/products")"
           echo "${CONTROL_PRODUCTS}" | grep -q '^\['
 
+      - name: Verify public storefront products API
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+
+          PUBLIC_PRODUCTS="$(curl --fail-with-body --silent --show-error \
+            "${SERVICE_URL}/public/products")"
+          echo "${PUBLIC_PRODUCTS}" | grep -q '^\['
+
       - name: Verify OpenAI image recognition
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
