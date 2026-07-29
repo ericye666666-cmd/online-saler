@@ -371,6 +371,38 @@ textarea {
   font-size: 17px;
 }
 
+.print-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  border: 1px solid #b7d8cb;
+  border-radius: 8px;
+  background: #ecf8f3;
+  padding: 14px;
+}
+
+.print-panel h4 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--accent-strong);
+  font-size: 22px;
+}
+
+.print-panel span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.print-controls {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.6fr) minmax(150px, 1fr) minmax(150px, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
 .employee-error,
 .success-line {
   border-radius: 8px;
@@ -452,7 +484,8 @@ pre { overflow: auto; max-height: 440px; margin: 0; border-radius: 8px; backgrou
   .ai-strip,
   .two-column,
   .measure-band,
-  .form-grid {
+  .form-grid,
+  .print-controls {
     grid-template-columns: 1fr;
   }
 
