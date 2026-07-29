@@ -20,3 +20,5 @@ export const FOUNDATION_APPS: Record<AppKey, string> = {
 };
 
 export type MoneyKsh = number;
+
+export * from "./ai-extraction";
