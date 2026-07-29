@@ -1,12 +1,16 @@
 import { Module } from "@nestjs/common";
 import { ProductApplicationService } from "./product-application.service";
+import { ProductCalibrationController } from "./product-calibration.controller";
+import { ProductCalibrationService } from "./product-calibration.service";
 import { PRODUCT_REPOSITORY } from "./product.repository";
 import { PrismaProductRepository } from "./prisma-product.repository";
 import { ProductStateMachine } from "./product-state-machine";
 
 @Module({
+  controllers: [ProductCalibrationController],
   providers: [
     ProductApplicationService,
+    ProductCalibrationService,
     ProductStateMachine,
     {
       provide: PRODUCT_REPOSITORY,
