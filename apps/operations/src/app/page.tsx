@@ -12,9 +12,20 @@ import {
   type JsonRecord,
   type WorkspaceForm
 } from "./operations-workspace-flow";
+import {
+  buildLabelPrintPayload,
+  DEFAULT_LABEL_SIZE,
+  DEFAULT_PRINT_AGENT_URL,
+  DEFAULT_PRINTER_NAME,
+  normalizeLabelSize,
+  printerList,
+  selectDeliPrinter,
+  type LabelSize
+} from "./local-label-print";
 
 const API_PROXY_URL = "/api-proxy";
 const ACTIVE_PRODUCT_KEY = "operations.workspace.activeProductId";
+const COMPLETED_PRODUCT_KEY = "operations.workspace.completedProductId";
 const SESSION_DONE_KEY = "operations.workspace.sessionDone";
 const SESSION_TARGET = 10;
 
@@ -105,8 +116,11 @@ export default function OperationsWorkspace() {
   const [product, setProduct] = useState<JsonRecord | null>(null);
   const [image, setImage] = useState<JsonRecord | null>(null);
   const [job, setJob] = useState<JsonRecord | null>(null);
+  const [completedProduct, setCompletedProduct] = useState<JsonRecord | null>(null);
   const [form, setForm] = useState<WorkspaceForm>(() => formFromProductAndAi(null, null));
   const [previewUrl, setPreviewUrl] = useState("");
+  const [labelSize, setLabelSize] = useState<LabelSize>(DEFAULT_LABEL_SIZE);
+  const [printMessage, setPrintMessage] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [lastBarcode, setLastBarcode] = useState("");
@@ -114,7 +128,7 @@ export default function OperationsWorkspace() {
 
   const readiness = useMemo(() => workspaceReadiness({ product, image, job, form }), [product, image, job, form]);
   const currentImageUrl = previewUrl || imageUrl(image);
-  const currentStep = Math.min(sessionDone + 1, SESSION_TARGET);
+  const currentStep = completedProduct ? sessionDone : Math.min(sessionDone + 1, SESSION_TARGET);
 
   const loadSummary = useCallback(async () => {
     const next = (await request(`/operations/workspace/summary?employeeId=${employeeId}`)) as WorkspaceSummary;
@@ -126,15 +140,27 @@ export default function OperationsWorkspace() {
     const nextProduct = objectRecord(payload?.product);
     const nextImage = objectRecord(payload?.latestImage) ?? objectRecord((nextProduct?.images as unknown[])?.[0]);
     const nextJob = objectRecord(payload?.latestExtraction) ?? objectRecord((nextProduct?.aiExtractions as unknown[])?.[0]);
+    const productId = stringValue(nextProduct?.id);
+    const isCompleted = stringValue(nextProduct?.status) === "BARCODE_ASSIGNED";
 
     setProduct(nextProduct);
     setImage(nextImage);
     setJob(nextJob);
     setForm(formFromProductAndAi(nextProduct, nextJob));
+    setCompletedProduct(isCompleted ? nextProduct : null);
+    setPrintMessage("");
 
-    const productId = stringValue(nextProduct?.id);
+    const barcode = stringValue(nextProduct?.barcode);
+    if (barcode) setLastBarcode(barcode);
+
     if (productId) {
-      localStorage.setItem(ACTIVE_PRODUCT_KEY, productId);
+      if (isCompleted) {
+        localStorage.setItem(COMPLETED_PRODUCT_KEY, productId);
+        localStorage.removeItem(ACTIVE_PRODUCT_KEY);
+      } else {
+        localStorage.setItem(ACTIVE_PRODUCT_KEY, productId);
+        localStorage.removeItem(COMPLETED_PRODUCT_KEY);
+      }
       setView("workspace");
     }
   }, []);
@@ -155,7 +181,8 @@ export default function OperationsWorkspace() {
         setSessionDone(Number.isFinite(storedDone) ? storedDone : 0);
         const nextSummary = await loadSummary();
         const storedProductId = localStorage.getItem(ACTIVE_PRODUCT_KEY);
-        const activeId = storedProductId || nextSummary.activeProductId;
+        const storedCompletedProductId = localStorage.getItem(COMPLETED_PRODUCT_KEY);
+        const activeId = storedProductId || nextSummary.activeProductId || storedCompletedProductId;
         if (activeId) await loadActive(activeId);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Could not load today's work.");
@@ -229,35 +256,96 @@ export default function OperationsWorkspace() {
     });
 
     setProduct(barcoded);
+    setCompletedProduct(barcoded);
     setLastBarcode(stringValue(barcoded.barcode));
+    setPrintMessage("");
     const nextDone = Math.min(sessionDone + 1, SESSION_TARGET);
     setSessionDone(nextDone);
     localStorage.setItem(SESSION_DONE_KEY, String(nextDone));
     localStorage.removeItem(ACTIVE_PRODUCT_KEY);
-
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl("");
-    setImage(null);
-    setJob(null);
-    setForm(formFromProductAndAi(null, null));
+    localStorage.setItem(COMPLETED_PRODUCT_KEY, stringValue(barcoded.id));
 
     await loadSummary();
-    await startWork();
 
     if (!calibrated) {
       throw new Error("Calibration was not saved.");
     }
   }
 
+  async function printLabel() {
+    const productForPrint = completedProduct ?? product;
+    if (!productForPrint) throw new Error("Save the item before printing.");
+
+    let healthResponse: Response;
+    try {
+      healthResponse = await fetch(`${DEFAULT_PRINT_AGENT_URL}/health`, { method: "GET" });
+    } catch {
+      throw new Error("Start the local print agent on this computer, then try again.");
+    }
+    if (!healthResponse.ok) {
+      throw new Error("The local print agent is not ready. Restart it and try again.");
+    }
+
+    let printerName = DEFAULT_PRINTER_NAME;
+    try {
+      const printersResponse = await fetch(`${DEFAULT_PRINT_AGENT_URL}/printers`, { method: "GET" });
+      const printersBody = (await printersResponse.json()) as JsonRecord;
+      const printers = printerList(printersBody.printers);
+      if (printers.length > 0) {
+        printerName = selectDeliPrinter(printers);
+        if (!printers.some((printer) => printer.name === printerName)) {
+          throw new Error("Deli 720 printer is not available on this computer.");
+        }
+      }
+    } catch (caught) {
+      if (caught instanceof Error && caught.message.includes("Deli 720")) throw caught;
+      throw new Error("Could not read printers from the local print agent.");
+    }
+
+    const payload = buildLabelPrintPayload({ product: productForPrint, labelSize, printerName });
+    const response = await fetch(`${DEFAULT_PRINT_AGENT_URL}/print/label`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const text = await response.text();
+    let body: JsonRecord = {};
+    try {
+      body = text ? (JSON.parse(text) as JsonRecord) : {};
+    } catch {
+      body = { message: text };
+    }
+    if (!response.ok) {
+      throw new Error(String(body.message ?? body.error ?? "Label print failed."));
+    }
+    setPrintMessage(`Printed ${labelSize} label on ${printerName}.`);
+  }
+
+  async function startNextItem() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
+    setImage(null);
+    setJob(null);
+    setProduct(null);
+    setCompletedProduct(null);
+    setPrintMessage("");
+    setForm(formFromProductAndAi(null, null));
+    localStorage.removeItem(COMPLETED_PRODUCT_KEY);
+    await startWork();
+  }
+
   function resetSession() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     localStorage.removeItem(ACTIVE_PRODUCT_KEY);
+    localStorage.removeItem(COMPLETED_PRODUCT_KEY);
     localStorage.removeItem(SESSION_DONE_KEY);
     setSessionDone(0);
     setProduct(null);
     setImage(null);
     setJob(null);
+    setCompletedProduct(null);
     setPreviewUrl("");
+    setPrintMessage("");
     setLastBarcode("");
     setForm(formFromProductAndAi(null, null));
     setView("dashboard");
@@ -346,7 +434,7 @@ export default function OperationsWorkspace() {
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   capture="environment"
-                  disabled={Boolean(busy)}
+                  disabled={Boolean(busy) || Boolean(completedProduct)}
                   onChange={(event) => void choosePhoto(event.target.files?.[0] ?? null)}
                 />
               </label>
@@ -433,15 +521,55 @@ export default function OperationsWorkspace() {
               </div>
 
               {error ? <p className="employee-error">{error}</p> : null}
-              {lastBarcode ? <p className="success-line">Last barcode: {lastBarcode}</p> : null}
+              {completedProduct ? (
+                <section className="print-panel">
+                  <div>
+                    <p className="workspace-label">Barcode label</p>
+                    <h4>{stringValue(completedProduct.barcode)}</h4>
+                    <span>Printer: Deli 720 local agent</span>
+                  </div>
+                  <div className="print-controls">
+                    <Field label="Label size">
+                      <select
+                        value={labelSize}
+                        onChange={(event) => setLabelSize(normalizeLabelSize(event.target.value))}
+                      >
+                        <option value="60x40">60x40</option>
+                        <option value="40x30">40x30</option>
+                      </select>
+                    </Field>
+                    <button
+                      className="primary-action"
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={() => run("print", printLabel)}
+                    >
+                      {busy === "print" ? "Printing..." : "Print label"}
+                    </button>
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={() => run("next", startNextItem)}
+                    >
+                      Start next item
+                    </button>
+                  </div>
+                  {printMessage ? <p className="success-line">{printMessage}</p> : null}
+                </section>
+              ) : lastBarcode ? (
+                <p className="success-line">Last barcode: {lastBarcode}</p>
+              ) : null}
 
-              <button
-                className="save-next"
-                disabled={!readiness.canSaveAndNext || Boolean(busy)}
-                onClick={() => run("save", saveAndNext)}
-              >
-                {busy === "save" ? "Saving..." : "Save & Next"}
-              </button>
+              {!completedProduct ? (
+                <button
+                  className="save-next"
+                  disabled={!readiness.canSaveAndNext || Boolean(busy)}
+                  onClick={() => run("save", saveAndNext)}
+                >
+                  {busy === "save" ? "Saving..." : "Save & Next"}
+                </button>
+              ) : null}
             </section>
           </div>
         </section>
