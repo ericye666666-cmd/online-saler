@@ -232,7 +232,9 @@ jobs:
             "${SERVICE_URL}/operations/product-control/summary")"
           echo "${CONTROL_SUMMARY}"
           echo "${CONTROL_SUMMARY}" | grep -q '"readyForPrice"'
+          echo "${CONTROL_SUMMARY}" | grep -q '"readyToPublish"'
           echo "${CONTROL_SUMMARY}" | grep -q '"available"'
+          echo "${CONTROL_SUMMARY}" | grep -q '"published"'
 
           CONTROL_PRODUCTS="$(curl --fail-with-body --silent --show-error \
             "${SERVICE_URL}/operations/product-control/products")"

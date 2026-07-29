@@ -14,6 +14,10 @@ type PrintedBody = EmployeeBody & {
   productIds?: string[];
 };
 
+type UnpublishBody = EmployeeBody & {
+  reason?: string;
+};
+
 @Controller("operations/product-control")
 export class OperationsProductControlController {
   constructor(private readonly productControl: OperationsProductControlService) {}
@@ -51,6 +55,16 @@ export class OperationsProductControlController {
   @Post("products/:id/confirm-placed")
   confirmPlaced(@Param("id") id: string, @Body() body: EmployeeBody) {
     return this.productControl.confirmPlaced(id, body);
+  }
+
+  @Post("products/:id/publish")
+  publish(@Param("id") id: string, @Body() body: EmployeeBody) {
+    return this.productControl.publish(id, body);
+  }
+
+  @Post("products/:id/unpublish")
+  unpublish(@Param("id") id: string, @Body() body: UnpublishBody) {
+    return this.productControl.unpublish(id, body);
   }
 
   @Post("labels/printed")

@@ -15,7 +15,8 @@ const CONTROL_STATUSES = [
   ProductStatus.REVIEW_PENDING,
   ProductStatus.APPROVED,
   ProductStatus.READY_FOR_STORAGE,
-  ProductStatus.PUBLISHED
+  ProductStatus.PUBLISHED,
+  ProductStatus.UNPUBLISHED
 ] as const;
 
 function employeeIdOrDefault(employeeId?: string): string {
@@ -37,11 +38,25 @@ export class OperationsProductControlService {
   constructor(private readonly products: ProductApplicationService) {}
 
   async summary() {
-    const [readyForPrice, readyForStorage, pendingStockIn, available, printedToday] = await Promise.all([
+    const [readyForPrice, readyForStorage, readyToPublish, pendingStockIn, available, published, printedToday] = await Promise.all([
       prisma.product.count({ where: { status: ProductStatus.BARCODE_ASSIGNED, priceKsh: null } }),
       prisma.product.count({ where: { status: ProductStatus.READY_FOR_STORAGE } }),
+      prisma.product.count({
+        where: {
+          status: ProductStatus.READY_FOR_STORAGE,
+          barcode: { not: null },
+          priceKsh: { gt: 0 },
+          images: { some: {} },
+          inventoryItem: {
+            is: {
+              status: InventoryItemStatus.AVAILABLE
+            }
+          }
+        }
+      }),
       prisma.inventoryItem.count({ where: { status: InventoryItemStatus.PENDING_STOCK_IN } }),
       prisma.inventoryItem.count({ where: { status: InventoryItemStatus.AVAILABLE } }),
+      prisma.product.count({ where: { status: ProductStatus.PUBLISHED } }),
       prisma.product.count({
         where: {
           labelPrintedAt: { gte: startOfToday() }
@@ -52,8 +67,10 @@ export class OperationsProductControlService {
     return {
       readyForPrice,
       readyForStorage,
+      readyToPublish,
       pendingStockIn,
       available,
+      published,
       printedToday
     };
   }
@@ -280,6 +297,53 @@ export class OperationsProductControlService {
     return this.productDetail(productId);
   }
 
+  async publish(productId: string, input: { employeeId?: string }) {
+    const employeeId = employeeIdOrDefault(input.employeeId);
+    const detail = await this.productDetail(productId);
+    if (detail.status === ProductStatus.PUBLISHED) {
+      return detail;
+    }
+    if (detail.status !== ProductStatus.READY_FOR_STORAGE && detail.status !== ProductStatus.UNPUBLISHED) {
+      throw new BadRequestException("Only storage-ready items can be published.");
+    }
+    this.assertPublishable(detail);
+
+    await this.products.transitionProduct({
+      productId,
+      toStatus: ProductStatus.PUBLISHED,
+      inventoryAvailable: true,
+      actor: {
+        actorType: ActorType.EMPLOYEE,
+        actorId: employeeId,
+        sourceApp: SourceApp.OPERATIONS
+      }
+    });
+
+    return this.productDetail(productId);
+  }
+
+  async unpublish(productId: string, input: { employeeId?: string; reason?: string }) {
+    const employeeId = employeeIdOrDefault(input.employeeId);
+    const reason = input.reason?.trim() || "Operations product control";
+    const product = await this.requireProduct(productId);
+    if (product.status !== ProductStatus.PUBLISHED) {
+      return this.productDetail(productId);
+    }
+
+    await this.products.transitionProduct({
+      productId,
+      toStatus: ProductStatus.UNPUBLISHED,
+      reason,
+      actor: {
+        actorType: ActorType.EMPLOYEE,
+        actorId: employeeId,
+        sourceApp: SourceApp.OPERATIONS
+      }
+    });
+
+    return this.productDetail(productId);
+  }
+
   async locations() {
     await this.ensureDefaultLocations();
     const locations = await prisma.warehouseLocation.findMany({
@@ -308,6 +372,21 @@ export class OperationsProductControlService {
     });
     if (!product) throw new NotFoundException("Product not found.");
     return product;
+  }
+
+  private assertPublishable(product: Awaited<ReturnType<OperationsProductControlService["productDetail"]>>) {
+    if (!product.barcode) {
+      throw new BadRequestException("Generate barcode before publishing.");
+    }
+    if (!product.priceKsh || product.priceKsh <= 0) {
+      throw new BadRequestException("Set the price before publishing.");
+    }
+    if (!product.images.length) {
+      throw new BadRequestException("Add at least one product photo before publishing.");
+    }
+    if (product.inventoryItem?.status !== InventoryItemStatus.AVAILABLE) {
+      throw new BadRequestException("Confirm the item is placed in the warehouse before publishing.");
+    }
   }
 
   private async ensureDefaultLocations() {

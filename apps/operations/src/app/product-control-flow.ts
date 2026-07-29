@@ -32,3 +32,20 @@ export function canConfirmProductPlaced(product: JsonRecord): boolean {
   const item = productControlInventoryItem(product);
   return canAssignProductLocation(product) && Boolean(item?.id && item.locationId && item.status !== "AVAILABLE");
 }
+
+export function canPublishProduct(product: JsonRecord): boolean {
+  const item = productControlInventoryItem(product);
+  const images = Array.isArray(product.images) ? product.images : [];
+  const price = typeof product.priceKsh === "number" ? product.priceKsh : 0;
+  return (
+    ["READY_FOR_STORAGE", "UNPUBLISHED"].includes(stringValue(product.status)) &&
+    Boolean(stringValue(product.barcode)) &&
+    price > 0 &&
+    images.length > 0 &&
+    item?.status === "AVAILABLE"
+  );
+}
+
+export function canUnpublishProduct(product: JsonRecord): boolean {
+  return stringValue(product.status) === "PUBLISHED";
+}

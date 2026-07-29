@@ -19,7 +19,9 @@ import {
 import {
   canAssignProductLocation,
   canConfirmProductPlaced,
+  canPublishProduct,
   canPrintProductLabel,
+  canUnpublishProduct,
   productControlImageUrl,
   productControlInventoryItem,
   productControlLocationCode
@@ -30,8 +32,10 @@ const API_PROXY_URL = "/api-proxy";
 type ProductControlSummary = {
   readyForPrice: number;
   readyForStorage: number;
+  readyToPublish: number;
   pendingStockIn: number;
   available: number;
+  published: number;
   printedToday: number;
 };
 
@@ -39,7 +43,8 @@ const statusFilters = [
   "",
   "BARCODE_ASSIGNED",
   "READY_FOR_STORAGE",
-  "PUBLISHED"
+  "PUBLISHED",
+  "UNPUBLISHED"
 ];
 
 async function request(path: string, options?: RequestInit): Promise<unknown> {
@@ -158,6 +163,28 @@ export default function ProductControlPage() {
     await load();
   }
 
+  async function publishProduct(product: JsonRecord) {
+    const id = stringValue(product.id);
+    await request(`/operations/product-control/products/${id}/publish`, {
+      method: "POST",
+      body: JSON.stringify({ employeeId })
+    });
+    setMessage("Item is live in the storefront catalog.");
+    await load();
+  }
+
+  async function unpublishProduct(product: JsonRecord) {
+    const id = stringValue(product.id);
+    const reason = window.prompt("Reason for taking this item offline?", "Operations product control");
+    if (reason === null) return;
+    await request(`/operations/product-control/products/${id}/unpublish`, {
+      method: "POST",
+      body: JSON.stringify({ employeeId, reason })
+    });
+    setMessage("Item is offline.");
+    await load();
+  }
+
   async function printSelectedLabels() {
     if (selectedProducts.length === 0) throw new Error("Choose at least one item to print.");
 
@@ -216,7 +243,8 @@ export default function ProductControlPage() {
         <Metric title="Need price" value={summary?.readyForPrice ?? 0} />
         <Metric title="Ready storage" value={summary?.readyForStorage ?? 0} />
         <Metric title="Need placing" value={summary?.pendingStockIn ?? 0} />
-        <Metric title="Available" value={summary?.available ?? 0} strong />
+        <Metric title="Ready publish" value={summary?.readyToPublish ?? 0} />
+        <Metric title="Published" value={summary?.published ?? 0} strong />
       </section>
 
       <section className="control-toolbar">
@@ -306,6 +334,12 @@ export default function ProductControlPage() {
                 </button>
                 <button className="primary-action" disabled={Boolean(busy) || !canConfirmProductPlaced(product)} onClick={() => run(`placed-${id}`, () => confirmPlaced(product))}>
                   Confirm placed
+                </button>
+                <button className="primary-action" disabled={Boolean(busy) || !canPublishProduct(product)} onClick={() => run(`publish-${id}`, () => publishProduct(product))}>
+                  Publish
+                </button>
+                <button className="secondary-action" disabled={Boolean(busy) || !canUnpublishProduct(product)} onClick={() => run(`unpublish-${id}`, () => unpublishProduct(product))}>
+                  Unpublish
                 </button>
               </div>
             </article>

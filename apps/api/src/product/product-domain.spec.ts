@@ -53,6 +53,29 @@ describe("Product domain service", () => {
     assert.equal(repository.auditLogs[5].actor.sourceApp, SourceApp.OPERATIONS);
   });
 
+  it("requires available inventory before publishing", async () => {
+    const repository = new InMemoryProductRepository();
+    const service = new ProductApplicationService(repository, new ProductStateMachine());
+    const product = await repository.createWithStatus(
+      "P-1010",
+      ProductStatus.READY_FOR_STORAGE,
+      "BC-1010"
+    );
+
+    await assert.rejects(
+      () => transition(service, product.id, ProductStatus.PUBLISHED),
+      (error) => hasCode(error, "STATE_CONFLICT")
+    );
+
+    const published = await transition(service, product.id, ProductStatus.PUBLISHED, {
+      inventoryAvailable: true
+    });
+
+    assert.equal(published.status, ProductStatus.PUBLISHED);
+    assert.ok(published.publishedAt);
+    assert.equal(repository.auditLogs.at(-1)?.action, "PRODUCT_PUBLISH");
+  });
+
   it("rejects illegal transitions as STATE_CONFLICT", async () => {
     const repository = new InMemoryProductRepository();
     const service = new ProductApplicationService(repository, new ProductStateMachine());
