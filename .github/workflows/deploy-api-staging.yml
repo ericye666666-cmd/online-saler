@@ -23,12 +23,13 @@ permissions:
 
 env:
   IMAGE_NAME: api
+  MIGRATION_JOB_NAME: online-saler-db-migrate-staging
   STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
   STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
 
 jobs:
   deploy:
-    name: Build and deploy API
+    name: Migrate, build and deploy API
     runs-on: ubuntu-latest
 
     steps:
@@ -64,6 +65,29 @@ jobs:
 
       - name: Push Docker image
         run: docker push "${IMAGE_URI}"
+
+      - name: Configure migration job
+        run: |
+          gcloud run jobs deploy "${MIGRATION_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --image "${IMAGE_URI}" \
+            --service-account "${STAGING_RUNTIME_SERVICE_ACCOUNT}" \
+            --set-cloudsql-instances "${STAGING_CLOUD_SQL_INSTANCE}" \
+            --set-secrets "DATABASE_URL=STAGING_DATABASE_URL:latest" \
+            --command npm \
+            --args run,db:deploy \
+            --max-retries 0 \
+            --task-timeout 10m \
+            --quiet
+
+      - name: Apply database migrations
+        run: |
+          gcloud run jobs execute "${MIGRATION_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --wait \
+            --quiet
 
       - name: Deploy Cloud Run service
         id: deploy
