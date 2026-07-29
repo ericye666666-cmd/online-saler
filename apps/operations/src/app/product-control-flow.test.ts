@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import {
   canAssignProductLocation,
   canConfirmProductPlaced,
+  canPublishProduct,
   canPrintProductLabel,
+  canUnpublishProduct,
   productControlImageUrl,
   productControlLocationCode
 } from "./product-control-flow";
@@ -10,6 +12,7 @@ import {
 const readyProduct = {
   barcode: "DLFTEST100",
   status: "READY_FOR_STORAGE",
+  priceKsh: 500,
   images: [{ publicUrl: "/products/abc/images/front" }],
   inventoryItem: {
     id: "item-1",
@@ -18,16 +21,28 @@ const readyProduct = {
     location: { locationCode: "A-010203" }
   }
 };
+const publishableProduct = {
+  ...readyProduct,
+  inventoryItem: {
+    ...readyProduct.inventoryItem,
+    status: "AVAILABLE"
+  }
+};
 
 assert.equal(productControlImageUrl(readyProduct, "/api-proxy"), "/api-proxy/products/abc/images/front");
 assert.equal(productControlLocationCode(readyProduct), "A-010203");
 assert.equal(canPrintProductLabel(readyProduct), true);
 assert.equal(canAssignProductLocation(readyProduct), true);
 assert.equal(canConfirmProductPlaced(readyProduct), true);
+assert.equal(canPublishProduct(publishableProduct), true);
+assert.equal(canUnpublishProduct(readyProduct), false);
 
 assert.equal(canPrintProductLabel({ title: "No barcode" }), false);
 assert.equal(canAssignProductLocation({ status: "BARCODE_ASSIGNED", barcode: "DLFTEST101" }), false);
 assert.equal(canConfirmProductPlaced({ barcode: "DLFTEST101" }), false);
+assert.equal(canPublishProduct({ ...publishableProduct, priceKsh: 0 }), false);
+assert.equal(canPublishProduct({ ...readyProduct, inventoryItem: { status: "PENDING_STOCK_IN" } }), false);
+assert.equal(canUnpublishProduct({ status: "PUBLISHED" }), true);
 assert.equal(
   canConfirmProductPlaced({
     inventoryItem: {
