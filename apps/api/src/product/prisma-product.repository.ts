@@ -17,13 +17,15 @@ export class PrismaProductRepository implements ProductRepository {
   constructor(private readonly client: PrismaClient = prisma) {}
 
   async createShell(input: CreateProductShellInput): Promise<ProductRecord> {
+    const actor = input.actor;
+
     return this.client.product.create({
       data: {
         productCode: input.productCode,
         title: input.title ?? null,
         createdByEmployeeId:
           input.createdByEmployeeId ??
-          (input.actor?.actorType === ActorType.EMPLOYEE ? input.actor.actorId ?? null : null)
+          (actor?.actorType === ActorType.EMPLOYEE ? actor.actorId ?? null : null)
       }
     });
   }
