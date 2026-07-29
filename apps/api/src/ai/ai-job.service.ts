@@ -99,7 +99,8 @@ export class AIJobService {
       provider: extraction.provider ?? "unknown",
       model: extraction.model ?? "unknown",
       promptVersion: extraction.promptVersion ?? "unknown",
-      normalizedOutput: extraction.normalizedOutputJson as AIExtractionResult["normalizedOutput"],
+      normalizedOutput:
+        extraction.normalizedOutputJson as unknown as AIExtractionResult["normalizedOutput"],
       rawOutput: extraction.rawOutputJson,
       latencyMs: extraction.latencyMs ?? undefined,
       inputTokens: extraction.inputTokens ?? undefined,
