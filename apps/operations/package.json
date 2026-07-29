@@ -6,7 +6,7 @@
     "build": "next build",
     "dev": "next dev --port 3001",
     "start": "next start --port 3001",
-    "test": "node -e \"console.log('operations smoke ok')\"",
+    "test": "tsx src/app/ai-digitization-flow.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
