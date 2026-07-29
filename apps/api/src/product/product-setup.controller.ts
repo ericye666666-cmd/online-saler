@@ -25,9 +25,6 @@ interface AddImageBody {
   employeeId?: string;
 }
 
-@ observable
-class Placeholder {}
-
 @Controller("products")
 export class ProductSetupController {
   constructor(
