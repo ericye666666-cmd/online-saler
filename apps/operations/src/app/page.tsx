@@ -270,6 +270,13 @@ export default function OperationsWorkspace() {
   if (!loaded) {
     return (
       <main className="workspace-shell">
+        <header className="workspace-header">
+          <div>
+            <p className="workspace-label">Operations</p>
+            <h1>Today's Work</h1>
+          </div>
+          <div className="operator-chip">Opening workspace</div>
+        </header>
         <section className="empty-state">Loading today's work...</section>
       </main>
     );
