@@ -1,14 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  getDigitizationFlowState,
+  buildCalibrationBody,
+  formFromProductAndAi,
+  normalizedAiOutput,
+  STAGING_TEST_EMPLOYEE_ID,
+  stringValue,
+  workspaceReadiness,
   type JsonRecord,
-  type StepStatus
-} from "./ai-digitization-flow";
+  type WorkspaceForm
+} from "./operations-workspace-flow";
 
 const API_PROXY_URL = "/api-proxy";
-const STAGING_TEST_EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
+const ACTIVE_PRODUCT_KEY = "operations.workspace.activeProductId";
+const SESSION_DONE_KEY = "operations.workspace.sessionDone";
+const SESSION_TARGET = 10;
+
+const categories = ["DRESS", "TOP", "SHIRT", "TROUSER", "SKIRT", "JACKET", "SWEATER", "SHORTS", "OTHER"];
+const colors = ["BLACK", "WHITE", "GREY", "BROWN", "BEIGE", "RED", "YELLOW", "GREEN", "BLUE", "NAVY", "MULTICOLOR", "OTHER"];
+const patterns = ["SOLID", "STRIPED", "CHECKED", "FLORAL", "GRAPHIC", "POLKA_DOT", "OTHER"];
+const sleeves = ["SLEEVELESS", "SHORT", "THREE_QUARTER", "LONG", "NOT_APPLICABLE", "OTHER"];
+const conditions = ["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"];
+
+type WorkspaceSummary = {
+  waitingPhoto: number;
+  waitingAi: number;
+  waitingCalibration: number;
+  completedToday: number;
+  activeProductId: string | null;
+};
 
 async function request(path: string, options?: RequestInit): Promise<JsonRecord> {
   const response = await fetch(`${API_PROXY_URL}${path}`, {
@@ -22,7 +43,9 @@ async function request(path: string, options?: RequestInit): Promise<JsonRecord>
   } catch {
     body = { message: text || `Request failed: ${response.status}` };
   }
-  if (!response.ok) throw new Error(String(body.message ?? `Request failed: ${response.status}`));
+  if (!response.ok) {
+    throw new Error(String(body.message ?? `Request failed: ${response.status}`));
+  }
   return body;
 }
 
@@ -43,62 +66,105 @@ async function uploadProductImage(productId: string, employeeId: string, file: F
   } catch {
     body = { message: text || `Upload failed: ${response.status}` };
   }
-  if (!response.ok) throw new Error(String(body.message ?? `Upload failed: ${response.status}`));
+  if (!response.ok) {
+    throw new Error(String(body.message ?? `Upload failed: ${response.status}`));
+  }
   return body;
 }
 
-function makeProductCode(): string {
-  return `TEST-${Date.now()}`;
+function objectRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : null;
 }
 
-function statusClass(status: StepStatus): string {
-  return status.toLowerCase();
+function imageUrl(image: JsonRecord | null): string {
+  const publicUrl = stringValue(image?.publicUrl);
+  if (publicUrl) return `${API_PROXY_URL}${publicUrl}`;
+  return "";
 }
 
-function buttonLabel(status: StepStatus, idle: string, busy: string, isBusy: boolean): string {
-  if (isBusy) return busy;
-  if (status === "Done") return "Done";
-  return idle;
+function extractionId(job: JsonRecord | null): string {
+  return stringValue(job?.extractionId) || stringValue(job?.id);
 }
 
-export default function OperationsHome() {
-  const [employeeId, setEmployeeId] = useState(STAGING_TEST_EMPLOYEE_ID);
-  const [productCode, setProductCode] = useState(makeProductCode);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+function aiField(job: JsonRecord | null, key: string): { value: string; confidence: string } {
+  const output = normalizedAiOutput(job);
+  const field = objectRecord(output?.[key]);
+  const confidence = field?.confidence;
+  return {
+    value: stringValue(field?.value) || "Not found",
+    confidence: typeof confidence === "number" ? `${Math.round(confidence * 100)}%` : ""
+  };
+}
+
+export default function OperationsWorkspace() {
+  const employeeId = STAGING_TEST_EMPLOYEE_ID;
+  const [loaded, setLoaded] = useState(false);
+  const [view, setView] = useState<"dashboard" | "workspace">("dashboard");
+  const [summary, setSummary] = useState<WorkspaceSummary | null>(null);
   const [product, setProduct] = useState<JsonRecord | null>(null);
   const [image, setImage] = useState<JsonRecord | null>(null);
   const [job, setJob] = useState<JsonRecord | null>(null);
-  const [barcode, setBarcode] = useState<JsonRecord | null>(null);
+  const [form, setForm] = useState<WorkspaceForm>(() => formFromProductAndAi(null, null));
+  const [previewUrl, setPreviewUrl] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [lastBarcode, setLastBarcode] = useState("");
+  const [sessionDone, setSessionDone] = useState(0);
 
-  const flow = useMemo(
-    () => getDigitizationFlowState({ employeeId, product, image, job, barcode }),
-    [employeeId, product, image, job, barcode]
-  );
-  const result = useMemo(() => JSON.stringify({ product, image, job, barcode }, null, 2), [product, image, job, barcode]);
-  const isBusy = Boolean(busy);
+  const readiness = useMemo(() => workspaceReadiness({ product, image, job, form }), [product, image, job, form]);
+  const currentImageUrl = previewUrl || imageUrl(image);
+  const currentStep = Math.min(sessionDone + 1, SESSION_TARGET);
 
-  function chooseFile(file: File | null) {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setSelectedFile(file);
-    setPreviewUrl(file ? URL.createObjectURL(file) : "");
-  }
+  const loadSummary = useCallback(async () => {
+    const next = (await request(`/operations/workspace/summary?employeeId=${employeeId}`)) as WorkspaceSummary;
+    setSummary(next);
+    return next;
+  }, [employeeId]);
 
-  function resetTest() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setEmployeeId(STAGING_TEST_EMPLOYEE_ID);
-    setProductCode(makeProductCode());
-    setSelectedFile(null);
-    setPreviewUrl("");
-    setProduct(null);
-    setImage(null);
-    setJob(null);
-    setBarcode(null);
-    setBusy("");
-    setError("");
-  }
+  const applyWorkspacePayload = useCallback((payload: JsonRecord | null) => {
+    const nextProduct = objectRecord(payload?.product);
+    const nextImage = objectRecord(payload?.latestImage) ?? objectRecord((nextProduct?.images as unknown[])?.[0]);
+    const nextJob = objectRecord(payload?.latestExtraction) ?? objectRecord((nextProduct?.aiExtractions as unknown[])?.[0]);
+
+    setProduct(nextProduct);
+    setImage(nextImage);
+    setJob(nextJob);
+    setForm(formFromProductAndAi(nextProduct, nextJob));
+
+    const productId = stringValue(nextProduct?.id);
+    if (productId) {
+      localStorage.setItem(ACTIVE_PRODUCT_KEY, productId);
+      setView("workspace");
+    }
+  }, []);
+
+  const loadActive = useCallback(async (productId?: string | null) => {
+    const query = new URLSearchParams({ employeeId });
+    if (productId) query.set("productId", productId);
+    const payload = await request(`/operations/workspace/active?${query.toString()}`);
+    if (payload.product) {
+      applyWorkspacePayload(payload);
+    }
+  }, [applyWorkspacePayload, employeeId]);
+
+  useEffect(() => {
+    async function boot() {
+      try {
+        const storedDone = Number(localStorage.getItem(SESSION_DONE_KEY) ?? "0");
+        setSessionDone(Number.isFinite(storedDone) ? storedDone : 0);
+        const nextSummary = await loadSummary();
+        const storedProductId = localStorage.getItem(ACTIVE_PRODUCT_KEY);
+        const activeId = storedProductId || nextSummary.activeProductId;
+        if (activeId) await loadActive(activeId);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Could not load today's work.");
+      } finally {
+        setLoaded(true);
+      }
+    }
+
+    void boot();
+  }, [loadActive, loadSummary]);
 
   async function run(label: string, action: () => Promise<void>) {
     setBusy(label);
@@ -106,132 +172,300 @@ export default function OperationsHome() {
     try {
       await action();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unknown error");
+      setError(caught instanceof Error ? caught.message : "Something went wrong.");
     } finally {
       setBusy("");
     }
   }
 
-  async function createShell() {
-    const createdProduct = await request("/products", {
+  async function startWork() {
+    const payload = await request("/operations/workspace/start", {
       method: "POST",
-      body: JSON.stringify({ productCode, employeeId: employeeId.trim() })
+      body: JSON.stringify({ employeeId })
     });
-    setProduct(createdProduct);
+    applyWorkspacePayload(payload);
+    await loadSummary();
+  }
+
+  async function choosePhoto(file: File | null) {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (!file) return;
+    if (!product?.id) {
+      setError("Start work before adding a photo.");
+      return;
+    }
+
+    setPreviewUrl(URL.createObjectURL(file));
+    await run("photo", async () => {
+      const uploaded = await uploadProductImage(stringValue(product.id), employeeId, file);
+      setImage(uploaded);
+      const recognized = await request("/ai-jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          productId: product.id,
+          imageIds: [uploaded.id],
+          promptVersion: "product-v1"
+        })
+      });
+      setJob(recognized);
+      setForm(formFromProductAndAi(product, recognized));
+      await loadSummary();
+    });
+  }
+
+  async function saveAndNext() {
+    if (!product?.id) throw new Error("Start a work item first.");
+    const extraction = extractionId(job);
+    if (!extraction) throw new Error("AI result is required before saving.");
+
+    const calibrated = await request(`/products/${product.id}/calibrate`, {
+      method: "POST",
+      body: JSON.stringify(buildCalibrationBody({ employeeId, extractionId: extraction, form }))
+    });
+    const barcoded = await request(`/products/${product.id}/barcode`, {
+      method: "POST",
+      body: JSON.stringify({ employeeId })
+    });
+
+    setProduct(barcoded);
+    setLastBarcode(stringValue(barcoded.barcode));
+    const nextDone = Math.min(sessionDone + 1, SESSION_TARGET);
+    setSessionDone(nextDone);
+    localStorage.setItem(SESSION_DONE_KEY, String(nextDone));
+    localStorage.removeItem(ACTIVE_PRODUCT_KEY);
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
     setImage(null);
     setJob(null);
-    setBarcode(null);
+    setForm(formFromProductAndAi(null, null));
+
+    await loadSummary();
+    await startWork();
+
+    if (!calibrated) {
+      throw new Error("Calibration was not saved.");
+    }
   }
 
-  async function saveImage() {
-    if (!selectedFile) throw new Error("Choose a clothing photo first");
-    setImage(await uploadProductImage(flow.ids.productId, employeeId.trim(), selectedFile));
+  function resetSession() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    localStorage.removeItem(ACTIVE_PRODUCT_KEY);
+    localStorage.removeItem(SESSION_DONE_KEY);
+    setSessionDone(0);
+    setProduct(null);
+    setImage(null);
+    setJob(null);
+    setPreviewUrl("");
+    setLastBarcode("");
+    setForm(formFromProductAndAi(null, null));
+    setView("dashboard");
+    void loadSummary();
   }
 
-  async function runMockAI() {
-    setJob(await request("/ai-jobs", {
-      method: "POST",
-      body: JSON.stringify({
-        productId: flow.ids.productId,
-        imageIds: [flow.ids.imageId],
-        promptVersion: "product-v1"
-      })
-    }));
+  function updateForm(key: keyof WorkspaceForm, value: string) {
+    setForm((current) => ({ ...current, [key]: value }));
   }
 
-  async function confirmCalibration() {
-    setProduct(await request(`/products/${flow.ids.productId}/calibrate`, {
-      method: "POST",
-      body: JSON.stringify({
-        employeeId: employeeId.trim(),
-        extractionId: flow.ids.extractionId,
-        title: "Black Short Sleeve Dress",
-        category: "DRESS",
-        color: "BLACK",
-        pattern: "SOLID",
-        sleeveType: "SHORT",
-        brand: "Mock Brand",
-        sizeLabel: "M",
-        conditionGrade: "GOOD",
-        measurements: [
-          { type: "LENGTH", valueCm: 92 },
-          { type: "CHEST_WIDTH", valueCm: 48 }
-        ],
-        defects: []
-      })
-    }));
-  }
-
-  async function generateBarcode() {
-    const barcodeProduct = await request(`/products/${flow.ids.productId}/barcode`, {
-      method: "POST",
-      body: JSON.stringify({ employeeId: employeeId.trim() })
-    });
-    setBarcode(barcodeProduct);
-    setProduct(barcodeProduct);
+  if (!loaded) {
+    return (
+      <main className="workspace-shell">
+        <section className="empty-state">Loading today's work...</section>
+      </main>
+    );
   }
 
   return (
-    <main className="shell">
-      <header className="header">
+    <main className="workspace-shell">
+      <header className="workspace-header">
         <div>
-          <h1 className="title">AI Digitization Test</h1>
-          <p className="subtitle">Create shell - upload a real photo - mock AI - calibrate - generate formal barcode.</p>
+          <p className="workspace-label">Operations</p>
+          <h1>Today's Work</h1>
         </div>
-        <div className="header-actions">
-          <div className="status">Storage upload MVP</div>
-          <button className="secondary-button" type="button" disabled={isBusy} onClick={resetTest}>Reset test</button>
-        </div>
+        <div className="operator-chip">Test operator ready</div>
       </header>
 
-      <section className="panel form-grid">
-        <label>Employee ID<input value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} aria-label="Staging test employee UUID" /></label>
-        <label>Product code<input value={productCode} onChange={(event) => setProductCode(event.target.value)} /></label>
-        <label className="wide">Front clothing photo
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            capture="environment"
-            disabled={flow.steps.image === "Done" || isBusy}
-            onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
-          />
-        </label>
-        {previewUrl ? <div className="wide image-preview"><img src={previewUrl} alt="Selected clothing preview" /></div> : null}
-      </section>
+      {view === "dashboard" ? (
+        <section className="dashboard">
+          <div className="metric-grid" aria-label="Today's work queue">
+            <Metric title="Waiting for Photo" value={summary?.waitingPhoto ?? 0} />
+            <Metric title="Waiting for AI" value={summary?.waitingAi ?? 0} />
+            <Metric title="Waiting for Review" value={summary?.waitingCalibration ?? 0} />
+            <Metric title="Completed Today" value={summary?.completedToday ?? 0} strong />
+          </div>
 
-      <section className="steps">
-        <article className="step">
-          <span>1</span><div className="step-copy"><h2>Create product shell</h2></div>
-          <strong className={`step-status ${statusClass(flow.steps.create)}`}>{flow.steps.create}</strong>
-          <button disabled={!flow.canCreateProduct || isBusy} onClick={() => run("create", createShell)}>{buttonLabel(flow.steps.create, "Create shell", "Creating...", busy === "create")}</button>
-        </article>
-        <article className="step">
-          <span>2</span><div className="step-copy"><h2>Upload front photo</h2></div>
-          <strong className={`step-status ${statusClass(flow.steps.image)}`}>{flow.steps.image}</strong>
-          <button disabled={!flow.canSaveImage || !selectedFile || isBusy} onClick={() => run("image", saveImage)}>{buttonLabel(flow.steps.image, "Upload image", "Uploading...", busy === "image")}</button>
-        </article>
-        <article className="step">
-          <span>3</span><div className="step-copy"><h2>Run mock AI</h2></div>
-          <strong className={`step-status ${statusClass(flow.steps.ai)}`}>{flow.steps.ai}</strong>
-          <button disabled={!flow.canRunMockAI || isBusy} onClick={() => run("ai", runMockAI)}>{buttonLabel(flow.steps.ai, "Run mock AI", "Recognizing...", busy === "ai")}</button>
-        </article>
-        <article className="step">
-          <span>4</span><div className="step-copy"><h2>Confirm calibration</h2></div>
-          <strong className={`step-status ${statusClass(flow.steps.calibration)}`}>{flow.steps.calibration}</strong>
-          <button disabled={!flow.canConfirmCalibration || isBusy} onClick={() => run("calibrate", confirmCalibration)}>{buttonLabel(flow.steps.calibration, "Confirm calibration", "Saving...", busy === "calibrate")}</button>
-        </article>
-        <article className="step">
-          <span>5</span><div className="step-copy"><h2>Generate formal barcode</h2></div>
-          <strong className={`step-status ${statusClass(flow.steps.barcode)}`}>{flow.steps.barcode}</strong>
-          <button disabled={!flow.canGenerateBarcode || isBusy} onClick={() => run("barcode", generateBarcode)}>{buttonLabel(flow.steps.barcode, "Generate barcode", "Generating...", busy === "barcode")}</button>
-        </article>
-      </section>
+          <section className="start-panel">
+            <div>
+              <h2>Start digitizing clothes</h2>
+              <p>One item at a time. Add a photo, check the AI fields, enter measurements, then save and continue.</p>
+            </div>
+            <button className="primary-action" disabled={Boolean(busy)} onClick={() => run("start", startWork)}>
+              {busy === "start" ? "Opening..." : summary?.activeProductId ? "Continue Work" : "Start Working"}
+            </button>
+          </section>
 
-      {error ? <p className="error">{error}</p> : null}
-      <section className="panel">
-        <h2>Current result</h2>
-        <pre>{result}</pre>
-      </section>
+          {lastBarcode ? <p className="success-line">Last barcode: {lastBarcode}</p> : null}
+          {error ? <p className="employee-error">{error}</p> : null}
+        </section>
+      ) : (
+        <section className="workbench">
+          <div className="workbench-topline">
+            <div>
+              <p className="workspace-label">Batch progress</p>
+              <h2>{currentStep} / {SESSION_TARGET}</h2>
+            </div>
+            <div className="topline-actions">
+              <span className={`readiness ${readiness.canSaveAndNext ? "ready" : ""}`}>{readiness.label}</span>
+              <button className="secondary-action" type="button" onClick={resetSession} disabled={Boolean(busy)}>Reset</button>
+            </div>
+          </div>
+
+          <div className="workspace-grid">
+            <section className="photo-panel">
+              <div className="photo-frame">
+                {currentImageUrl ? (
+                  <img src={currentImageUrl} alt="Clothing item" />
+                ) : (
+                  <div className="photo-placeholder">
+                    <strong>Add front photo</strong>
+                    <span>Use camera or choose a clear image.</span>
+                  </div>
+                )}
+              </div>
+              <label className="file-button">
+                {busy === "photo" ? "Uploading and reading..." : currentImageUrl ? "Replace photo" : "Add photo"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  disabled={Boolean(busy)}
+                  onChange={(event) => void choosePhoto(event.target.files?.[0] ?? null)}
+                />
+              </label>
+            </section>
+
+            <section className="editor-panel">
+              <div className="section-heading">
+                <h3>AI result</h3>
+                <span>{readiness.hasAi ? "Ready to check" : readiness.hasPhoto ? "Reading photo" : "Waiting for photo"}</span>
+              </div>
+              <div className="ai-strip">
+                {["category", "primaryColor", "brandLabel", "sizeLabel"].map((field) => {
+                  const value = aiField(job, field);
+                  return (
+                    <div key={field}>
+                      <span>{fieldLabel(field)}</span>
+                      <strong>{value.value}</strong>
+                      {value.confidence ? <small>{value.confidence}</small> : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="form-sections">
+                <Field label="Title">
+                  <input value={form.title} onChange={(event) => updateForm("title", event.target.value)} />
+                </Field>
+                <div className="two-column">
+                  <Field label="Category">
+                    <select value={form.category} onChange={(event) => updateForm("category", event.target.value)}>
+                      {categories.map((value) => <option key={value}>{value}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Color">
+                    <select value={form.color} onChange={(event) => updateForm("color", event.target.value)}>
+                      {colors.map((value) => <option key={value}>{value}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <div className="two-column">
+                  <Field label="Brand">
+                    <input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} />
+                  </Field>
+                  <Field label="Size">
+                    <input value={form.sizeLabel} onChange={(event) => updateForm("sizeLabel", event.target.value)} />
+                  </Field>
+                </div>
+                <div className="two-column">
+                  <Field label="Pattern">
+                    <select value={form.pattern} onChange={(event) => updateForm("pattern", event.target.value)}>
+                      {patterns.map((value) => <option key={value}>{value}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Sleeve">
+                    <select value={form.sleeveType} onChange={(event) => updateForm("sleeveType", event.target.value)}>
+                      {sleeves.map((value) => <option key={value}>{value}</option>)}
+                    </select>
+                  </Field>
+                </div>
+
+                <div className="measure-band">
+                  <Field label="Length cm">
+                    <input inputMode="decimal" value={form.lengthCm} onChange={(event) => updateForm("lengthCm", event.target.value)} />
+                  </Field>
+                  <Field label="Chest width cm">
+                    <input inputMode="decimal" value={form.chestWidthCm} onChange={(event) => updateForm("chestWidthCm", event.target.value)} />
+                  </Field>
+                </div>
+
+                <Field label="Condition">
+                  <select value={form.conditionGrade} onChange={(event) => updateForm("conditionGrade", event.target.value)}>
+                    {conditions.map((value) => <option key={value}>{value}</option>)}
+                  </select>
+                </Field>
+
+                <Field label="Defects">
+                  <textarea
+                    value={form.defects}
+                    onChange={(event) => updateForm("defects", event.target.value)}
+                    placeholder="Leave blank when none"
+                    rows={3}
+                  />
+                </Field>
+              </div>
+
+              {error ? <p className="employee-error">{error}</p> : null}
+              {lastBarcode ? <p className="success-line">Last barcode: {lastBarcode}</p> : null}
+
+              <button
+                className="save-next"
+                disabled={!readiness.canSaveAndNext || Boolean(busy)}
+                onClick={() => run("save", saveAndNext)}
+              >
+                {busy === "save" ? "Saving..." : "Save & Next"}
+              </button>
+            </section>
+          </div>
+        </section>
+      )}
     </main>
   );
+}
+
+function Metric(props: { title: string; value: number; strong?: boolean }) {
+  return (
+    <article className={props.strong ? "metric strong" : "metric"}>
+      <span>{props.title}</span>
+      <strong>{props.value}</strong>
+    </article>
+  );
+}
+
+function Field(props: { label: string; children: ReactNode }) {
+  return (
+    <label className="field">
+      <span>{props.label}</span>
+      {props.children}
+    </label>
+  );
+}
+
+function fieldLabel(field: string): string {
+  const labels: Record<string, string> = {
+    category: "Category",
+    primaryColor: "Color",
+    brandLabel: "Brand",
+    sizeLabel: "Size"
+  };
+  return labels[field] ?? field;
 }

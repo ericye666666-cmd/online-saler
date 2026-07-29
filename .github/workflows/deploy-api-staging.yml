@@ -192,3 +192,21 @@ jobs:
             "${SERVICE_URL}/products/${PRODUCT_ID}/images/${IMAGE_ID}/content" \
             --output /tmp/product-test-downloaded.png
           cmp /tmp/product-test.png /tmp/product-test-downloaded.png
+
+      - name: Verify Operations workspace API
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+
+          SUMMARY="$(curl --fail-with-body --silent --show-error \
+            "${SERVICE_URL}/operations/workspace/summary?employeeId=00000000-0000-4000-8000-000000000001")"
+          echo "${SUMMARY}"
+          echo "${SUMMARY}" | grep -q '"completedToday"'
+
+          START="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data '{"employeeId":"00000000-0000-4000-8000-000000000001"}' \
+            "${SERVICE_URL}/operations/workspace/start")"
+          echo "${START}"
+          echo "${START}" | grep -q '"product"'
+          echo "${START}" | grep -q '"employeeId":"00000000-0000-4000-8000-000000000001"'
