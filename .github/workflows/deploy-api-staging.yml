@@ -76,12 +76,12 @@ jobs:
             --set-cloudsql-instances "${STAGING_CLOUD_SQL_INSTANCE}" \
             --set-secrets "DATABASE_URL=STAGING_DATABASE_URL:latest" \
             --command npm \
-            --args run,db:push,--,--skip-generate \
+            --args run,db:bootstrap-staging \
             --max-retries 0 \
             --task-timeout 10m \
             --quiet
 
-      - name: Synchronize staging schema
+      - name: Synchronize staging schema and seed test operator
         run: |
           gcloud run jobs execute "${MIGRATION_JOB_NAME}" \
             --project "${{ vars.GCP_PROJECT_ID }}" \
@@ -136,8 +136,9 @@ jobs:
             --retry-delay 3 \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productCode\":\"${PRODUCT_CODE}\"}" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\"}" \
             "${SERVICE_URL}/products")"
 
           echo "${RESPONSE}"
           echo "${RESPONSE}" | grep -q '"status":"DRAFT"'
+          echo "${RESPONSE}" | grep -q '"createdByEmployeeId":"00000000-0000-4000-8000-000000000001"'
