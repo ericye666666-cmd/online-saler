@@ -75,6 +75,13 @@ enum AIExtractionStatus {
   FAILED
 }
 
+enum AIFieldDecisionSource {
+  AI_PROPOSED
+  HUMAN_ACCEPTED
+  HUMAN_EDITED
+  HUMAN_ENTERED
+}
+
 enum ReviewResult {
   APPROVED
   REWORK_REQUIRED
@@ -93,20 +100,21 @@ enum DefectSeverity {
 }
 
 model Employee {
-  id                    String               @id @default(uuid())
-  employeeCode          String               @unique
-  name                  String
-  phone                 String?              @unique
-  status                EmployeeStatus       @default(ACTIVE)
-  roles                 EmployeeRole[]
-  auditLogs             AuditLog[]
-  createdProducts       Product[]            @relation("ProductCreatedBy")
-  approvedProducts      Product[]            @relation("ProductApprovedBy")
-  uploadedProductImages ProductImage[]       @relation("ProductImageUploadedBy")
-  reviewedMeasurements  ProductMeasurement[] @relation("ProductMeasurementReviewedBy")
-  productReviews        ProductReview[]      @relation("ProductReviewReviewer")
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
+  id                         String               @id @default(uuid())
+  employeeCode               String               @unique
+  name                       String
+  phone                      String?              @unique
+  status                     EmployeeStatus       @default(ACTIVE)
+  roles                      EmployeeRole[]
+  auditLogs                  AuditLog[]
+  createdProducts            Product[]            @relation("ProductCreatedBy")
+  approvedProducts           Product[]            @relation("ProductApprovedBy")
+  uploadedProductImages      ProductImage[]       @relation("ProductImageUploadedBy")
+  reviewedMeasurements       ProductMeasurement[] @relation("ProductMeasurementReviewedBy")
+  reviewedAIFieldDecisions   AIFieldDecision[]    @relation("AIFieldDecisionReviewedBy")
+  productReviews             ProductReview[]      @relation("ProductReviewReviewer")
+  createdAt                  DateTime             @default(now())
+  updatedAt                  DateTime             @updatedAt
 }
 
 model Role {
@@ -255,18 +263,50 @@ model AIExtraction {
   productId            String
   provider             String?
   model                String?
+  promptVersion        String?
+  requestJson          Json?
   inputImageIds        Json?
   rawOutputJson        Json?
   normalizedOutputJson Json?
   status               AIExtractionStatus @default(PENDING)
   errorMessage         String?
+  failureCode          String?
+  retryCount           Int                @default(0)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  latencyMs            Int?
+  inputTokens          Int?
+  outputTokens         Int?
+  estimatedCostUsd     Decimal?           @db.Decimal(10, 6)
   product              Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fieldDecisions       AIFieldDecision[]
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
-  completedAt          DateTime?
 
   @@index([productId, status])
   @@index([createdAt])
+}
+
+model AIFieldDecision {
+  id                        String                @id @default(uuid())
+  extractionId              String
+  fieldName                 String
+  aiValueJson               Json?
+  finalValueJson            Json?
+  confidence                Decimal?              @db.Decimal(4, 3)
+  evidenceImageIds          Json?
+  source                    AIFieldDecisionSource @default(AI_PROPOSED)
+  requiresHumanConfirmation Boolean               @default(false)
+  reviewedByEmployeeId      String?
+  reviewedAt                DateTime?
+  extraction                AIExtraction          @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  reviewedBy                Employee?             @relation("AIFieldDecisionReviewedBy", fields: [reviewedByEmployeeId], references: [id], onDelete: SetNull)
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  @@unique([extractionId, fieldName])
+  @@index([fieldName, source])
+  @@index([reviewedByEmployeeId])
 }
 
 model ProductDefect {
