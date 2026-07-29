@@ -1,10 +1,13 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from "@nestjs/common";
 import { prisma } from "@online-saler/database";
 import {
+  AI_AUDIENCES,
   AI_COLORS,
+  AI_KIDS_AGE_RANGES,
   AI_PATTERNS,
   AI_PRODUCT_CATEGORIES,
   AI_SLEEVE_TYPES,
+  PRODUCT_SUBCATEGORY_OPTIONS,
   type AIExtractionRequest
 } from "@online-saler/shared-types";
 import { ProductImageStorageService } from "../product/product-image-storage.service";
@@ -68,7 +71,7 @@ export class OpenAIVisionProvider implements AIProvider {
           {
             role: "system",
             content:
-              "You identify second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, choose OTHER for enum fields and null for text fields. Confidence must be a number from 0 to 1."
+              "You identify second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, choose OTHER for enum fields and null for text fields. Use measurement-board cues when visible to infer adult men, adult women, kids, unisex, and child age range. Confidence must be a number from 0 to 1."
           },
           {
             role: "user",
@@ -77,11 +80,15 @@ export class OpenAIVisionProvider implements AIProvider {
                 type: "input_text",
                 text: [
                   "Return one JSON object with these fields:",
-                  "category, primaryColor, pattern, sleeveType, brandLabel, sizeLabel, title.",
+                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, brandLabel, sizeLabel, title.",
                   `category enum: ${AI_PRODUCT_CATEGORIES.join(", ")}`,
+                  `subcategory enum: ${PRODUCT_SUBCATEGORY_OPTIONS.join(", ")}`,
                   `primaryColor enum: ${AI_COLORS.join(", ")}`,
+                  `audience enum: ${AI_AUDIENCES.join(", ")}`,
+                  `kidsAgeRange enum: ${AI_KIDS_AGE_RANGES.join(", ")}`,
                   `pattern enum: ${AI_PATTERNS.join(", ")}`,
                   `sleeveType enum: ${AI_SLEEVE_TYPES.join(", ")}`,
+                  "Use kidsAgeRange=NOT_APPLICABLE unless audience=KIDS.",
                   "Each field must be an object: { value, confidence }.",
                   "Base the answer only on the attached image."
                 ].join("\n")

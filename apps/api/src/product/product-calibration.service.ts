@@ -4,6 +4,7 @@ import {
   ConditionGrade,
   DefectSeverity,
   MeasurementSource,
+  ProductGender,
   ProductStatus,
   Prisma,
   prisma
@@ -28,7 +29,10 @@ export interface CalibrateProductInput {
   extractionId: string;
   title: string;
   category: string;
+  subcategory?: string;
   color: string;
+  gender?: ProductGender;
+  kidsAgeRange?: string;
   pattern: string;
   sleeveType: string;
   brand?: string;
@@ -63,7 +67,10 @@ export class ProductCalibrationService {
     const finalFields: Record<string, string | null> = {
       title: input.title,
       category: input.category,
+      subcategory: input.subcategory ?? null,
       primaryColor: input.color,
+      audience: input.gender ?? null,
+      kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
       pattern: input.pattern,
       sleeveType: input.sleeveType,
       brandLabel: input.brand ?? null,
@@ -76,7 +83,10 @@ export class ProductCalibrationService {
         data: {
           title: input.title,
           category: input.category,
+          subcategory: input.subcategory ?? null,
           color: input.color,
+          gender: input.gender ?? null,
+          kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
           brand: input.brand ?? null,
           finalSizeLabel: input.sizeLabel ?? null,
           conditionGrade: input.conditionGrade,
@@ -157,8 +167,14 @@ export class ProductCalibrationService {
     if (!input.employeeId || !input.extractionId) {
       throw new BadRequestException("employeeId and extractionId are required");
     }
-    if (!input.title?.trim() || !input.category?.trim() || !input.color?.trim()) {
-      throw new BadRequestException("title, category and color are required");
+    if (!input.title?.trim() || !input.category?.trim() || !input.subcategory?.trim() || !input.color?.trim()) {
+      throw new BadRequestException("title, category, subcategory and color are required");
+    }
+    if (!input.gender || !Object.values(ProductGender).includes(input.gender)) {
+      throw new BadRequestException("audience must be confirmed by an employee");
+    }
+    if (input.gender === ProductGender.KIDS && !input.kidsAgeRange?.trim()) {
+      throw new BadRequestException("kids age range is required for kids items");
     }
     if (!input.conditionGrade) {
       throw new BadRequestException("conditionGrade must be confirmed by an employee");

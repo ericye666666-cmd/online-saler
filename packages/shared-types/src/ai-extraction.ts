@@ -7,35 +7,129 @@ export const AI_JOB_STATUSES = [
 
 export type AIJobStatus = (typeof AI_JOB_STATUSES)[number];
 
-export const AI_PRODUCT_CATEGORIES = [
-  "TOP",
-  "SHIRT",
-  "TROUSER",
-  "SKIRT",
-  "DRESS",
-  "JACKET",
-  "SWEATER",
-  "SHORTS",
-  "KIDS_WEAR",
+export const PRODUCT_CATEGORY_OPTIONS = [
+  "KIDS",
+  "PANTS",
+  "JACKETS",
+  "DRESSES",
+  "LADY_TOPS",
+  "SHIRTS",
+  "TSHIRTS",
+  "SHORT",
+  "TWO_PIECE",
+  "SHOES",
+  "BAG",
+  "OTHERS",
+  "TEXTILE",
   "OTHER"
 ] as const;
+
+export type ProductCategoryOption = (typeof PRODUCT_CATEGORY_OPTIONS)[number];
+
+export const PRODUCT_SUBCATEGORY_OPTIONS = [
+  "KIDS_DRESS",
+  "KIDS_JACKET_TOP",
+  "KIDS_PANTS",
+  "NEWBORN",
+  "MEN_JEANS",
+  "LADIES_PANTS_MIX",
+  "SWEAT_PANTS",
+  "CARGO_PANTS",
+  "OFFICIAL_PANTS",
+  "MEN_JACKETS",
+  "THICK_VEST",
+  "LADIES_JACKETS",
+  "UNISEX_JACKETS",
+  "HOODIES",
+  "SWEATSHIRTS",
+  "DENIM_JACKETS",
+  "LONG_DRESSES",
+  "SHORT_DRESSES_SKIRTS",
+  "OFFICIAL_TOPS",
+  "FANCY_TOPS",
+  "SHORT_SHIRTS",
+  "LONG_SHIRTS",
+  "TSHIRT",
+  "SHORT_PANTS",
+  "LONG_TWO_PIECE",
+  "SHORT_TWO_PIECE",
+  "MEN_SPORT_SHOES",
+  "MEN_SHOES",
+  "LADIES_SHOES",
+  "KIDS_SHOES",
+  "OFFICIAL_SHOES",
+  "LADIES_BAGS",
+  "SCHOOL_BAGS",
+  "PACKAGE_BAGS",
+  "HATS_CAPS",
+  "SCARFS",
+  "BODY_SHAPERS",
+  "INNER_WARES",
+  "BEDSHEETS",
+  "LIGHT_BLANKETS",
+  "OTHER"
+] as const;
+
+export type ProductSubcategoryOption = (typeof PRODUCT_SUBCATEGORY_OPTIONS)[number];
+
+export const PRODUCT_SUBCATEGORIES_BY_CATEGORY: Record<
+  ProductCategoryOption,
+  readonly ProductSubcategoryOption[]
+> = {
+  KIDS: ["KIDS_DRESS", "KIDS_JACKET_TOP", "KIDS_PANTS", "NEWBORN", "OTHER"],
+  PANTS: ["MEN_JEANS", "LADIES_PANTS_MIX", "SWEAT_PANTS", "CARGO_PANTS", "OFFICIAL_PANTS", "OTHER"],
+  JACKETS: ["MEN_JACKETS", "THICK_VEST", "LADIES_JACKETS", "UNISEX_JACKETS", "HOODIES", "SWEATSHIRTS", "DENIM_JACKETS", "OTHER"],
+  DRESSES: ["LONG_DRESSES", "SHORT_DRESSES_SKIRTS", "OTHER"],
+  LADY_TOPS: ["OFFICIAL_TOPS", "FANCY_TOPS", "OTHER"],
+  SHIRTS: ["SHORT_SHIRTS", "LONG_SHIRTS", "OTHER"],
+  TSHIRTS: ["TSHIRT", "OTHER"],
+  SHORT: ["SHORT_PANTS", "OTHER"],
+  TWO_PIECE: ["LONG_TWO_PIECE", "SHORT_TWO_PIECE", "OTHER"],
+  SHOES: ["MEN_SPORT_SHOES", "MEN_SHOES", "LADIES_SHOES", "KIDS_SHOES", "OFFICIAL_SHOES", "OTHER"],
+  BAG: ["LADIES_BAGS", "SCHOOL_BAGS", "PACKAGE_BAGS", "OTHER"],
+  OTHERS: ["HATS_CAPS", "SCARFS", "BODY_SHAPERS", "INNER_WARES", "OTHER"],
+  TEXTILE: ["BEDSHEETS", "LIGHT_BLANKETS", "OTHER"],
+  OTHER: ["OTHER"]
+};
+
+export const AI_PRODUCT_CATEGORIES = PRODUCT_CATEGORY_OPTIONS;
 
 export type AIProductCategory = (typeof AI_PRODUCT_CATEGORIES)[number];
 
 export const AI_COLORS = [
   "BLACK",
   "WHITE",
+  "OFF_WHITE",
   "GREY",
   "BROWN",
   "BEIGE",
+  "CREAM",
+  "TAN",
+  "KHAKI",
   "RED",
+  "MAROON",
+  "BURGUNDY",
   "ORANGE",
+  "CORAL",
+  "PEACH",
   "YELLOW",
+  "MUSTARD",
   "GREEN",
+  "LIGHT_GREEN",
+  "DARK_GREEN",
+  "OLIVE",
   "BLUE",
+  "LIGHT_BLUE",
+  "DARK_BLUE",
   "NAVY",
+  "DENIM",
+  "TEAL",
+  "TURQUOISE",
   "PURPLE",
+  "LILAC",
   "PINK",
+  "GOLD",
+  "SILVER",
   "MULTICOLOR",
   "OTHER"
 ] as const;
@@ -67,9 +161,34 @@ export const AI_SLEEVE_TYPES = [
 
 export type AISleeveType = (typeof AI_SLEEVE_TYPES)[number];
 
+export const AI_AUDIENCES = [
+  "WOMEN",
+  "MEN",
+  "KIDS",
+  "UNISEX"
+] as const;
+
+export type AIAudience = (typeof AI_AUDIENCES)[number];
+
+export const AI_KIDS_AGE_RANGES = [
+  "NOT_APPLICABLE",
+  "NEWBORN",
+  "BABY_0_12M",
+  "TODDLER_1_3Y",
+  "PRESCHOOL_3_5Y",
+  "KIDS_6_8Y",
+  "KIDS_9_12Y",
+  "TEEN_13_16Y"
+] as const;
+
+export type AIKidsAgeRange = (typeof AI_KIDS_AGE_RANGES)[number];
+
 export const AI_EXTRACTED_FIELDS = [
   "category",
+  "subcategory",
   "primaryColor",
+  "audience",
+  "kidsAgeRange",
   "pattern",
   "sleeveType",
   "brandLabel",
@@ -87,7 +206,10 @@ export interface AIFieldValue<T> {
 
 export interface AIExtractionNormalizedOutput {
   category: AIFieldValue<AIProductCategory>;
+  subcategory: AIFieldValue<ProductSubcategoryOption>;
   primaryColor: AIFieldValue<AIColor>;
+  audience: AIFieldValue<AIAudience>;
+  kidsAgeRange: AIFieldValue<AIKidsAgeRange>;
   pattern: AIFieldValue<AIPattern>;
   sleeveType: AIFieldValue<AISleeveType>;
   brandLabel: AIFieldValue<string>;
