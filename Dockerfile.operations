@@ -25,6 +25,5 @@ ENV PORT=3001
 ENV HOSTNAME=0.0.0.0
 COPY --from=builder /app/apps/operations/.next/standalone ./
 COPY --from=builder /app/apps/operations/.next/static ./apps/operations/.next/static
-COPY --from=builder /app/apps/operations/public ./apps/operations/public
 EXPOSE 3001
 CMD ["node", "apps/operations/server.js"]
