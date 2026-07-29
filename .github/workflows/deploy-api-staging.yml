@@ -224,6 +224,20 @@ jobs:
           echo "${START}" | grep -q '"product"'
           echo "${START}" | grep -q '"employeeId":"00000000-0000-4000-8000-000000000001"'
 
+      - name: Verify product control API
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+
+          CONTROL_SUMMARY="$(curl --fail-with-body --silent --show-error \
+            "${SERVICE_URL}/operations/product-control/summary")"
+          echo "${CONTROL_SUMMARY}"
+          echo "${CONTROL_SUMMARY}" | grep -q '"readyForPrice"'
+          echo "${CONTROL_SUMMARY}" | grep -q '"available"'
+
+          CONTROL_PRODUCTS="$(curl --fail-with-body --silent --show-error \
+            "${SERVICE_URL}/operations/product-control/products")"
+          echo "${CONTROL_PRODUCTS}" | grep -q '^\['
+
       - name: Verify OpenAI image recognition
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"

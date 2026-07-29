@@ -398,7 +398,10 @@ export default function OperationsWorkspace() {
           <p className="workspace-label">Operations</p>
           <h1>Today's Work</h1>
         </div>
-        <div className="operator-chip">Test operator ready</div>
+        <nav className="header-actions">
+          <a className="secondary-action nav-link" href="/control">Product control</a>
+          <div className="operator-chip">Test operator ready</div>
+        </nav>
       </header>
 
       {view === "dashboard" ? (
