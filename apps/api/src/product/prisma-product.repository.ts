@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { ActorType, Prisma, PrismaClient, prisma } from "@online-saler/database";
+import { ActorType, Prisma, prisma } from "@online-saler/database";
 import type { ProductRepository } from "./product.repository";
 import type {
   CreateProductShellInput,
@@ -14,7 +14,7 @@ import type {
 
 @Injectable()
 export class PrismaProductRepository implements ProductRepository {
-  constructor(private readonly client: PrismaClient = prisma) {}
+  private readonly client = prisma;
 
   async createShell(input: CreateProductShellInput): Promise<ProductRecord> {
     const actor = input.actor;
