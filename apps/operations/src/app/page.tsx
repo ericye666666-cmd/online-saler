@@ -2,16 +2,22 @@
 
 import { useMemo, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_PROXY_URL = "/api-proxy";
 
 type JsonRecord = Record<string, unknown>;
 
 async function request(path: string, options?: RequestInit): Promise<JsonRecord> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${API_PROXY_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });
-  const body = (await response.json()) as JsonRecord;
+  const text = await response.text();
+  let body: JsonRecord = {};
+  try {
+    body = text ? (JSON.parse(text) as JsonRecord) : {};
+  } catch {
+    body = { message: text || `Request failed: ${response.status}` };
+  }
   if (!response.ok) throw new Error(String(body.message ?? `Request failed: ${response.status}`));
   return body;
 }
