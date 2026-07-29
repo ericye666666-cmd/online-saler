@@ -206,6 +206,7 @@ class InMemoryProductRepository implements ProductRepository {
       finalSizeLabel: null,
       conditionGrade: null,
       priceKsh: null,
+      labelPrintedAt: null,
       createdByEmployeeId: null,
       approvedByEmployeeId: null,
       publishedAt: null,

@@ -99,6 +99,24 @@ enum DefectSeverity {
   MAJOR
 }
 
+enum InventoryItemStatus {
+  PENDING_STOCK_IN
+  AVAILABLE
+  RESERVED
+  PICKED
+  PACKED
+  DELIVERED
+  RETURNED
+  LOST
+}
+
+enum InventoryMovementType {
+  LOCATION_ASSIGNED
+  STOCK_IN
+  MOVE
+  ADJUST
+}
+
 model Employee {
   id                         String               @id @default(uuid())
   employeeCode               String               @unique
@@ -113,6 +131,8 @@ model Employee {
   reviewedMeasurements       ProductMeasurement[] @relation("ProductMeasurementReviewedBy")
   reviewedAIFieldDecisions   AIFieldDecision[]    @relation("AIFieldDecisionReviewedBy")
   productReviews             ProductReview[]      @relation("ProductReviewReviewer")
+  inventoryItemsCreated      InventoryItem[]      @relation("InventoryItemCreatedBy")
+  inventoryMovements         InventoryMovement[]  @relation("InventoryMovementEmployee")
   createdAt                  DateTime             @default(now())
   updatedAt                  DateTime             @updatedAt
 }
@@ -203,6 +223,7 @@ model Product {
   finalSizeLabel       String?
   conditionGrade       ConditionGrade?
   priceKsh             Int?
+  labelPrintedAt       DateTime?
   createdByEmployeeId  String?
   approvedByEmployeeId String?
   createdBy            Employee?            @relation("ProductCreatedBy", fields: [createdByEmployeeId], references: [id])
@@ -212,6 +233,8 @@ model Product {
   aiExtractions        AIExtraction[]
   defects              ProductDefect[]
   reviews              ProductReview[]
+  inventoryItem        InventoryItem?
+  inventoryMovements   InventoryMovement[]
   publishedAt          DateTime?
   unpublishedAt        DateTime?
   createdAt            DateTime             @default(now())
@@ -222,6 +245,61 @@ model Product {
   @@index([category, subcategory])
   @@index([gender, kidsAgeRange])
   @@index([conditionGrade])
+}
+
+model WarehouseLocation {
+  id             String              @id @default(uuid())
+  locationCode   String              @unique
+  active         Boolean             @default(true)
+  note           String?
+  inventoryItems InventoryItem[]
+  movementsFrom  InventoryMovement[] @relation("MovementFromLocation")
+  movementsTo    InventoryMovement[] @relation("MovementToLocation")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([active, locationCode])
+}
+
+model InventoryItem {
+  id                  String              @id @default(uuid())
+  productId           String              @unique
+  barcode             String              @unique
+  status              InventoryItemStatus @default(PENDING_STOCK_IN)
+  locationId          String?
+  checkedInAt         DateTime?
+  createdByEmployeeId String?
+  product             Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location            WarehouseLocation?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  createdBy           Employee?           @relation("InventoryItemCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  movements           InventoryMovement[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([status, locationId])
+  @@index([createdByEmployeeId])
+}
+
+model InventoryMovement {
+  id              String                @id @default(uuid())
+  inventoryItemId String
+  productId       String
+  movementType    InventoryMovementType
+  fromLocationId  String?
+  toLocationId    String?
+  employeeId      String?
+  reason          String?
+  inventoryItem   InventoryItem         @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  product         Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fromLocation    WarehouseLocation?    @relation("MovementFromLocation", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocation      WarehouseLocation?    @relation("MovementToLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
+  employee        Employee?             @relation("InventoryMovementEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  createdAt       DateTime              @default(now())
+
+  @@index([inventoryItemId, createdAt])
+  @@index([productId, createdAt])
+  @@index([movementType, createdAt])
+  @@index([employeeId])
 }
 
 model ProductImage {
