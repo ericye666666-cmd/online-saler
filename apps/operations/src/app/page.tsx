@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 const API_PROXY_URL = "/api-proxy";
+const STAGING_TEST_EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -23,7 +24,7 @@ async function request(path: string, options?: RequestInit): Promise<JsonRecord>
 }
 
 export default function OperationsHome() {
-  const [employeeId, setEmployeeId] = useState("");
+  const [employeeId, setEmployeeId] = useState(STAGING_TEST_EMPLOYEE_ID);
   const [productCode, setProductCode] = useState(`TEST-${Date.now()}`);
   const [imageUrl, setImageUrl] = useState("https://example.com/front.jpg");
   const [product, setProduct] = useState<JsonRecord | null>(null);
@@ -61,7 +62,7 @@ export default function OperationsHome() {
       </header>
 
       <section className="panel form-grid">
-        <label>Employee ID<input value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} placeholder="Existing employee UUID" /></label>
+        <label>Employee ID<input value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} aria-label="Staging test employee UUID" /></label>
         <label>Product code<input value={productCode} onChange={(event) => setProductCode(event.target.value)} /></label>
         <label className="wide">Front image URL<input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} /></label>
       </section>
@@ -69,11 +70,11 @@ export default function OperationsHome() {
       <section className="steps">
         <article className="step">
           <span>1</span><h2>Create product shell</h2>
-          <button disabled={Boolean(busy)} onClick={() => run("create", async () => setProduct(await request("/products", { method: "POST", body: JSON.stringify({ productCode, employeeId: employeeId || undefined }) })))}>{busy === "create" ? "Creating…" : "Create shell"}</button>
+          <button disabled={Boolean(busy)} onClick={() => run("create", async () => setProduct(await request("/products", { method: "POST", body: JSON.stringify({ productCode, employeeId }) })))}>{busy === "create" ? "Creating…" : "Create shell"}</button>
         </article>
         <article className="step">
           <span>2</span><h2>Register front photo</h2>
-          <button disabled={!productId || Boolean(busy)} onClick={() => run("image", async () => setImage(await request(`/products/${productId}/images`, { method: "POST", body: JSON.stringify({ type: "FRONT", originalUrl: imageUrl, employeeId: employeeId || undefined }) })))}>{busy === "image" ? "Saving…" : "Save image"}</button>
+          <button disabled={!productId || Boolean(busy)} onClick={() => run("image", async () => setImage(await request(`/products/${productId}/images`, { method: "POST", body: JSON.stringify({ type: "FRONT", originalUrl: imageUrl, employeeId }) })))}>{busy === "image" ? "Saving…" : "Save image"}</button>
         </article>
         <article className="step">
           <span>3</span><h2>Run mock AI</h2>
