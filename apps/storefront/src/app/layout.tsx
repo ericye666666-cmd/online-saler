@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./customer-auth.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
