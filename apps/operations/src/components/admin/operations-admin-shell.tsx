@@ -16,6 +16,7 @@ import {
   LogOutIcon,
   PackageCheckIcon,
   ScanBarcodeIcon,
+  SearchIcon,
   SettingsIcon,
   ShieldCheckIcon,
   SparklesIcon,
@@ -114,9 +115,16 @@ export const operationsModules: ModuleNav[] = [
     icon: BoxesIcon,
     permission: "module.warehouse",
     items: [
-      { label: "拣货任务", icon: BoxesIcon, permission: "action.warehouse.view", badge: "PR44+" },
-      { label: "打包", icon: PackageCheckIcon, permission: "action.warehouse.view" },
-      { label: "自提/配送", icon: TruckIcon, permission: "action.warehouse.view" }
+      { label: "履约工作台", href: "/warehouse", icon: LayoutDashboardIcon, permission: "action.warehouse.view" },
+      { label: "待拣货", href: "/warehouse/picking", icon: BoxesIcon, permission: "action.warehouse.view" },
+      { label: "拣货中", href: "/warehouse/picking-active", icon: ScanBarcodeIcon, permission: "action.warehouse.view" },
+      { label: "待打包", href: "/warehouse/packing", icon: PackageCheckIcon, permission: "action.warehouse.view" },
+      { label: "已打包", href: "/warehouse/packed", icon: PackageCheckIcon, permission: "action.warehouse.view" },
+      { label: "待自提", href: "/warehouse/pickup", icon: ClipboardCheckIcon, permission: "action.warehouse.view" },
+      { label: "待配送", href: "/warehouse/delivery", icon: TruckIcon, permission: "action.warehouse.view" },
+      { label: "已完成", href: "/warehouse/completed", icon: PackageCheckIcon, permission: "action.warehouse.view" },
+      { label: "异常订单", href: "/warehouse/exceptions", icon: XCircleIcon, permission: "action.warehouse.view" },
+      { label: "库存查询", href: "/warehouse/inventory", icon: SearchIcon, permission: "action.warehouse.view" }
     ]
   },
   {
@@ -125,8 +133,14 @@ export const operationsModules: ModuleNav[] = [
     icon: BriefcaseBusinessIcon,
     permission: "module.orders",
     items: [
-      { label: "订单列表", icon: BriefcaseBusinessIcon, permission: "action.orders.view", badge: "PR44+" },
-      { label: "支付状态", icon: CircleDollarSignIcon, permission: "action.orders.view" }
+      { label: "全部订单", href: "/orders", icon: BriefcaseBusinessIcon, permission: "action.orders.view" },
+      { label: "待付款", href: "/orders/pending-payment", icon: CircleDollarSignIcon, permission: "action.orders.view" },
+      { label: "支付处理中", href: "/orders/payment-processing", icon: CircleDollarSignIcon, permission: "action.orders.view" },
+      { label: "已付款", href: "/orders/paid", icon: ClipboardCheckIcon, permission: "action.orders.view" },
+      { label: "已取消", href: "/orders/cancelled", icon: XCircleIcon, permission: "action.orders.view" },
+      { label: "已过期", href: "/orders/expired", icon: XCircleIcon, permission: "action.orders.view" },
+      { label: "已退款", href: "/orders/refunded", icon: CircleDollarSignIcon, permission: "action.orders.view" },
+      { label: "异常支付", href: "/orders/payment-exceptions", icon: XCircleIcon, permission: "action.orders.view" }
     ]
   },
   {
@@ -173,27 +187,20 @@ export const operationsModules: ModuleNav[] = [
 ];
 
 function moduleForPath(pathname: string): ModuleKey {
+  if (pathname.startsWith("/warehouse")) return "warehouse";
+  if (pathname.startsWith("/orders")) return "orders";
   if (pathname.startsWith("/system")) return "system";
   if (pathname.startsWith("/product") || pathname.startsWith("/control") || pathname.startsWith("/debug") || pathname === "/") return "product";
   return "product";
 }
 
 function sectionForPath(pathname: string): string {
+  const matchingItem = operationsModules.flatMap((module) => module.items).find((item) => item.href && item.href !== "/" && pathname.startsWith(item.href));
+  if (matchingItem) return matchingItem.label;
+  if (pathname === "/") return "商品工作台";
   if (pathname.startsWith("/control")) return "商品控制";
   if (pathname.startsWith("/debug")) return "调试工具";
-  if (pathname.startsWith("/product/new-batch")) return "新建批次";
-  if (pathname.startsWith("/product/waiting-upload")) return "待上传";
-  if (pathname.startsWith("/product/waiting-ai")) return "待 AI 识别";
-  if (pathname.startsWith("/product/calibration")) return "待人工校准";
-  if (pathname.startsWith("/product/review")) return "待审核";
-  if (pathname.startsWith("/product/published")) return "已发布";
-  if (pathname.startsWith("/product/rejected")) return "已拒绝";
-  if (pathname.startsWith("/product/barcode")) return "Barcode";
-  if (pathname.startsWith("/product/taxonomy")) return "分类与属性";
-  if (pathname.startsWith("/system/roles")) return "角色管理";
-  if (pathname.startsWith("/system/permissions")) return "权限管理";
-  if (pathname.startsWith("/system/accounts")) return "账号管理";
-  return "商品数字化";
+  return "工作台";
 }
 
 export function OperationsAdminShell({ children }: { children: ReactNode }) {
@@ -242,7 +249,7 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
               <SidebarMenu>
                 {activeModule.items.map((item) => {
                   const Icon = item.icon ?? PackageCheckIcon;
-                  const isActive = Boolean(item.href && item.href === pathname);
+                  const isActive = Boolean(item.href && (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)));
                   const content = (
                     <>
                       <Icon />

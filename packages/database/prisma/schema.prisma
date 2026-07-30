@@ -153,6 +153,10 @@ model Employee {
   createdProductBatches      ProductBatch[]        @relation("ProductBatchCreatedBy")
   inventoryItemsCreated      InventoryItem[]      @relation("InventoryItemCreatedBy")
   inventoryMovements         InventoryMovement[]  @relation("InventoryMovementEmployee")
+  assignedFulfillments        OrderFulfillment[]   @relation("FulfillmentAssignedPicker")
+  packedFulfillments          OrderFulfillment[]   @relation("FulfillmentPackedBy")
+  pickupConfirmedFulfillments OrderFulfillment[]   @relation("FulfillmentPickupConfirmedBy")
+  fulfillmentEvents           FulfillmentEvent[]   @relation("FulfillmentEventActor")
   adminUser                  AdminUser?           @relation("AdminUserLinkedEmployee")
   createdAt                  DateTime             @default(now())
   updatedAt                  DateTime             @updatedAt
@@ -549,6 +553,25 @@ enum PaymentStatus {
   MANUAL_REVIEW
 }
 
+enum FulfillmentStatus {
+  PAID
+  PICKING
+  PACKED
+  READY_FOR_PICKUP
+  OUT_FOR_DELIVERY
+  COMPLETED
+  EXCEPTION
+}
+
+enum FulfillmentExceptionReason {
+  ITEM_NOT_FOUND
+  BARCODE_MISMATCH
+  ITEM_DAMAGED
+  CUSTOMER_CANCELLED
+  DELIVERY_FAILED
+  OTHER
+}
+
 enum MpesaCallbackProcessingStatus {
   APPLIED
   DUPLICATE
@@ -615,6 +638,8 @@ model Order {
   customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items             OrderItem[]
   payments          Payment[]
+  fulfillment       OrderFulfillment?
+  fulfillmentEvents FulfillmentEvent[]
   sourceDraft       CheckoutDraft?      @relation("CheckoutDraftConvertedOrder")
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -688,6 +713,58 @@ model Payment {
   @@index([status, requestedAt])
   @@index([phone, status])
   @@index([providerMerchantRequestId])
+}
+
+model OrderFulfillment {
+  id                          String                      @id @default(uuid())
+  orderId                     String                      @unique
+  status                      FulfillmentStatus           @default(PAID)
+  assignedPickerEmployeeId    String?
+  packedByEmployeeId          String?
+  pickupConfirmedByEmployeeId String?
+  deliveryRiderName           String?
+  deliveryRiderPhone          String?
+  exceptionReason             FulfillmentExceptionReason?
+  exceptionNote               String?
+  packingStatus               String?
+  packingNote                 String?
+  pickedAt                    DateTime?
+  packedAt                    DateTime?
+  readyForPickupAt            DateTime?
+  outForDeliveryAt            DateTime?
+  completedAt                 DateTime?
+  order                       Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  assignedPicker              Employee?                   @relation("FulfillmentAssignedPicker", fields: [assignedPickerEmployeeId], references: [id], onDelete: SetNull)
+  packedBy                    Employee?                   @relation("FulfillmentPackedBy", fields: [packedByEmployeeId], references: [id], onDelete: SetNull)
+  pickupConfirmedBy           Employee?                   @relation("FulfillmentPickupConfirmedBy", fields: [pickupConfirmedByEmployeeId], references: [id], onDelete: SetNull)
+  events                      FulfillmentEvent[]
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([assignedPickerEmployeeId])
+  @@index([packedByEmployeeId])
+}
+
+model FulfillmentEvent {
+  id              String                      @id @default(uuid())
+  fulfillmentId   String
+  orderId         String
+  actorEmployeeId String?
+  action          String
+  oldStatus       FulfillmentStatus?
+  newStatus       FulfillmentStatus
+  note            String?
+  scannedBarcode  String?
+  exceptionReason FulfillmentExceptionReason?
+  fulfillment     OrderFulfillment            @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  order           Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actorEmployee   Employee?                   @relation("FulfillmentEventActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)
+  createdAt       DateTime                    @default(now())
+
+  @@index([fulfillmentId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([actorEmployeeId, createdAt])
 }
 
 model MpesaCallback {
