@@ -1,13 +1,13 @@
 import { CartPageClient } from "./cart-page-client";
-import { StorefrontHeader } from "../storefront-header";
+import { SiteHeader } from "../components/site-header";
 
 export const dynamic = "force-dynamic";
 
 export default function CartPage() {
   return (
-    <main className="catalog-page">
-      <StorefrontHeader />
-      <div className="detail-shell">
+    <main className="productPage">
+      <SiteHeader />
+      <div className="productPageShell">
         <CartPageClient />
       </div>
     </main>
