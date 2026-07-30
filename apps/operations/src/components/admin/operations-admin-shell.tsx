@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BarChart3Icon,
   BoxesIcon,
@@ -13,15 +13,29 @@ import {
   ClipboardCheckIcon,
   HeadphonesIcon,
   LayoutDashboardIcon,
+  LogOutIcon,
   PackageCheckIcon,
   ScanBarcodeIcon,
   SettingsIcon,
   ShieldCheckIcon,
   SparklesIcon,
   TruckIcon,
-  UploadIcon
+  UploadIcon,
+  UserCogIcon,
+  UsersIcon
 } from "lucide-react";
 
+import {
+  adminInitials,
+  canAccessPath,
+  filterNavigation,
+  roleLabels,
+  type NavigationItem,
+  type NavigationModule
+} from "@/components/admin/operations-access";
+import { DEFAULT_ADMIN_LOGIN, useOperationsSession } from "@/components/admin/operations-access-provider";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -31,7 +45,17 @@ import {
   BreadcrumbSeparator
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
@@ -52,100 +76,100 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
-type ModuleKey =
-  | "product"
-  | "fulfillment"
-  | "orders"
-  | "affiliate"
-  | "service"
-  | "analytics"
-  | "system";
+type ModuleKey = "product" | "warehouse" | "orders" | "affiliate" | "service" | "analytics" | "system";
 
-type ModuleNav = {
-  key: ModuleKey;
-  label: string;
+type ModuleItem = NavigationItem & {
   icon: typeof PackageCheckIcon;
-  items: Array<{
-    label: string;
-    href?: string;
-    icon: typeof PackageCheckIcon;
-    badge?: string;
-  }>;
 };
 
-const modules: ModuleNav[] = [
+type ModuleNav = NavigationModule & {
+  key: ModuleKey;
+  icon: typeof PackageCheckIcon;
+  items: ModuleItem[];
+};
+
+export const operationsModules: ModuleNav[] = [
   {
     key: "product",
     label: "商品中心",
     icon: PackageCheckIcon,
+    permission: "module.product",
     items: [
-      { label: "商品数字化", href: "/", icon: LayoutDashboardIcon, badge: "Live" },
-      { label: "上传", href: "/", icon: UploadIcon },
-      { label: "AI识别", href: "/", icon: SparklesIcon },
-      { label: "人工校准", href: "/", icon: ClipboardCheckIcon },
-      { label: "审核", href: "/control", icon: ShieldCheckIcon },
-      { label: "发布", href: "/control", icon: PackageCheckIcon },
-      { label: "Barcode", href: "/control", icon: ScanBarcodeIcon }
+      { label: "商品数字化", href: "/", icon: LayoutDashboardIcon, permission: "page.product.digitalization", badge: "Live" },
+      { label: "上传", href: "/", icon: UploadIcon, permission: "page.product.digitalization" },
+      { label: "AI识别", href: "/", icon: SparklesIcon, permission: "page.product.digitalization" },
+      { label: "人工校准", href: "/", icon: ClipboardCheckIcon, permission: "page.product.digitalization" },
+      { label: "审核", href: "/control", icon: ShieldCheckIcon, permission: "page.product.control" },
+      { label: "发布", href: "/control", icon: PackageCheckIcon, permission: "page.product.control" },
+      { label: "Barcode", href: "/control", icon: ScanBarcodeIcon, permission: "page.product.control" }
     ]
   },
   {
-    key: "fulfillment",
+    key: "warehouse",
     label: "仓库履约",
     icon: BoxesIcon,
+    permission: "module.warehouse",
     items: [
-      { label: "拣货任务", icon: BoxesIcon, badge: "PR43+" },
-      { label: "打包", icon: PackageCheckIcon },
-      { label: "自提/配送", icon: TruckIcon }
+      { label: "拣货任务", icon: BoxesIcon, permission: "action.warehouse.view", badge: "PR44+" },
+      { label: "打包", icon: PackageCheckIcon, permission: "action.warehouse.view" },
+      { label: "自提/配送", icon: TruckIcon, permission: "action.warehouse.view" }
     ]
   },
   {
     key: "orders",
     label: "订单中心",
     icon: BriefcaseBusinessIcon,
+    permission: "module.orders",
     items: [
-      { label: "订单列表", icon: BriefcaseBusinessIcon, badge: "PR43+" },
-      { label: "支付状态", icon: CircleDollarSignIcon }
+      { label: "订单列表", icon: BriefcaseBusinessIcon, permission: "action.orders.view", badge: "PR44+" },
+      { label: "支付状态", icon: CircleDollarSignIcon, permission: "action.orders.view" }
     ]
   },
   {
     key: "affiliate",
     label: "推广佣金",
     icon: CircleDollarSignIcon,
+    permission: "module.affiliate",
     items: [
-      { label: "推广来源", icon: CircleDollarSignIcon, badge: "Later" },
-      { label: "佣金确认", icon: ClipboardCheckIcon }
+      { label: "推广来源", icon: CircleDollarSignIcon, permission: "action.affiliate.view", badge: "Later" },
+      { label: "佣金确认", icon: ClipboardCheckIcon, permission: "action.affiliate.view" }
     ]
   },
   {
     key: "service",
     label: "客户服务",
     icon: HeadphonesIcon,
+    permission: "module.customer-service",
     items: [
-      { label: "售后申请", icon: HeadphonesIcon, badge: "Later" },
-      { label: "配送异常", icon: TruckIcon }
+      { label: "售后申请", icon: HeadphonesIcon, permission: "action.customer-service.view", badge: "Later" },
+      { label: "配送异常", icon: TruckIcon, permission: "action.customer-service.view" }
     ]
   },
   {
     key: "analytics",
     label: "数据分析",
     icon: BarChart3Icon,
+    permission: "module.analytics",
     items: [
-      { label: "经营看板", icon: BarChart3Icon, badge: "Later" },
-      { label: "商品漏斗", icon: LayoutDashboardIcon }
+      { label: "经营看板", icon: BarChart3Icon, permission: "action.analytics.view", badge: "Later" },
+      { label: "商品漏斗", icon: LayoutDashboardIcon, permission: "action.analytics.view" }
     ]
   },
   {
     key: "system",
     label: "系统管理",
     icon: SettingsIcon,
+    permission: "module.system",
     items: [
-      { label: "账号角色", icon: ShieldCheckIcon, badge: "PR43" },
-      { label: "系统设置", icon: SettingsIcon }
+      { label: "账号管理", href: "/system/accounts", icon: UsersIcon, permission: "page.system.accounts" },
+      { label: "角色管理", href: "/system/roles", icon: UserCogIcon, permission: "page.system.roles" },
+      { label: "权限管理", href: "/system/permissions", icon: ShieldCheckIcon, permission: "page.system.permissions" }
     ]
   }
 ];
 
 function moduleForPath(pathname: string): ModuleKey {
+  if (pathname.startsWith("/system")) return "system";
   if (pathname.startsWith("/control") || pathname.startsWith("/debug") || pathname === "/") return "product";
   return "product";
 }
@@ -153,26 +177,39 @@ function moduleForPath(pathname: string): ModuleKey {
 function sectionForPath(pathname: string): string {
   if (pathname.startsWith("/control")) return "商品控制";
   if (pathname.startsWith("/debug")) return "调试工具";
+  if (pathname.startsWith("/system/roles")) return "角色管理";
+  if (pathname.startsWith("/system/permissions")) return "权限管理";
+  if (pathname.startsWith("/system/accounts")) return "账号管理";
   return "商品数字化";
 }
 
 export function OperationsAdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { loading, session, logout } = useOperationsSession();
+  const visibleModules = useMemo(() => filterNavigation(operationsModules, session) as ModuleNav[], [session]);
   const routeModule = moduleForPath(pathname);
   const [selectedModule, setSelectedModule] = useState<ModuleKey>(routeModule);
-  const activeModule = modules.find((module) => module.key === selectedModule) ?? modules[0];
+
+  useEffect(() => {
+    setSelectedModule(routeModule);
+  }, [routeModule]);
+
+  if (loading) return <LoadingScreen />;
+  if (!session?.adminUser) return <LoginScreen />;
+
+  const routeAllowed = canAccessPath(pathname, operationsModules, session);
+  const fallbackModule: ModuleNav = visibleModules[0] ?? operationsModules[0];
+  const activeModule: ModuleNav = visibleModules.find((module) => module.key === selectedModule) ?? fallbackModule;
   const routeSection = sectionForPath(pathname);
-  const currentItems = activeModule.items;
-  const topModules = useMemo(() => modules, []);
 
   return (
-      <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "17rem"
-          } as CSSProperties
-        }
-      >
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "17rem"
+        } as CSSProperties
+      }
+    >
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center gap-2 px-2 py-1.5">
@@ -190,8 +227,8 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
             <SidebarGroupLabel>{activeModule.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {currentItems.map((item) => {
-                  const Icon = item.icon;
+                {activeModule.items.map((item) => {
+                  const Icon = item.icon ?? PackageCheckIcon;
                   const isActive = Boolean(item.href && item.href === pathname);
                   const content = (
                     <>
@@ -221,7 +258,7 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
         </SidebarContent>
         <SidebarFooter>
           <div className="rounded-lg border bg-background p-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-            当前后台框架来自 next-shadcn-admin-dashboard，业务接口保持不变。
+            后台账号、角色和权限由系统管理统一控制。
           </div>
         </SidebarFooter>
         <SidebarRail />
@@ -254,14 +291,39 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
                 </BreadcrumbList>
               </Breadcrumb>
             </div>
-            <Badge variant="secondary" className="hidden shrink-0 md:inline-flex">
-              Staging
-            </Badge>
+            <div className="flex shrink-0 items-center gap-2">
+              <Badge variant="secondary" className="hidden md:inline-flex">
+                Staging
+              </Badge>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="h-9 gap-2 px-2">
+                    <Avatar className="size-7">
+                      <AvatarFallback>{adminInitials(session.adminUser)}</AvatarFallback>
+                    </Avatar>
+                    <span className="hidden max-w-36 truncate md:inline">{session.adminUser.name}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col gap-1">
+                      <span>{session.adminUser.name}</span>
+                      <span className="font-normal text-muted-foreground text-xs">{roleLabels(session)}</span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout}>
+                    <LogOutIcon />
+                    退出登录
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
           <nav className="flex gap-1 overflow-x-auto pb-1" aria-label="Operations modules">
-            {topModules.map((module) => {
+            {visibleModules.map((module) => {
               const Icon = module.icon;
-              const selected = module.key === selectedModule;
+              const selected = module.key === activeModule.key;
               return (
                 <Button
                   key={module.key}
@@ -279,9 +341,96 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
           </nav>
         </header>
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden p-4 md:p-6">
-          {children}
+          {routeAllowed ? children : <AccessDenied />}
         </div>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>正在打开后台</CardTitle>
+          <CardDescription>正在读取账号权限。</CardDescription>
+        </CardHeader>
+      </Card>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const { login, error } = useOperationsSession();
+  const [loginAccount, setLoginAccount] = useState(DEFAULT_ADMIN_LOGIN);
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState("");
+
+  async function submit() {
+    setBusy(true);
+    setLocalError("");
+    try {
+      await login(loginAccount, password);
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : "登录失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>后台登录</CardTitle>
+          <CardDescription>使用后台账号登录。顾客 Google 登录不适用于这里。</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="admin-login">登录账号或邮箱</Label>
+            <Input id="admin-login" value={loginAccount} onChange={(event) => setLoginAccount(event.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="admin-password">密码</Label>
+            <Input
+              id="admin-password"
+              type="password"
+              value={password}
+              placeholder="Staging 初始密码为 ChangeMe43!"
+              onChange={(event) => setPassword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void submit();
+              }}
+            />
+          </div>
+          {localError || error ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm">
+              {localError || error}
+            </div>
+          ) : null}
+        </CardContent>
+        <CardFooter>
+          <Button className="w-full" disabled={busy} onClick={() => void submit()}>
+            {busy ? "正在登录..." : "登录"}
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
+
+function AccessDenied() {
+  return (
+    <Card className="mx-auto mt-12 max-w-lg">
+      <CardHeader>
+        <CardTitle>403 无权限访问</CardTitle>
+        <CardDescription>当前后台账号没有访问这个页面的权限。</CardDescription>
+      </CardHeader>
+      <CardContent className="text-muted-foreground text-sm">
+        请联系 Super Admin 调整角色或权限。
+      </CardContent>
+    </Card>
   );
 }

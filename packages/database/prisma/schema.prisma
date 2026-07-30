@@ -13,6 +13,18 @@ enum EmployeeStatus {
   LEFT
 }
 
+enum AdminUserStatus {
+  ACTIVE
+  DISABLED
+  LOCKED
+}
+
+enum PermissionScope {
+  MODULE
+  PAGE
+  ACTION
+}
+
 enum ActorType {
   EMPLOYEE
   SYSTEM
@@ -134,8 +146,32 @@ model Employee {
   productReviews             ProductReview[]      @relation("ProductReviewReviewer")
   inventoryItemsCreated      InventoryItem[]      @relation("InventoryItemCreatedBy")
   inventoryMovements         InventoryMovement[]  @relation("InventoryMovementEmployee")
+  adminUser                  AdminUser?           @relation("AdminUserLinkedEmployee")
   createdAt                  DateTime             @default(now())
   updatedAt                  DateTime             @updatedAt
+}
+
+model AdminUser {
+  id                 String          @id @default(uuid())
+  name               String
+  email              String?         @unique
+  loginAccount       String          @unique
+  phone              String?         @unique
+  passwordHash       String?
+  inviteTokenHash    String?
+  inviteExpiresAt    DateTime?
+  status             AdminUserStatus @default(ACTIVE)
+  linkedEmployeeId   String?         @unique
+  linkedEmployee     Employee?       @relation("AdminUserLinkedEmployee", fields: [linkedEmployeeId], references: [id], onDelete: SetNull)
+  roles              UserRole[]
+  lastLoginAt        DateTime?
+  lockedAt           DateTime?
+  disabledAt         DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([linkedEmployeeId])
 }
 
 model Role {
@@ -144,6 +180,7 @@ model Role {
   name        String
   description String?
   employees   EmployeeRole[]
+  adminUsers  UserRole[]
   permissions RolePermission[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -153,10 +190,23 @@ model Permission {
   id          String           @id @default(uuid())
   code        String           @unique
   module      String
+  scope       PermissionScope  @default(ACTION)
+  page        String?
+  action      String?
   description String?
   roles       RolePermission[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+}
+
+model UserRole {
+  adminUserId String
+  roleId      String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@id([adminUserId, roleId])
 }
 
 model EmployeeRole {

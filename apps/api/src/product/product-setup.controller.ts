@@ -11,18 +11,21 @@ import {
   Res
 } from "@nestjs/common";
 import { ProductImageType, ProductStatus, prisma } from "@online-saler/database";
+import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
 import { ProductApplicationService } from "./product-application.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
 
 interface CreateProductBody {
   productCode: string;
   employeeId?: string;
+  adminUserId?: string;
 }
 
 interface AddImageBody {
   type: ProductImageType;
   originalUrl: string;
   employeeId?: string;
+  adminUserId?: string;
 }
 
 @Controller("products")
@@ -33,7 +36,8 @@ export class ProductSetupController {
   ) {}
 
   @Post()
-  create(@Body() body: CreateProductBody) {
+  async create(@Body() body: CreateProductBody) {
+    await requireAdminPermission(body.adminUserId, "action.product.create");
     if (!body.productCode?.trim()) {
       throw new BadRequestException("productCode is required");
     }
@@ -50,8 +54,10 @@ export class ProductSetupController {
     @Headers("content-type") contentType: string | undefined,
     @Headers("x-image-type") imageType: ProductImageType | undefined,
     @Headers("x-employee-id") employeeId: string | undefined,
+    @Headers(ADMIN_USER_HEADER) adminUserId: string | undefined,
     @Req() request: AsyncIterable<Buffer>
   ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new BadRequestException("Product not found");
     if (!imageType || !Object.values(ProductImageType).includes(imageType)) {
@@ -108,6 +114,7 @@ export class ProductSetupController {
 
   @Post(":id/images")
   async addImage(@Param("id") id: string, @Body() body: AddImageBody) {
+    await requireAdminPermission(body.adminUserId, "action.product.edit");
     if (!body.originalUrl?.trim() || !body.type) {
       throw new BadRequestException("type and originalUrl are required");
     }
@@ -132,7 +139,8 @@ export class ProductSetupController {
   }
 
   @Get(":id")
-  get(@Param("id") id: string) {
+  async get(@Param("id") id: string, @Headers(ADMIN_USER_HEADER) adminUserId?: string) {
+    await requireAdminPermission(adminUserId, "page.product.digitalization");
     return this.products.getOperationsProductDetail({ id });
   }
 }

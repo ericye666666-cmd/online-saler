@@ -21,7 +21,6 @@ import {
   type LabelSize
 } from "../local-label-print";
 import {
-  STAGING_TEST_EMPLOYEE_ID,
   stringValue,
   type JsonRecord
 } from "../operations-workspace-flow";
@@ -38,6 +37,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import {
   Card,
   CardContent,
@@ -96,7 +96,12 @@ async function request(path: string, options?: RequestInit): Promise<unknown> {
 }
 
 export default function ProductControlPage() {
-  const employeeId = STAGING_TEST_EMPLOYEE_ID;
+  const { session, hasPermission } = useOperationsSession();
+  const adminUserId = stringValue(session?.adminUser?.id);
+  const employeeId = stringValue(session?.adminUser?.linkedEmployeeId);
+  const canEditProduct = hasPermission("action.product.edit");
+  const canApproveProduct = hasPermission("action.product.approve");
+  const canPublishItems = hasPermission("action.product.publish");
   const [summary, setSummary] = useState<ProductControlSummary | null>(null);
   const [products, setProducts] = useState<JsonRecord[]>([]);
   const [prices, setPrices] = useState<Record<string, string>>({});
@@ -113,10 +118,13 @@ export default function ProductControlPage() {
   );
 
   const load = useCallback(async () => {
-    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const productQuery = new URLSearchParams();
+    if (status) productQuery.set("status", status);
+    productQuery.set("adminUserId", adminUserId);
+    const summaryQuery = new URLSearchParams({ adminUserId });
     const [nextSummary, nextProducts] = await Promise.all([
-      request("/operations/product-control/summary") as Promise<ProductControlSummary>,
-      request(`/operations/product-control/products${query}`) as Promise<JsonRecord[]>
+      request(`/operations/product-control/summary?${summaryQuery.toString()}`) as Promise<ProductControlSummary>,
+      request(`/operations/product-control/products?${productQuery.toString()}`) as Promise<JsonRecord[]>
     ]);
     setSummary(nextSummary);
     setProducts(nextProducts);
@@ -130,7 +138,7 @@ export default function ProductControlPage() {
       }
       return next;
     });
-  }, [status]);
+  }, [adminUserId, status]);
 
   useEffect(() => {
     void run("load", load);
@@ -155,6 +163,7 @@ export default function ProductControlPage() {
       method: "PATCH",
       body: JSON.stringify({
         employeeId,
+        adminUserId,
         priceKsh: Number(prices[id])
       })
     });
@@ -166,7 +175,7 @@ export default function ProductControlPage() {
     const id = stringValue(product.id);
     await request(`/operations/product-control/products/${id}/prepare-storage`, {
       method: "POST",
-      body: JSON.stringify({ employeeId })
+      body: JSON.stringify({ employeeId, adminUserId })
     });
     setMessage("Item is ready for storage.");
     await load();
@@ -176,7 +185,7 @@ export default function ProductControlPage() {
     const id = stringValue(product.id);
     await request(`/operations/product-control/products/${id}/location-hint`, {
       method: "POST",
-      body: JSON.stringify({ employeeId })
+      body: JSON.stringify({ employeeId, adminUserId })
     });
     setMessage("Random location assigned.");
     await load();
@@ -186,7 +195,7 @@ export default function ProductControlPage() {
     const id = stringValue(product.id);
     await request(`/operations/product-control/products/${id}/confirm-placed`, {
       method: "POST",
-      body: JSON.stringify({ employeeId })
+      body: JSON.stringify({ employeeId, adminUserId })
     });
     setMessage("Item placed in warehouse.");
     await load();
@@ -196,7 +205,7 @@ export default function ProductControlPage() {
     const id = stringValue(product.id);
     await request(`/operations/product-control/products/${id}/publish`, {
       method: "POST",
-      body: JSON.stringify({ employeeId })
+      body: JSON.stringify({ employeeId, adminUserId })
     });
     setMessage("Item is live in the storefront catalog.");
     await load();
@@ -208,7 +217,7 @@ export default function ProductControlPage() {
     if (reason === null) return;
     await request(`/operations/product-control/products/${id}/unpublish`, {
       method: "POST",
-      body: JSON.stringify({ employeeId, reason })
+      body: JSON.stringify({ employeeId, adminUserId, reason })
     });
     setMessage("Item is offline.");
     await load();
@@ -247,6 +256,7 @@ export default function ProductControlPage() {
       method: "POST",
       body: JSON.stringify({
         employeeId,
+        adminUserId,
         productIds: selectedProducts.map((product) => stringValue(product.id))
       })
     });
@@ -308,7 +318,7 @@ export default function ProductControlPage() {
             </Field>
             <Button
               type="button"
-              disabled={Boolean(busy) || selectedProducts.length === 0}
+              disabled={Boolean(busy) || selectedProducts.length === 0 || !canEditProduct}
               onClick={() => run("print", printSelectedLabels)}
             >
               <PrinterIcon data-icon="inline-start" />
@@ -341,7 +351,7 @@ export default function ProductControlPage() {
                   <div className="flex min-w-0 gap-3">
                     <Checkbox
                       checked={Boolean(selected[id])}
-                      disabled={!canPrintProductLabel(product)}
+                      disabled={!canEditProduct || !canPrintProductLabel(product)}
                       onCheckedChange={(checked) => setSelected((current) => ({ ...current, [id]: checked === true }))}
                     />
                     <div className="min-w-0">
@@ -369,22 +379,22 @@ export default function ProductControlPage() {
                   <p className="mt-2 font-semibold text-xl">{location || "-"}</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  <Button variant="outline" disabled={Boolean(busy)} onClick={() => run(`price-${id}`, () => savePrice(product))}>
+                  <Button variant="outline" disabled={Boolean(busy) || !canEditProduct} onClick={() => run(`price-${id}`, () => savePrice(product))}>
                     Save price
                   </Button>
-                  <Button variant="outline" disabled={Boolean(busy)} onClick={() => run(`ready-${id}`, () => prepareStorage(product))}>
+                  <Button variant="outline" disabled={Boolean(busy) || !canApproveProduct} onClick={() => run(`ready-${id}`, () => prepareStorage(product))}>
                     Ready storage
                   </Button>
-                  <Button variant="outline" disabled={Boolean(busy) || !canAssignProductLocation(product)} onClick={() => run(`loc-${id}`, () => assignLocation(product))}>
+                  <Button variant="outline" disabled={Boolean(busy) || !canEditProduct || !canAssignProductLocation(product)} onClick={() => run(`loc-${id}`, () => assignLocation(product))}>
                     Random place
                   </Button>
-                  <Button disabled={Boolean(busy) || !canConfirmProductPlaced(product)} onClick={() => run(`placed-${id}`, () => confirmPlaced(product))}>
+                  <Button disabled={Boolean(busy) || !canEditProduct || !canConfirmProductPlaced(product)} onClick={() => run(`placed-${id}`, () => confirmPlaced(product))}>
                     Confirm placed
                   </Button>
-                  <Button disabled={Boolean(busy) || !canPublishProduct(product)} onClick={() => run(`publish-${id}`, () => publishProduct(product))}>
+                  <Button disabled={Boolean(busy) || !canPublishItems || !canPublishProduct(product)} onClick={() => run(`publish-${id}`, () => publishProduct(product))}>
                     Publish
                   </Button>
-                  <Button variant="outline" disabled={Boolean(busy) || !canUnpublishProduct(product)} onClick={() => run(`unpublish-${id}`, () => unpublishProduct(product))}>
+                  <Button variant="outline" disabled={Boolean(busy) || !canPublishItems || !canUnpublishProduct(product)} onClick={() => run(`unpublish-${id}`, () => unpublishProduct(product))}>
                     Unpublish
                   </Button>
                 </div>

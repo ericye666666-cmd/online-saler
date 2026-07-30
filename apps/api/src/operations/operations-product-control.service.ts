@@ -8,7 +8,13 @@ import {
   prisma
 } from "@online-saler/database";
 import { ProductApplicationService } from "../product/product-application.service";
+import { OperationsAccessService } from "./operations-access.service";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
+
+const PRODUCT_CONTROL_PAGE = "page.product.control";
+const PRODUCT_EDIT_ACTION = "action.product.edit";
+const PRODUCT_APPROVE_ACTION = "action.product.approve";
+const PRODUCT_PUBLISH_ACTION = "action.product.publish";
 
 const CONTROL_STATUSES = [
   ProductStatus.BARCODE_ASSIGNED,
@@ -35,9 +41,13 @@ function defaultLocationCodes(): string[] {
 
 @Injectable()
 export class OperationsProductControlService {
-  constructor(private readonly products: ProductApplicationService) {}
+  constructor(
+    private readonly products: ProductApplicationService,
+    private readonly access: OperationsAccessService
+  ) {}
 
-  async summary() {
+  async summary(adminUserId?: string) {
+    await this.access.requirePermission(adminUserId, PRODUCT_CONTROL_PAGE);
     const [readyForPrice, readyForStorage, readyToPublish, pendingStockIn, available, published, printedToday] = await Promise.all([
       prisma.product.count({ where: { status: ProductStatus.BARCODE_ASSIGNED, priceKsh: null } }),
       prisma.product.count({ where: { status: ProductStatus.READY_FOR_STORAGE } }),
@@ -75,7 +85,8 @@ export class OperationsProductControlService {
     };
   }
 
-  async list(status?: ProductStatus) {
+  async list(status?: ProductStatus, adminUserId?: string) {
+    await this.access.requirePermission(adminUserId, PRODUCT_CONTROL_PAGE);
     if (status && !Object.values(ProductStatus).includes(status)) {
       throw new BadRequestException("Product status filter is not valid.");
     }
@@ -88,8 +99,9 @@ export class OperationsProductControlService {
     });
   }
 
-  async setPrice(productId: string, input: { employeeId?: string; priceKsh?: number }) {
+  async setPrice(productId: string, input: { employeeId?: string; adminUserId?: string; priceKsh?: number }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const priceKsh = Number(input.priceKsh);
     if (!Number.isInteger(priceKsh) || priceKsh <= 0) {
       throw new BadRequestException("Enter a valid price in KSh.");
@@ -123,8 +135,9 @@ export class OperationsProductControlService {
     return product;
   }
 
-  async prepareForStorage(productId: string, input: { employeeId?: string }) {
+  async prepareForStorage(productId: string, input: { employeeId?: string; adminUserId?: string }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
     let product = await this.requireProduct(productId);
     if (!product.barcode) {
       throw new BadRequestException("Generate barcode before preparing storage.");
@@ -164,8 +177,9 @@ export class OperationsProductControlService {
     return this.productDetail(productId);
   }
 
-  async markLabelsPrinted(input: { employeeId?: string; productIds?: string[] }) {
+  async markLabelsPrinted(input: { employeeId?: string; adminUserId?: string; productIds?: string[] }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const productIds = Array.isArray(input.productIds)
       ? input.productIds.filter((id) => typeof id === "string" && id.trim()).map((id) => id.trim())
       : [];
@@ -196,8 +210,9 @@ export class OperationsProductControlService {
     return { printedAt: now.toISOString(), productIds };
   }
 
-  async assignRandomLocation(productId: string, input: { employeeId?: string }) {
+  async assignRandomLocation(productId: string, input: { employeeId?: string; adminUserId?: string }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const product = await this.requireProduct(productId);
     if (!product.barcode) {
       throw new BadRequestException("Generate barcode before assigning a warehouse location.");
@@ -257,14 +272,15 @@ export class OperationsProductControlService {
     return this.productDetail(productId);
   }
 
-  async confirmPlaced(productId: string, input: { employeeId?: string }) {
+  async confirmPlaced(productId: string, input: { employeeId?: string; adminUserId?: string }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const product = await this.requireProduct(productId);
     if (!product.barcode) {
       throw new BadRequestException("Generate barcode before stock-in.");
     }
 
-    const detail = await this.assignRandomLocation(productId, { employeeId });
+    const detail = await this.assignRandomLocation(productId, { employeeId, adminUserId: input.adminUserId });
     const item = detail.inventoryItem;
     if (!item?.id || !item.locationId) {
       throw new BadRequestException("Assign a location before confirming placement.");
@@ -297,8 +313,9 @@ export class OperationsProductControlService {
     return this.productDetail(productId);
   }
 
-  async publish(productId: string, input: { employeeId?: string }) {
+  async publish(productId: string, input: { employeeId?: string; adminUserId?: string }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_PUBLISH_ACTION);
     const detail = await this.productDetail(productId);
     if (detail.status === ProductStatus.PUBLISHED) {
       return detail;
@@ -322,8 +339,9 @@ export class OperationsProductControlService {
     return this.productDetail(productId);
   }
 
-  async unpublish(productId: string, input: { employeeId?: string; reason?: string }) {
+  async unpublish(productId: string, input: { employeeId?: string; adminUserId?: string; reason?: string }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_PUBLISH_ACTION);
     const reason = input.reason?.trim() || "Operations product control";
     const product = await this.requireProduct(productId);
     if (product.status !== ProductStatus.PUBLISHED) {
@@ -344,7 +362,8 @@ export class OperationsProductControlService {
     return this.productDetail(productId);
   }
 
-  async locations() {
+  async locations(adminUserId?: string) {
+    await this.access.requirePermission(adminUserId, PRODUCT_CONTROL_PAGE);
     await this.ensureDefaultLocations();
     const locations = await prisma.warehouseLocation.findMany({
       where: { active: true },
