@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/storefront/package.json apps/storefront/package.json
 COPY packages/business-rules/package.json packages/business-rules/package.json
+COPY packages/database/package.json packages/database/package.json
 COPY packages/shared-types/package.json packages/shared-types/package.json
 RUN npm ci
 
@@ -11,8 +12,11 @@ WORKDIR /app
 COPY tsconfig.base.json ./
 COPY apps/storefront apps/storefront
 COPY packages/business-rules packages/business-rules
+COPY packages/database packages/database
 COPY packages/shared-types packages/shared-types
-RUN npm run build -w @online-saler/business-rules \
+RUN npm run db:generate -w @online-saler/database \
+  && npm run build -w @online-saler/database \
+  && npm run build -w @online-saler/business-rules \
   && npm run build -w @online-saler/shared-types \
   && npm run build -w @online-saler/storefront
 
