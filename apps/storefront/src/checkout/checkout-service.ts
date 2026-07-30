@@ -39,6 +39,33 @@ export async function startCheckout(input: StartCheckoutInput) {
   }
 
   return prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const existing = await tx.checkoutDraft.findFirst({
+      where: {
+        customerId: input.customerId,
+        status: CheckoutDraftStatus.ACTIVE,
+        expiresAt: { gt: now },
+        convertedOrder: { is: { items: { some: { productId: input.productId } } } }
+      },
+      include: { convertedOrder: true },
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (existing?.convertedOrder) {
+      return {
+        orderId: existing.convertedOrder.id,
+        orderNumber: existing.convertedOrder.orderNumber,
+        draftId: existing.id,
+        phone,
+        expiresAt: existing.expiresAt!.toISOString(),
+        reservationMinutes: RESERVATION_MINUTES,
+        itemSubtotalKsh: existing.itemSubtotalKsh,
+        deliveryFeeKsh: existing.deliveryFeeKsh,
+        totalKsh: existing.totalKsh,
+        currency: existing.currency
+      };
+    }
+
     const product = await tx.product.findFirst({
       where: {
         id: input.productId,
@@ -60,13 +87,13 @@ export async function startCheckout(input: StartCheckoutInput) {
 
     const activeReservations = await tx.checkoutDraft.count({
       where: {
-        customerId: input.customerId,
         status: CheckoutDraftStatus.ACTIVE,
-        expiresAt: { gt: new Date() }
+        expiresAt: { gt: now },
+        customer: { is: { phone } }
       }
     });
     if (activeReservations >= 5) {
-      throw new CheckoutConflictError("You already have five active payment reservations.");
+      throw new CheckoutConflictError("This phone number already has five active payment reservations.");
     }
 
     const locked = await tx.inventoryItem.updateMany({
@@ -79,8 +106,8 @@ export async function startCheckout(input: StartCheckoutInput) {
       ? KIKUYU_DELIVERY_FEE_KSH
       : 0;
     const amounts = calculateOrderAmounts([{ productId: product.id, unitPriceKsh: product.priceKsh }], deliveryFeeKsh);
-    const expiresAt = new Date(Date.now() + RESERVATION_MINUTES * 60_000);
-    const orderNumber = `DL-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(4).toString("hex").toUpperCase()}`;
+    const expiresAt = new Date(now.getTime() + RESERVATION_MINUTES * 60_000);
+    const orderNumber = `DL-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(4).toString("hex").toUpperCase()}`;
 
     await tx.customer.update({
       where: { id: input.customerId },
@@ -174,22 +201,22 @@ export async function releaseExpiredReservations(now = new Date()) {
   let released = 0;
   for (const draft of drafts) {
     await prisma.$transaction(async (tx) => {
-      await tx.checkoutDraft.updateMany({
+      const expired = await tx.checkoutDraft.updateMany({
         where: { id: draft.id, status: CheckoutDraftStatus.ACTIVE },
         data: { status: CheckoutDraftStatus.EXPIRED }
       });
-      if (draft.convertedOrder) {
-        await tx.order.updateMany({
-          where: { id: draft.convertedOrder.id, status: OrderStatus.PENDING_PAYMENT },
-          data: { status: OrderStatus.EXPIRED }
+      if (expired.count !== 1 || !draft.convertedOrder) return;
+
+      await tx.order.updateMany({
+        where: { id: draft.convertedOrder.id, status: OrderStatus.PENDING_PAYMENT },
+        data: { status: OrderStatus.EXPIRED }
+      });
+      for (const item of draft.convertedOrder.items) {
+        const result = await tx.inventoryItem.updateMany({
+          where: { productId: item.productId, status: InventoryItemStatus.RESERVED },
+          data: { status: InventoryItemStatus.AVAILABLE }
         });
-        for (const item of draft.convertedOrder.items) {
-          const result = await tx.inventoryItem.updateMany({
-            where: { productId: item.productId, status: InventoryItemStatus.RESERVED },
-            data: { status: InventoryItemStatus.AVAILABLE }
-          });
-          released += result.count;
-        }
+        released += result.count;
       }
     });
   }
