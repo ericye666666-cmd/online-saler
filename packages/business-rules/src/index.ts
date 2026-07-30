@@ -25,3 +25,5 @@ export function createAttributionExpiry(clickedAt = new Date()): Date {
 export function createCommissionEligibleAt(deliveredAt: Date): Date {
   return new Date(deliveredAt.getTime() + COMMISSION_CONFIRMATION_HOURS * 60 * 60 * 1000);
 }
+
+export * from "./transaction-domain";
