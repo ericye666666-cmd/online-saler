@@ -22,5 +22,6 @@ Status values:
 | PROD-002 | Product | Product Prisma schema | Designed | Implemented | Tested | Product schema PR #4 is merged with append-only migration `0002_product_domain_v0_2`. |
 | PROD-003 | Product | Product repository and domain service | Designed | Implemented | Tested | Repository abstraction, Prisma implementation, state transitions, barcode checks, and audit logging. |
 | INV-001 | Inventory | Define online location code format | Not Started | Not Started | Not Started | Must align with warehouse SOP. |
-| PAY-001 | Payment | Define M-Pesa integration contract | Designed | Not Started | Not Started | Include callback idempotency before implementation. |
+| PAY-001 | Payment | Define M-Pesa integration contract | Designed | Implemented | Tested | STK Push, callback idempotency, status polling, and paid-order state updates are implemented in the Storefront payment flow. |
+| PAY-002 | Payment | Safaricom production Till readiness | Designed | Implemented | Tested | Adds production config aliases, Secret Manager deployment mapping, 1 KSh whitelisted test mode, and launch checklist. |
 | AFF-001 | Affiliate | Define referral and commission ledger model | Designed | Not Started | Not Started | Single-level MVP only. |

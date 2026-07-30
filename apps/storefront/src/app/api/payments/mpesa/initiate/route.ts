@@ -7,6 +7,7 @@ import {
   paymentConfigurationErrorMessage
 } from "../../../../../payments/payment-service";
 import { MpesaConfigurationError, MpesaProviderError } from "../../../../../payments/mpesa-client";
+import { MpesaProductionGuardError } from "../../../../../payments/mpesa-production-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof MpesaConfigurationError) {
       return NextResponse.json({ error: paymentConfigurationErrorMessage(error) }, { status: 503 });
+    }
+    if (error instanceof MpesaProductionGuardError) {
+      return NextResponse.json({ error: paymentConfigurationErrorMessage(error) }, { status: 403 });
     }
     if (error instanceof MpesaProviderError) {
       return NextResponse.json({ error: paymentConfigurationErrorMessage(error) }, { status: 502 });
