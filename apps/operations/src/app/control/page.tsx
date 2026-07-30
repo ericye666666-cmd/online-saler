@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  BoxesIcon,
+  CheckCircle2Icon,
+  CircleAlertIcon,
+  PackageCheckIcon,
+  PrinterIcon,
+  RefreshCwIcon,
+  ScanBarcodeIcon
+} from "lucide-react";
 import {
   buildLabelPrintPayload,
   DEFAULT_LABEL_SIZE,
@@ -26,6 +35,26 @@ import {
   productControlInventoryItem,
   productControlLocationCode
 } from "../product-control-flow";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Separator } from "@/components/ui/separator";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -227,135 +256,185 @@ export default function ProductControlPage() {
   }
 
   return (
-    <main className="workspace-shell">
-      <header className="workspace-header">
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="workspace-label">Operations</p>
-          <h1>Product Control</h1>
+          <p className="text-muted-foreground text-sm">商品中心</p>
+          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">商品控制</h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground text-sm">
+            处理审核、价格、随机库位、标签打印、发布和下架。
+          </p>
         </div>
-        <nav className="header-actions">
-          <a className="secondary-action nav-link" href="/">Workspace</a>
-          <span className="operator-chip">Random stock-in</span>
-        </nav>
-      </header>
-
-      <section className="metric-grid compact-metrics" aria-label="Product control summary">
-        <Metric title="Need price" value={summary?.readyForPrice ?? 0} />
-        <Metric title="Ready storage" value={summary?.readyForStorage ?? 0} />
-        <Metric title="Need placing" value={summary?.pendingStockIn ?? 0} />
-        <Metric title="Ready publish" value={summary?.readyToPublish ?? 0} />
-        <Metric title="Published" value={summary?.published ?? 0} strong />
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <a href="/">商品数字化</a>
+          </Button>
+          <Button type="button" variant="outline" disabled={Boolean(busy)} onClick={() => run("load", load)}>
+            <RefreshCwIcon data-icon="inline-start" />
+            刷新
+          </Button>
+        </div>
       </section>
 
-      <section className="control-toolbar">
-        <label className="field">
-          <span>Status</span>
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            {statusFilters.map((value) => (
-              <option key={value || "all"} value={value}>{value ? optionLabel(value) : "All active"}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Label size</span>
-          <select value={labelSize} onChange={(event) => setLabelSize(normalizeLabelSize(event.target.value))}>
-            <option value="60x40">60x40</option>
-            <option value="40x30">40x30</option>
-          </select>
-        </label>
-        <button
-          className="primary-action"
-          type="button"
-          disabled={Boolean(busy) || selectedProducts.length === 0}
-          onClick={() => run("print", printSelectedLabels)}
-        >
-          {busy === "print" ? "Printing..." : `Print selected (${selectedProducts.length})`}
-        </button>
-        <button className="secondary-action" type="button" disabled={Boolean(busy)} onClick={() => run("load", load)}>
-          Refresh
-        </button>
+      <section className="grid gap-3 md:grid-cols-5">
+        <Metric title="待定价" value={summary?.readyForPrice ?? 0} icon={<PackageCheckIcon />} />
+        <Metric title="待入仓" value={summary?.readyForStorage ?? 0} icon={<BoxesIcon />} />
+        <Metric title="待摆放" value={summary?.pendingStockIn ?? 0} icon={<BoxesIcon />} />
+        <Metric title="待发布" value={summary?.readyToPublish ?? 0} icon={<CheckCircle2Icon />} />
+        <Metric title="已发布" value={summary?.published ?? 0} icon={<PackageCheckIcon />} strong />
       </section>
 
-      {message ? <p className="success-line">{message}</p> : null}
-      {error ? <p className="employee-error">{error}</p> : null}
+      <Card>
+        <CardHeader>
+          <CardTitle>筛选和批量操作</CardTitle>
+          <CardDescription>选择商品后可以批量打印 Barcode 标签。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup className="md:grid md:grid-cols-[minmax(180px,1fr)_minmax(160px,0.7fr)_auto_auto] md:items-end">
+            <Field>
+              <FieldLabel>Status</FieldLabel>
+              <NativeSelect className="w-full" value={status} onChange={(event) => setStatus(event.target.value)}>
+                {statusFilters.map((value) => (
+                  <NativeSelectOption key={value || "all"} value={value}>{value ? optionLabel(value) : "All active"}</NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field>
+              <FieldLabel>Label size</FieldLabel>
+              <NativeSelect className="w-full" value={labelSize} onChange={(event) => setLabelSize(normalizeLabelSize(event.target.value))}>
+                <NativeSelectOption value="60x40">60x40</NativeSelectOption>
+                <NativeSelectOption value="40x30">40x30</NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            <Button
+              type="button"
+              disabled={Boolean(busy) || selectedProducts.length === 0}
+              onClick={() => run("print", printSelectedLabels)}
+            >
+              <PrinterIcon data-icon="inline-start" />
+              Print selected ({selectedProducts.length})
+            </Button>
+            <Button type="button" variant="outline" disabled={Boolean(busy)} onClick={() => run("load", load)}>
+              Refresh
+            </Button>
+          </FieldGroup>
+        </CardContent>
+      </Card>
 
-      <section className="control-list">
+      {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
+      {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+
+      <section className="grid gap-4">
         {products.map((product) => {
           const id = stringValue(product.id);
           const location = productControlLocationCode(product);
           const item = productControlInventoryItem(product);
           const photo = productControlImageUrl(product, API_PROXY_URL);
           const isAvailable = stringValue(item?.status) === "AVAILABLE";
+          const title = stringValue(product.title) || "Untitled item";
+          const meta = [product.category, product.subcategory, product.color, product.finalSizeLabel].map(stringValue).filter(Boolean).join(" / ");
+
           return (
-            <article className="control-card" key={id}>
-              <label className="select-row">
-                <input
-                  type="checkbox"
-                  checked={Boolean(selected[id])}
-                  disabled={!canPrintProductLabel(product)}
-                  onChange={(event) => setSelected((current) => ({ ...current, [id]: event.target.checked }))}
-                />
-                <span>{stringValue(product.barcode) || "No barcode"}</span>
-              </label>
-
-              <div className="control-image">
-                {photo ? <img src={photo} alt="Product" /> : <span>No photo</span>}
-              </div>
-
-              <div className="control-copy">
-                <strong>{stringValue(product.title) || "Untitled item"}</strong>
-                <span>{[product.category, product.subcategory, product.color, product.finalSizeLabel].map(stringValue).filter(Boolean).join(" / ")}</span>
-                <small>Status: {optionLabel(stringValue(product.status))}</small>
-              </div>
-
-              <label className="field compact-field">
-                <span>Price KSh</span>
-                <input
-                  inputMode="numeric"
-                  value={prices[id] ?? ""}
-                  onChange={(event) => setPrices((current) => ({ ...current, [id]: event.target.value }))}
-                />
-              </label>
-
-              <div className="location-reminder">
-                <span>{isAvailable ? "Placed at" : location ? "Put at" : "No location yet"}</span>
-                <strong>{location || "-"}</strong>
-              </div>
-
-              <div className="control-actions">
-                <button className="secondary-action" disabled={Boolean(busy)} onClick={() => run(`price-${id}`, () => savePrice(product))}>
-                  Save price
-                </button>
-                <button className="secondary-action" disabled={Boolean(busy)} onClick={() => run(`ready-${id}`, () => prepareStorage(product))}>
-                  Ready storage
-                </button>
-                <button className="secondary-action" disabled={Boolean(busy) || !canAssignProductLocation(product)} onClick={() => run(`loc-${id}`, () => assignLocation(product))}>
-                  Random place
-                </button>
-                <button className="primary-action" disabled={Boolean(busy) || !canConfirmProductPlaced(product)} onClick={() => run(`placed-${id}`, () => confirmPlaced(product))}>
-                  Confirm placed
-                </button>
-                <button className="primary-action" disabled={Boolean(busy) || !canPublishProduct(product)} onClick={() => run(`publish-${id}`, () => publishProduct(product))}>
-                  Publish
-                </button>
-                <button className="secondary-action" disabled={Boolean(busy) || !canUnpublishProduct(product)} onClick={() => run(`unpublish-${id}`, () => unpublishProduct(product))}>
-                  Unpublish
-                </button>
-              </div>
-            </article>
+            <Card key={id}>
+              <CardHeader>
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="flex min-w-0 gap-3">
+                    <Checkbox
+                      checked={Boolean(selected[id])}
+                      disabled={!canPrintProductLabel(product)}
+                      onCheckedChange={(checked) => setSelected((current) => ({ ...current, [id]: checked === true }))}
+                    />
+                    <div className="min-w-0">
+                      <CardTitle className="break-words text-base">{title}</CardTitle>
+                      <CardDescription>{meta || "No product attributes yet"}</CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant={isAvailable ? "default" : "secondary"}>{optionLabel(stringValue(product.status))}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-4 lg:grid-cols-[150px_minmax(180px,0.7fr)_minmax(180px,0.7fr)_1fr]">
+                <div className="flex min-h-36 items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
+                  {photo ? <img src={photo} alt="Product" className="max-h-44 max-w-full object-contain" /> : <span className="text-muted-foreground text-sm">No photo</span>}
+                </div>
+                <Field>
+                  <FieldLabel>Price KSh</FieldLabel>
+                  <Input
+                    inputMode="numeric"
+                    value={prices[id] ?? ""}
+                    onChange={(event) => setPrices((current) => ({ ...current, [id]: event.target.value }))}
+                  />
+                </Field>
+                <div className="rounded-lg border bg-muted/40 p-3">
+                  <p className="text-muted-foreground text-xs">{isAvailable ? "Placed at" : location ? "Put at" : "No location yet"}</p>
+                  <p className="mt-2 font-semibold text-xl">{location || "-"}</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <Button variant="outline" disabled={Boolean(busy)} onClick={() => run(`price-${id}`, () => savePrice(product))}>
+                    Save price
+                  </Button>
+                  <Button variant="outline" disabled={Boolean(busy)} onClick={() => run(`ready-${id}`, () => prepareStorage(product))}>
+                    Ready storage
+                  </Button>
+                  <Button variant="outline" disabled={Boolean(busy) || !canAssignProductLocation(product)} onClick={() => run(`loc-${id}`, () => assignLocation(product))}>
+                    Random place
+                  </Button>
+                  <Button disabled={Boolean(busy) || !canConfirmProductPlaced(product)} onClick={() => run(`placed-${id}`, () => confirmPlaced(product))}>
+                    Confirm placed
+                  </Button>
+                  <Button disabled={Boolean(busy) || !canPublishProduct(product)} onClick={() => run(`publish-${id}`, () => publishProduct(product))}>
+                    Publish
+                  </Button>
+                  <Button variant="outline" disabled={Boolean(busy) || !canUnpublishProduct(product)} onClick={() => run(`unpublish-${id}`, () => unpublishProduct(product))}>
+                    Unpublish
+                  </Button>
+                </div>
+              </CardContent>
+              <CardFooter className="flex flex-wrap gap-2 text-muted-foreground text-sm">
+                <ScanBarcodeIcon data-icon="inline-start" />
+                {stringValue(product.barcode) || "No barcode"}
+              </CardFooter>
+            </Card>
           );
         })}
+        {products.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center text-muted-foreground">
+              No products found for this filter.
+            </CardContent>
+          </Card>
+        ) : null}
       </section>
-    </main>
+    </div>
   );
 }
 
-function Metric(props: { title: string; value: number; strong?: boolean }) {
+function Metric(props: { title: string; value: number; icon: ReactNode; strong?: boolean }) {
   return (
-    <article className={props.strong ? "metric strong" : "metric"}>
-      <span>{props.title}</span>
-      <strong>{props.value}</strong>
-    </article>
+    <Card className={props.strong ? "bg-primary text-primary-foreground" : ""}>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <CardDescription className={props.strong ? "text-primary-foreground/75" : ""}>{props.title}</CardDescription>
+        {props.icon}
+      </CardHeader>
+      <CardContent>
+        <p className="font-semibold text-3xl">{props.value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusMessage(props: { tone: "success" | "danger"; children: ReactNode }) {
+  const Icon = props.tone === "danger" ? CircleAlertIcon : CheckCircle2Icon;
+  return (
+    <div
+      className={
+        props.tone === "danger"
+          ? "flex gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm"
+          : "flex gap-2 rounded-lg border bg-muted/40 p-3 text-sm"
+      }
+    >
+      <Icon className="mt-0.5 shrink-0" />
+      <div>{props.children}</div>
+    </div>
   );
 }
 
