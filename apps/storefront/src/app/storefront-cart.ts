@@ -1,4 +1,5 @@
 import type { PublicProduct } from "./storefront-products";
+import type { Product as CatalogProduct } from "./data/products";
 
 export const CART_STORAGE_KEY = "online-saler-cart-v1";
 export const CART_STORAGE_VERSION = 1;
@@ -23,6 +24,16 @@ export function productToCartItem(product: PublicProduct): CartItem {
     title: product.title ?? "Second-hand item",
     priceKsh: product.priceKsh,
     imageUrl: product.images[0]?.url ?? null,
+    meta: [product.category, product.color, product.size].filter(Boolean).join(" / ")
+  };
+}
+
+export function catalogProductToCartItem(product: CatalogProduct): CartItem {
+  return {
+    productId: product.code,
+    title: product.title,
+    priceKsh: product.price,
+    imageUrl: product.image,
     meta: [product.category, product.color, product.size].filter(Boolean).join(" / ")
   };
 }

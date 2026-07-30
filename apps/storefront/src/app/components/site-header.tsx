@@ -337,9 +337,9 @@ export function SiteHeader({
           <button className="depopIconButton" type="button" aria-label="Saved items">
             <Heart size={24} />
           </button>
-          <a className="depopIconButton" href="#catalog" aria-label="Browse today&apos;s items">
+          <Link className="depopIconButton" href="/cart" aria-label="Open cart">
             <ShoppingBag size={23} />
-          </a>
+          </Link>
           <Link className="depopPrimaryAction" href="/seller">Seller dashboard</Link>
           <Link className="depopSecondaryAction" href="/seller/access">Join seller</Link>
         </div>

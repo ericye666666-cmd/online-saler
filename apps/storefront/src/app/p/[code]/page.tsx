@@ -6,6 +6,7 @@ import { BrandLogo } from "../../components/brand-logo";
 import { ShareActions } from "../../components/share-actions";
 import { ReferralTracker } from "../../components/referral-tracker";
 import { SiteHeader } from "../../components/site-header";
+import { CatalogBuyAction } from "../../catalog-buy-action";
 import {
   formatPrice,
   normalizeSellerRef,
@@ -121,6 +122,8 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             </div>
 
             <p className="productDescription">{product.description}</p>
+
+            <CatalogBuyAction product={product} />
 
             <dl className="attributeList">
               <div><dt>Brand</dt><dd>{product.brand}</dd></div>

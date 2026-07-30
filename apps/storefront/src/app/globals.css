@@ -1366,6 +1366,47 @@ select:focus-visible {
   line-height: 1.6;
 }
 
+.catalogBuyBox {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 22px;
+}
+
+.catalogBuyButton {
+  display: inline-flex;
+  min-height: 54px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #262626;
+  border-radius: 999px;
+  background: #262626;
+  color: #fff;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.catalogBuyButton:hover {
+  border-color: #ff2b08;
+  background: #ff2b08;
+}
+
+.catalogBuyButton:disabled {
+  border-color: #cfd5d2;
+  background: #d8dcda;
+  color: #6f7773;
+  cursor: not-allowed;
+}
+
+.catalogBuyBox p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .attributeList {
   margin: 0 0 22px;
   border-top: 1px solid var(--line);

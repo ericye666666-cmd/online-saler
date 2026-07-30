@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import {
   CART_STORAGE_VERSION,
   cartSubtotalKsh,
+  catalogProductToCartItem,
   createCartSnapshot,
   parseCartSnapshot,
   productToCartItem
 } from "./storefront-cart";
+import type { Product as CatalogProduct } from "./data/products";
 import type { PublicProduct } from "./storefront-products";
 
 const product: PublicProduct = {
@@ -31,6 +33,29 @@ assert.equal(item.productId, "product-1");
 assert.equal(item.title, "Coral Orange Graphic T-Shirt");
 assert.equal(item.priceKsh, 450);
 assert.equal(item.meta, "TOP / ORANGE / M");
+
+const catalogProduct: CatalogProduct = {
+  code: "catalog-1",
+  title: "Coral button-front midi dress",
+  category: "Dresses",
+  brand: "Unbranded",
+  price: 650,
+  size: "M",
+  material: "Viscose blend",
+  color: "Coral",
+  store: "Kikuyu",
+  status: "Available",
+  condition: "Very good",
+  image: "/products/920260718001.webp",
+  ogImage: "/og/920260718001.jpg",
+  description: "Checked in Kikuyu"
+};
+const catalogItem = catalogProductToCartItem(catalogProduct);
+assert.equal(catalogItem.productId, "catalog-1");
+assert.equal(catalogItem.title, "Coral button-front midi dress");
+assert.equal(catalogItem.priceKsh, 650);
+assert.equal(catalogItem.imageUrl, "/products/920260718001.webp");
+assert.equal(catalogItem.meta, "Dresses / Coral / M");
 
 const snapshot = createCartSnapshot(item, "2026-07-30T00:00:00.000Z");
 assert.equal(snapshot.version, CART_STORAGE_VERSION);
