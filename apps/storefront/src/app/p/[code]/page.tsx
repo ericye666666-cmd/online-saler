@@ -10,6 +10,7 @@ import { CatalogBuyAction } from "../../catalog-buy-action";
 import {
   formatPrice,
   normalizeSellerRef,
+  normalizeTrackingParam,
   SITE_URL,
   whatsappShareUrl,
 } from "../../data/products";
@@ -20,7 +21,7 @@ import {
 
 type ProductPageProps = {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ ref?: string }>;
+  searchParams: Promise<{ ref?: string; source?: string; campaign?: string; utm_source?: string; utm_campaign?: string }>;
 };
 
 export const dynamic = "force-dynamic";
@@ -70,13 +71,15 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   if (!product) notFound();
 
   const sellerRef = normalizeSellerRef(query.ref);
+  const source = normalizeTrackingParam(query.source ?? query.utm_source);
+  const campaign = normalizeTrackingParam(query.campaign ?? query.utm_campaign);
   const products = await listPublishedProducts();
   const related = products.filter((item) => item.code !== product.code).slice(0, 4);
   const supportPhone = process.env.DIRECT_LOOP_SUPPORT_WHATSAPP ?? "";
 
   return (
     <main className="productPage">
-      <ReferralTracker sellerRef={sellerRef} productCode={product.code} />
+      <ReferralTracker sellerRef={sellerRef} productCode={product.code} source={source} campaign={campaign} />
       <SiteHeader sellerRef={sellerRef} />
 
       <div className="productPageShell">

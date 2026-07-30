@@ -15,6 +15,7 @@ import {
   mpesaConfigFromEnv,
   type MpesaStkPushResponse
 } from "./mpesa-client";
+import { createPendingCommissionForPaidOrder } from "../affiliate/affiliate-service";
 
 export class PaymentValidationError extends Error {}
 export class PaymentConflictError extends Error {}
@@ -291,6 +292,7 @@ export async function handleMpesaCallback(body: unknown) {
       where: { id: payment.orderId },
       data: { status: OrderStatus.PAID }
     });
+    await createPendingCommissionForPaidOrder(tx, payment.orderId);
     await tx.checkoutDraft.updateMany({
       where: { convertedOrderId: payment.orderId, status: CheckoutDraftStatus.ACTIVE },
       data: { status: CheckoutDraftStatus.CONVERTED }

@@ -149,8 +149,14 @@ export const operationsModules: ModuleNav[] = [
     icon: CircleDollarSignIcon,
     permission: "module.affiliate",
     items: [
-      { label: "推广来源", icon: CircleDollarSignIcon, permission: "action.affiliate.view", badge: "Later" },
-      { label: "佣金确认", icon: ClipboardCheckIcon, permission: "action.affiliate.view" }
+      { label: "推广者列表", href: "/affiliate", icon: UsersIcon, permission: "action.affiliate.view" },
+      { label: "推广链接", href: "/affiliate/links", icon: CircleDollarSignIcon, permission: "action.affiliate.view" },
+      { label: "点击记录", href: "/affiliate/clicks", icon: SearchIcon, permission: "action.affiliate.view" },
+      { label: "归因订单", href: "/affiliate/attributed-orders", icon: BriefcaseBusinessIcon, permission: "action.affiliate.view" },
+      { label: "待确认佣金", href: "/affiliate/commissions/pending", icon: ClipboardCheckIcon, permission: "action.affiliate.view" },
+      { label: "已确认佣金", href: "/affiliate/commissions/confirmed", icon: ShieldCheckIcon, permission: "action.affiliate.view" },
+      { label: "已支付佣金", href: "/affiliate/commissions/paid", icon: PackageCheckIcon, permission: "action.affiliate.view" },
+      { label: "异常佣金", href: "/affiliate/commissions/exceptions", icon: XCircleIcon, permission: "action.affiliate.view" }
     ]
   },
   {
@@ -189,6 +195,7 @@ export const operationsModules: ModuleNav[] = [
 function moduleForPath(pathname: string): ModuleKey {
   if (pathname.startsWith("/warehouse")) return "warehouse";
   if (pathname.startsWith("/orders")) return "orders";
+  if (pathname.startsWith("/affiliate")) return "affiliate";
   if (pathname.startsWith("/system")) return "system";
   if (pathname.startsWith("/product") || pathname.startsWith("/control") || pathname.startsWith("/debug") || pathname === "/") return "product";
   return "product";
