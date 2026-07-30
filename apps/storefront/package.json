@@ -6,7 +6,7 @@
     "build": "next build",
     "dev": "next dev --port 3000",
     "start": "next start --port 3000",
-    "test": "tsx src/app/storefront-products.test.ts && tsx src/app/storefront-cart.test.ts && tsx src/checkout/checkout-service.test.ts && tsx src/payments/mpesa-client.test.ts && tsx src/payments/payment-service.test.ts && node -e \"console.log('storefront smoke ok')\"",
+    "test": "tsx src/app/storefront-products.test.ts && tsx src/app/storefront-cart.test.ts && tsx src/checkout/checkout-service.test.ts && tsx src/payments/mpesa-client.test.ts && tsx src/payments/payment-service.test.ts && tsx src/payments/payment-ui.test.ts && tsx src/orders/order-service.test.ts && node -e \"console.log('storefront smoke ok')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

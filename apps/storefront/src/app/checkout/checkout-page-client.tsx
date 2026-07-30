@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { KIKUYU_DELIVERY_FEE_KSH } from "@online-saler/business-rules";
 import { CART_STORAGE_KEY, cartSubtotalKsh, parseCartSnapshot, type CartSnapshot } from "../storefront-cart";
 import { moneyKsh, type PublicProduct } from "../storefront-products";
+import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded } from "../../payments/payment-ui";
 
 type CheckoutState = "loading" | "empty" | "ready" | "unavailable";
 type FulfillmentChoice = "PICKUP" | "KIKUYU_LOCAL_DELIVERY";
@@ -50,6 +51,7 @@ export function CheckoutPageClient() {
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [payment, setPayment] = useState<PaymentState | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [refreshingPayment, setRefreshingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
@@ -91,11 +93,7 @@ export function CheckoutPageClient() {
           cache: "no-store"
         });
         if (!response.ok) return;
-        const result = await response.json() as PaymentState;
-        setPayment(result);
-        if (result.orderStatus === "PAID") {
-          window.localStorage.removeItem(CART_STORAGE_KEY);
-        }
+        applyPaymentStatus(await response.json() as PaymentState);
       } catch {
         // Polling is advisory; the customer can manually refresh if the network drops.
       }
@@ -148,11 +146,36 @@ export function CheckoutPageClient() {
       });
       const result = await response.json().catch(() => ({})) as PaymentState & { error?: string };
       if (!response.ok) throw new Error(result.error || "M-Pesa request could not be started.");
-      setPayment(result);
+      applyPaymentStatus(result);
     } catch (paymentStartError) {
       setPaymentError(paymentStartError instanceof Error ? paymentStartError.message : "M-Pesa request could not be started.");
     } finally {
       setPaymentLoading(false);
+    }
+  }
+
+  async function refreshPaymentStatus() {
+    if (!reservation || refreshingPayment) return;
+    setRefreshingPayment(true);
+    setPaymentError("");
+    try {
+      const response = await fetch(`/api/payments/mpesa/status?orderId=${encodeURIComponent(reservation.orderId)}`, {
+        cache: "no-store"
+      });
+      const result = await response.json().catch(() => ({})) as PaymentState & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Payment status could not be refreshed.");
+      applyPaymentStatus(result);
+    } catch (refreshError) {
+      setPaymentError(refreshError instanceof Error ? refreshError.message : "Payment status could not be refreshed.");
+    } finally {
+      setRefreshingPayment(false);
+    }
+  }
+
+  function applyPaymentStatus(nextPayment: PaymentState) {
+    setPayment(nextPayment);
+    if (paymentSucceeded(nextPayment.orderStatus, nextPayment.paymentStatus ?? nextPayment.status)) {
+      window.localStorage.removeItem(CART_STORAGE_KEY);
     }
   }
 
@@ -186,8 +209,9 @@ export function CheckoutPageClient() {
   const minutes = Math.floor(secondsRemaining / 60).toString().padStart(2, "0");
   const seconds = (secondsRemaining % 60).toString().padStart(2, "0");
   const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
-  const paymentSucceeded = payment?.orderStatus === "PAID" || paymentStatus === "SUCCESS";
-  const paymentFailed = ["FAILED", "CANCELLED", "TIMEOUT", "EXPIRED", "MANUAL_REVIEW"].includes(paymentStatus ?? "");
+  const isPaymentSucceeded = paymentSucceeded(payment?.orderStatus, paymentStatus);
+  const isPaymentFailed = paymentFailed(paymentStatus);
+  const isPaymentRetryable = canRetryPayment(paymentStatus, secondsRemaining);
 
   return (
     <section className="checkout-layout" aria-label="Checkout">
@@ -207,27 +231,38 @@ export function CheckoutPageClient() {
             <strong>{secondsRemaining > 0 ? `${minutes}:${seconds}` : "Reservation expired"}</strong>
             <span>{secondsRemaining > 0 ? "remaining to complete M-Pesa payment" : "Return to the item and try again."}</span>
             <p>Phone: +{reservation.phone}</p>
-            <div className={`payment-status ${paymentSucceeded ? "success" : paymentFailed ? "failed" : ""}`}>
+            <div className={`payment-status ${isPaymentSucceeded ? "success" : isPaymentFailed ? "failed" : ""}`}>
               <b>
-                {paymentSucceeded
-                  ? "Payment confirmed"
-                  : paymentFailed
-                    ? "Payment needs attention"
-                    : paymentLoading
-                      ? "Sending M-Pesa request..."
-                      : "Check your phone for the M-Pesa prompt"}
+                {paymentHeading({
+                  orderStatus: payment?.orderStatus,
+                  paymentStatus,
+                  paymentLoading
+                })}
               </b>
               <span>
-                {paymentSucceeded
-                  ? `Receipt ${payment?.receiptNumber ?? "pending receipt"}`
-                  : paymentError
-                    ? paymentError
-                    : payment?.customerMessage || payment?.resultDescription || "Enter your M-Pesa PIN to complete the order."}
+                {paymentBody({
+                  orderStatus: payment?.orderStatus,
+                  paymentStatus,
+                  receiptNumber: payment?.receiptNumber,
+                  paymentError,
+                  customerMessage: payment?.customerMessage,
+                  resultDescription: payment?.resultDescription
+                })}
               </span>
             </div>
-            {paymentError ? (
+            <div className="payment-actions">
+              <button className="reserve-button secondary" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
+                {refreshingPayment ? "Refreshing..." : "Refresh payment status"}
+              </button>
+              {isPaymentSucceeded ? (
+                <Link className="reserve-button secondary successLink" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
+                  View order
+                </Link>
+              ) : null}
+            </div>
+            {paymentError || isPaymentRetryable ? (
               <button className="reserve-button secondary" type="button" disabled={paymentLoading || secondsRemaining <= 0} onClick={() => initiatePayment(reservation.orderId)}>
-                {paymentLoading ? "Retrying..." : "Retry M-Pesa request"}
+                {paymentLoading ? "Retrying..." : "Retry M-Pesa"}
               </button>
             ) : null}
           </div>

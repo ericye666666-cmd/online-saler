@@ -76,6 +76,7 @@ Staging Google OAuth values:
 - GitHub variable: `GOOGLE_CLIENT_ID_STAGING`
 - GitHub secret: `GOOGLE_CLIENT_SECRET_STAGING`
 - GitHub secret: `CUSTOMER_SESSION_SECRET_STAGING`
+- GitHub secret: `INTERNAL_CRON_SECRET_STAGING`
 - Runtime callback URL: `<STOREFRONT_PUBLIC_URL>/api/auth/google/callback`
 
 Staging M-Pesa sandbox values:
@@ -84,10 +85,32 @@ Staging M-Pesa sandbox values:
 - GitHub secret: `MPESA_CONSUMER_SECRET_STAGING`
 - GitHub variable: `MPESA_SHORTCODE_STAGING`
 - GitHub secret: `MPESA_PASSKEY_STAGING`
+- GitHub variable: `MPESA_ENABLE_SANDBOX_SIMULATOR_STAGING`, set to `true` only
+  while staging staff need to simulate M-Pesa callbacks.
 - Runtime callback URL: `<STOREFRONT_PUBLIC_URL>/api/payments/mpesa/callback`
 
 Missing M-Pesa values should not break browsing, but payment initiation returns a
 configuration error until sandbox credentials are present.
+
+The internal reservation cleanup route and staging-only M-Pesa callback simulator
+require the `INTERNAL_CRON_SECRET_STAGING` bearer token. Do not expose this value
+to browser code or commit it to the repository.
+
+When `MPESA_ENABLE_SANDBOX_SIMULATOR_STAGING=true`, staging can simulate a final
+M-Pesa callback for a pending payment:
+
+```text
+POST /api/internal/mpesa/simulate-callback
+Authorization: Bearer <INTERNAL_CRON_SECRET_STAGING>
+
+{
+  "orderNumber": "DL-...",
+  "result": "success"
+}
+```
+
+Supported `result` values are `success`, `cancelled`, `timeout`, and `failed`.
+This is for staging verification only and must stay disabled in production.
 
 ## Suggested Buckets
 
