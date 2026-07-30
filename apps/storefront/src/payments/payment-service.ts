@@ -15,6 +15,11 @@ import {
   mpesaConfigFromEnv,
   type MpesaStkPushResponse
 } from "./mpesa-client";
+import {
+  MpesaProductionGuardError,
+  mpesaPaymentAmountMatchesOrder,
+  resolveMpesaCharge
+} from "./mpesa-production-guard";
 import { createPendingCommissionForPaidOrder } from "../affiliate/affiliate-service";
 
 export class PaymentValidationError extends Error {}
@@ -108,14 +113,20 @@ export async function initiateMpesaPayment(
   const successful = order.payments.find((payment) => payment.status === PaymentStatus.SUCCESS);
   if (successful) return paymentResultFromRecord(order, successful);
 
+  const phone = await phoneForOrder(prisma, order.id);
+  const charge = resolveMpesaCharge({
+    environment: client.config.environment,
+    orderAmountKsh: order.totalKsh,
+    phone
+  });
   const idempotencyKey = `mpesa:${order.id}:${Date.now()}`;
   const payment = await prisma.$transaction(async (tx) => {
     const created = await tx.payment.create({
       data: {
         orderId: order.id,
         status: PaymentStatus.PENDING,
-        amountKsh: order.totalKsh,
-        phone: order.sourceDraft?.customerId ? await phoneForOrder(tx, order.id) : "",
+        amountKsh: charge.amountKsh,
+        phone,
         idempotencyKey,
         expiresAt: order.sourceDraft!.expiresAt
       }
@@ -127,10 +138,9 @@ export async function initiateMpesaPayment(
     return created;
   });
 
-  const phone = payment.phone;
   try {
     const providerResponse = await client.initiateStkPush({
-      amountKsh: order.totalKsh,
+      amountKsh: payment.amountKsh,
       phone,
       orderNumber: order.orderNumber
     });
@@ -181,7 +191,7 @@ export async function getPaymentStatus(orderId: string, customerId: string): Pro
     orderNumber: order.orderNumber,
     orderStatus: order.status,
     paymentStatus: payment?.status ?? null,
-    amountKsh: order.totalKsh,
+    amountKsh: payment?.amountKsh ?? order.totalKsh,
     phone: payment?.phone ?? null,
     expiresAt: payment?.expiresAt?.toISOString() ?? order.sourceDraft?.expiresAt?.toISOString() ?? null,
     receiptNumber: payment?.providerReceiptNumber ?? null,
@@ -250,7 +260,13 @@ export async function handleMpesaCallback(body: unknown) {
   const activeDraft = order.sourceDraft?.status === CheckoutDraftStatus.ACTIVE
     && order.sourceDraft.expiresAt
     && order.sourceDraft.expiresAt.getTime() > Date.now();
-  const amountMatches = callback.amountKsh === payment.amountKsh && callback.amountKsh === order.totalKsh;
+  const amountMatches = callback.amountKsh === payment.amountKsh
+    && mpesaPaymentAmountMatchesOrder({
+      environment: mpesaConfigFromEnv().environment,
+      paymentAmountKsh: payment.amountKsh,
+      orderAmountKsh: order.totalKsh,
+      phone: payment.phone
+    });
 
   if (!activeDraft || !amountMatches || !callback.receiptNumber) {
     await prisma.$transaction(async (tx) => {
@@ -353,7 +369,7 @@ function paymentResultFromRecord(
   };
 }
 
-async function phoneForOrder(tx: Prisma.TransactionClient, orderId: string): Promise<string> {
+async function phoneForOrder(tx: Pick<Prisma.TransactionClient, "checkoutDraft">, orderId: string): Promise<string> {
   const draft = await tx.checkoutDraft.findUnique({
     where: { convertedOrderId: orderId },
     include: { customer: true }
@@ -419,6 +435,7 @@ function jsonValue(value: unknown): Prisma.InputJsonValue {
 
 export function paymentConfigurationErrorMessage(error: unknown): string {
   if (error instanceof MpesaConfigurationError) return "M-Pesa is not configured yet.";
+  if (error instanceof MpesaProductionGuardError) return error.message;
   if (error instanceof MpesaProviderError) return error.message;
   if (error instanceof PaymentValidationError || error instanceof PaymentConflictError) return error.message;
   return "M-Pesa payment could not be started. Please try again.";

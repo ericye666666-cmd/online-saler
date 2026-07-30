@@ -7,6 +7,7 @@ export type MpesaConfig = {
   shortcode: string;
   passkey: string;
   callbackBaseUrl: string;
+  callbackUrl?: string;
   transactionType: string;
   accountReferencePrefix: string;
   oauthUrl: string;
@@ -55,15 +56,18 @@ type StkResponse = {
 export type FetchLike = typeof fetch;
 
 export function mpesaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MpesaConfig {
-  const environment = env.MPESA_ENVIRONMENT === "production" ? "production" : "sandbox";
+  const environmentValue = env.MPESA_ENV?.trim() || env.MPESA_ENVIRONMENT?.trim();
+  const environment = environmentValue === "production" ? "production" : "sandbox";
   const baseUrl = environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+  const explicitCallbackUrl = env.MPESA_CALLBACK_URL?.trim() || undefined;
   const config: MpesaConfig = {
     environment,
     consumerKey: required(env.MPESA_CONSUMER_KEY, "MPESA_CONSUMER_KEY"),
     consumerSecret: required(env.MPESA_CONSUMER_SECRET, "MPESA_CONSUMER_SECRET"),
     shortcode: required(env.MPESA_SHORTCODE, "MPESA_SHORTCODE"),
     passkey: required(env.MPESA_PASSKEY, "MPESA_PASSKEY"),
-    callbackBaseUrl: required(env.MPESA_CALLBACK_BASE_URL ?? env.STOREFRONT_PUBLIC_URL, "MPESA_CALLBACK_BASE_URL"),
+    callbackBaseUrl: callbackBaseUrlFromEnv(env, explicitCallbackUrl),
+    callbackUrl: explicitCallbackUrl,
     transactionType: env.MPESA_TRANSACTION_TYPE?.trim() || "CustomerPayBillOnline",
     accountReferencePrefix: env.MPESA_ACCOUNT_REFERENCE_PREFIX?.trim() || "DLOOP",
     oauthUrl: env.MPESA_OAUTH_URL?.trim() || `${baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
@@ -74,7 +78,7 @@ export function mpesaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MpesaC
 
 export class MpesaClient {
   constructor(
-    private readonly config: MpesaConfig,
+    readonly config: MpesaConfig,
     private readonly fetchImpl: FetchLike = fetch
   ) {}
 
@@ -83,7 +87,7 @@ export class MpesaClient {
     const timestamp = mpesaTimestamp();
     const password = Buffer.from(`${this.config.shortcode}${this.config.passkey}${timestamp}`).toString("base64");
     const accountReference = mpesaAccountReference(this.config.accountReferencePrefix, input.orderNumber);
-    const callbackUrl = new URL("/api/payments/mpesa/callback", withTrailingSlash(this.config.callbackBaseUrl)).toString();
+    const callbackUrl = mpesaCallbackUrl(this.config);
 
     const payload = {
       BusinessShortCode: this.config.shortcode,
@@ -143,6 +147,17 @@ function required(value: string | undefined, name: string): string {
   const next = value?.trim();
   if (!next) throw new MpesaConfigurationError(`${name} is required for M-Pesa payments.`);
   return next;
+}
+
+function callbackBaseUrlFromEnv(env: NodeJS.ProcessEnv, explicitCallbackUrl: string | undefined): string {
+  const configuredBase = env.MPESA_CALLBACK_BASE_URL?.trim() || env.STOREFRONT_PUBLIC_URL?.trim();
+  if (configuredBase) return configuredBase;
+  if (explicitCallbackUrl) return new URL(explicitCallbackUrl).origin;
+  throw new MpesaConfigurationError("MPESA_CALLBACK_URL or MPESA_CALLBACK_BASE_URL is required for M-Pesa payments.");
+}
+
+export function mpesaCallbackUrl(config: Pick<MpesaConfig, "callbackBaseUrl" | "callbackUrl">): string {
+  return config.callbackUrl?.trim() || new URL("/api/payments/mpesa/callback", withTrailingSlash(config.callbackBaseUrl)).toString();
 }
 
 export function mpesaTimestamp(now = new Date()): string {
