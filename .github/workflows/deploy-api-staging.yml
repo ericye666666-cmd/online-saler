@@ -111,12 +111,46 @@ jobs:
             --quiet
 
       - name: Synchronize staging schema and seed test operator
+        id: synchronize_staging_schema
         run: |
-          gcloud run jobs execute "${MIGRATION_JOB_NAME}" \
+          set +e
+          OUTPUT="$(gcloud run jobs execute "${MIGRATION_JOB_NAME}" \
             --project "${{ vars.GCP_PROJECT_ID }}" \
             --region "${{ vars.GCP_REGION }}" \
             --wait \
-            --quiet
+            --quiet 2>&1)"
+          STATUS=$?
+          set -e
+
+          echo "${OUTPUT}"
+
+          EXECUTION_NAME="$(printf '%s\n' "${OUTPUT}" | sed -n 's/.*gcloud run jobs executions describe \([^[:space:]]*\).*/\1/p' | tail -n 1)"
+          if [ -n "${EXECUTION_NAME}" ]; then
+            echo "execution_name=${EXECUTION_NAME}" >> "${GITHUB_OUTPUT}"
+          fi
+
+          if [ "${STATUS}" -ne 0 ]; then
+            exit "${STATUS}"
+          fi
+
+      - name: Print staging schema job diagnostics
+        if: failure() && steps.synchronize_staging_schema.outputs.execution_name != ''
+        run: |
+          EXECUTION_NAME="${{ steps.synchronize_staging_schema.outputs.execution_name }}"
+          SINCE="$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+
+          echo "Cloud Run job execution: ${EXECUTION_NAME}"
+          gcloud run jobs executions describe "${EXECUTION_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --format yaml || true
+
+          echo "Recent Cloud Run job logs since ${SINCE}:"
+          gcloud logging read \
+            "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${MIGRATION_JOB_NAME}\" AND timestamp>=\"${SINCE}\"" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --limit 200 \
+            --format "table(timestamp,severity,textPayload,jsonPayload.message)" || true
 
       - name: Deploy Cloud Run service
         id: deploy
