@@ -248,6 +248,11 @@ jobs:
             "${SERVICE_URL}/public/products")"
           echo "${PUBLIC_PRODUCTS}" | grep -q '^\['
 
+          PUBLIC_FILTERS="$(curl --fail-with-body --silent --show-error \
+            "${SERVICE_URL}/public/products/filters")"
+          echo "${PUBLIC_FILTERS}" | grep -q '"categories"'
+          echo "${PUBLIC_FILTERS}" | grep -q '"total"'
+
       - name: Verify OpenAI image recognition
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"

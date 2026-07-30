@@ -33,6 +33,29 @@ export type PublicProduct = {
   defects: PublicDefect[];
 };
 
+export type PublicProductFilters = {
+  categories: string[];
+  colors: string[];
+  sizes: string[];
+  audiences: string[];
+  price: {
+    min: number | null;
+    max: number | null;
+  };
+  total: number;
+};
+
+export type PublicProductQuery = {
+  category?: string;
+  color?: string;
+  size?: string;
+  audience?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  sort?: string;
+  q?: string;
+};
+
 const API_PROXY_URL = "/api-proxy";
 
 export function productImageSrc(product: Pick<PublicProduct, "images">): string {
@@ -51,9 +74,27 @@ export function productMeta(product: PublicProduct): string {
     .join(" / ");
 }
 
-export async function fetchPublicProducts(apiUrl = process.env.API_URL ?? "http://localhost:4000"): Promise<PublicProduct[]> {
+export function publicProductQueryString(query: PublicProductQuery): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value?.trim()) params.set(key, value.trim());
+  }
+  const next = params.toString();
+  return next ? `?${next}` : "";
+}
+
+export function activeFilterCount(query: PublicProductQuery): number {
+  return ["category", "color", "size", "audience", "minPrice", "maxPrice", "q"]
+    .filter((key) => Boolean(query[key as keyof PublicProductQuery]?.trim()))
+    .length;
+}
+
+export async function fetchPublicProducts(
+  query: PublicProductQuery = {},
+  apiUrl = process.env.API_URL ?? "http://localhost:4000"
+): Promise<PublicProduct[]> {
   try {
-    const response = await fetch(`${apiUrl}/public/products`, {
+    const response = await fetch(`${apiUrl}/public/products${publicProductQueryString(query)}`, {
       cache: "no-store"
     });
     if (!response.ok) return [];
@@ -61,6 +102,18 @@ export async function fetchPublicProducts(apiUrl = process.env.API_URL ?? "http:
     return Array.isArray(body) ? (body as PublicProduct[]) : [];
   } catch {
     return [];
+  }
+}
+
+export async function fetchPublicProductFilters(apiUrl = process.env.API_URL ?? "http://localhost:4000"): Promise<PublicProductFilters> {
+  try {
+    const response = await fetch(`${apiUrl}/public/products/filters`, {
+      cache: "no-store"
+    });
+    if (!response.ok) return emptyFilters();
+    return (await response.json()) as PublicProductFilters;
+  } catch {
+    return emptyFilters();
   }
 }
 
@@ -74,4 +127,18 @@ export async function fetchPublicProduct(id: string, apiUrl = process.env.API_UR
   } catch {
     return null;
   }
+}
+
+function emptyFilters(): PublicProductFilters {
+  return {
+    categories: [],
+    colors: [],
+    sizes: [],
+    audiences: [],
+    price: {
+      min: null,
+      max: null
+    },
+    total: 0
+  };
 }
