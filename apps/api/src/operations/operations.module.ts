@@ -5,6 +5,10 @@ import { OperationsAccessController } from "./operations-access.controller";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsAffiliateController } from "./operations-affiliate.controller";
 import { OperationsAffiliateService } from "./operations-affiliate.service";
+import { OperationsAnalyticsController } from "./operations-analytics.controller";
+import { OperationsAnalyticsService } from "./operations-analytics.service";
+import { OperationsCustomerServiceController } from "./operations-customer-service.controller";
+import { OperationsCustomerServiceService } from "./operations-customer-service.service";
 import { OperationsFulfillmentController } from "./operations-fulfillment.controller";
 import { OperationsFulfillmentService } from "./operations-fulfillment.service";
 import { OperationsProductBatchController } from "./operations-product-batch.controller";
@@ -22,7 +26,9 @@ import { OperationsWorkspaceService } from "./operations-workspace.service";
     OperationsProductBatchController,
     OperationsProductControlController,
     OperationsFulfillmentController,
-    OperationsAffiliateController
+    OperationsAffiliateController,
+    OperationsAnalyticsController,
+    OperationsCustomerServiceController
   ],
   providers: [
     OperationsAccessService,
@@ -30,7 +36,9 @@ import { OperationsWorkspaceService } from "./operations-workspace.service";
     OperationsProductBatchService,
     OperationsProductControlService,
     OperationsFulfillmentService,
-    OperationsAffiliateService
+    OperationsAffiliateService,
+    OperationsAnalyticsService,
+    OperationsCustomerServiceService
   ]
 })
 export class OperationsModule {}

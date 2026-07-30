@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "node -e \"require('./dist/app.module.js'); console.log('api smoke ok')\" && node --import tsx --test src/product/product-domain.spec.ts src/ai/openai-vision-normalizer.spec.ts src/operations/operations-access-policy.spec.ts src/operations/operations-fulfillment-state.spec.ts",
+    "test": "node -e \"require('./dist/app.module.js'); console.log('api smoke ok')\" && node --import tsx --test src/product/product-domain.spec.ts src/ai/openai-vision-normalizer.spec.ts src/operations/operations-access-policy.spec.ts src/operations/operations-fulfillment-state.spec.ts src/operations/operations-analytics-service.spec.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

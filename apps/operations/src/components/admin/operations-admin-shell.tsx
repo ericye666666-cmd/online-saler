@@ -165,8 +165,13 @@ export const operationsModules: ModuleNav[] = [
     icon: HeadphonesIcon,
     permission: "module.customer-service",
     items: [
-      { label: "售后申请", icon: HeadphonesIcon, permission: "action.customer-service.view", badge: "Later" },
-      { label: "配送异常", icon: TruckIcon, permission: "action.customer-service.view" }
+      { label: "顾客搜索", href: "/customer-service", icon: SearchIcon, permission: "action.customer-service.view" },
+      { label: "订单查询", href: "/customer-service/orders", icon: BriefcaseBusinessIcon, permission: "action.customer-service.view" },
+      { label: "支付问题", href: "/customer-service/payments", icon: CircleDollarSignIcon, permission: "action.customer-service.view" },
+      { label: "自提问题", href: "/customer-service/pickup", icon: ClipboardCheckIcon, permission: "action.customer-service.view" },
+      { label: "配送问题", href: "/customer-service/delivery", icon: TruckIcon, permission: "action.customer-service.view" },
+      { label: "售后记录", href: "/customer-service/after-sales", icon: HeadphonesIcon, permission: "action.customer-service.view" },
+      { label: "备注与标签", href: "/customer-service/notes", icon: SettingsIcon, permission: "action.customer-service.view" }
     ]
   },
   {
@@ -175,8 +180,14 @@ export const operationsModules: ModuleNav[] = [
     icon: BarChart3Icon,
     permission: "module.analytics",
     items: [
-      { label: "经营看板", icon: BarChart3Icon, permission: "action.analytics.view", badge: "Later" },
-      { label: "商品漏斗", icon: LayoutDashboardIcon, permission: "action.analytics.view" }
+      { label: "销售概览", href: "/analytics", icon: BarChart3Icon, permission: "action.analytics.view" },
+      { label: "商品漏斗", href: "/analytics/product-funnel", icon: LayoutDashboardIcon, permission: "action.analytics.view" },
+      { label: "支付转化", href: "/analytics/payment-conversion", icon: CircleDollarSignIcon, permission: "action.analytics.view" },
+      { label: "库存售罄", href: "/analytics/inventory-sellout", icon: BoxesIcon, permission: "action.analytics.view" },
+      { label: "分类表现", href: "/analytics/category-performance", icon: PackageCheckIcon, permission: "action.analytics.view" },
+      { label: "推广者表现", href: "/analytics/affiliate-performance", icon: UsersIcon, permission: "action.analytics.view" },
+      { label: "退货与异常", href: "/analytics/returns-exceptions", icon: XCircleIcon, permission: "action.analytics.view" },
+      { label: "员工效率", href: "/analytics/employee-efficiency", icon: UserCogIcon, permission: "action.analytics.view" }
     ]
   },
   {
@@ -196,6 +207,8 @@ function moduleForPath(pathname: string): ModuleKey {
   if (pathname.startsWith("/warehouse")) return "warehouse";
   if (pathname.startsWith("/orders")) return "orders";
   if (pathname.startsWith("/affiliate")) return "affiliate";
+  if (pathname.startsWith("/customer-service")) return "service";
+  if (pathname.startsWith("/analytics")) return "analytics";
   if (pathname.startsWith("/system")) return "system";
   if (pathname.startsWith("/product") || pathname.startsWith("/control") || pathname.startsWith("/debug") || pathname === "/") return "product";
   return "product";
