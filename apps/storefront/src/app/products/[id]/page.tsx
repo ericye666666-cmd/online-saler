@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AddToCartButton } from "../../cart-actions";
 import {
   fetchPublicProduct,
   moneyKsh,
@@ -27,6 +28,7 @@ export default async function ProductPage(props: ProductPageProps) {
         <nav className="nav" aria-label="Storefront navigation">
           <Link href="/">New arrivals</Link>
           <span>Pickup Kikuyu</span>
+          <Link href="/cart">Cart</Link>
         </nav>
       </header>
 
@@ -98,9 +100,8 @@ export default async function ProductPage(props: ProductPageProps) {
             )}
           </div>
 
-          <button className="reserve-button" type="button" disabled>
-            Checkout coming next
-          </button>
+          <AddToCartButton product={product} />
+          <p className="checkout-note">Cart does not reserve this item. Stock is checked again before payment.</p>
         </section>
       </article>
     </main>

@@ -33,6 +33,7 @@ export default async function StorefrontHome(props: StorefrontHomeProps) {
           <span>New arrivals</span>
           <span>One piece each</span>
           <span>Pickup Kikuyu</span>
+          <Link href="/cart">Cart</Link>
         </nav>
       </header>
 
