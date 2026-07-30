@@ -175,6 +175,8 @@ model AdminUser {
   linkedEmployeeId   String?         @unique
   linkedEmployee     Employee?       @relation("AdminUserLinkedEmployee", fields: [linkedEmployeeId], references: [id], onDelete: SetNull)
   roles              UserRole[]
+  customerServiceCases CustomerServiceCase[] @relation("CustomerServiceCaseCreatedBy")
+  customerServiceNotes CustomerServiceNote[] @relation("CustomerServiceNoteAuthor")
   lastLoginAt        DateTime?
   lockedAt           DateTime?
   disabledAt         DateTime?
@@ -598,6 +600,22 @@ enum CommissionStatus {
   PAID
 }
 
+enum CustomerServiceCaseStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum CustomerServiceIssueType {
+  PAYMENT
+  PICKUP
+  DELIVERY
+  AFTER_SALE
+  ORDER
+  OTHER
+}
+
 model Customer {
   id                         String             @id @default(uuid())
   googleSubjectId            String             @unique
@@ -615,6 +633,8 @@ model Customer {
   orders                     Order[]
   affiliateClicks            AffiliateClick[]
   affiliateAttributions      AffiliateAttribution[]
+  customerServiceCases       CustomerServiceCase[]
+  customerServiceNotes       CustomerServiceNote[]
   createdAt                  DateTime           @default(now())
   updatedAt                  DateTime           @updatedAt
 
@@ -667,6 +687,8 @@ model Order {
   fulfillmentEvents FulfillmentEvent[]
   affiliateAttribution AffiliateAttribution?
   commission        Commission?
+  customerServiceCases CustomerServiceCase[]
+  customerServiceNotes CustomerServiceNote[]
   sourceDraft       CheckoutDraft?      @relation("CheckoutDraftConvertedOrder")
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -930,4 +952,48 @@ model Commission {
 
   @@index([affiliateId, status, createdAt])
   @@index([status, eligibleAt])
+}
+
+model CustomerServiceCase {
+  id                   String                    @id @default(uuid())
+  customerId           String?
+  orderId              String?
+  issueType            CustomerServiceIssueType  @default(OTHER)
+  status               CustomerServiceCaseStatus @default(OPEN)
+  title                String
+  description          String?
+  tags                 Json?
+  createdByAdminUserId String?
+  resolvedAt           DateTime?
+  customer             Customer?                 @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order                Order?                    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdByAdminUser   AdminUser?                @relation("CustomerServiceCaseCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
+  notes                CustomerServiceNote[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@index([status, issueType, updatedAt])
+  @@index([customerId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([createdByAdminUserId, createdAt])
+}
+
+model CustomerServiceNote {
+  id                String               @id @default(uuid())
+  caseId            String?
+  customerId        String?
+  orderId           String?
+  authorAdminUserId String?
+  body              String
+  tags              Json?
+  case              CustomerServiceCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  customer          Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order             Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  authorAdminUser   AdminUser?           @relation("CustomerServiceNoteAuthor", fields: [authorAdminUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime             @default(now())
+
+  @@index([caseId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([authorAdminUserId, createdAt])
 }
