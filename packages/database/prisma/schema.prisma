@@ -421,3 +421,141 @@ model ProductReview {
   @@index([productId, createdAt])
   @@index([reviewerEmployeeId])
 }
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum CheckoutDraftStatus {
+  ACTIVE
+  CONVERTED
+  ABANDONED
+  EXPIRED
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAYMENT_PROCESSING
+  PAID
+  CANCELLED
+  EXPIRED
+  FULFILLING
+  COMPLETED
+  REFUNDED
+}
+
+enum FulfillmentMethod {
+  PICKUP
+  KIKUYU_LOCAL_DELIVERY
+}
+
+enum OrderCurrency {
+  KES
+}
+
+model Customer {
+  id                         String             @id @default(uuid())
+  googleSubjectId            String             @unique
+  email                      String
+  normalizedEmail            String             @unique
+  emailVerified              Boolean            @default(false)
+  displayName                String?
+  avatarUrl                  String?
+  phone                      String?
+  defaultAddress             String?
+  preferredFulfillmentMethod FulfillmentMethod?
+  status                     CustomerStatus     @default(ACTIVE)
+  lastLoginAt                DateTime?
+  checkoutDrafts             CheckoutDraft[]
+  orders                     Order[]
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+
+  @@index([status, createdAt])
+  @@index([phone])
+}
+
+model CheckoutDraft {
+  id                String              @id @default(uuid())
+  customerId        String
+  status            CheckoutDraftStatus @default(ACTIVE)
+  fulfillmentMethod FulfillmentMethod    @default(PICKUP)
+  deliveryAddress   String?
+  deliveryNote      String?
+  itemSubtotalKsh   Int                 @default(0)
+  deliveryFeeKsh    Int                 @default(0)
+  totalKsh          Int                 @default(0)
+  currency          OrderCurrency       @default(KES)
+  expiresAt         DateTime?
+  convertedOrderId  String?             @unique
+  customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  convertedOrder    Order?              @relation("CheckoutDraftConvertedOrder", fields: [convertedOrderId], references: [id], onDelete: SetNull)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([customerId, status, updatedAt])
+  @@index([status, expiresAt])
+}
+
+model Order {
+  id                String              @id @default(uuid())
+  orderNumber       String              @unique
+  customerId        String
+  status            OrderStatus         @default(DRAFT)
+  fulfillmentMethod FulfillmentMethod
+  deliveryAddress   String?
+  deliveryNote      String?
+  itemSubtotalKsh   Int
+  deliveryFeeKsh    Int                 @default(0)
+  totalKsh          Int
+  currency          OrderCurrency       @default(KES)
+  customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items             OrderItem[]
+  sourceDraft       CheckoutDraft?      @relation("CheckoutDraftConvertedOrder")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id           String        @id @default(uuid())
+  orderId      String
+  productId    String
+  unitPriceKsh Int
+  quantity     Int           @default(1)
+  lineTotalKsh Int
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  snapshot     OrderSnapshot?
+  createdAt    DateTime      @default(now())
+
+  @@unique([orderId, productId])
+  @@index([productId])
+}
+
+model OrderSnapshot {
+  id             String         @id @default(uuid())
+  orderItemId    String         @unique
+  productCode    String
+  barcode        String?
+  title          String
+  category       String?
+  subcategory    String?
+  brand          String?
+  color          String?
+  sizeLabel      String?
+  conditionGrade ConditionGrade?
+  imageUrl       String?
+  measurements   Json?
+  defects        Json?
+  unitPriceKsh   Int
+  orderItem      OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  createdAt      DateTime       @default(now())
+
+  @@index([productCode])
+  @@index([barcode])
+}
