@@ -42,7 +42,7 @@ const missingMeasurements = workspaceReadiness({ product, image, job, form: from
 assert.equal(missingMeasurements.hasAi, true);
 assert.equal(missingMeasurements.canSaveAndNext, false);
 
-const completeForm = { ...fromAi, lengthCm: "92", chestWidthCm: "48", conditionGrade: "GOOD" };
+const completeForm = { ...fromAi, lengthCm: "92", chestWidthCm: "48", conditionGrade: "GOOD", defects: "None" };
 const ready = workspaceReadiness({ product, image, job, form: completeForm });
 assert.equal(ready.canSaveAndNext, true);
 assert.equal(ready.label, "Ready to save");
@@ -77,7 +77,15 @@ const kidsForm = {
 };
 const missingKidsAge = workspaceReadiness({ product, image, job, form: kidsForm });
 assert.equal(missingKidsAge.canSaveAndNext, false);
-assert.equal(missingKidsAge.label, "Add kids age");
+assert.equal(missingKidsAge.label, "Check required fields");
+assert.equal(missingKidsAge.reasons.length, 1);
+
+const noDefectsBody = buildCalibrationBody({
+  employeeId: "employee-1",
+  extractionId: "ai-1",
+  form: completeForm
+});
+assert.deepEqual(noDefectsBody.defects, []);
 
 assert.throws(() =>
   buildCalibrationBody({

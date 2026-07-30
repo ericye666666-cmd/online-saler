@@ -57,6 +57,12 @@ enum ProductStatus {
   ARCHIVED
 }
 
+enum ProductBatchStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
 enum ProductImageType {
   FRONT
   BACK
@@ -144,6 +150,7 @@ model Employee {
   reviewedMeasurements       ProductMeasurement[] @relation("ProductMeasurementReviewedBy")
   reviewedAIFieldDecisions   AIFieldDecision[]    @relation("AIFieldDecisionReviewedBy")
   productReviews             ProductReview[]      @relation("ProductReviewReviewer")
+  createdProductBatches      ProductBatch[]        @relation("ProductBatchCreatedBy")
   inventoryItemsCreated      InventoryItem[]      @relation("InventoryItemCreatedBy")
   inventoryMovements         InventoryMovement[]  @relation("InventoryMovementEmployee")
   adminUser                  AdminUser?           @relation("AdminUserLinkedEmployee")
@@ -261,6 +268,8 @@ model SystemSetting {
 model Product {
   id                   String               @id @default(uuid())
   productCode          String               @unique
+  batchId              String?
+  batchItemNumber      Int?
   barcode              String?              @unique
   status               ProductStatus        @default(DRAFT)
   title                String?
@@ -279,6 +288,7 @@ model Product {
   approvedByEmployeeId String?
   createdBy            Employee?            @relation("ProductCreatedBy", fields: [createdByEmployeeId], references: [id])
   approvedBy           Employee?            @relation("ProductApprovedBy", fields: [approvedByEmployeeId], references: [id])
+  batch                ProductBatch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
   images               ProductImage[]
   measurements         ProductMeasurement[]
   aiExtractions        AIExtraction[]
@@ -292,10 +302,28 @@ model Product {
   updatedAt            DateTime             @updatedAt
 
   @@index([status, publishedAt])
+  @@index([batchId, batchItemNumber])
   @@index([category, finalSizeLabel, priceKsh])
   @@index([category, subcategory])
   @@index([gender, kidsAgeRange])
   @@index([conditionGrade])
+  @@unique([batchId, batchItemNumber])
+}
+
+model ProductBatch {
+  id                  String             @id @default(uuid())
+  batchCode           String             @unique
+  status              ProductBatchStatus @default(OPEN)
+  targetCount         Int                @default(10)
+  createdByEmployeeId String?
+  createdBy           Employee?          @relation("ProductBatchCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  products            Product[]
+  note                String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([status, createdAt])
+  @@index([createdByEmployeeId])
 }
 
 model WarehouseLocation {

@@ -397,6 +397,22 @@ export class OperationsProductControlService {
     if (!product.barcode) {
       throw new BadRequestException("Generate barcode before publishing.");
     }
+    if (!product.title?.trim()) {
+      throw new BadRequestException("Confirm the title before publishing.");
+    }
+    if (!product.category?.trim()) {
+      throw new BadRequestException("Confirm the category before publishing.");
+    }
+    if (!product.finalSizeLabel?.trim()) {
+      throw new BadRequestException("Confirm the size label before publishing.");
+    }
+    if (!product.conditionGrade) {
+      throw new BadRequestException("Confirm the condition before publishing.");
+    }
+    if (!product.measurements.some((measurement) => measurement.measurementType === "LENGTH" && measurement.finalValueCm) ||
+        !product.measurements.some((measurement) => measurement.measurementType === "CHEST_WIDTH" && measurement.finalValueCm)) {
+      throw new BadRequestException("Confirm length and chest measurements before publishing.");
+    }
     if (!product.priceKsh || product.priceKsh <= 0) {
       throw new BadRequestException("Set the price before publishing.");
     }
@@ -422,6 +438,12 @@ export class OperationsProductControlService {
       images: {
         orderBy: { createdAt: "desc" },
         take: 1
+      },
+      measurements: {
+        orderBy: { measurementType: "asc" }
+      },
+      defects: {
+        orderBy: { createdAt: "asc" }
       },
       inventoryItem: {
         include: { location: true }

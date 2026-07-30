@@ -216,6 +216,8 @@ class InMemoryProductRepository implements ProductRepository {
     const product: ProductRecord = {
       id: `product-${this.sequence++}`,
       productCode,
+      batchId: null,
+      batchItemNumber: null,
       barcode,
       status,
       title: null,

@@ -22,7 +22,8 @@ import {
   TruckIcon,
   UploadIcon,
   UserCogIcon,
-  UsersIcon
+  UsersIcon,
+  XCircleIcon
 } from "lucide-react";
 
 import {
@@ -95,13 +96,16 @@ export const operationsModules: ModuleNav[] = [
     icon: PackageCheckIcon,
     permission: "module.product",
     items: [
-      { label: "商品数字化", href: "/", icon: LayoutDashboardIcon, permission: "page.product.digitalization", badge: "Live" },
-      { label: "上传", href: "/", icon: UploadIcon, permission: "page.product.digitalization" },
-      { label: "AI识别", href: "/", icon: SparklesIcon, permission: "page.product.digitalization" },
-      { label: "人工校准", href: "/", icon: ClipboardCheckIcon, permission: "page.product.digitalization" },
-      { label: "审核", href: "/control", icon: ShieldCheckIcon, permission: "page.product.control" },
-      { label: "发布", href: "/control", icon: PackageCheckIcon, permission: "page.product.control" },
-      { label: "Barcode", href: "/control", icon: ScanBarcodeIcon, permission: "page.product.control" }
+      { label: "商品工作台", href: "/", icon: LayoutDashboardIcon, permission: "page.product.digitalization", badge: "Live" },
+      { label: "新建批次", href: "/product/new-batch", icon: PackageCheckIcon, permission: "page.product.digitalization" },
+      { label: "待上传", href: "/product/waiting-upload", icon: UploadIcon, permission: "page.product.digitalization" },
+      { label: "待 AI 识别", href: "/product/waiting-ai", icon: SparklesIcon, permission: "page.product.digitalization" },
+      { label: "待人工校准", href: "/product/calibration", icon: ClipboardCheckIcon, permission: "page.product.digitalization" },
+      { label: "待审核", href: "/product/review", icon: ShieldCheckIcon, permission: "page.product.control" },
+      { label: "已发布", href: "/product/published", icon: PackageCheckIcon, permission: "page.product.control" },
+      { label: "已拒绝", href: "/product/rejected", icon: XCircleIcon, permission: "page.product.control" },
+      { label: "Barcode", href: "/product/barcode", icon: ScanBarcodeIcon, permission: "page.product.control" },
+      { label: "分类与属性", href: "/product/taxonomy", icon: SettingsIcon, permission: "page.product.control" }
     ]
   },
   {
@@ -170,13 +174,22 @@ export const operationsModules: ModuleNav[] = [
 
 function moduleForPath(pathname: string): ModuleKey {
   if (pathname.startsWith("/system")) return "system";
-  if (pathname.startsWith("/control") || pathname.startsWith("/debug") || pathname === "/") return "product";
+  if (pathname.startsWith("/product") || pathname.startsWith("/control") || pathname.startsWith("/debug") || pathname === "/") return "product";
   return "product";
 }
 
 function sectionForPath(pathname: string): string {
   if (pathname.startsWith("/control")) return "商品控制";
   if (pathname.startsWith("/debug")) return "调试工具";
+  if (pathname.startsWith("/product/new-batch")) return "新建批次";
+  if (pathname.startsWith("/product/waiting-upload")) return "待上传";
+  if (pathname.startsWith("/product/waiting-ai")) return "待 AI 识别";
+  if (pathname.startsWith("/product/calibration")) return "待人工校准";
+  if (pathname.startsWith("/product/review")) return "待审核";
+  if (pathname.startsWith("/product/published")) return "已发布";
+  if (pathname.startsWith("/product/rejected")) return "已拒绝";
+  if (pathname.startsWith("/product/barcode")) return "Barcode";
+  if (pathname.startsWith("/product/taxonomy")) return "分类与属性";
   if (pathname.startsWith("/system/roles")) return "角色管理";
   if (pathname.startsWith("/system/permissions")) return "权限管理";
   if (pathname.startsWith("/system/accounts")) return "账号管理";
