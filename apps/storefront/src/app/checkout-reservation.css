@@ -1,0 +1,54 @@
+.reservation-confirmation {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #b9d9ca;
+  border-radius: 10px;
+  background: #f2fbf6;
+  padding: 18px;
+}
+
+.reservation-confirmation strong {
+  color: #147d43;
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.reservation-confirmation span {
+  color: #205f3c;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.reservation-confirmation p,
+.checkout-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.reservation-confirmation p {
+  color: #53665b;
+}
+
+.checkout-error {
+  border: 1px solid #efb0a8;
+  border-radius: 8px;
+  background: #fff1ef;
+  color: #9d2d20;
+  padding: 11px 12px;
+}
+
+.checkout-form textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.reserve-button:not(:disabled) {
+  cursor: pointer;
+}
+
+.reserve-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}

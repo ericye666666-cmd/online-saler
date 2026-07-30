@@ -1,5 +1,6 @@
 import "./globals.css";
 import "./customer-auth.css";
+import "./checkout-reservation.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
