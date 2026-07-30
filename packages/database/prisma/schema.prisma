@@ -103,6 +103,7 @@ enum InventoryItemStatus {
   PENDING_STOCK_IN
   AVAILABLE
   RESERVED
+  PAID
   PICKED
   PACKED
   DELIVERED
@@ -456,6 +457,27 @@ enum OrderCurrency {
   KES
 }
 
+enum PaymentProvider {
+  MPESA
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  TIMEOUT
+  EXPIRED
+  MANUAL_REVIEW
+}
+
+enum MpesaCallbackProcessingStatus {
+  APPLIED
+  DUPLICATE
+  IGNORED
+  MANUAL_REVIEW
+}
+
 model Customer {
   id                         String             @id @default(uuid())
   googleSubjectId            String             @unique
@@ -514,6 +536,7 @@ model Order {
   currency          OrderCurrency       @default(KES)
   customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items             OrderItem[]
+  payments          Payment[]
   sourceDraft       CheckoutDraft?      @relation("CheckoutDraftConvertedOrder")
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -558,4 +581,55 @@ model OrderSnapshot {
 
   @@index([productCode])
   @@index([barcode])
+}
+
+model Payment {
+  id                        String          @id @default(uuid())
+  orderId                   String
+  provider                  PaymentProvider @default(MPESA)
+  status                    PaymentStatus   @default(PENDING)
+  amountKsh                 Int
+  currency                  OrderCurrency   @default(KES)
+  phone                     String
+  idempotencyKey            String          @unique
+  providerMerchantRequestId String?
+  providerCheckoutRequestId String?         @unique
+  providerReceiptNumber     String?         @unique
+  providerResultCode        Int?
+  providerResultDescription String?
+  providerResponseJson      Json?
+  requestedAt               DateTime        @default(now())
+  expiresAt                 DateTime?
+  completedAt               DateTime?
+  order                     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  callbacks                 MpesaCallback[]
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+
+  @@index([orderId, status])
+  @@index([status, requestedAt])
+  @@index([phone, status])
+  @@index([providerMerchantRequestId])
+}
+
+model MpesaCallback {
+  id                        String                         @id @default(uuid())
+  paymentId                 String?
+  orderId                   String?
+  providerMerchantRequestId String?
+  providerCheckoutRequestId String                         @unique
+  resultCode                Int
+  resultDescription         String?
+  amountKsh                 Int?
+  mpesaReceiptNumber        String?
+  phone                     String?
+  transactionDate           DateTime?
+  processingStatus          MpesaCallbackProcessingStatus
+  rawJson                   Json
+  payment                   Payment?                       @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt                 DateTime                       @default(now())
+
+  @@index([paymentId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([mpesaReceiptNumber])
 }

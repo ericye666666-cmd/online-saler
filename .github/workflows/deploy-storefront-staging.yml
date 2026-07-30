@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/storefront/**"
       - "packages/business-rules/**"
+      - "packages/database/**"
       - "packages/shared-types/**"
       - "package.json"
       - "package-lock.json"
@@ -23,6 +24,8 @@ permissions:
 env:
   IMAGE_NAME: storefront
   SERVICE_NAME: online-saler-storefront-staging
+  STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
+  STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
 
 jobs:
   deploy:
@@ -62,6 +65,18 @@ jobs:
 
           echo "API_URL=${API_URL}" >> "${GITHUB_ENV}"
 
+      - name: Resolve staging Storefront URL
+        run: |
+          STOREFRONT_PUBLIC_URL="$(gcloud run services describe "${SERVICE_NAME}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --format "value(status.url)" 2>/dev/null || true)"
+
+          if [ -z "${STOREFRONT_PUBLIC_URL}" ]; then
+            STOREFRONT_PUBLIC_URL="https://${SERVICE_NAME}-${{ vars.GCP_PROJECT_NUMBER }}.${{ vars.GCP_REGION }}.run.app"
+          fi
+
+          echo "STOREFRONT_PUBLIC_URL=${STOREFRONT_PUBLIC_URL}" >> "${GITHUB_ENV}"
+
       - name: Build Docker image
         run: |
           IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${IMAGE_NAME}:${GITHUB_SHA}"
@@ -90,9 +105,25 @@ jobs:
             --cpu=1
             --min-instances=0
             --max-instances=2
+            --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
+            --add-cloudsql-instances=${{ env.STAGING_CLOUD_SQL_INSTANCE }}
           env_vars: |
             NODE_ENV=staging
             API_URL=${{ env.API_URL }}
+            STOREFRONT_PUBLIC_URL=${{ env.STOREFRONT_PUBLIC_URL }}
+            GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID_STAGING }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET_STAGING }}
+            CUSTOMER_SESSION_SECRET=${{ secrets.CUSTOMER_SESSION_SECRET_STAGING }}
+            MPESA_ENVIRONMENT=sandbox
+            MPESA_CALLBACK_BASE_URL=${{ env.STOREFRONT_PUBLIC_URL }}
+            MPESA_CONSUMER_KEY=${{ secrets.MPESA_CONSUMER_KEY_STAGING }}
+            MPESA_CONSUMER_SECRET=${{ secrets.MPESA_CONSUMER_SECRET_STAGING }}
+            MPESA_SHORTCODE=${{ vars.MPESA_SHORTCODE_STAGING }}
+            MPESA_PASSKEY=${{ secrets.MPESA_PASSKEY_STAGING }}
+            MPESA_TRANSACTION_TYPE=CustomerPayBillOnline
+            MPESA_ACCOUNT_REFERENCE_PREFIX=DLOOP
+          secrets: |
+            DATABASE_URL=STAGING_DATABASE_URL:latest
 
       - name: Verify Storefront page
         run: |

@@ -4,6 +4,7 @@ import {
   FulfillmentMethod,
   InventoryItemStatus,
   OrderStatus,
+  PaymentStatus,
   ProductStatus,
   prisma
 } from "@online-saler/database";
@@ -208,8 +209,12 @@ export async function releaseExpiredReservations(now = new Date()) {
       if (expired.count !== 1 || !draft.convertedOrder) return;
 
       await tx.order.updateMany({
-        where: { id: draft.convertedOrder.id, status: OrderStatus.PENDING_PAYMENT },
+        where: { id: draft.convertedOrder.id, status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] } },
         data: { status: OrderStatus.EXPIRED }
+      });
+      await tx.payment.updateMany({
+        where: { orderId: draft.convertedOrder.id, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.EXPIRED, completedAt: now }
       });
       for (const item of draft.convertedOrder.items) {
         const result = await tx.inventoryItem.updateMany({
