@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { DataTable } from "@/components/admin/data-table";
+import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,7 +66,6 @@ import {
   buildCalibrationBody,
   formFromProductAndAi,
   normalizedAiOutput,
-  STAGING_TEST_EMPLOYEE_ID,
   stringValue,
   workspaceReadiness,
   type JsonRecord,
@@ -128,13 +128,14 @@ async function request(path: string, options?: RequestInit): Promise<JsonRecord>
   return body;
 }
 
-async function uploadProductImage(productId: string, employeeId: string, file: File): Promise<JsonRecord> {
+async function uploadProductImage(productId: string, employeeId: string, adminUserId: string, file: File): Promise<JsonRecord> {
   const response = await fetch(`${API_PROXY_URL}/products/${productId}/images/upload`, {
     method: "POST",
     headers: {
       "Content-Type": file.type,
       "X-Image-Type": "FRONT",
-      "X-Employee-Id": employeeId
+      "X-Employee-Id": employeeId,
+      "X-Admin-User-Id": adminUserId
     },
     body: file
   });
@@ -176,7 +177,11 @@ function aiField(job: JsonRecord | null, key: string): { value: string; confiden
 }
 
 export default function OperationsWorkspace() {
-  const employeeId = STAGING_TEST_EMPLOYEE_ID;
+  const { session, hasPermission } = useOperationsSession();
+  const adminUserId = stringValue(session?.adminUser?.id);
+  const employeeId = stringValue(session?.adminUser?.linkedEmployeeId);
+  const canCreateProduct = hasPermission("action.product.create");
+  const canEditProduct = hasPermission("action.product.edit");
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState<"dashboard" | "workspace">("dashboard");
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null);
@@ -232,10 +237,11 @@ export default function OperationsWorkspace() {
   );
 
   const loadSummary = useCallback(async () => {
-    const next = (await request(`/operations/workspace/summary?employeeId=${employeeId}`)) as WorkspaceSummary;
+    const query = new URLSearchParams({ employeeId, adminUserId });
+    const next = (await request(`/operations/workspace/summary?${query.toString()}`)) as WorkspaceSummary;
     setSummary(next);
     return next;
-  }, [employeeId]);
+  }, [adminUserId, employeeId]);
 
   const applyWorkspacePayload = useCallback((payload: JsonRecord | null) => {
     const nextProduct = objectRecord(payload?.product);
@@ -267,13 +273,13 @@ export default function OperationsWorkspace() {
   }, []);
 
   const loadActive = useCallback(async (productId?: string | null) => {
-    const query = new URLSearchParams({ employeeId });
+    const query = new URLSearchParams({ employeeId, adminUserId });
     if (productId) query.set("productId", productId);
     const payload = await request(`/operations/workspace/active?${query.toString()}`);
     if (payload.product) {
       applyWorkspacePayload(payload);
     }
-  }, [applyWorkspacePayload, employeeId]);
+  }, [adminUserId, applyWorkspacePayload, employeeId]);
 
   useEffect(() => {
     async function boot() {
@@ -310,7 +316,7 @@ export default function OperationsWorkspace() {
   async function startWork() {
     const payload = await request("/operations/workspace/start", {
       method: "POST",
-      body: JSON.stringify({ employeeId })
+      body: JSON.stringify({ employeeId, adminUserId })
     });
     applyWorkspacePayload(payload);
     await loadSummary();
@@ -326,11 +332,12 @@ export default function OperationsWorkspace() {
 
     setPreviewUrl(URL.createObjectURL(file));
     await run("photo", async () => {
-      const uploaded = await uploadProductImage(stringValue(product.id), employeeId, file);
+      const uploaded = await uploadProductImage(stringValue(product.id), employeeId, adminUserId, file);
       setImage(uploaded);
       const recognized = await request("/ai-jobs", {
         method: "POST",
         body: JSON.stringify({
+          adminUserId,
           productId: product.id,
           imageIds: [uploaded.id],
           promptVersion: "product-v1"
@@ -349,11 +356,11 @@ export default function OperationsWorkspace() {
 
     const calibrated = await request(`/products/${product.id}/calibrate`, {
       method: "POST",
-      body: JSON.stringify(buildCalibrationBody({ employeeId, extractionId: extraction, form }))
+      body: JSON.stringify({ ...buildCalibrationBody({ employeeId, extractionId: extraction, form }), adminUserId })
     });
     const barcoded = await request(`/products/${product.id}/barcode`, {
       method: "POST",
-      body: JSON.stringify({ employeeId })
+      body: JSON.stringify({ employeeId, adminUserId })
     });
 
     setProduct(barcoded);
@@ -551,7 +558,7 @@ export default function OperationsWorkspace() {
               {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
             </CardContent>
             <CardFooter>
-              <Button className="w-full" disabled={Boolean(busy)} onClick={() => run("start", startWork)}>
+              <Button className="w-full" disabled={Boolean(busy) || !canCreateProduct} onClick={() => run("start", startWork)}>
                 {busy === "start" ? "正在打开..." : summary?.activeProductId ? "继续工作" : "开始工作"}
               </Button>
             </CardFooter>
@@ -583,7 +590,7 @@ export default function OperationsWorkspace() {
                   </div>
                 )}
               </div>
-              <Button asChild variant="outline" disabled={Boolean(busy) || Boolean(completedProduct)}>
+              <Button asChild variant="outline" disabled={Boolean(busy) || Boolean(completedProduct) || !canEditProduct}>
                 <label className="cursor-pointer">
                   <UploadIcon data-icon="inline-start" />
                   {busy === "photo" ? "正在上传并识别..." : currentImageUrl ? "重新上传" : "上传照片"}
@@ -592,7 +599,7 @@ export default function OperationsWorkspace() {
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     capture="environment"
-                    disabled={Boolean(busy) || Boolean(completedProduct)}
+                    disabled={Boolean(busy) || Boolean(completedProduct) || !canEditProduct}
                     onChange={(event) => void choosePhoto(event.target.files?.[0] ?? null)}
                   />
                 </label>
@@ -751,7 +758,7 @@ export default function OperationsWorkspace() {
             </CardContent>
             <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row sm:justify-between">
               <Button
-                disabled={!readiness.canSaveAndNext || Boolean(busy) || Boolean(completedProduct)}
+                disabled={!readiness.canSaveAndNext || Boolean(busy) || Boolean(completedProduct) || !canEditProduct}
                 onClick={() => run("save", saveAndNext)}
               >
                 <CheckCircle2Icon data-icon="inline-start" />
@@ -783,7 +790,7 @@ export default function OperationsWorkspace() {
                 <NativeSelectOption value="40x30">40x30</NativeSelectOption>
               </NativeSelect>
             </FormField>
-            <Button disabled={!completedProduct || Boolean(busy)} onClick={() => run("print", printLabel)}>
+            <Button disabled={!completedProduct || Boolean(busy) || !canEditProduct} onClick={() => run("print", printLabel)}>
               <PrinterIcon data-icon="inline-start" />
               {busy === "print" ? "正在打印..." : "打印标签"}
             </Button>

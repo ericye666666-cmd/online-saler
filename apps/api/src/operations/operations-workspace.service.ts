@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ProductStatus, prisma } from "@online-saler/database";
+import { OperationsAccessService } from "./operations-access.service";
 
 export const STAGING_TEST_EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
+const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
+const PRODUCT_CREATE_ACTION = "action.product.create";
 
 const ACTIVE_PRODUCT_STATUSES = [
   ProductStatus.DRAFT,
@@ -27,8 +30,11 @@ function productCode(): string {
 
 @Injectable()
 export class OperationsWorkspaceService {
-  async summary(employeeId?: string) {
+  constructor(private readonly access: OperationsAccessService) {}
+
+  async summary(employeeId?: string, adminUserId?: string) {
     const operatorId = employeeIdOrDefault(employeeId);
+    await this.access.requirePermission(adminUserId, PRODUCT_DIGITALIZE_PAGE);
     const today = startOfToday();
 
     const [waitingPhoto, waitingAi, waitingCalibration, completedToday, active] =
@@ -71,8 +77,9 @@ export class OperationsWorkspaceService {
     };
   }
 
-  async active(employeeId?: string, productId?: string) {
+  async active(employeeId?: string, adminUserId?: string, productId?: string) {
     const operatorId = employeeIdOrDefault(employeeId);
+    await this.access.requirePermission(adminUserId, PRODUCT_DIGITALIZE_PAGE);
     const product = productId
       ? await this.findProductDetail(productId, operatorId)
       : await this.findActiveProduct(operatorId);
@@ -85,8 +92,9 @@ export class OperationsWorkspaceService {
     };
   }
 
-  async start(employeeId?: string) {
+  async start(employeeId?: string, adminUserId?: string) {
     const operatorId = employeeIdOrDefault(employeeId);
+    await this.access.requirePermission(adminUserId, PRODUCT_CREATE_ACTION);
     const active = await this.findActiveProduct(operatorId);
     if (active) {
       return {

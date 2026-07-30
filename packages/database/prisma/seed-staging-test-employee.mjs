@@ -1,25 +1,265 @@
+import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const employee = {
+const modules = ["product", "warehouse", "orders", "affiliate", "customer-service", "analytics", "system"];
+const actions = ["view", "create", "edit", "approve", "publish", "delete", "export", "manage-users", "manage-roles"];
+
+const permissions = [
+  ...modules.map((module) => ({
+    code: `module.${module}`,
+    module,
+    scope: "MODULE",
+    description: `Access ${module} module.`
+  })),
+  {
+    code: "page.product.digitalization",
+    module: "product",
+    scope: "PAGE",
+    page: "product-digitalization",
+    action: "view",
+    description: "Open the product digitization workspace."
+  },
+  {
+    code: "page.product.control",
+    module: "product",
+    scope: "PAGE",
+    page: "product-control",
+    action: "view",
+    description: "Open product review, pricing, warehouse placement, and publish controls."
+  },
+  {
+    code: "page.system.accounts",
+    module: "system",
+    scope: "PAGE",
+    page: "accounts",
+    action: "view",
+    description: "Open admin account management."
+  },
+  {
+    code: "page.system.roles",
+    module: "system",
+    scope: "PAGE",
+    page: "roles",
+    action: "view",
+    description: "Open role management."
+  },
+  {
+    code: "page.system.permissions",
+    module: "system",
+    scope: "PAGE",
+    page: "permissions",
+    action: "view",
+    description: "Open permission matrix."
+  },
+  ...modules.flatMap((module) =>
+    actions.map((action) => ({
+      code: `action.${module}.${action}`,
+      module,
+      scope: "ACTION",
+      action,
+      description: `Allow ${action} operation in ${module}.`
+    }))
+  )
+];
+
+const allPermissionCodes = permissions.map((permission) => permission.code);
+const readAllModules = modules.flatMap((module) => [`module.${module}`, `action.${module}.view`]);
+
+function unique(codes) {
+  return [...new Set(codes)].sort();
+}
+
+const roles = [
+  {
+    code: "SUPER_ADMIN",
+    name: "Super Admin",
+    description: "Full system administration access.",
+    permissions: allPermissionCodes
+  },
+  {
+    code: "PROJECT_MANAGER",
+    name: "Project Manager",
+    description: "Manage daily operation flow without changing system users or roles.",
+    permissions: unique([
+      ...readAllModules,
+      "page.product.digitalization",
+      "page.product.control",
+      "action.product.edit",
+      "action.product.approve",
+      "action.product.publish",
+      "action.warehouse.edit",
+      "action.orders.edit",
+      "action.analytics.export"
+    ])
+  },
+  {
+    code: "PRODUCT_DIGITIZATION",
+    name: "Product Digitization",
+    description: "Upload, AI review, manual calibration, barcode, and product publishing work.",
+    permissions: [
+      "module.product",
+      "page.product.digitalization",
+      "page.product.control",
+      "action.product.view",
+      "action.product.create",
+      "action.product.edit",
+      "action.product.approve",
+      "action.product.publish"
+    ]
+  },
+  {
+    code: "WAREHOUSE_FULFILLMENT",
+    name: "Warehouse & Fulfillment",
+    description: "Warehouse stock-in, picking, packing, and handoff work.",
+    permissions: ["module.warehouse", "module.orders", "action.warehouse.view", "action.warehouse.create", "action.warehouse.edit", "action.warehouse.approve", "action.orders.view"]
+  },
+  {
+    code: "ORDER_OPERATIONS",
+    name: "Order Operations",
+    description: "Order review, payment status follow-up, and order exception handling.",
+    permissions: ["module.orders", "action.orders.view", "action.orders.edit", "action.orders.approve", "action.orders.export"]
+  },
+  {
+    code: "AFFILIATE_OPERATIONS",
+    name: "Affiliate Operations",
+    description: "Affiliate attribution and commission operation.",
+    permissions: ["module.affiliate", "action.affiliate.view", "action.affiliate.edit", "action.affiliate.approve", "action.affiliate.export"]
+  },
+  {
+    code: "CUSTOMER_SERVICE",
+    name: "Customer Service",
+    description: "Customer support, return intake, and delivery exception handling.",
+    permissions: ["module.customer-service", "module.orders", "action.customer-service.view", "action.customer-service.create", "action.customer-service.edit", "action.orders.view"]
+  },
+  {
+    code: "FINANCE",
+    name: "Finance",
+    description: "Payment, payout, commission, and export access.",
+    permissions: ["module.orders", "module.affiliate", "module.analytics", "action.orders.view", "action.orders.export", "action.affiliate.view", "action.affiliate.approve", "action.affiliate.export", "action.analytics.view", "action.analytics.export"]
+  },
+  {
+    code: "DATA_ANALYST",
+    name: "Data Analyst",
+    description: "Read and export operational analytics.",
+    permissions: unique([...readAllModules, "action.analytics.export"])
+  }
+];
+
+const linkedEmployee = {
   id: "00000000-0000-4000-8000-000000000001",
   employeeCode: "STAGING-TEST-001",
-  name: "Staging Test Operator",
+  name: "Staging Product Operator",
   status: "ACTIVE"
 };
 
+const superAdmin = {
+  id: "00000000-0000-4000-9000-000000000043",
+  loginAccount: "superadmin",
+  email: "superadmin@online-saler.local",
+  name: "Staging Super Admin",
+  phone: "+254700000043",
+  status: "ACTIVE",
+  roleCode: "SUPER_ADMIN",
+  password: process.env.OPERATIONS_SUPER_ADMIN_PASSWORD || "ChangeMe43!"
+};
+
+function hashPassword(password, salt = randomBytes(16).toString("hex")) {
+  const digest = pbkdf2Sync(password, salt, 120000, 32, "sha256").toString("hex");
+  return `pbkdf2_sha256$120000$${salt}$${digest}`;
+}
+
 try {
-  const result = await prisma.employee.upsert({
-    where: { employeeCode: employee.employeeCode },
+  for (const permission of permissions) {
+    await prisma.permission.upsert({
+      where: { code: permission.code },
+      update: {
+        module: permission.module,
+        scope: permission.scope,
+        page: permission.page,
+        action: permission.action,
+        description: permission.description
+      },
+      create: permission
+    });
+  }
+
+  for (const role of roles) {
+    const savedRole = await prisma.role.upsert({
+      where: { code: role.code },
+      update: {
+        name: role.name,
+        description: role.description
+      },
+      create: {
+        code: role.code,
+        name: role.name,
+        description: role.description
+      }
+    });
+
+    await prisma.rolePermission.deleteMany({ where: { roleId: savedRole.id } });
+    for (const permissionCode of role.permissions) {
+      const permission = await prisma.permission.findUnique({ where: { code: permissionCode } });
+      if (!permission) continue;
+      await prisma.rolePermission.create({
+        data: {
+          roleId: savedRole.id,
+          permissionId: permission.id
+        }
+      });
+    }
+  }
+
+  const employee = await prisma.employee.upsert({
+    where: { employeeCode: linkedEmployee.employeeCode },
     update: {
-      name: employee.name,
-      status: employee.status
+      name: linkedEmployee.name,
+      status: linkedEmployee.status
     },
-    create: employee
+    create: linkedEmployee
   });
 
-  console.log(`Staging test employee ready: ${result.id}`);
+  const adminUser = await prisma.adminUser.upsert({
+    where: { loginAccount: superAdmin.loginAccount },
+    update: {
+      name: superAdmin.name,
+      email: superAdmin.email,
+      phone: superAdmin.phone,
+      status: superAdmin.status,
+      linkedEmployeeId: employee.id
+    },
+    create: {
+      id: superAdmin.id,
+      name: superAdmin.name,
+      email: superAdmin.email,
+      loginAccount: superAdmin.loginAccount,
+      phone: superAdmin.phone,
+      passwordHash: hashPassword(superAdmin.password),
+      status: superAdmin.status,
+      linkedEmployeeId: employee.id
+    }
+  });
+
+  const role = await prisma.role.findUnique({ where: { code: superAdmin.roleCode } });
+  if (role) {
+    await prisma.userRole.upsert({
+      where: {
+        adminUserId_roleId: {
+          adminUserId: adminUser.id,
+          roleId: role.id
+        }
+      },
+      update: {},
+      create: {
+        adminUserId: adminUser.id,
+        roleId: role.id
+      }
+    });
+  }
+
+  console.log(`Staging admin access baseline ready: ${adminUser.loginAccount}`);
 } finally {
   await prisma.$disconnect();
 }

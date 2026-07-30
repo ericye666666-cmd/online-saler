@@ -4,6 +4,7 @@ import { OperationsProductControlService } from "./operations-product-control.se
 
 type EmployeeBody = {
   employeeId?: string;
+  adminUserId?: string;
 };
 
 type PriceBody = EmployeeBody & {
@@ -23,18 +24,18 @@ export class OperationsProductControlController {
   constructor(private readonly productControl: OperationsProductControlService) {}
 
   @Get("summary")
-  summary() {
-    return this.productControl.summary();
+  summary(@Query("adminUserId") adminUserId?: string) {
+    return this.productControl.summary(adminUserId);
   }
 
   @Get("products")
-  products(@Query("status") status?: ProductStatus) {
-    return this.productControl.list(status);
+  products(@Query("status") status?: ProductStatus, @Query("adminUserId") adminUserId?: string) {
+    return this.productControl.list(status, adminUserId);
   }
 
   @Get("locations")
-  locations() {
-    return this.productControl.locations();
+  locations(@Query("adminUserId") adminUserId?: string) {
+    return this.productControl.locations(adminUserId);
   }
 
   @Patch("products/:id/price")

@@ -159,6 +159,12 @@ jobs:
       - name: Verify product creation
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
+            "${SERVICE_URL}/operations/access/login")"
+          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
           PRODUCT_CODE="DEPLOY-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           RESPONSE="$(curl \
@@ -169,7 +175,7 @@ jobs:
             --retry-delay 3 \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\"}" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
             "${SERVICE_URL}/products")"
 
           echo "${RESPONSE}"
@@ -179,11 +185,17 @@ jobs:
       - name: Verify real image upload and retrieval
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
+            "${SERVICE_URL}/operations/access/login")"
+          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
           PRODUCT_CODE="UPLOAD-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           PRODUCT_RESPONSE="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\"}" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
             "${SERVICE_URL}/products")"
           PRODUCT_ID="$(printf '%s' "${PRODUCT_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
 
@@ -194,6 +206,7 @@ jobs:
             --header "Content-Type: image/png" \
             --header "X-Image-Type: FRONT" \
             --header "X-Employee-Id: 00000000-0000-4000-8000-000000000001" \
+            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
             --data-binary @/tmp/product-test.png \
             "${SERVICE_URL}/products/${PRODUCT_ID}/images/upload")"
 
@@ -209,16 +222,22 @@ jobs:
       - name: Verify Operations workspace API
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
+            "${SERVICE_URL}/operations/access/login")"
+          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
 
           SUMMARY="$(curl --fail-with-body --silent --show-error \
-            "${SERVICE_URL}/operations/workspace/summary?employeeId=00000000-0000-4000-8000-000000000001")"
+            "${SERVICE_URL}/operations/workspace/summary?employeeId=00000000-0000-4000-8000-000000000001&adminUserId=${ADMIN_USER_ID}")"
           echo "${SUMMARY}"
           echo "${SUMMARY}" | grep -q '"completedToday"'
 
           START="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
-            --data '{"employeeId":"00000000-0000-4000-8000-000000000001"}' \
+            --data "{\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
             "${SERVICE_URL}/operations/workspace/start")"
           echo "${START}"
           echo "${START}" | grep -q '"product"'
@@ -227,9 +246,15 @@ jobs:
       - name: Verify product control API
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
+            "${SERVICE_URL}/operations/access/login")"
+          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
 
           CONTROL_SUMMARY="$(curl --fail-with-body --silent --show-error \
-            "${SERVICE_URL}/operations/product-control/summary")"
+            "${SERVICE_URL}/operations/product-control/summary?adminUserId=${ADMIN_USER_ID}")"
           echo "${CONTROL_SUMMARY}"
           echo "${CONTROL_SUMMARY}" | grep -q '"readyForPrice"'
           echo "${CONTROL_SUMMARY}" | grep -q '"readyToPublish"'
@@ -237,7 +262,7 @@ jobs:
           echo "${CONTROL_SUMMARY}" | grep -q '"published"'
 
           CONTROL_PRODUCTS="$(curl --fail-with-body --silent --show-error \
-            "${SERVICE_URL}/operations/product-control/products")"
+            "${SERVICE_URL}/operations/product-control/products?adminUserId=${ADMIN_USER_ID}")"
           echo "${CONTROL_PRODUCTS}" | grep -q '^\['
 
       - name: Verify public storefront products API
@@ -256,11 +281,17 @@ jobs:
       - name: Verify OpenAI image recognition
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
+            "${SERVICE_URL}/operations/access/login")"
+          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
           PRODUCT_CODE="OPENAI-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           PRODUCT_RESPONSE="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\"}" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
             "${SERVICE_URL}/products")"
           PRODUCT_ID="$(printf '%s' "${PRODUCT_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
 
@@ -296,6 +327,7 @@ jobs:
             --header "Content-Type: image/png" \
             --header "X-Image-Type: FRONT" \
             --header "X-Employee-Id: 00000000-0000-4000-8000-000000000001" \
+            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
             --data-binary @/tmp/openai-test.png \
             "${SERVICE_URL}/products/${PRODUCT_ID}/images/upload")"
           IMAGE_ID="$(printf '%s' "${IMAGE_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
@@ -303,7 +335,7 @@ jobs:
           AI_RESPONSE="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productId\":\"${PRODUCT_ID}\",\"imageIds\":[\"${IMAGE_ID}\"],\"promptVersion\":\"product-v1\"}" \
+            --data "{\"productId\":\"${PRODUCT_ID}\",\"imageIds\":[\"${IMAGE_ID}\"],\"promptVersion\":\"product-v1\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
             "${SERVICE_URL}/ai-jobs")"
 
           echo "${AI_RESPONSE}"
