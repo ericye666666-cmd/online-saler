@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
   AI_AUDIENCES,
   AI_COLORS,
@@ -10,6 +11,56 @@ import {
   PRODUCT_CATEGORY_OPTIONS,
   PRODUCT_SUBCATEGORIES_BY_CATEGORY
 } from "@online-saler/shared-types";
+import {
+  CheckCircle2Icon,
+  CircleAlertIcon,
+  ImageIcon,
+  PrinterIcon,
+  RotateCcwIcon,
+  ScanBarcodeIcon,
+  SparklesIcon,
+  UploadIcon
+} from "lucide-react";
+
+import { DataTable } from "@/components/admin/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "@/components/ui/dialog";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle
+} from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   buildCalibrationBody,
   formFromProductAndAi,
@@ -51,6 +102,12 @@ type WorkspaceSummary = {
   waitingCalibration: number;
   completedToday: number;
   activeProductId: string | null;
+};
+
+type QueueRow = {
+  label: string;
+  value: number;
+  owner: string;
 };
 
 async function request(path: string, options?: RequestInit): Promise<JsonRecord> {
@@ -135,10 +192,44 @@ export default function OperationsWorkspace() {
   const [error, setError] = useState("");
   const [lastBarcode, setLastBarcode] = useState("");
   const [sessionDone, setSessionDone] = useState(0);
+  const [barcodeSheetOpen, setBarcodeSheetOpen] = useState(false);
 
   const readiness = useMemo(() => workspaceReadiness({ product, image, job, form }), [product, image, job, form]);
   const currentImageUrl = previewUrl || imageUrl(image);
   const currentStep = completedProduct ? sessionDone : Math.min(sessionDone + 1, SESSION_TARGET);
+  const productStatus = stringValue(product?.status) || "NO_ITEM";
+  const barcodeValue = stringValue((completedProduct ?? product)?.barcode) || lastBarcode;
+
+  const queueRows = useMemo<QueueRow[]>(
+    () => [
+      { label: "上传", value: summary?.waitingPhoto ?? 0, owner: "商品中心" },
+      { label: "AI识别", value: summary?.waitingAi ?? 0, owner: "商品中心" },
+      { label: "人工校准", value: summary?.waitingCalibration ?? 0, owner: "商品中心" },
+      { label: "今日完成", value: summary?.completedToday ?? 0, owner: "商品中心" }
+    ],
+    [summary]
+  );
+
+  const queueColumns = useMemo<ColumnDef<QueueRow>[]>(
+    () => [
+      {
+        accessorKey: "label",
+        header: "队列",
+        cell: ({ row }) => <span className="font-medium">{row.original.label}</span>
+      },
+      {
+        accessorKey: "value",
+        header: "数量",
+        cell: ({ row }) => <Badge variant={row.original.label === "今日完成" ? "default" : "secondary"}>{row.original.value}</Badge>
+      },
+      {
+        accessorKey: "owner",
+        header: "模块",
+        cell: ({ row }) => <span className="text-muted-foreground">{row.original.owner}</span>
+      }
+    ],
+    []
+  );
 
   const loadSummary = useCallback(async () => {
     const next = (await request(`/operations/workspace/summary?employeeId=${employeeId}`)) as WorkspaceSummary;
@@ -269,6 +360,7 @@ export default function OperationsWorkspace() {
     setCompletedProduct(barcoded);
     setLastBarcode(stringValue(barcoded.barcode));
     setPrintMessage("");
+    setBarcodeSheetOpen(true);
     const nextDone = Math.min(sessionDone + 1, SESSION_TARGET);
     setSessionDone(nextDone);
     localStorage.setItem(SESSION_DONE_KEY, String(nextDone));
@@ -339,6 +431,7 @@ export default function OperationsWorkspace() {
     setProduct(null);
     setCompletedProduct(null);
     setPrintMessage("");
+    setBarcodeSheetOpen(false);
     setForm(formFromProductAndAi(null, null));
     localStorage.removeItem(COMPLETED_PRODUCT_KEY);
     await startWork();
@@ -357,6 +450,7 @@ export default function OperationsWorkspace() {
     setPreviewUrl("");
     setPrintMessage("");
     setLastBarcode("");
+    setBarcodeSheetOpen(false);
     setForm(formFromProductAndAi(null, null));
     setView("dashboard");
     void loadSummary();
@@ -378,277 +472,367 @@ export default function OperationsWorkspace() {
 
   if (!loaded) {
     return (
-      <main className="workspace-shell">
-        <header className="workspace-header">
-          <div>
-            <p className="workspace-label">Operations</p>
-            <h1>Today's Work</h1>
-          </div>
-          <div className="operator-chip">Opening workspace</div>
-        </header>
-        <section className="empty-state">Loading today's work...</section>
-      </main>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>正在打开工作台</CardTitle>
+            <CardDescription>正在读取今天的商品数字化任务。</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <main className="workspace-shell">
-      <header className="workspace-header">
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="workspace-label">Operations</p>
-          <h1>Today's Work</h1>
+          <p className="text-muted-foreground text-sm">商品中心</p>
+          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">商品数字化工作台</h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground text-sm">
+            上传真实衣服照片，读取 AI 字段，人工校准后生成正式 Barcode。
+          </p>
         </div>
-        <nav className="header-actions">
-          <a className="secondary-action nav-link" href="/control">Product control</a>
-          <div className="operator-chip">Test operator ready</div>
-        </nav>
-      </header>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <a href="/control">审核/发布</a>
+          </Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" disabled={Boolean(busy)}>
+                <RotateCcwIcon data-icon="inline-start" />
+                重置
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>重置当前测试会话</DialogTitle>
+                <DialogDescription>
+                  只会清除本浏览器里的当前工作进度，不会删除已经保存到数据库的商品。
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">取消</Button>
+                </DialogClose>
+                <DialogClose asChild>
+                  <Button variant="destructive" onClick={resetSession}>
+                    确认重置
+                  </Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </section>
 
       {view === "dashboard" ? (
-        <section className="dashboard">
-          <div className="metric-grid" aria-label="Today's work queue">
-            <Metric title="Waiting for Photo" value={summary?.waitingPhoto ?? 0} />
-            <Metric title="Waiting for AI" value={summary?.waitingAi ?? 0} />
-            <Metric title="Waiting for Review" value={summary?.waitingCalibration ?? 0} />
-            <Metric title="Completed Today" value={summary?.completedToday ?? 0} strong />
-          </div>
-
-          <section className="start-panel">
-            <div>
-              <h2>Start digitizing clothes</h2>
-              <p>One item at a time. Add a photo, check the AI fields, enter measurements, then save and continue.</p>
-            </div>
-            <button className="primary-action" disabled={Boolean(busy)} onClick={() => run("start", startWork)}>
-              {busy === "start" ? "Opening..." : summary?.activeProductId ? "Continue Work" : "Start Working"}
-            </button>
-          </section>
-
-          {lastBarcode ? <p className="success-line">Last barcode: {lastBarcode}</p> : null}
-          {error ? <p className="employee-error">{error}</p> : null}
+        <section className="grid gap-4 lg:grid-cols-[1fr_380px]">
+          <Card>
+            <CardHeader>
+              <CardTitle>今日队列</CardTitle>
+              <CardDescription>商品中心当前待处理状态。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DataTable columns={queueColumns} data={queueRows} getRowId={(row) => row.label} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>开始录入</CardTitle>
+              <CardDescription>员工只需要从这里开始，每次处理一件衣服。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <StepLine done={false} icon={<UploadIcon />} label="上传照片" />
+              <StepLine done={false} icon={<SparklesIcon />} label="AI识别" />
+              <StepLine done={false} icon={<CheckCircle2Icon />} label="人工校准" />
+              <StepLine done={false} icon={<ScanBarcodeIcon />} label="生成 Barcode" />
+              {lastBarcode ? <StatusMessage tone="success">上一件 Barcode：{lastBarcode}</StatusMessage> : null}
+              {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+            </CardContent>
+            <CardFooter>
+              <Button className="w-full" disabled={Boolean(busy)} onClick={() => run("start", startWork)}>
+                {busy === "start" ? "正在打开..." : summary?.activeProductId ? "继续工作" : "开始工作"}
+              </Button>
+            </CardFooter>
+          </Card>
         </section>
       ) : (
-        <section className="workbench">
-          <div className="workbench-topline">
-            <div>
-              <p className="workspace-label">Batch progress</p>
-              <h2>{currentStep} / {SESSION_TARGET}</h2>
-            </div>
-            <div className="topline-actions">
-              <span className={`readiness ${readiness.canSaveAndNext ? "ready" : ""}`}>{readiness.label}</span>
-              <button className="secondary-action" type="button" onClick={resetSession} disabled={Boolean(busy)}>Reset</button>
-            </div>
-          </div>
-
-          <div className="workspace-grid">
-            <section className="photo-panel">
-              <div className="photo-frame">
+        <section className="grid gap-4 xl:grid-cols-[minmax(360px,0.82fr)_minmax(0,1fr)]">
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle>照片</CardTitle>
+                  <CardDescription>
+                    Batch {currentStep} / {SESSION_TARGET}
+                  </CardDescription>
+                </div>
+                <Badge variant={readiness.canSaveAndNext ? "default" : "secondary"}>{readiness.label}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
                 {currentImageUrl ? (
-                  <img src={currentImageUrl} alt="Clothing item" />
+                  <img src={currentImageUrl} alt="Clothing item" className="max-h-[620px] max-w-full object-contain" />
                 ) : (
-                  <div className="photo-placeholder">
-                    <strong>Add front photo</strong>
-                    <span>Use camera or choose a clear image.</span>
+                  <div className="flex flex-col items-center gap-2 px-6 text-center text-muted-foreground">
+                    <ImageIcon />
+                    <p className="font-medium text-foreground">上传正面照片</p>
+                    <p className="text-sm">使用相机或选择清晰的 JPEG、PNG、WEBP。</p>
                   </div>
                 )}
               </div>
-              <label className="file-button">
-                {busy === "photo" ? "Uploading and reading..." : currentImageUrl ? "Replace photo" : "Add photo"}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  capture="environment"
-                  disabled={Boolean(busy) || Boolean(completedProduct)}
-                  onChange={(event) => void choosePhoto(event.target.files?.[0] ?? null)}
-                />
-              </label>
-            </section>
-
-            <section className="editor-panel">
-              <div className="section-heading">
-                <h3>Photo reading</h3>
-                <span>{readiness.hasAi ? "Ready to check" : readiness.hasPhoto ? "Reading photo" : "Waiting for photo"}</span>
-              </div>
-              <div className="ai-strip">
-                {["category", "primaryColor", "audience", "kidsAgeRange", "brandLabel", "sizeLabel"].map((field) => {
-                  const value = aiField(job, field);
-                  return (
-                    <div key={field}>
-                      <span>{fieldLabel(field)}</span>
-                      <strong>{value.value}</strong>
-                      {value.confidence ? <small>{value.confidence}</small> : null}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="form-sections">
-                <Field label="Title">
-                  <input value={form.title} onChange={(event) => updateForm("title", event.target.value)} />
-                </Field>
-                <div className="two-column">
-                  <Field label="Category">
-                    <select value={form.category} onChange={(event) => updateForm("category", event.target.value)}>
-                      {categories.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Subcategory">
-                    <select value={form.subcategory} onChange={(event) => updateForm("subcategory", event.target.value)}>
-                      {subcategoriesFor(form.category, form.subcategory).map((value) => (
-                        <option key={value} value={value}>{optionLabel(value)}</option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
-                <div className="two-column">
-                  <Field label="Gender">
-                    <select value={form.audience} onChange={(event) => updateForm("audience", event.target.value)}>
-                      {audiences.map((value) => <option key={value} value={value}>{audienceLabel(value)}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Kids age">
-                    <select
-                      value={form.kidsAgeRange}
-                      disabled={form.audience !== "KIDS"}
-                      onChange={(event) => updateForm("kidsAgeRange", event.target.value)}
-                    >
-                      {kidsAgeRanges.map((value) => <option key={value} value={value}>{kidsAgeLabel(value)}</option>)}
-                    </select>
-                  </Field>
-                </div>
-                <div className="two-column">
-                  <Field label="Color">
-                    <select value={form.color} onChange={(event) => updateForm("color", event.target.value)}>
-                      {colors.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Brand">
-                    <input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} />
-                  </Field>
-                </div>
-                <div className="two-column">
-                  <Field label="Size">
-                    <input value={form.sizeLabel} onChange={(event) => updateForm("sizeLabel", event.target.value)} />
-                  </Field>
-                  <Field label="Pattern">
-                    <select value={form.pattern} onChange={(event) => updateForm("pattern", event.target.value)}>
-                      {patterns.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
-                    </select>
-                  </Field>
-                </div>
-                <div className="two-column">
-                  <Field label="Sleeve">
-                    <select value={form.sleeveType} onChange={(event) => updateForm("sleeveType", event.target.value)}>
-                      {sleeves.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Condition">
-                    <select value={form.conditionGrade} onChange={(event) => updateForm("conditionGrade", event.target.value)}>
-                      {conditions.map((value) => <option key={value} value={value}>{optionLabel(value)}</option>)}
-                    </select>
-                  </Field>
-                </div>
-
-                <div className="measure-band">
-                  <Field label="Length cm">
-                    <input inputMode="decimal" value={form.lengthCm} onChange={(event) => updateForm("lengthCm", event.target.value)} />
-                  </Field>
-                  <Field label="Chest width cm">
-                    <input inputMode="decimal" value={form.chestWidthCm} onChange={(event) => updateForm("chestWidthCm", event.target.value)} />
-                  </Field>
-                  <Field label="Shoulder cm">
-                    <input inputMode="decimal" value={form.shoulderWidthCm} onChange={(event) => updateForm("shoulderWidthCm", event.target.value)} />
-                  </Field>
-                  <Field label="Waist cm">
-                    <input inputMode="decimal" value={form.waistCm} onChange={(event) => updateForm("waistCm", event.target.value)} />
-                  </Field>
-                  <Field label="Hip cm">
-                    <input inputMode="decimal" value={form.hipCm} onChange={(event) => updateForm("hipCm", event.target.value)} />
-                  </Field>
-                </div>
-
-                <Field label="Defects">
-                  <textarea
-                    value={form.defects}
-                    onChange={(event) => updateForm("defects", event.target.value)}
-                    placeholder="Leave blank when none"
-                    rows={3}
+              <Button asChild variant="outline" disabled={Boolean(busy) || Boolean(completedProduct)}>
+                <label className="cursor-pointer">
+                  <UploadIcon data-icon="inline-start" />
+                  {busy === "photo" ? "正在上传并识别..." : currentImageUrl ? "重新上传" : "上传照片"}
+                  <Input
+                    className="sr-only"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    capture="environment"
+                    disabled={Boolean(busy) || Boolean(completedProduct)}
+                    onChange={(event) => void choosePhoto(event.target.files?.[0] ?? null)}
                   />
-                </Field>
+                </label>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <CardTitle>{form.title || "等待 AI 识别"}</CardTitle>
+                  <CardDescription>
+                    状态：{optionLabel(productStatus)}{barcodeValue ? ` / Barcode ${barcodeValue}` : ""}
+                  </CardDescription>
+                </div>
+                <Badge variant={completedProduct ? "default" : "secondary"}>
+                  {completedProduct ? "已完成" : "进行中"}
+                </Badge>
               </div>
-
-              {error ? <p className="employee-error">{error}</p> : null}
-              {completedProduct ? (
-                <section className="print-panel">
-                  <div>
-                    <p className="workspace-label">Barcode label</p>
-                    <h4>{stringValue(completedProduct.barcode)}</h4>
-                    <span>Printer: Deli 720 local agent</span>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="calibration">
+                <TabsList className="w-full justify-start overflow-x-auto" variant="line">
+                  <TabsTrigger value="upload">上传</TabsTrigger>
+                  <TabsTrigger value="ai">AI识别</TabsTrigger>
+                  <TabsTrigger value="calibration">人工校准</TabsTrigger>
+                  <TabsTrigger value="review">审核</TabsTrigger>
+                  <TabsTrigger value="publish">发布</TabsTrigger>
+                  <TabsTrigger value="barcode">Barcode</TabsTrigger>
+                </TabsList>
+                <TabsContent value="upload" className="pt-4">
+                  <StatusMessage tone={currentImageUrl ? "success" : "neutral"}>
+                    {currentImageUrl ? "照片已上传并保存到 Storage。" : "请先上传商品正面照片。"}
+                  </StatusMessage>
+                </TabsContent>
+                <TabsContent value="ai" className="pt-4">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {["category", "primaryColor", "audience", "kidsAgeRange", "brandLabel", "sizeLabel"].map((field) => {
+                      const value = aiField(job, field);
+                      return (
+                        <Card key={field} className="shadow-none">
+                          <CardHeader className="p-4">
+                            <CardDescription>{fieldLabel(field)}</CardDescription>
+                            <CardTitle className="text-base">{value.value}</CardTitle>
+                            {value.confidence ? <Badge variant="secondary">{value.confidence}</Badge> : null}
+                          </CardHeader>
+                        </Card>
+                      );
+                    })}
                   </div>
-                  <div className="print-controls">
-                    <Field label="Label size">
-                      <select
-                        value={labelSize}
-                        onChange={(event) => setLabelSize(normalizeLabelSize(event.target.value))}
-                      >
-                        <option value="60x40">60x40</option>
-                        <option value="40x30">40x30</option>
-                      </select>
-                    </Field>
-                    <button
-                      className="primary-action"
-                      type="button"
-                      disabled={Boolean(busy)}
-                      onClick={() => run("print", printLabel)}
-                    >
-                      {busy === "print" ? "Printing..." : "Print label"}
-                    </button>
-                    <button
-                      className="secondary-action"
-                      type="button"
-                      disabled={Boolean(busy)}
-                      onClick={() => run("next", startNextItem)}
-                    >
-                      Start next item
-                    </button>
-                  </div>
-                  {printMessage ? <p className="success-line">{printMessage}</p> : null}
-                </section>
-              ) : lastBarcode ? (
-                <p className="success-line">Last barcode: {lastBarcode}</p>
-              ) : null}
+                </TabsContent>
+                <TabsContent value="calibration" className="pt-4">
+                  <FieldGroup>
+                    <FormField label="Title">
+                      <Input value={form.title} onChange={(event) => updateForm("title", event.target.value)} />
+                    </FormField>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField label="Category">
+                        <NativeSelect className="w-full" value={form.category} onChange={(event) => updateForm("category", event.target.value)}>
+                          {categories.map((value) => <NativeSelectOption key={value} value={value}>{optionLabel(value)}</NativeSelectOption>)}
+                        </NativeSelect>
+                      </FormField>
+                      <FormField label="Subcategory">
+                        <NativeSelect className="w-full" value={form.subcategory} onChange={(event) => updateForm("subcategory", event.target.value)}>
+                          {subcategoriesFor(form.category, form.subcategory).map((value) => (
+                            <NativeSelectOption key={value} value={value}>{optionLabel(value)}</NativeSelectOption>
+                          ))}
+                        </NativeSelect>
+                      </FormField>
+                      <FormField label="Gender">
+                        <NativeSelect className="w-full" value={form.audience} onChange={(event) => updateForm("audience", event.target.value)}>
+                          {audiences.map((value) => <NativeSelectOption key={value} value={value}>{audienceLabel(value)}</NativeSelectOption>)}
+                        </NativeSelect>
+                      </FormField>
+                      <FormField label="Kids age">
+                        <NativeSelect
+                          className="w-full"
+                          value={form.kidsAgeRange}
+                          disabled={form.audience !== "KIDS"}
+                          onChange={(event) => updateForm("kidsAgeRange", event.target.value)}
+                        >
+                          {kidsAgeRanges.map((value) => <NativeSelectOption key={value} value={value}>{kidsAgeLabel(value)}</NativeSelectOption>)}
+                        </NativeSelect>
+                      </FormField>
+                      <FormField label="Color">
+                        <NativeSelect className="w-full" value={form.color} onChange={(event) => updateForm("color", event.target.value)}>
+                          {colors.map((value) => <NativeSelectOption key={value} value={value}>{optionLabel(value)}</NativeSelectOption>)}
+                        </NativeSelect>
+                      </FormField>
+                      <FormField label="Brand">
+                        <Input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} />
+                      </FormField>
+                      <FormField label="Size">
+                        <Input value={form.sizeLabel} onChange={(event) => updateForm("sizeLabel", event.target.value)} />
+                      </FormField>
+                      <FormField label="Pattern">
+                        <NativeSelect className="w-full" value={form.pattern} onChange={(event) => updateForm("pattern", event.target.value)}>
+                          {patterns.map((value) => <NativeSelectOption key={value} value={value}>{optionLabel(value)}</NativeSelectOption>)}
+                        </NativeSelect>
+                      </FormField>
+                      <FormField label="Sleeve">
+                        <NativeSelect className="w-full" value={form.sleeveType} onChange={(event) => updateForm("sleeveType", event.target.value)}>
+                          {sleeves.map((value) => <NativeSelectOption key={value} value={value}>{optionLabel(value)}</NativeSelectOption>)}
+                        </NativeSelect>
+                      </FormField>
+                      <FormField label="Condition">
+                        <NativeSelect className="w-full" value={form.conditionGrade} onChange={(event) => updateForm("conditionGrade", event.target.value)}>
+                          {conditions.map((value) => <NativeSelectOption key={value} value={value}>{optionLabel(value)}</NativeSelectOption>)}
+                        </NativeSelect>
+                      </FormField>
+                    </div>
+                    <Separator />
+                    <div className="grid gap-4 md:grid-cols-5">
+                      <FormField label="Length cm">
+                        <Input inputMode="decimal" value={form.lengthCm} onChange={(event) => updateForm("lengthCm", event.target.value)} />
+                      </FormField>
+                      <FormField label="Chest cm">
+                        <Input inputMode="decimal" value={form.chestWidthCm} onChange={(event) => updateForm("chestWidthCm", event.target.value)} />
+                      </FormField>
+                      <FormField label="Shoulder cm">
+                        <Input inputMode="decimal" value={form.shoulderWidthCm} onChange={(event) => updateForm("shoulderWidthCm", event.target.value)} />
+                      </FormField>
+                      <FormField label="Waist cm">
+                        <Input inputMode="decimal" value={form.waistCm} onChange={(event) => updateForm("waistCm", event.target.value)} />
+                      </FormField>
+                      <FormField label="Hip cm">
+                        <Input inputMode="decimal" value={form.hipCm} onChange={(event) => updateForm("hipCm", event.target.value)} />
+                      </FormField>
+                    </div>
+                    <FormField label="Defects" description="没有瑕疵时保持为空。">
+                      <Textarea value={form.defects} onChange={(event) => updateForm("defects", event.target.value)} rows={3} />
+                    </FormField>
+                  </FieldGroup>
+                </TabsContent>
+                <TabsContent value="review" className="pt-4">
+                  <StatusMessage tone="neutral">审核和发布操作已经迁移到新的后台壳层下的商品控制页。</StatusMessage>
+                </TabsContent>
+                <TabsContent value="publish" className="pt-4">
+                  <Button asChild variant="outline">
+                    <a href="/control">打开商品控制</a>
+                  </Button>
+                </TabsContent>
+                <TabsContent value="barcode" className="pt-4">
+                  <StatusMessage tone={barcodeValue ? "success" : "neutral"}>
+                    {barcodeValue ? `正式 Barcode：${barcodeValue}` : "Barcode 只能在人工校准保存后生成。"}
+                  </StatusMessage>
+                </TabsContent>
+              </Tabs>
 
-              {!completedProduct ? (
-                <button
-                  className="save-next"
-                  disabled={!readiness.canSaveAndNext || Boolean(busy)}
-                  onClick={() => run("save", saveAndNext)}
-                >
-                  {busy === "save" ? "Saving..." : "Save & Next"}
-                </button>
+              {error ? (
+                <div className="mt-4">
+                  <StatusMessage tone="danger">{error}</StatusMessage>
+                </div>
               ) : null}
-            </section>
-          </div>
+            </CardContent>
+            <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row sm:justify-between">
+              <Button
+                disabled={!readiness.canSaveAndNext || Boolean(busy) || Boolean(completedProduct)}
+                onClick={() => run("save", saveAndNext)}
+              >
+                <CheckCircle2Icon data-icon="inline-start" />
+                {busy === "save" ? "正在保存..." : "保存校准并生成 Barcode"}
+              </Button>
+              <Button variant="outline" disabled={!completedProduct || Boolean(busy)} onClick={() => setBarcodeSheetOpen(true)}>
+                <ScanBarcodeIcon data-icon="inline-start" />
+                查看 Barcode
+              </Button>
+            </CardFooter>
+          </Card>
         </section>
       )}
-    </main>
+
+      <Sheet open={barcodeSheetOpen} onOpenChange={setBarcodeSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Barcode 标签</SheetTitle>
+            <SheetDescription>确认后可通过本地 Deli 720 打印代理打印。</SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-col gap-4 px-4 pb-4">
+            <div className="rounded-lg border bg-muted/40 p-4">
+              <p className="text-muted-foreground text-sm">正式 Barcode</p>
+              <p className="mt-2 break-all font-semibold text-xl">{barcodeValue || "尚未生成"}</p>
+            </div>
+            <FormField label="Label size">
+              <NativeSelect className="w-full" value={labelSize} onChange={(event) => setLabelSize(normalizeLabelSize(event.target.value))}>
+                <NativeSelectOption value="60x40">60x40</NativeSelectOption>
+                <NativeSelectOption value="40x30">40x30</NativeSelectOption>
+              </NativeSelect>
+            </FormField>
+            <Button disabled={!completedProduct || Boolean(busy)} onClick={() => run("print", printLabel)}>
+              <PrinterIcon data-icon="inline-start" />
+              {busy === "print" ? "正在打印..." : "打印标签"}
+            </Button>
+            <Button variant="outline" disabled={!completedProduct || Boolean(busy)} onClick={() => run("next", startNextItem)}>
+              开始下一件
+            </Button>
+            {printMessage ? <StatusMessage tone="success">{printMessage}</StatusMessage> : null}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
   );
 }
 
-function Metric(props: { title: string; value: number; strong?: boolean }) {
+function StepLine(props: { done: boolean; icon: ReactNode; label: string }) {
   return (
-    <article className={props.strong ? "metric strong" : "metric"}>
-      <span>{props.title}</span>
-      <strong>{props.value}</strong>
-    </article>
+    <div className="flex items-center gap-3 rounded-lg border p-3">
+      <div className="flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        {props.icon}
+      </div>
+      <span className="font-medium text-sm">{props.label}</span>
+      {props.done ? <Badge className="ml-auto">Done</Badge> : <Badge className="ml-auto" variant="secondary">Pending</Badge>}
+    </div>
   );
 }
 
-function Field(props: { label: string; children: ReactNode }) {
+function FormField(props: { label: string; description?: string; children: ReactNode }) {
   return (
-    <label className="field">
-      <span>{props.label}</span>
+    <Field>
+      <FieldLabel>{props.label}</FieldLabel>
       {props.children}
-    </label>
+      {props.description ? <FieldDescription>{props.description}</FieldDescription> : null}
+    </Field>
+  );
+}
+
+function StatusMessage(props: { tone: "success" | "danger" | "neutral"; children: ReactNode }) {
+  const Icon = props.tone === "danger" ? CircleAlertIcon : CheckCircle2Icon;
+  return (
+    <div
+      className={
+        props.tone === "danger"
+          ? "flex gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm"
+          : "flex gap-2 rounded-lg border bg-muted/40 p-3 text-sm"
+      }
+    >
+      <Icon className="mt-0.5 shrink-0" />
+      <div>{props.children}</div>
+    </div>
   );
 }
 
@@ -695,6 +879,7 @@ function kidsAgeLabel(value: string): string {
     TODDLER_1_3Y: "Toddler 1-3y",
     PRESCHOOL_3_5Y: "Age 3-5",
     KIDS_6_8Y: "Age 6-8",
+    KIDS_9_12: "Age 9-12",
     KIDS_9_12Y: "Age 9-12",
     TEEN_13_16Y: "Teen 13-16"
   };
