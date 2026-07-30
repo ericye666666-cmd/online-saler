@@ -28,6 +28,7 @@ export type WorkspaceReadiness = {
   hasAi: boolean;
   canSaveAndNext: boolean;
   label: string;
+  reasons: string[];
 };
 
 export const emptyWorkspaceForm = (): WorkspaceForm => ({
@@ -114,41 +115,51 @@ export function workspaceReadiness(input: {
   const status = stringValue(input.product?.status);
   const hasPhoto = Boolean(input.image?.id) || ["PHOTOGRAPHED", "AI_PROCESSING", "CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED"].includes(status);
   const hasAi = stringValue(input.job?.status) === "SUCCEEDED" || Boolean(normalizedAiOutput(input.job));
-  const hasMeasurements = positiveNumber(input.form.lengthCm) && positiveNumber(input.form.chestWidthCm);
-  const hasRequiredFields = [
-    input.form.title,
-    input.form.category,
-    input.form.subcategory,
-    input.form.color,
-    input.form.audience,
-    input.form.sizeLabel,
-    input.form.conditionGrade
-  ].every((value) => value.trim().length > 0);
-  const hasKidsAge = input.form.audience !== "KIDS" || input.form.kidsAgeRange !== "NOT_APPLICABLE";
+  const reasons = calibrationValidationReasons(input.form, { hasPhoto, hasAi });
 
   return {
     needsPhoto: !hasPhoto,
     hasPhoto,
     hasAi,
-    canSaveAndNext: hasPhoto && hasAi && hasMeasurements && hasRequiredFields && hasKidsAge && status !== "BARCODE_ASSIGNED",
-    label: labelFor({ status, hasPhoto, hasAi, hasMeasurements, hasRequiredFields, hasKidsAge })
+    canSaveAndNext: reasons.length === 0 && status !== "BARCODE_ASSIGNED",
+    label: labelFor({ status, hasPhoto, hasAi, reasons }),
+    reasons
   };
 }
 
-function labelFor(input: {
-  status: string;
-  hasPhoto: boolean;
-  hasAi: boolean;
-  hasMeasurements: boolean;
-  hasRequiredFields: boolean;
-  hasKidsAge: boolean;
-}): string {
+export function calibrationValidationReasons(
+  form: WorkspaceForm,
+  input: { hasPhoto?: boolean; hasAi?: boolean } = {}
+): string[] {
+  const reasons: string[] = [];
+  if (input.hasPhoto === false) reasons.push("先上传商品照片。");
+  if (input.hasAi === false) reasons.push("先完成 AI 识别。");
+  const requiredFields: Array<[keyof WorkspaceForm, string]> = [
+    ["title", "标题"],
+    ["category", "分类"],
+    ["subcategory", "子分类"],
+    ["color", "颜色"],
+    ["audience", "适用人群"],
+    ["sizeLabel", "尺码"],
+    ["conditionGrade", "成色"]
+  ];
+  for (const [field, label] of requiredFields) {
+    if (!form[field].trim()) reasons.push(`${label}为必填项。`);
+  }
+  if (form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE") {
+    reasons.push("儿童商品必须填写年龄段。");
+  }
+  if (!positiveNumber(form.lengthCm)) reasons.push("衣长必须填写大于 0 的厘米数。");
+  if (!positiveNumber(form.chestWidthCm)) reasons.push("胸宽必须填写大于 0 的厘米数。");
+  if (!form.defects.trim()) reasons.push("瑕疵必须确认；没有瑕疵请填写 None。");
+  return reasons;
+}
+
+function labelFor(input: { status: string; hasPhoto: boolean; hasAi: boolean; reasons: string[] }): string {
   if (input.status === "BARCODE_ASSIGNED") return "Complete";
   if (!input.hasPhoto) return "Add photo";
   if (!input.hasAi) return "AI running";
-  if (!input.hasRequiredFields) return "Check AI fields";
-  if (!input.hasKidsAge) return "Add kids age";
-  if (!input.hasMeasurements) return "Add measurements";
+  if (input.reasons.length > 0) return "Check required fields";
   return "Ready to save";
 }
 
@@ -177,6 +188,7 @@ export function buildCalibrationBody(input: {
   }
 
   const defectText = input.form.defects.trim();
+  const hasNoDefects = /^none$/i.test(defectText);
 
   return {
     employeeId: input.employeeId,
@@ -197,7 +209,7 @@ export function buildCalibrationBody(input: {
       { type: "CHEST_WIDTH", valueCm: chest },
       ...optionalMeasurements
     ],
-    defects: defectText
+    defects: defectText && !hasNoDefects
       ? [
           {
             type: "OTHER",

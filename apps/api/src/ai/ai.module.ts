@@ -16,6 +16,7 @@ import { OpenAIVisionProvider } from "./openai-vision.provider";
     OpenAIVisionProvider,
     SelectedAIProvider,
     { provide: AI_PROVIDER, useExisting: SelectedAIProvider }
-  ]
+  ],
+  exports: [AIJobService]
 })
 export class AIModule {}
