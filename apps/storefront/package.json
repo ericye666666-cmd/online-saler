@@ -6,11 +6,12 @@
     "build": "next build",
     "dev": "next dev --port 3000",
     "start": "next start --port 3000",
-    "test": "tsx src/app/storefront-products.test.ts && tsx src/app/storefront-cart.test.ts && node -e \"console.log('storefront smoke ok')\"",
+    "test": "tsx src/app/storefront-products.test.ts && tsx src/app/storefront-cart.test.ts && tsx src/checkout/checkout-service.test.ts && node -e \"console.log('storefront smoke ok')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@online-saler/business-rules": "0.1.0",
+    "@online-saler/database": "0.1.0",
     "@online-saler/shared-types": "0.1.0",
     "lucide-react": "^1.27.0",
     "next": "^16.2.12",
