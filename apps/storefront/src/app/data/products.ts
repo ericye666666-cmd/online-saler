@@ -303,11 +303,35 @@ export function normalizeSellerRef(value?: string | null) {
   return normalized?.slice(0, 40) || undefined;
 }
 
-export function productUrl(code: string, sellerRef?: string) {
+export function normalizeTrackingParam(value?: string | null) {
+  const normalized = value?.trim().replace(/[^a-zA-Z0-9_.:-]/g, "");
+  return normalized?.slice(0, 80) || undefined;
+}
+
+export type ShareTrackingParams = {
+  source?: string;
+  campaign?: string;
+};
+
+function trackingQuery(sellerRef?: string, tracking?: ShareTrackingParams) {
   const normalizedRef = normalizeSellerRef(sellerRef);
   const query = new URLSearchParams();
   if (normalizedRef) query.set("ref", normalizedRef);
+  const source = normalizeTrackingParam(tracking?.source);
+  const campaign = normalizeTrackingParam(tracking?.campaign);
+  if (source) query.set("source", source);
+  if (campaign) query.set("campaign", campaign);
   query.set("card", SHARE_CARD_VERSION);
+  return query;
+}
+
+export function storeUrl(sellerRef?: string, tracking?: ShareTrackingParams) {
+  const query = trackingQuery(sellerRef, tracking);
+  return `${SITE_URL}/?${query.toString()}`;
+}
+
+export function productUrl(code: string, sellerRef?: string, tracking?: ShareTrackingParams) {
+  const query = trackingQuery(sellerRef, tracking);
   return `${SITE_URL}/p/${code}?${query.toString()}`;
 }
 
@@ -315,7 +339,7 @@ export function whatsappShareMessage(
   product: Product,
   sellerRef?: string,
 ) {
-  return productUrl(product.code, sellerRef);
+  return productUrl(product.code, sellerRef, { source: "whatsapp" });
 }
 
 export function whatsappShareUrl(product: Product, sellerRef?: string) {

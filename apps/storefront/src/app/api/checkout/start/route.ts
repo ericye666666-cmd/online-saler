@@ -1,5 +1,10 @@
 import { FulfillmentMethod } from "@online-saler/database";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import {
+  AFFILIATE_ATTRIBUTION_COOKIE,
+  parseAffiliateCookie
+} from "../../../../affiliate/affiliate-service";
 import { currentCustomerSession } from "../../../../auth/customer-auth";
 import {
   CheckoutConflictError,
@@ -28,13 +33,16 @@ export async function POST(request: Request) {
       throw new CheckoutValidationError("Choose Kikuyu pickup or local delivery.");
     }
 
+    const cookieStore = await cookies();
+    const attribution = parseAffiliateCookie(cookieStore.get(AFFILIATE_ATTRIBUTION_COOKIE)?.value);
     const result = await startCheckout({
       customerId: session.customerId,
       productId,
       phone,
       fulfillmentMethod: body.fulfillmentMethod as FulfillmentMethod,
       deliveryAddress: body.deliveryAddress,
-      deliveryNote: body.deliveryNote
+      deliveryNote: body.deliveryNote,
+      attribution
     });
     return NextResponse.json(result, {
       status: 201,

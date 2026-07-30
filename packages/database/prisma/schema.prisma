@@ -300,6 +300,8 @@ model Product {
   reviews              ProductReview[]
   inventoryItem        InventoryItem?
   inventoryMovements   InventoryMovement[]
+  affiliateLinks       AffiliateLink[]
+  affiliateClicks      AffiliateClick[]
   publishedAt          DateTime?
   unpublishedAt        DateTime?
   createdAt            DateTime             @default(now())
@@ -579,6 +581,23 @@ enum MpesaCallbackProcessingStatus {
   MANUAL_REVIEW
 }
 
+enum AffiliateStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AffiliateLinkType {
+  STORE
+  PRODUCT
+}
+
+enum CommissionStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  PAID
+}
+
 model Customer {
   id                         String             @id @default(uuid())
   googleSubjectId            String             @unique
@@ -594,6 +613,8 @@ model Customer {
   lastLoginAt                DateTime?
   checkoutDrafts             CheckoutDraft[]
   orders                     Order[]
+  affiliateClicks            AffiliateClick[]
+  affiliateAttributions      AffiliateAttribution[]
   createdAt                  DateTime           @default(now())
   updatedAt                  DateTime           @updatedAt
 
@@ -635,17 +656,24 @@ model Order {
   deliveryFeeKsh    Int                 @default(0)
   totalKsh          Int
   currency          OrderCurrency       @default(KES)
+  affiliateId       String?
+  affiliateSource   String?
+  affiliateCampaign String?
   customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  affiliate         Affiliate?          @relation("OrderAffiliate", fields: [affiliateId], references: [id], onDelete: SetNull)
   items             OrderItem[]
   payments          Payment[]
   fulfillment       OrderFulfillment?
   fulfillmentEvents FulfillmentEvent[]
+  affiliateAttribution AffiliateAttribution?
+  commission        Commission?
   sourceDraft       CheckoutDraft?      @relation("CheckoutDraftConvertedOrder")
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
 
   @@index([customerId, createdAt])
   @@index([status, createdAt])
+  @@index([affiliateId, createdAt])
 }
 
 model OrderItem {
@@ -787,4 +815,119 @@ model MpesaCallback {
   @@index([paymentId, createdAt])
   @@index([orderId, createdAt])
   @@index([mpesaReceiptNumber])
+}
+
+model Affiliate {
+  id                String                 @id @default(uuid())
+  affiliateCode     String                 @unique
+  displayName       String
+  phone             String?
+  email             String?
+  status            AffiliateStatus        @default(ACTIVE)
+  commissionRateBps Int?
+  disabledAt        DateTime?
+  links             AffiliateLink[]
+  clicks            AffiliateClick[]
+  attributions      AffiliateAttribution[]
+  orders            Order[]                @relation("OrderAffiliate")
+  commissions       Commission[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([status, createdAt])
+  @@index([phone])
+  @@index([email])
+}
+
+model AffiliateLink {
+  id          String            @id @default(uuid())
+  affiliateId String
+  linkCode    String            @unique
+  type        AffiliateLinkType @default(STORE)
+  productId   String?
+  landingPath String
+  source      String?
+  campaign    String?
+  active      Boolean           @default(true)
+  affiliate   Affiliate         @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  product     Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  clicks      AffiliateClick[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([affiliateId, type, createdAt])
+  @@index([productId])
+  @@index([source, campaign])
+}
+
+model AffiliateClick {
+  id              String                @id @default(uuid())
+  affiliateId     String
+  affiliateLinkId String?
+  productId       String?
+  customerId      String?
+  sessionId       String?
+  source          String?
+  campaign        String?
+  landingPath     String
+  referrer        String?
+  userAgent       String?
+  ipHash          String?
+  clickedAt       DateTime              @default(now())
+  expiresAt       DateTime
+  affiliate       Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  affiliateLink   AffiliateLink?        @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
+  product         Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  customer        Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  attribution     AffiliateAttribution?
+
+  @@index([affiliateId, clickedAt])
+  @@index([customerId, clickedAt])
+  @@index([sessionId, clickedAt])
+  @@index([source, campaign])
+}
+
+model AffiliateAttribution {
+  id               String          @id @default(uuid())
+  affiliateId      String
+  affiliateClickId String?         @unique
+  customerId       String
+  orderId          String?         @unique
+  source           String?
+  campaign         String?
+  attributedAt     DateTime        @default(now())
+  expiresAt        DateTime
+  affiliate        Affiliate       @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  click            AffiliateClick? @relation(fields: [affiliateClickId], references: [id], onDelete: SetNull)
+  customer         Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order            Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  commission       Commission?
+
+  @@index([affiliateId, attributedAt])
+  @@index([customerId, expiresAt])
+}
+
+model Commission {
+  id                  String                @id @default(uuid())
+  affiliateId         String
+  orderId             String                @unique
+  attributionId       String?               @unique
+  status              CommissionStatus      @default(PENDING)
+  rateBps             Int
+  orderSubtotalKsh    Int
+  commissionAmountKsh Int
+  eligibleAt          DateTime?
+  confirmedAt         DateTime?
+  rejectedAt          DateTime?
+  paidAt              DateTime?
+  holdReason          String?
+  note                String?
+  affiliate           Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  order               Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  attribution         AffiliateAttribution? @relation(fields: [attributionId], references: [id], onDelete: SetNull)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([affiliateId, status, createdAt])
+  @@index([status, eligibleAt])
 }

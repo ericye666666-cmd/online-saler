@@ -259,6 +259,55 @@ try {
     });
   }
 
+  await prisma.systemSetting.upsert({
+    where: { key: "affiliate.defaultCommissionRateBps" },
+    update: { valueJson: 1000, scope: "GLOBAL" },
+    create: {
+      key: "affiliate.defaultCommissionRateBps",
+      valueJson: 1000,
+      scope: "GLOBAL"
+    }
+  });
+
+  const affiliate = await prisma.affiliate.upsert({
+    where: { affiliateCode: "DL-AFF-001" },
+    update: {
+      displayName: "Staging Affiliate",
+      phone: "+254700000046",
+      email: "affiliate@online-saler.local",
+      status: "ACTIVE",
+      commissionRateBps: 1000,
+      disabledAt: null
+    },
+    create: {
+      affiliateCode: "DL-AFF-001",
+      displayName: "Staging Affiliate",
+      phone: "+254700000046",
+      email: "affiliate@online-saler.local",
+      status: "ACTIVE",
+      commissionRateBps: 1000
+    }
+  });
+
+  await prisma.affiliateLink.upsert({
+    where: { linkCode: "DL-AFF-001-STORE-WA" },
+    update: {
+      affiliateId: affiliate.id,
+      type: "STORE",
+      landingPath: "/",
+      source: "whatsapp",
+      campaign: "staging"
+    },
+    create: {
+      affiliateId: affiliate.id,
+      linkCode: "DL-AFF-001-STORE-WA",
+      type: "STORE",
+      landingPath: "/",
+      source: "whatsapp",
+      campaign: "staging"
+    }
+  });
+
   console.log(`Staging admin access baseline ready: ${adminUser.loginAccount}`);
 } finally {
   await prisma.$disconnect();

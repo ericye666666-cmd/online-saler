@@ -111,10 +111,14 @@ export function CatalogApp({
   initialProducts,
   initialCategory = "All",
   sellerRef,
+  source,
+  campaign,
 }: {
   initialProducts: Product[];
   initialCategory?: CatalogCategory;
   sellerRef?: string;
+  source?: string;
+  campaign?: string;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CatalogCategory>(initialCategory);
@@ -371,7 +375,7 @@ export function CatalogApp({
 
   return (
     <main className="catalogPage depopCatalogPage">
-      <ReferralTracker sellerRef={sellerRef} />
+      <ReferralTracker sellerRef={sellerRef} source={source} campaign={campaign} />
       <SiteHeader
         searchValue={query}
         onSearchChange={setQuery}

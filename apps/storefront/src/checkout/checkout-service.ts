@@ -9,6 +9,11 @@ import {
   prisma
 } from "@online-saler/database";
 import { KIKUYU_DELIVERY_FEE_KSH, RESERVATION_MINUTES, calculateOrderAmounts } from "@online-saler/business-rules";
+import {
+  createAttributionForOrder,
+  resolveCheckoutAttribution,
+  type CheckoutAttributionInput
+} from "../affiliate/affiliate-service";
 
 export type StartCheckoutInput = {
   customerId: string;
@@ -17,6 +22,7 @@ export type StartCheckoutInput = {
   fulfillmentMethod: FulfillmentMethod;
   deliveryAddress?: string | null;
   deliveryNote?: string | null;
+  attribution?: CheckoutAttributionInput | null;
 };
 
 export class CheckoutConflictError extends Error {}
@@ -109,6 +115,7 @@ export async function startCheckout(input: StartCheckoutInput) {
     const amounts = calculateOrderAmounts([{ productId: product.id, unitPriceKsh: product.priceKsh }], deliveryFeeKsh);
     const expiresAt = new Date(now.getTime() + RESERVATION_MINUTES * 60_000);
     const orderNumber = `DL-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(4).toString("hex").toUpperCase()}`;
+    const attribution = await resolveCheckoutAttribution(tx, input.customerId, input.attribution, now);
 
     await tx.customer.update({
       where: { id: input.customerId },
@@ -130,6 +137,9 @@ export async function startCheckout(input: StartCheckoutInput) {
         itemSubtotalKsh: amounts.itemSubtotalKsh,
         deliveryFeeKsh: amounts.deliveryFeeKsh,
         totalKsh: amounts.totalKsh,
+        affiliateId: attribution?.affiliateId ?? null,
+        affiliateSource: attribution?.source ?? null,
+        affiliateCampaign: attribution?.campaign ?? null,
         items: {
           create: {
             productId: product.id,
@@ -164,6 +174,14 @@ export async function startCheckout(input: StartCheckoutInput) {
         }
       }
     });
+
+    if (attribution) {
+      await createAttributionForOrder(tx, {
+        ...attribution,
+        customerId: input.customerId,
+        orderId: order.id
+      });
+    }
 
     const draft = await tx.checkoutDraft.create({
       data: {
