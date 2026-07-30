@@ -54,6 +54,41 @@ The secret value must never be committed to GitHub or written into documentation
 
 Pull-request CI should use an ephemeral PostgreSQL service container. It must not connect directly to the long-lived staging Cloud SQL instance.
 
+## Staging Storefront Database and Payment Binding
+
+The staging Storefront deployment is configured by `.github/workflows/deploy-storefront-staging.yml`.
+
+Staging resources:
+
+- Cloud Run service: `online-saler-storefront-staging`
+- Runtime service account: `online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com`
+- Cloud SQL instance connection name: `online-saler-staging:africa-south1:online-saler-staging-db`
+- Secret Manager secret: `STAGING_DATABASE_URL`
+- Runtime environment variable: `DATABASE_URL`
+
+The Storefront owns customer-facing Google sign-in, checkout, M-Pesa initiation,
+M-Pesa callback handling, and payment status polling. The workflow must attach
+the same Cloud SQL connector and inject `DATABASE_URL`, otherwise checkout and
+payment route handlers cannot read orders.
+
+Staging Google OAuth values:
+
+- GitHub variable: `GOOGLE_CLIENT_ID_STAGING`
+- GitHub secret: `GOOGLE_CLIENT_SECRET_STAGING`
+- GitHub secret: `CUSTOMER_SESSION_SECRET_STAGING`
+- Runtime callback URL: `<STOREFRONT_PUBLIC_URL>/api/auth/google/callback`
+
+Staging M-Pesa sandbox values:
+
+- GitHub secret: `MPESA_CONSUMER_KEY_STAGING`
+- GitHub secret: `MPESA_CONSUMER_SECRET_STAGING`
+- GitHub variable: `MPESA_SHORTCODE_STAGING`
+- GitHub secret: `MPESA_PASSKEY_STAGING`
+- Runtime callback URL: `<STOREFRONT_PUBLIC_URL>/api/payments/mpesa/callback`
+
+Missing M-Pesa values should not break browsing, but payment initiation returns a
+configuration error until sandbox credentials are present.
+
 ## Suggested Buckets
 
 ```text

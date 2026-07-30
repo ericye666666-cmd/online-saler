@@ -20,6 +20,22 @@ type Reservation = {
   totalKsh: number;
   currency: "KES";
 };
+type PaymentState = {
+  paymentId: string | null;
+  orderId: string;
+  orderNumber: string;
+  orderStatus?: string;
+  status?: string;
+  paymentStatus?: string | null;
+  amountKsh: number;
+  phone: string | null;
+  expiresAt: string | null;
+  checkoutRequestId?: string | null;
+  merchantRequestId?: string | null;
+  customerMessage?: string | null;
+  receiptNumber?: string | null;
+  resultDescription?: string | null;
+};
 
 export function CheckoutPageClient() {
   const [snapshot, setSnapshot] = useState<CartSnapshot | null>(null);
@@ -32,6 +48,9 @@ export function CheckoutPageClient() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [reservation, setReservation] = useState<Reservation | null>(null);
+  const [payment, setPayment] = useState<PaymentState | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -62,6 +81,28 @@ export function CheckoutPageClient() {
     return () => window.clearInterval(timer);
   }, [reservation]);
 
+  useEffect(() => {
+    if (!reservation || !payment?.paymentId) return;
+    const currentStatus = payment.paymentStatus ?? payment.status;
+    if (currentStatus && currentStatus !== "PENDING") return;
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await fetch(`/api/payments/mpesa/status?orderId=${encodeURIComponent(reservation.orderId)}`, {
+          cache: "no-store"
+        });
+        if (!response.ok) return;
+        const result = await response.json() as PaymentState;
+        setPayment(result);
+        if (result.orderStatus === "PAID") {
+          window.localStorage.removeItem(CART_STORAGE_KEY);
+        }
+      } catch {
+        // Polling is advisory; the customer can manually refresh if the network drops.
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [payment, reservation]);
+
   const secondsRemaining = useMemo(() => {
     if (!reservation) return 0;
     return Math.max(0, Math.ceil((new Date(reservation.expiresAt).getTime() - now) / 1000));
@@ -88,10 +129,30 @@ export function CheckoutPageClient() {
       if (!response.ok) throw new Error(result.error || "Unable to reserve this item.");
       setReservation(result);
       setNow(Date.now());
+      await initiatePayment(result.orderId);
     } catch (checkoutError) {
       setError(checkoutError instanceof Error ? checkoutError.message : "Unable to reserve this item.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function initiatePayment(orderId: string) {
+    setPaymentLoading(true);
+    setPaymentError("");
+    try {
+      const response = await fetch("/api/payments/mpesa/initiate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId })
+      });
+      const result = await response.json().catch(() => ({})) as PaymentState & { error?: string };
+      if (!response.ok) throw new Error(result.error || "M-Pesa request could not be started.");
+      setPayment(result);
+    } catch (paymentStartError) {
+      setPaymentError(paymentStartError instanceof Error ? paymentStartError.message : "M-Pesa request could not be started.");
+    } finally {
+      setPaymentLoading(false);
     }
   }
 
@@ -124,6 +185,9 @@ export function CheckoutPageClient() {
   const total = reservation?.totalKsh ?? itemTotal + deliveryFee;
   const minutes = Math.floor(secondsRemaining / 60).toString().padStart(2, "0");
   const seconds = (secondsRemaining % 60).toString().padStart(2, "0");
+  const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
+  const paymentSucceeded = payment?.orderStatus === "PAID" || paymentStatus === "SUCCESS";
+  const paymentFailed = ["FAILED", "CANCELLED", "TIMEOUT", "EXPIRED", "MANUAL_REVIEW"].includes(paymentStatus ?? "");
 
   return (
     <section className="checkout-layout" aria-label="Checkout">
@@ -142,7 +206,30 @@ export function CheckoutPageClient() {
           <div className="reservation-confirmation" role="status">
             <strong>{secondsRemaining > 0 ? `${minutes}:${seconds}` : "Reservation expired"}</strong>
             <span>{secondsRemaining > 0 ? "remaining to complete M-Pesa payment" : "Return to the item and try again."}</span>
-            <p>M-Pesa request will be added in the next payment step. Phone: +{reservation.phone}</p>
+            <p>Phone: +{reservation.phone}</p>
+            <div className={`payment-status ${paymentSucceeded ? "success" : paymentFailed ? "failed" : ""}`}>
+              <b>
+                {paymentSucceeded
+                  ? "Payment confirmed"
+                  : paymentFailed
+                    ? "Payment needs attention"
+                    : paymentLoading
+                      ? "Sending M-Pesa request..."
+                      : "Check your phone for the M-Pesa prompt"}
+              </b>
+              <span>
+                {paymentSucceeded
+                  ? `Receipt ${payment?.receiptNumber ?? "pending receipt"}`
+                  : paymentError
+                    ? paymentError
+                    : payment?.customerMessage || payment?.resultDescription || "Enter your M-Pesa PIN to complete the order."}
+              </span>
+            </div>
+            {paymentError ? (
+              <button className="reserve-button secondary" type="button" disabled={paymentLoading || secondsRemaining <= 0} onClick={() => initiatePayment(reservation.orderId)}>
+                {paymentLoading ? "Retrying..." : "Retry M-Pesa request"}
+              </button>
+            ) : null}
           </div>
         ) : (
           <>

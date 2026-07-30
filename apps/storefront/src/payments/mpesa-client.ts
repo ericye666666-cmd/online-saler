@@ -1,0 +1,169 @@
+import { createHash } from "node:crypto";
+
+export type MpesaConfig = {
+  environment: "sandbox" | "production";
+  consumerKey: string;
+  consumerSecret: string;
+  shortcode: string;
+  passkey: string;
+  callbackBaseUrl: string;
+  transactionType: string;
+  accountReferencePrefix: string;
+  oauthUrl: string;
+  stkPushUrl: string;
+};
+
+export type MpesaStkPushRequest = {
+  amountKsh: number;
+  phone: string;
+  orderNumber: string;
+};
+
+export type MpesaStkPushResponse = {
+  merchantRequestId: string | null;
+  checkoutRequestId: string | null;
+  responseCode: string | null;
+  responseDescription: string | null;
+  customerMessage: string | null;
+  raw: unknown;
+};
+
+export class MpesaConfigurationError extends Error {}
+export class MpesaProviderError extends Error {
+  constructor(message: string, readonly raw?: unknown) {
+    super(message);
+  }
+}
+
+type OAuthResponse = {
+  access_token?: string;
+  expires_in?: string;
+  errorCode?: string;
+  errorMessage?: string;
+};
+
+type StkResponse = {
+  MerchantRequestID?: string;
+  CheckoutRequestID?: string;
+  ResponseCode?: string;
+  ResponseDescription?: string;
+  CustomerMessage?: string;
+  errorCode?: string;
+  errorMessage?: string;
+};
+
+export type FetchLike = typeof fetch;
+
+export function mpesaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MpesaConfig {
+  const environment = env.MPESA_ENVIRONMENT === "production" ? "production" : "sandbox";
+  const baseUrl = environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+  const config: MpesaConfig = {
+    environment,
+    consumerKey: required(env.MPESA_CONSUMER_KEY, "MPESA_CONSUMER_KEY"),
+    consumerSecret: required(env.MPESA_CONSUMER_SECRET, "MPESA_CONSUMER_SECRET"),
+    shortcode: required(env.MPESA_SHORTCODE, "MPESA_SHORTCODE"),
+    passkey: required(env.MPESA_PASSKEY, "MPESA_PASSKEY"),
+    callbackBaseUrl: required(env.MPESA_CALLBACK_BASE_URL ?? env.STOREFRONT_PUBLIC_URL, "MPESA_CALLBACK_BASE_URL"),
+    transactionType: env.MPESA_TRANSACTION_TYPE?.trim() || "CustomerPayBillOnline",
+    accountReferencePrefix: env.MPESA_ACCOUNT_REFERENCE_PREFIX?.trim() || "DLOOP",
+    oauthUrl: env.MPESA_OAUTH_URL?.trim() || `${baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
+    stkPushUrl: env.MPESA_STK_PUSH_URL?.trim() || `${baseUrl}/mpesa/stkpush/v1/processrequest`
+  };
+  return config;
+}
+
+export class MpesaClient {
+  constructor(
+    private readonly config: MpesaConfig,
+    private readonly fetchImpl: FetchLike = fetch
+  ) {}
+
+  async initiateStkPush(input: MpesaStkPushRequest): Promise<MpesaStkPushResponse> {
+    const token = await this.fetchAccessToken();
+    const timestamp = mpesaTimestamp();
+    const password = Buffer.from(`${this.config.shortcode}${this.config.passkey}${timestamp}`).toString("base64");
+    const accountReference = mpesaAccountReference(this.config.accountReferencePrefix, input.orderNumber);
+    const callbackUrl = new URL("/api/payments/mpesa/callback", withTrailingSlash(this.config.callbackBaseUrl)).toString();
+
+    const payload = {
+      BusinessShortCode: this.config.shortcode,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: this.config.transactionType,
+      Amount: input.amountKsh,
+      PartyA: input.phone,
+      PartyB: this.config.shortcode,
+      PhoneNumber: input.phone,
+      CallBackURL: callbackUrl,
+      AccountReference: accountReference,
+      TransactionDesc: `Direct Loop order ${input.orderNumber}`
+    };
+
+    const response = await this.fetchImpl(this.config.stkPushUrl, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store"
+    });
+    const body = (await response.json().catch(() => ({}))) as StkResponse;
+    if (!response.ok || body.errorCode || (body.ResponseCode && body.ResponseCode !== "0")) {
+      throw new MpesaProviderError(body.errorMessage || body.ResponseDescription || "M-Pesa STK Push request failed.", body);
+    }
+
+    return {
+      merchantRequestId: body.MerchantRequestID ?? null,
+      checkoutRequestId: body.CheckoutRequestID ?? null,
+      responseCode: body.ResponseCode ?? null,
+      responseDescription: body.ResponseDescription ?? null,
+      customerMessage: body.CustomerMessage ?? null,
+      raw: body
+    };
+  }
+
+  private async fetchAccessToken(): Promise<string> {
+    const credentials = Buffer.from(`${this.config.consumerKey}:${this.config.consumerSecret}`).toString("base64");
+    const response = await this.fetchImpl(this.config.oauthUrl, {
+      headers: {
+        authorization: `Basic ${credentials}`
+      },
+      cache: "no-store"
+    });
+    const body = (await response.json().catch(() => ({}))) as OAuthResponse;
+    if (!response.ok || !body.access_token) {
+      throw new MpesaProviderError(body.errorMessage || "M-Pesa OAuth token request failed.", body);
+    }
+    return body.access_token;
+  }
+}
+
+function required(value: string | undefined, name: string): string {
+  const next = value?.trim();
+  if (!next) throw new MpesaConfigurationError(`${name} is required for M-Pesa payments.`);
+  return next;
+}
+
+export function mpesaTimestamp(now = new Date()): string {
+  const kenyaTime = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  return [
+    kenyaTime.getUTCFullYear().toString().padStart(4, "0"),
+    (kenyaTime.getUTCMonth() + 1).toString().padStart(2, "0"),
+    kenyaTime.getUTCDate().toString().padStart(2, "0"),
+    kenyaTime.getUTCHours().toString().padStart(2, "0"),
+    kenyaTime.getUTCMinutes().toString().padStart(2, "0"),
+    kenyaTime.getUTCSeconds().toString().padStart(2, "0")
+  ].join("");
+}
+
+export function mpesaAccountReference(prefix: string, orderNumber: string): string {
+  const clean = `${prefix}${orderNumber}`.replace(/[^A-Za-z0-9]/g, "");
+  if (clean.length <= 12) return clean;
+  const digest = createHash("sha1").update(clean).digest("hex").slice(0, 4).toUpperCase();
+  return `${clean.slice(-8)}${digest}`.slice(0, 12);
+}
+
+function withTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value : `${value}/`;
+}
