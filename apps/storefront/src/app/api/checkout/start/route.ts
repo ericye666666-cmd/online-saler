@@ -9,33 +9,37 @@ import {
 
 export async function POST(request: Request) {
   const session = await currentCustomerSession();
-  if (!session) return NextResponse.json({ error: "AUTH_REQUIRED" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Sign in with Google before checkout." }, { status: 401 });
 
   try {
     const body = await request.json() as {
       productId?: string;
       phone?: string;
       fulfillmentMethod?: string;
-      deliveryAddress?: string;
-      deliveryNote?: string;
+      deliveryAddress?: string | null;
+      deliveryNote?: string | null;
     };
     const productId = body.productId?.trim();
-    if (!productId) throw new CheckoutValidationError("Product is required.");
-    if (!body.phone?.trim()) throw new CheckoutValidationError("M-Pesa phone is required.");
-
-    const fulfillmentMethod = body.fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY
-      ? FulfillmentMethod.KIKUYU_LOCAL_DELIVERY
-      : FulfillmentMethod.PICKUP;
+    const phone = body.phone?.trim();
+    if (!productId || !phone) {
+      throw new CheckoutValidationError("Product and M-Pesa phone are required.");
+    }
+    if (!Object.values(FulfillmentMethod).includes(body.fulfillmentMethod as FulfillmentMethod)) {
+      throw new CheckoutValidationError("Choose Kikuyu pickup or local delivery.");
+    }
 
     const result = await startCheckout({
       customerId: session.customerId,
       productId,
-      phone: body.phone,
-      fulfillmentMethod,
+      phone,
+      fulfillmentMethod: body.fulfillmentMethod as FulfillmentMethod,
       deliveryAddress: body.deliveryAddress,
       deliveryNote: body.deliveryNote
     });
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json(result, {
+      status: 201,
+      headers: { "cache-control": "no-store" }
+    });
   } catch (error) {
     if (error instanceof CheckoutValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
@@ -44,6 +48,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
     console.error("checkout_start_failed", error);
-    return NextResponse.json({ error: "Unable to start checkout." }, { status: 500 });
+    return NextResponse.json({ error: "Checkout could not be started. Please try again." }, { status: 500 });
   }
 }
