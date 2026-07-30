@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { moneyKsh, productImageSrc, productMeta, type PublicProduct } from "./storefront-products";
+import {
+  activeFilterCount,
+  moneyKsh,
+  productImageSrc,
+  productMeta,
+  publicProductQueryString,
+  type PublicProduct
+} from "./storefront-products";
 
 const product: PublicProduct = {
   id: "product-1",
@@ -24,5 +31,16 @@ assert.equal(productMeta(product), "TSHIRTS / TSHIRT / ORANGE / M");
 assert.equal(moneyKsh(450), "KSh 450");
 assert.equal(moneyKsh(null), "Price pending");
 assert.equal(moneyKsh(0), "Price pending");
+assert.equal(
+  publicProductQueryString({
+    category: "TOP",
+    color: "ORANGE",
+    size: "",
+    q: " graphic "
+  }),
+  "?category=TOP&color=ORANGE&q=graphic"
+);
+assert.equal(activeFilterCount({ category: "TOP", sort: "price_low", q: "shirt" }), 2);
+assert.equal(activeFilterCount({ sort: "price_high" }), 0);
 
 console.log("Storefront product helper tests passed");

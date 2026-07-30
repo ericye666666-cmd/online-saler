@@ -189,6 +189,77 @@ button {
   color: var(--muted);
 }
 
+.browse-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.filter-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(140px, 1fr)) minmax(130px, 0.8fr) minmax(140px, 0.9fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.filter-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-form label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.filter-form input,
+.filter-form select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfc;
+  color: var(--foreground);
+  font-size: 15px;
+  padding: 0 12px;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-actions button,
+.filter-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.filter-actions button {
+  border: 0;
+  background: var(--accent-strong);
+  color: #ffffff;
+  padding: 0 18px;
+}
+
+.filter-actions a {
+  border: 1px solid var(--line);
+  background: #fbfdfc;
+  color: var(--muted);
+  padding: 0 14px;
+}
+
 .detail-layout {
   display: grid;
   grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.05fr);
@@ -285,6 +356,10 @@ button {
   .detail-layout {
     grid-template-columns: 1fr 1fr;
   }
+
+  .filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -300,8 +375,14 @@ button {
 
   .product-grid,
   .detail-layout,
-  .spec-list {
+  .spec-list,
+  .filter-form {
     grid-template-columns: 1fr;
+  }
+
+  .filter-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .product-photo {
