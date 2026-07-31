@@ -80,7 +80,17 @@ export class ProductImageJobRunnerService {
         filename: `${source.id}.png`
       });
 
-      const assetId = randomUUID();
+      const existingAsset = await prisma.productImageVariantAsset.findUnique({
+        where: {
+          productId_sourceImageId_variant: {
+            productId: job.productId,
+            sourceImageId: job.sourceImageId,
+            variant: ProductImageVariant.CUTOUT_TRANSPARENT
+          }
+        },
+        select: { id: true }
+      });
+      const assetId = existingAsset?.id ?? randomUUID();
       const outputObjectName = this.storage.derivedObjectName(
         job.productId,
         assetId,
