@@ -28,7 +28,8 @@ The Docker image downloads the default model during image build so Cloud Run sta
 ## Main API configuration
 
 ```text
-BACKGROUND_REMOVAL_PROVIDER=rembg_birefnet
+BACKGROUND_REMOVAL_PROVIDER=auto
+LIGHTWEIGHT_CUTOUT_SERVICE_URL=https://<lightweight-service-url>
 REMBG_BIREFNET_SERVICE_URL=https://<service-url>
 ```
 

@@ -15,6 +15,10 @@ export interface BackgroundRemovalResult {
   contentType: "image/png";
   provider: string;
   processorVersion: string;
+  qualityScore?: number | null;
+  qualityIssues?: string[];
+  fallbackFrom?: string | null;
+  fallbackReason?: string | null;
 }
 
 export interface BackgroundRemovalProvider {

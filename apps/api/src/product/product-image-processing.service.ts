@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import {
   ImageProcessingOperation as DatabaseImageProcessingOperation,
   ImageProcessingStatus as DatabaseImageProcessingStatus,
+  Prisma,
   ProductImageType,
   ProductImageVariant as DatabaseProductImageVariant,
   prisma
@@ -89,6 +90,10 @@ export class ProductImageProcessingService {
         retryReason: input.reason?.trim() || null,
         provider: null,
         processorVersion: null,
+        qualityScore: null,
+        qualityIssues: Prisma.JsonNull,
+        fallbackFrom: null,
+        fallbackReason: null,
         outputImageId: null,
         failureCode: null,
         errorMessage: null,
@@ -279,9 +284,13 @@ export class ProductImageProcessingService {
     operation: DatabaseImageProcessingOperation;
     targetVariant: DatabaseProductImageVariant;
     status: DatabaseImageProcessingStatus;
-    provider: string | null;
-    processorVersion: string | null;
-    outputImageId: string | null;
+      provider: string | null;
+      processorVersion: string | null;
+      qualityScore: number | null;
+      qualityIssues: unknown;
+      fallbackFrom: string | null;
+      fallbackReason: string | null;
+      outputImageId: string | null;
     retryCount: number;
     failureCode: string | null;
     errorMessage: string | null;
@@ -299,6 +308,12 @@ export class ProductImageProcessingService {
       status: job.status,
       provider: job.provider,
       processorVersion: job.processorVersion,
+      qualityScore: job.qualityScore,
+      qualityIssues: Array.isArray(job.qualityIssues)
+        ? job.qualityIssues.filter((issue): issue is string => typeof issue === "string")
+        : [],
+      fallbackFrom: job.fallbackFrom,
+      fallbackReason: job.fallbackReason,
       outputImageId: job.outputImageId,
       retryCount: job.retryCount,
       failureCode: (job.failureCode as ImageProcessingJobRecord["failureCode"]) ?? null,

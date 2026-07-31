@@ -3,6 +3,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import {
   ImageProcessingOperation,
   ImageProcessingStatus,
+  Prisma,
   ProductImageType,
   ProductImageVariant,
   prisma
@@ -30,6 +31,10 @@ export class ProductImageJobRunnerService {
         status: ImageProcessingStatus.RUNNING,
         provider: null,
         processorVersion: null,
+        qualityScore: null,
+        qualityIssues: Prisma.JsonNull,
+        fallbackFrom: null,
+        fallbackReason: null,
         startedAt: new Date(),
         completedAt: null,
         failureCode: null,
@@ -128,6 +133,10 @@ export class ProductImageJobRunnerService {
             status: ImageProcessingStatus.SUCCEEDED,
             provider: result.provider,
             processorVersion: result.processorVersion,
+            qualityScore: result.qualityScore ?? null,
+            qualityIssues: result.qualityIssues ?? [],
+            fallbackFrom: result.fallbackFrom ?? null,
+            fallbackReason: result.fallbackReason ?? null,
             outputImageId: saved.id,
             completedAt: new Date(),
             failureCode: null,
@@ -173,6 +182,10 @@ export class ProductImageJobRunnerService {
       status: ImageProcessingStatus;
       provider: string | null;
       processorVersion: string | null;
+      qualityScore: number | null;
+      qualityIssues: unknown;
+      fallbackFrom: string | null;
+      fallbackReason: string | null;
       outputImageId: string | null;
       retryCount: number;
       failureCode: string | null;
@@ -193,6 +206,12 @@ export class ProductImageJobRunnerService {
       status: job.status,
       provider: job.provider,
       processorVersion: job.processorVersion,
+      qualityScore: job.qualityScore,
+      qualityIssues: Array.isArray(job.qualityIssues)
+        ? job.qualityIssues.filter((issue): issue is string => typeof issue === "string")
+        : [],
+      fallbackFrom: job.fallbackFrom,
+      fallbackReason: job.fallbackReason,
       outputImageId: outputImageId ?? job.outputImageId,
       retryCount: job.retryCount,
       failureCode: job.failureCode as ImageProcessingJobRecord["failureCode"],

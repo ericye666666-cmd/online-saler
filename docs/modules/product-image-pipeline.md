@@ -33,6 +33,37 @@ Each operation has its own `ProductImageProcessingJob` and independent status:
 
 A failed image-processing job must not delete the product, block OpenAI extraction for other batch items, or overwrite the original image. A failed job can be retried independently up to the configured retry limit.
 
+`REMOVE_BACKGROUND` stores processor metadata on the job:
+
+- `provider`: the processor that produced the selected output.
+- `processorVersion`: the processor or model version.
+- `qualityScore`: the provider quality score when available.
+- `qualityIssues`: provider quality issue codes when available.
+- `fallbackFrom`: the first provider when the output came from fallback routing.
+- `fallbackReason`: the quality or failure reason that triggered fallback.
+
+## Background-removal routing
+
+The default background-removal provider is `auto`.
+
+`auto` routing uses the lightweight OpenCV service first. If the lightweight output has a quality score below `BACKGROUND_REMOVAL_MIN_QUALITY_SCORE` (default `0.75`) or reports a blocking issue, the API reruns the same source image through the self-hosted rembg BiRefNet service and stores the BiRefNet output as `CUTOUT_TRANSPARENT`.
+
+Default blocking issues:
+
+- `SUBJECT_TOUCHES_EDGE`
+- `EDGE_FRAGMENTED`
+
+The blocking list can be overridden with `BACKGROUND_REMOVAL_BLOCKING_QUALITY_ISSUES` as a comma-separated list.
+
+Manual provider modes remain supported:
+
+- `BACKGROUND_REMOVAL_PROVIDER=lightweight`
+- `BACKGROUND_REMOVAL_PROVIDER=rembg_birefnet`
+- `BACKGROUND_REMOVAL_PROVIDER=remove_bg`
+- `BACKGROUND_REMOVAL_PROVIDER=auto`
+
+The routing layer never invokes a generative image model. Fallback reprocesses the original source bytes with another pixel-preserving background-removal engine.
+
 ## Main-image selection
 
 `ProductMainImageSelection` stores the employee-selected Storefront image without changing the original product photo.
@@ -90,6 +121,6 @@ Not allowed:
 
 The shared TypeScript contracts live in `packages/shared-types/src/image-processing.ts`.
 
-## Deferred to the processor PR
+## Processor implementation
 
-This persistence/API foundation does not yet call a background-removal provider or write output image files. The processor implementation must claim pending jobs, create derived files, persist `ProductImageVariantAsset`, and mark each job succeeded or failed without touching the original upload.
+`POST /image-processing-jobs/:jobId/run` claims a pending `REMOVE_BACKGROUND` job, downloads the immutable FRONT source image, calls the configured provider routing layer, uploads the transparent PNG derivative, persists `ProductImageVariantAsset`, and marks the job succeeded or failed without touching the original upload.
