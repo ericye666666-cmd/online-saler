@@ -359,89 +359,14 @@ jobs:
           cmp /tmp/product-test.png /tmp/product-test-downloaded.png
 
       - name: Verify image cutout auto routing
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+          STAGING_ADMIN_LOGIN: superadmin
+          STAGING_ADMIN_PASSWORD: ChangeMe43!
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
-          SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
-            "${SERVICE_URL}/operations/access/login")"
-          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
-          PRODUCT_CODE="CUTOUT-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          PRODUCT_RESPONSE="$(curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
-            "${SERVICE_URL}/products")"
-          PRODUCT_ID="$(printf '%s' "${PRODUCT_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
-
-          python3 - <<'PY'
-          import struct
-          import zlib
-
-          width = 512
-          height = 512
-          rows = []
-          for y in range(height):
-              row = bytearray()
-              for x in range(width):
-                  if 142 <= x <= 370 and 92 <= y <= 430:
-                      row.extend([22, 22, 22])
-                  else:
-                      row.extend([248, 248, 248])
-              rows.append(b"\x00" + bytes(row))
-          raw = b"".join(rows)
-
-          def chunk(kind, data):
-              return (
-                  struct.pack(">I", len(data))
-                  + kind
-                  + data
-                  + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
-              )
-
-          png = (
-              b"\x89PNG\r\n\x1a\n"
-              + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-              + chunk(b"IDAT", zlib.compress(raw))
-              + chunk(b"IEND", b"")
-          )
-
-          with open("/tmp/cutout-test.png", "wb") as file:
-              file.write(png)
-          PY
-
-          IMAGE_RESPONSE="$(curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Content-Type: image/png" \
-            --header "X-Image-Type: FRONT" \
-            --header "X-Employee-Id: 00000000-0000-4000-8000-000000000001" \
-            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
-            --data-binary @/tmp/cutout-test.png \
-            "${SERVICE_URL}/products/${PRODUCT_ID}/images/upload")"
-          IMAGE_ID="$(printf '%s' "${IMAGE_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
-
-          JOB_RESPONSE="$(curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
-            --data '{"operation":"REMOVE_BACKGROUND"}' \
-            "${SERVICE_URL}/products/${PRODUCT_ID}/images/${IMAGE_ID}/processing-jobs")"
-          JOB_ID="$(printf '%s' "${JOB_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
-
-          RUN_RESPONSE="$(curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
-            "${SERVICE_URL}/image-processing-jobs/${JOB_ID}/run")"
-          echo "${RUN_RESPONSE}"
-          echo "${RUN_RESPONSE}" | grep -q '"status":"SUCCEEDED"'
-          echo "${RUN_RESPONSE}" | grep -Eq '"provider":"(lightweight-opencv|rembg-birefnet)"'
-          ASSET_ID="$(printf '%s' "${RUN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).outputImageId))')"
-
-          curl --fail --silent --show-error \
-            "${SERVICE_URL}/products/${PRODUCT_ID}/image-assets/${ASSET_ID}/content" \
-            --output /tmp/cutout-test-transparent.png
-          file /tmp/cutout-test-transparent.png | grep -q "PNG image data"
+          node scripts/verify-staging-image-processing.mjs
 
       - name: Verify Operations workspace API
         run: |
