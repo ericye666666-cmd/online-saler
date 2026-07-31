@@ -7,6 +7,14 @@ import { inflateSync } from "node:zlib";
 
 const EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const JPEG_SIGNATURE = Buffer.from([255, 216, 255]);
+
+export function inspectJpeg(input) {
+  const jpeg = Buffer.from(input);
+  assert.ok(jpeg.subarray(0, 3).equals(JPEG_SIGNATURE), "output must have a JPEG signature");
+  assert.ok(jpeg.length > 4 && jpeg.at(-2) === 255 && jpeg.at(-1) === 217, "JPEG must end with an EOI marker");
+  return { byteLength: jpeg.length };
+}
 
 export function inspectTransparentPng(input) {
   const png = Buffer.from(input);
@@ -211,6 +219,27 @@ async function verifyCutoutPath(input) {
     `${input.serviceUrl}/products/${product.id}/image-assets/${completed.outputImageId}/content`
   );
   const alpha = inspectTransparentPng(transparent);
+  const white = await runDerivedOperation({
+    ...input,
+    productId: product.id,
+    sourceImageId: completed.outputImageId,
+    operation: "COMPOSE_WHITE_BACKGROUND",
+    expectedVariant: "CUTOUT_WHITE"
+  });
+  const optimized = await runDerivedOperation({
+    ...input,
+    productId: product.id,
+    sourceImageId: white.outputImageId,
+    operation: "OPTIMIZE_MAIN_IMAGE",
+    expectedVariant: "OPTIMIZED_MAIN"
+  });
+  const selected = await requestJson(`${input.serviceUrl}/products/${product.id}/main-image`, {
+    method: "POST",
+    headers: { ...input.adminHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify({ imageId: optimized.outputImageId })
+  });
+  assert.equal(selected.selectedMainImageId, optimized.outputImageId);
+  assert.equal(selected.optimizedMain.selectedAsMain, true);
   await assertOriginalUnchanged(input.serviceUrl, product.id, image.id, original);
 
   return {
@@ -221,7 +250,55 @@ async function verifyCutoutPath(input) {
     fallbackFrom: completed.fallbackFrom,
     fallbackReason: completed.fallbackReason,
     originalSha256: sha256(original),
-    alpha
+    alpha,
+    white,
+    optimized
+  };
+}
+
+async function runDerivedOperation(input) {
+  const job = await requestJson(
+    `${input.serviceUrl}/products/${input.productId}/images/${input.sourceImageId}/processing-jobs`,
+    {
+      method: "POST",
+      headers: { ...input.adminHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: input.operation })
+    }
+  );
+  const completed = await requestJson(`${input.serviceUrl}/image-processing-jobs/${job.id}/run`, {
+    method: "POST",
+    headers: { ...input.adminHeaders, "Content-Type": "application/json" },
+    body: "{}"
+  });
+  assert.equal(completed.status, "SUCCEEDED");
+  assert.equal(completed.provider, "deterministic-sharp");
+  assert.equal(completed.targetVariant, input.expectedVariant);
+  assert.ok(completed.outputImageId);
+
+  const comparison = await requestJson(`${input.serviceUrl}/products/${input.productId}/image-comparison`, {
+    headers: input.adminHeaders
+  });
+  const property = input.expectedVariant === "CUTOUT_WHITE" ? "cutoutWhite" : "optimizedMain";
+  const asset = comparison[property];
+  assert.equal(asset.imageId, completed.outputImageId);
+  assert.equal(asset.mimeType, "image/jpeg");
+  if (input.expectedVariant === "OPTIMIZED_MAIN") {
+    assert.equal(asset.widthPx, 1200);
+    assert.equal(asset.heightPx, 1200);
+  }
+
+  const bytes = await requestBytes(
+    `${input.serviceUrl}/products/${input.productId}/image-assets/${completed.outputImageId}/content`
+  );
+  const jpeg = inspectJpeg(bytes);
+  return {
+    jobId: completed.id,
+    outputImageId: completed.outputImageId,
+    variant: completed.targetVariant,
+    mimeType: asset.mimeType,
+    widthPx: asset.widthPx,
+    heightPx: asset.heightPx,
+    jpeg
   };
 }
 

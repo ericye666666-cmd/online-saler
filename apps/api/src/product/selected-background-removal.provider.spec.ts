@@ -149,4 +149,28 @@ describe("SelectedBackgroundRemovalProvider", () => {
     assert.equal(lightweight.calls, 0);
     assert.equal(rembg.calls, 1);
   });
+
+  it("allows a calibration retry to force the lightweight provider", async () => {
+    const lightweight = new StubBackgroundRemovalProvider(true, lightweightResult);
+    const rembg = new StubBackgroundRemovalProvider(true, rembgResult);
+    const provider = new SelectedBackgroundRemovalProvider(lightweight as any, rembg as any, rembg as any);
+
+    const result = await provider.removeBackground(input, "lightweight");
+
+    assert.equal(result.provider, "lightweight-opencv");
+    assert.equal(lightweight.calls, 1);
+    assert.equal(rembg.calls, 0);
+  });
+
+  it("allows a calibration retry to force rembg BiRefNet", async () => {
+    const lightweight = new StubBackgroundRemovalProvider(true, lightweightResult);
+    const rembg = new StubBackgroundRemovalProvider(true, rembgResult);
+    const provider = new SelectedBackgroundRemovalProvider(lightweight as any, rembg as any, rembg as any);
+
+    const result = await provider.removeBackground(input, "rembg_birefnet");
+
+    assert.equal(result.provider, "rembg-birefnet");
+    assert.equal(lightweight.calls, 0);
+    assert.equal(rembg.calls, 1);
+  });
 });

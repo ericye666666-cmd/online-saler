@@ -101,7 +101,7 @@ export const operationsModules: ModuleNav[] = [
       { label: "新建批次", href: "/product/new-batch", icon: PackageCheckIcon, permission: "page.product.digitalization" },
       { label: "待上传", href: "/product/waiting-upload", icon: UploadIcon, permission: "page.product.digitalization" },
       { label: "待 AI 识别", href: "/product/waiting-ai", icon: SparklesIcon, permission: "page.product.digitalization" },
-      { label: "待人工校准", href: "/product/calibration", icon: ClipboardCheckIcon, permission: "page.product.digitalization" },
+      { label: "图片与信息校准", href: "/product/calibration", icon: ClipboardCheckIcon, permission: "page.product.digitalization" },
       { label: "待审核", href: "/product/review", icon: ShieldCheckIcon, permission: "page.product.control" },
       { label: "已发布", href: "/product/published", icon: PackageCheckIcon, permission: "page.product.control" },
       { label: "已拒绝", href: "/product/rejected", icon: XCircleIcon, permission: "page.product.control" },

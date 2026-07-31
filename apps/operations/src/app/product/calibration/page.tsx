@@ -4,8 +4,8 @@ export default function CalibrationPage() {
   return (
     <ProductQueuePage
       queue="calibration"
-      title="待人工校准"
-      description="员工逐件确认 AI 结果，并补充实测尺寸、成色和瑕疵。校准完成后才允许生成正式 Barcode。"
+      title="图片与信息校准"
+      description="同页核对原图、抠图、商城主图与 AI 商品数据，确认尺寸、成色、瑕疵和价格。"
     />
   );
 }
