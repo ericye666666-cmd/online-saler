@@ -7,17 +7,22 @@ CREATE TYPE "ImageProcessingOperation" AS ENUM ('REMOVE_BACKGROUND', 'COMPOSE_WH
 -- CreateEnum
 CREATE TYPE "ImageProcessingStatus" AS ENUM ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED');
 
--- AlterTable
-ALTER TABLE "Product"
-ADD COLUMN "selectedMainImageId" TEXT;
+-- CreateTable
+CREATE TABLE "ProductImageVariantAsset" (
+    "id" TEXT NOT NULL,
+    "productId" TEXT NOT NULL,
+    "sourceImageId" TEXT NOT NULL,
+    "variant" "ProductImageVariant" NOT NULL,
+    "storageUrl" TEXT NOT NULL,
+    "publicUrl" TEXT,
+    "widthPx" INTEGER,
+    "heightPx" INTEGER,
+    "mimeType" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
--- AlterTable
-ALTER TABLE "ProductImage"
-ADD COLUMN "sourceImageId" TEXT,
-ADD COLUMN "variant" "ProductImageVariant" NOT NULL DEFAULT 'ORIGINAL',
-ADD COLUMN "widthPx" INTEGER,
-ADD COLUMN "heightPx" INTEGER,
-ADD COLUMN "mimeType" TEXT;
+    CONSTRAINT "ProductImageVariantAsset_pkey" PRIMARY KEY ("id")
+);
 
 -- CreateTable
 CREATE TABLE "ProductImageProcessingJob" (
@@ -42,17 +47,25 @@ CREATE TABLE "ProductImageProcessingJob" (
     CONSTRAINT "ProductImageProcessingJob_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "Product_selectedMainImageId_key" ON "Product"("selectedMainImageId");
+-- CreateTable
+CREATE TABLE "ProductMainImageSelection" (
+    "productId" TEXT NOT NULL,
+    "selectedImageId" TEXT NOT NULL,
+    "variant" "ProductImageVariant" NOT NULL,
+    "selectedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ProductMainImageSelection_pkey" PRIMARY KEY ("productId")
+);
 
 -- CreateIndex
-CREATE INDEX "ProductImage_productId_type_variant_idx" ON "ProductImage"("productId", "type", "variant");
+CREATE UNIQUE INDEX "ProductImageVariantAsset_productId_sourceImageId_variant_key" ON "ProductImageVariantAsset"("productId", "sourceImageId", "variant");
 
 -- CreateIndex
-CREATE INDEX "ProductImage_sourceImageId_idx" ON "ProductImage"("sourceImageId");
+CREATE INDEX "ProductImageVariantAsset_productId_variant_createdAt_idx" ON "ProductImageVariantAsset"("productId", "variant", "createdAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ProductImage_productId_sourceImageId_variant_key" ON "ProductImage"("productId", "sourceImageId", "variant");
+CREATE INDEX "ProductImageVariantAsset_sourceImageId_idx" ON "ProductImageVariantAsset"("sourceImageId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ProductImageProcessingJob_outputImageId_key" ON "ProductImageProcessingJob"("outputImageId");
@@ -63,17 +76,5 @@ CREATE INDEX "ProductImageProcessingJob_productId_status_createdAt_idx" ON "Prod
 -- CreateIndex
 CREATE INDEX "ProductImageProcessingJob_sourceImageId_operation_createdAt_idx" ON "ProductImageProcessingJob"("sourceImageId", "operation", "createdAt");
 
--- AddForeignKey
-ALTER TABLE "Product" ADD CONSTRAINT "Product_selectedMainImageId_fkey" FOREIGN KEY ("selectedMainImageId") REFERENCES "ProductImage"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ProductImage" ADD CONSTRAINT "ProductImage_sourceImageId_fkey" FOREIGN KEY ("sourceImageId") REFERENCES "ProductImage"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ProductImageProcessingJob" ADD CONSTRAINT "ProductImageProcessingJob_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ProductImageProcessingJob" ADD CONSTRAINT "ProductImageProcessingJob_sourceImageId_fkey" FOREIGN KEY ("sourceImageId") REFERENCES "ProductImage"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ProductImageProcessingJob" ADD CONSTRAINT "ProductImageProcessingJob_outputImageId_fkey" FOREIGN KEY ("outputImageId") REFERENCES "ProductImage"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- CreateIndex
+CREATE INDEX "ProductMainImageSelection_selectedImageId_idx" ON "ProductMainImageSelection"("selectedImageId");
