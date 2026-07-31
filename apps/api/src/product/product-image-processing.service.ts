@@ -33,26 +33,12 @@ export class ProductImageProcessingService {
     }
 
     const operation = input.operation;
-    const sourceImage = await prisma.productImage.findFirst({
-      where: {
-        id: input.sourceImageId,
-        productId: input.productId
-      }
-    });
-
-    if (!sourceImage) {
-      throw new BadRequestException("Source image not found for this product");
-    }
-    if (sourceImage.type !== ProductImageType.FRONT) {
-      throw new BadRequestException("Only FRONT images can enter the main-image pipeline");
-    }
-
     const requiredSourceVariant = sourceVariantForOperation(operation);
-    if (sourceImage.variant !== requiredSourceVariant) {
-      throw new BadRequestException(
-        `${operation} requires a ${requiredSourceVariant} source image`
-      );
-    }
+    await this.requireSourceImage({
+      productId: input.productId,
+      sourceImageId: input.sourceImageId,
+      variant: requiredSourceVariant
+    });
 
     const activeJob = await prisma.productImageProcessingJob.findFirst({
       where: {
@@ -66,9 +52,7 @@ export class ProductImageProcessingService {
       orderBy: { createdAt: "desc" }
     });
 
-    if (activeJob) {
-      return this.toJobRecord(activeJob);
-    }
+    if (activeJob) return this.toJobRecord(activeJob);
 
     const job = await prisma.productImageProcessingJob.create({
       data: {
@@ -90,6 +74,12 @@ export class ProductImageProcessingService {
     if (!canRetryImageProcessing(job.status, job.retryCount)) {
       throw new BadRequestException("Only failed jobs below the retry limit can be retried");
     }
+
+    await this.requireSourceImage({
+      productId: job.productId,
+      sourceImageId: job.sourceImageId,
+      variant: sourceVariantForOperation(job.operation)
+    });
 
     const retried = await prisma.productImageProcessingJob.update({
       where: { id: input.jobId },
@@ -114,22 +104,44 @@ export class ProductImageProcessingService {
     productId: string;
     imageId: string;
   }): Promise<ProductImageComparisonResponse> {
-    const image = await prisma.productImage.findFirst({
+    const original = await prisma.productImage.findFirst({
       where: {
         id: input.imageId,
         productId: input.productId,
         type: ProductImageType.FRONT
-      }
+      },
+      select: { id: true }
     });
 
-    if (!image) throw new BadRequestException("Front image not found for this product");
-    if (!isSelectableMainVariant(image.variant)) {
+    let variant: ProductImageVariant = "ORIGINAL";
+    if (!original) {
+      const asset = await prisma.productImageVariantAsset.findFirst({
+        where: {
+          id: input.imageId,
+          productId: input.productId
+        },
+        select: { variant: true }
+      });
+      if (!asset) throw new BadRequestException("Front image variant not found for this product");
+      variant = asset.variant;
+    }
+
+    if (!isSelectableMainVariant(variant)) {
       throw new BadRequestException("Transparent cutout cannot be selected as the storefront main image");
     }
 
-    await prisma.product.update({
-      where: { id: input.productId },
-      data: { selectedMainImageId: image.id }
+    await prisma.productMainImageSelection.upsert({
+      where: { productId: input.productId },
+      create: {
+        productId: input.productId,
+        selectedImageId: input.imageId,
+        variant: variant as DatabaseProductImageVariant
+      },
+      update: {
+        selectedImageId: input.imageId,
+        variant: variant as DatabaseProductImageVariant,
+        selectedAt: new Date()
+      }
     });
 
     return this.getComparison(input.productId);
@@ -138,50 +150,105 @@ export class ProductImageProcessingService {
   async getComparison(productId: string): Promise<ProductImageComparisonResponse> {
     const product = await prisma.product.findUnique({
       where: { id: productId },
-      select: {
-        id: true,
-        selectedMainImageId: true,
-        images: {
-          where: { type: ProductImageType.FRONT },
-          orderBy: { createdAt: "desc" }
-        },
-        imageProcessingJobs: {
-          orderBy: { createdAt: "desc" }
-        }
-      }
+      select: { id: true }
     });
-
     if (!product) throw new BadRequestException("Product not found");
 
-    const byVariant = new Map<ProductImageVariant, (typeof product.images)[number]>();
-    for (const image of product.images) {
-      const variant = image.variant as ProductImageVariant;
-      if (!byVariant.has(variant)) byVariant.set(variant, image);
+    const [original, assets, jobs, selection] = await Promise.all([
+      prisma.productImage.findFirst({
+        where: {
+          productId,
+          type: ProductImageType.FRONT
+        },
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.productImageVariantAsset.findMany({
+        where: { productId },
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.productImageProcessingJob.findMany({
+        where: { productId },
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.productMainImageSelection.findUnique({ where: { productId } })
+    ]);
+
+    const byVariant = new Map<ProductImageVariant, (typeof assets)[number]>();
+    for (const asset of assets) {
+      const variant = asset.variant as ProductImageVariant;
+      if (!byVariant.has(variant)) byVariant.set(variant, asset);
     }
 
-    const mapVariant = (variant: ProductImageVariant): ProductImageVariantRecord | null => {
-      const image = byVariant.get(variant);
-      return image ? this.toImageRecord(image, product.selectedMainImageId) : null;
+    const mapAsset = (variant: Exclude<ProductImageVariant, "ORIGINAL">) => {
+      const asset = byVariant.get(variant);
+      return asset ? this.toAssetRecord(asset, selection?.selectedImageId ?? null) : null;
     };
 
     return {
       productId,
-      original: mapVariant("ORIGINAL"),
-      cutoutTransparent: mapVariant("CUTOUT_TRANSPARENT"),
-      cutoutWhite: mapVariant("CUTOUT_WHITE"),
-      optimizedMain: mapVariant("OPTIMIZED_MAIN"),
-      selectedMainImageId: product.selectedMainImageId,
-      jobs: product.imageProcessingJobs.map((job) => this.toJobRecord(job))
+      original: original
+        ? {
+            imageId: original.id,
+            productId: original.productId,
+            sourceImageId: null,
+            variant: "ORIGINAL",
+            originalUrl: original.originalUrl,
+            publicUrl: original.publicUrl,
+            widthPx: null,
+            heightPx: null,
+            mimeType: null,
+            selectedAsMain: original.id === selection?.selectedImageId,
+            createdAt: original.createdAt.toISOString()
+          }
+        : null,
+      cutoutTransparent: mapAsset("CUTOUT_TRANSPARENT"),
+      cutoutWhite: mapAsset("CUTOUT_WHITE"),
+      optimizedMain: mapAsset("OPTIMIZED_MAIN"),
+      selectedMainImageId: selection?.selectedImageId ?? null,
+      jobs: jobs.map((job) => this.toJobRecord(job))
     };
   }
 
-  private toImageRecord(
-    image: {
+  private async requireSourceImage(input: {
+    productId: string;
+    sourceImageId: string;
+    variant: ProductImageVariant;
+  }): Promise<void> {
+    if (input.variant === "ORIGINAL") {
+      const original = await prisma.productImage.findFirst({
+        where: {
+          id: input.sourceImageId,
+          productId: input.productId,
+          type: ProductImageType.FRONT
+        },
+        select: { id: true }
+      });
+      if (!original) {
+        throw new BadRequestException("A FRONT original image is required for background removal");
+      }
+      return;
+    }
+
+    const asset = await prisma.productImageVariantAsset.findFirst({
+      where: {
+        id: input.sourceImageId,
+        productId: input.productId,
+        variant: input.variant as DatabaseProductImageVariant
+      },
+      select: { id: true }
+    });
+    if (!asset) {
+      throw new BadRequestException(`${input.variant} source image not found for this product`);
+    }
+  }
+
+  private toAssetRecord(
+    asset: {
       id: string;
       productId: string;
-      sourceImageId: string | null;
+      sourceImageId: string;
       variant: DatabaseProductImageVariant;
-      originalUrl: string;
+      storageUrl: string;
       publicUrl: string | null;
       widthPx: number | null;
       heightPx: number | null;
@@ -191,17 +258,17 @@ export class ProductImageProcessingService {
     selectedMainImageId: string | null
   ): ProductImageVariantRecord {
     return {
-      imageId: image.id,
-      productId: image.productId,
-      sourceImageId: image.sourceImageId,
-      variant: image.variant,
-      originalUrl: image.originalUrl,
-      publicUrl: image.publicUrl,
-      widthPx: image.widthPx,
-      heightPx: image.heightPx,
-      mimeType: image.mimeType,
-      selectedAsMain: image.id === selectedMainImageId,
-      createdAt: image.createdAt.toISOString()
+      imageId: asset.id,
+      productId: asset.productId,
+      sourceImageId: asset.sourceImageId,
+      variant: asset.variant,
+      originalUrl: asset.storageUrl,
+      publicUrl: asset.publicUrl,
+      widthPx: asset.widthPx,
+      heightPx: asset.heightPx,
+      mimeType: asset.mimeType,
+      selectedAsMain: asset.id === selectedMainImageId,
+      createdAt: asset.createdAt.toISOString()
     };
   }
 
