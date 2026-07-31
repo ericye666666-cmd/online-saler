@@ -9,6 +9,7 @@ import { ProductImageJobRunnerService } from "./product-image-job-runner.service
 import { ProductImageProcessingController } from "./product-image-processing.controller";
 import { ProductImageProcessingService } from "./product-image-processing.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
+import { ProductImageTransformerService } from "./product-image-transformer.service";
 import { PRODUCT_REPOSITORY } from "./product.repository";
 import { ProductSetupController } from "./product-setup.controller";
 import { PrismaProductRepository } from "./prisma-product.repository";
@@ -29,6 +30,7 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductCalibrationService,
     ProductBarcodeService,
     ProductImageStorageService,
+    ProductImageTransformerService,
     ProductImageProcessingService,
     ProductImageJobRunnerService,
     LightweightBackgroundRemovalProvider,

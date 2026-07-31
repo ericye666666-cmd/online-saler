@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { BackgroundRemovalMode } from "@online-saler/shared-types";
 import type {
   BackgroundRemovalInput,
   BackgroundRemovalProvider,
@@ -24,8 +25,11 @@ export class SelectedBackgroundRemovalProvider implements BackgroundRemovalProvi
     return this.selected(mode).isConfigured();
   }
 
-  async removeBackground(input: BackgroundRemovalInput): Promise<BackgroundRemovalResult> {
-    const mode = selectedMode();
+  async removeBackground(
+    input: BackgroundRemovalInput,
+    modeOverride?: BackgroundRemovalMode
+  ): Promise<BackgroundRemovalResult> {
+    const mode = modeOverride ?? selectedMode();
     if (mode === "auto") return this.removeBackgroundAutomatically(input);
     return this.selected(mode).removeBackground(input);
   }

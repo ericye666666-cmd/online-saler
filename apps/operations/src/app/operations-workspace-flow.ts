@@ -19,6 +19,7 @@ export type WorkspaceForm = {
   waistCm: string;
   hipCm: string;
   conditionGrade: string;
+  priceKsh: string;
   defects: string;
 };
 
@@ -48,6 +49,7 @@ export const emptyWorkspaceForm = (): WorkspaceForm => ({
   waistCm: "",
   hipCm: "",
   conditionGrade: "GOOD",
+  priceKsh: "",
   defects: ""
 });
 
@@ -83,7 +85,8 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     sizeLabel: stringValue(product?.finalSizeLabel) || stringField(ai, "sizeLabel") || form.sizeLabel,
     pattern: stringField(ai, "pattern") || form.pattern,
     sleeveType: stringField(ai, "sleeveType") || form.sleeveType,
-    conditionGrade: stringValue(product?.conditionGrade) || form.conditionGrade
+    conditionGrade: stringValue(product?.conditionGrade) || form.conditionGrade,
+    priceKsh: typeof product?.priceKsh === "number" ? String(product.priceKsh) : form.priceKsh
   };
 }
 
@@ -141,7 +144,8 @@ export function calibrationValidationReasons(
     ["color", "颜色"],
     ["audience", "适用人群"],
     ["sizeLabel", "尺码"],
-    ["conditionGrade", "成色"]
+    ["conditionGrade", "成色"],
+    ["priceKsh", "价格"]
   ];
   for (const [field, label] of requiredFields) {
     if (!form[field].trim()) reasons.push(`${label}为必填项。`);
@@ -151,6 +155,7 @@ export function calibrationValidationReasons(
   }
   if (!positiveNumber(form.lengthCm)) reasons.push("衣长必须填写大于 0 的厘米数。");
   if (!positiveNumber(form.chestWidthCm)) reasons.push("胸宽必须填写大于 0 的厘米数。");
+  if (!positiveInteger(form.priceKsh)) reasons.push("价格必须填写大于 0 的整数 KSh。");
   if (!form.defects.trim()) reasons.push("瑕疵必须确认；没有瑕疵请填写 None。");
   return reasons;
 }
@@ -166,6 +171,11 @@ function labelFor(input: { status: string; hasPhoto: boolean; hasAi: boolean; re
 function positiveNumber(value: string): boolean {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0;
+}
+
+function positiveInteger(value: string): boolean {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0;
 }
 
 export function buildCalibrationBody(input: {
@@ -204,6 +214,7 @@ export function buildCalibrationBody(input: {
     brand: input.form.brand.trim() || undefined,
     sizeLabel: input.form.sizeLabel.trim() || undefined,
     conditionGrade: input.form.conditionGrade,
+    priceKsh: Number(input.form.priceKsh),
     measurements: [
       { type: "LENGTH", valueCm: length },
       { type: "CHEST_WIDTH", valueCm: chest },

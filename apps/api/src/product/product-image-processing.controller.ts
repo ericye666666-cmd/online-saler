@@ -10,7 +10,9 @@ import {
 } from "@nestjs/common";
 import { prisma } from "@online-saler/database";
 import {
+  isBackgroundRemovalMode,
   isImageProcessingOperation,
+  type RunImageProcessingRequest,
   type RetryImageProcessingRequest,
   type SelectProductMainImageRequest,
   type StartImageProcessingRequest
@@ -50,10 +52,17 @@ export class ProductImageProcessingController {
   @Post("image-processing-jobs/:jobId/run")
   async run(
     @Param("jobId") jobId: string,
+    @Body() body: RunImageProcessingRequest | undefined,
     @Headers(ADMIN_USER_HEADER) adminUserId?: string
   ) {
     await requireAdminPermission(adminUserId, "action.product.edit");
-    return this.jobRunner.run(jobId);
+    if (
+      body?.backgroundRemovalMode &&
+      !isBackgroundRemovalMode(body.backgroundRemovalMode)
+    ) {
+      throw new BadRequestException("Unsupported background removal mode");
+    }
+    return this.jobRunner.run(jobId, body?.backgroundRemovalMode);
   }
 
   @Get("products/:productId/image-comparison")

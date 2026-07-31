@@ -8,19 +8,27 @@ import {
   AI_PATTERNS,
   AI_SLEEVE_TYPES,
   PRODUCT_CATEGORY_OPTIONS,
-  PRODUCT_SUBCATEGORIES_BY_CATEGORY
+  PRODUCT_SUBCATEGORIES_BY_CATEGORY,
+  type BackgroundRemovalMode,
+  type ImageProcessingOperation,
+  type ImageProcessingJobRecord,
+  type ProductImageComparisonResponse,
+  type ProductImageVariantRecord
 } from "@online-saler/shared-types";
 import {
   CheckCircle2Icon,
   CircleDollarSignIcon,
   DownloadIcon,
+  ImageIcon,
   PackageCheckIcon,
   PlayIcon,
   PlusIcon,
   PrinterIcon,
+  RefreshCwIcon,
   SaveIcon,
   ScanBarcodeIcon,
   UploadIcon,
+  WandSparklesIcon,
   XCircleIcon
 } from "lucide-react";
 
@@ -140,7 +148,52 @@ async function uploadProductImage(productId: string, employeeId: string, adminUs
     body = { message: text || `Upload failed: ${response.status}` };
   }
   if (!response.ok) throw new Error(String(body.message ?? `Upload failed: ${response.status}`));
+  const imageId = stringValue(body.id);
+  if (imageId) {
+    const cutout = await runImageOperation(productId, imageId, "REMOVE_BACKGROUND", adminUserId, "auto");
+    const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", adminUserId);
+    const optimized = await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", adminUserId);
+    await selectProductMainImage(productId, optimized.outputImageId!, adminUserId);
+  }
   return body;
+}
+
+async function runImageOperation(
+  productId: string,
+  sourceImageId: string,
+  operation: ImageProcessingOperation,
+  adminUserId: string,
+  backgroundRemovalMode?: BackgroundRemovalMode
+): Promise<ImageProcessingJobRecord> {
+  const job = await request<ImageProcessingJobRecord>(
+    `/products/${productId}/images/${sourceImageId}/processing-jobs`,
+    {
+      method: "POST",
+      headers: { "X-Admin-User-Id": adminUserId },
+      body: JSON.stringify({ operation })
+    }
+  );
+  const completed = await request<ImageProcessingJobRecord>(`/image-processing-jobs/${job.id}/run`, {
+    method: "POST",
+    headers: { "X-Admin-User-Id": adminUserId },
+    body: JSON.stringify(backgroundRemovalMode ? { backgroundRemovalMode } : {})
+  });
+  if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
+    throw new Error(completed.errorMessage || `${operation} failed`);
+  }
+  return completed;
+}
+
+async function selectProductMainImage(
+  productId: string,
+  imageId: string,
+  adminUserId: string
+): Promise<ProductImageComparisonResponse> {
+  return request<ProductImageComparisonResponse>(`/products/${productId}/main-image`, {
+    method: "POST",
+    headers: { "X-Admin-User-Id": adminUserId },
+    body: JSON.stringify({ imageId })
+  });
 }
 
 export function ProductWorkbenchPage() {
@@ -601,63 +654,93 @@ function BatchTable(props: { batches: ProductBatch[]; ids: ReturnType<typeof use
 
 function BulkUploadButton(props: { batch: ProductBatch; ids: ReturnType<typeof useOperationIds>; disabled?: boolean; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const waiting = props.batch.products.filter((product) => stringValue(product.status) === "DRAFT");
   async function upload(files: FileList | null) {
     if (!files?.length) return;
     setBusy(true);
+    setError("");
     try {
       const targets = waiting.slice(0, files.length);
       for (let index = 0; index < targets.length; index += 1) {
         await uploadProductImage(stringValue(targets[index].id), props.ids.employeeId, props.ids.adminUserId, files[index]);
       }
       props.onDone();
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Button asChild size="sm" variant="outline" disabled={props.disabled || busy || waiting.length === 0}>
-      <label className="cursor-pointer">
-        <UploadIcon data-icon="inline-start" />
-        批量上传
-        <Input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={props.disabled || busy || waiting.length === 0} onChange={(event) => void upload(event.target.files)} />
-      </label>
-    </Button>
-  );
-}
-
-function UploadButton(props: { product: JsonRecord; ids: ReturnType<typeof useOperationIds>; disabled?: boolean; onDone: () => void }) {
-  const [busy, setBusy] = useState(false);
-  async function upload(file: File | null) {
-    if (!file) return;
-    setBusy(true);
-    try {
-      await uploadProductImage(stringValue(props.product.id), props.ids.employeeId, props.ids.adminUserId, file);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "图片处理失败，原图已保留。请进入校准页重试。");
       props.onDone();
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Button asChild size="sm" variant="outline" disabled={props.disabled || busy}>
-      <label className="cursor-pointer">
-        <UploadIcon data-icon="inline-start" />
-        上传
-        <Input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={props.disabled || busy} onChange={(event) => void upload(event.target.files?.[0] ?? null)} />
-      </label>
-    </Button>
+    <div className="flex flex-col items-end gap-1">
+      <Button asChild size="sm" variant="outline" disabled={props.disabled || busy || waiting.length === 0}>
+        <label className="cursor-pointer">
+          <UploadIcon data-icon="inline-start" />
+          批量上传
+          <Input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={props.disabled || busy || waiting.length === 0} onChange={(event) => void upload(event.target.files)} />
+        </label>
+      </Button>
+      {error ? <span className="max-w-64 text-right text-xs text-destructive">{error}</span> : null}
+    </div>
+  );
+}
+
+function UploadButton(props: { product: JsonRecord; ids: ReturnType<typeof useOperationIds>; disabled?: boolean; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function upload(file: File | null) {
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      await uploadProductImage(stringValue(props.product.id), props.ids.employeeId, props.ids.adminUserId, file);
+      props.onDone();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "图片处理失败，原图已保留。请进入校准页重试。");
+      props.onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button asChild size="sm" variant="outline" disabled={props.disabled || busy}>
+        <label className="cursor-pointer">
+          <UploadIcon data-icon="inline-start" />
+          上传
+          <Input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={props.disabled || busy} onChange={(event) => void upload(event.target.files?.[0] ?? null)} />
+        </label>
+      </Button>
+      {error ? <span className="max-w-64 text-right text-xs text-destructive">{error}</span> : null}
+    </div>
   );
 }
 
 function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<typeof useOperationIds>; open: boolean; onOpenChange: (open: boolean) => void; onSaved: () => void }) {
   const [form, setForm] = useState<WorkspaceForm>(() => formFromProductAndAi(null, null));
+  const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
   const [busy, setBusy] = useState(false);
+  const [imageBusy, setImageBusy] = useState("");
   const [error, setError] = useState("");
   const productId = stringValue(props.product?.id);
   const latestExtraction = objectRecord((props.product?.aiExtractions as unknown[])?.[0]);
   const latestImage = latestImageRecord(props.product);
   const reasons = calibrationValidationReasons(form, { hasPhoto: Boolean(latestImage), hasAi: Boolean(latestExtraction) });
   const draftKey = productId ? `operations.product.calibration.draft.${productId}` : "";
+
+  const loadComparison = useCallback(async () => {
+    if (!productId || !props.ids.adminUserId) return;
+    setComparison(await request<ProductImageComparisonResponse>(`/products/${productId}/image-comparison`, {
+      headers: { "X-Admin-User-Id": props.ids.adminUserId }
+    }));
+  }, [productId, props.ids.adminUserId]);
+
+  useEffect(() => {
+    if (!props.open) return;
+    void loadComparison().catch((caught) => setError(caught instanceof Error ? caught.message : "无法读取图片版本。"));
+  }, [loadComparison, props.open]);
 
   useEffect(() => {
     if (!props.product) return;
@@ -703,10 +786,46 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     });
   }
 
+  async function processImages(mode: BackgroundRemovalMode) {
+    const sourceId = comparison?.original?.imageId ?? stringValue(latestImage?.id);
+    if (!sourceId) {
+      setError("请先上传正面原图。");
+      return;
+    }
+    setImageBusy(mode);
+    setError("");
+    try {
+      const cutout = await runImageOperation(productId, sourceId, "REMOVE_BACKGROUND", props.ids.adminUserId, mode);
+      const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", props.ids.adminUserId);
+      const optimized = await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", props.ids.adminUserId);
+      setComparison(await selectProductMainImage(productId, optimized.outputImageId!, props.ids.adminUserId));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "图片处理失败。");
+    } finally {
+      setImageBusy("");
+    }
+  }
+
+  async function selectMain(imageId: string) {
+    setImageBusy(`select-${imageId}`);
+    setError("");
+    try {
+      setComparison(await selectProductMainImage(productId, imageId, props.ids.adminUserId));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "无法选择商城主图。");
+    } finally {
+      setImageBusy("");
+    }
+  }
+
   async function save() {
     if (!props.product) return;
     if (reasons.length > 0) {
       setError(reasons.join(" "));
+      return;
+    }
+    if (!comparison?.selectedMainImageId) {
+      setError("请选择白底图、优化主图或原图作为商城主图。");
       return;
     }
     setBusy(true);
@@ -729,37 +848,66 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     }
   }
 
+  const latestRemovalJob = comparison?.jobs.find((job) => job.operation === "REMOVE_BACKGROUND");
+
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="max-h-[96vh] overflow-y-auto sm:max-w-[min(96vw,1400px)]">
         <DialogHeader>
-          <DialogTitle>人工校准 {productId ? batchProgressLabel(props.product) : ""}</DialogTitle>
+          <DialogTitle>图片与商品信息校准 {productId ? batchProgressLabel(props.product) : ""}</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-          <div className="flex flex-col gap-3">
-            <div className="flex min-h-80 items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
-              {latestImage ? <img src={imageUrlFromImage(latestImage)} alt="商品照片" className="max-h-96 max-w-full object-contain" /> : <span className="text-muted-foreground text-sm">未上传照片</span>}
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,.95fr)]">
+          <section className="flex min-w-0 flex-col gap-3" aria-label="商品图片处理">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-medium">图片版本</h3>
+                <p className="text-xs text-muted-foreground">原图永久保留；抠图和主图只生成新版本。</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" disabled={Boolean(imageBusy)} onClick={() => void processImages("lightweight")}>
+                  <RefreshCwIcon data-icon="inline-start" />
+                  {imageBusy === "lightweight" ? "处理中" : "重跑 lightweight"}
+                </Button>
+                <Button size="sm" variant="outline" disabled={Boolean(imageBusy)} onClick={() => void processImages("rembg_birefnet")}>
+                  <WandSparklesIcon data-icon="inline-start" />
+                  {imageBusy === "rembg_birefnet" ? "处理中" : "强制 BiRefNet"}
+                </Button>
+              </div>
             </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <ImageVariantTile label="Original" asset={comparison?.original ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="Transparent Cutout" asset={comparison?.cutoutTransparent ?? null} transparent busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="White Background" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="Optimized Main" asset={comparison?.optimizedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+            </div>
+            {latestRemovalJob ? (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-muted/30 p-3 text-xs">
+                <span>Provider: <strong>{latestRemovalJob.provider ?? "-"}</strong></span>
+                <span>Quality: <strong>{latestRemovalJob.qualityScore?.toFixed(3) ?? "-"}</strong></span>
+                {latestRemovalJob.fallbackFrom ? <span>Fallback: <strong>{latestRemovalJob.fallbackFrom}</strong></span> : null}
+                {latestRemovalJob.qualityIssues.map((issue) => <Badge key={issue} variant="secondary">{issue}</Badge>)}
+              </div>
+            ) : null}
             {latestExtraction ? <AiPreview job={latestExtraction} /> : <StatusMessage tone="neutral">等待 AI 识别。</StatusMessage>}
-          </div>
+          </section>
+
           <FieldGroup>
             <RequiredInput label="标题" value={form.title} invalid={!form.title.trim()} onChange={(value) => updateForm("title", value)} />
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               <RequiredSelect label="分类" value={form.category} invalid={!form.category.trim()} values={PRODUCT_CATEGORY_OPTIONS} onChange={(value) => updateForm("category", value)} />
               <RequiredSelect label="子分类" value={form.subcategory} invalid={!form.subcategory.trim()} values={subcategoriesFor(form.category, form.subcategory)} onChange={(value) => updateForm("subcategory", value)} />
               <RequiredSelect label="适用人群" value={form.audience} invalid={!form.audience.trim()} values={AI_AUDIENCES} onChange={(value) => updateForm("audience", value)} />
               <RequiredSelect label="儿童年龄段" value={form.kidsAgeRange} invalid={form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE"} values={AI_KIDS_AGE_RANGES} disabled={form.audience !== "KIDS"} onChange={(value) => updateForm("kidsAgeRange", value)} />
               <RequiredSelect label="颜色" value={form.color} invalid={!form.color.trim()} values={AI_COLORS} onChange={(value) => updateForm("color", value)} />
-              <FormField label="品牌">
-                <Input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} />
-              </FormField>
+              <FormField label="品牌"><Input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} /></FormField>
               <RequiredInput label="尺码" value={form.sizeLabel} invalid={!form.sizeLabel.trim()} onChange={(value) => updateForm("sizeLabel", value)} />
               <RequiredSelect label="图案" value={form.pattern} invalid={!form.pattern.trim()} values={AI_PATTERNS} onChange={(value) => updateForm("pattern", value)} />
               <RequiredSelect label="袖型" value={form.sleeveType} invalid={!form.sleeveType.trim()} values={AI_SLEEVE_TYPES} onChange={(value) => updateForm("sleeveType", value)} />
               <RequiredSelect label="成色" value={form.conditionGrade} invalid={!form.conditionGrade.trim()} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} onChange={(value) => updateForm("conditionGrade", value)} />
+              <RequiredInput label="价格 KSh" value={form.priceKsh} invalid={!positiveInteger(form.priceKsh)} onChange={(value) => updateForm("priceKsh", value)} />
             </div>
             <Separator />
-            <div className="grid gap-4 md:grid-cols-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <RequiredInput label="衣长 cm" value={form.lengthCm} invalid={!positiveNumber(form.lengthCm)} onChange={(value) => updateForm("lengthCm", value)} />
               <RequiredInput label="胸宽 cm" value={form.chestWidthCm} invalid={!positiveNumber(form.chestWidthCm)} onChange={(value) => updateForm("chestWidthCm", value)} />
               <FormField label="肩宽 cm"><Input inputMode="decimal" value={form.shoulderWidthCm} onChange={(event) => updateForm("shoulderWidthCm", event.target.value)} /></FormField>
@@ -776,13 +924,42 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => props.onOpenChange(false)}>取消</Button>
-          <Button disabled={busy || reasons.length > 0} onClick={() => void save()}>
+          <Button disabled={busy || Boolean(imageBusy) || reasons.length > 0 || !comparison?.selectedMainImageId} onClick={() => void save()}>
             <SaveIcon data-icon="inline-start" />
-            Save & Next
+            保存并下一件
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ImageVariantTile(props: {
+  label: string;
+  asset: ProductImageVariantRecord | null;
+  selectable?: boolean;
+  transparent?: boolean;
+  busy: boolean;
+  onSelect?: (imageId: string) => Promise<void>;
+}) {
+  const url = props.asset?.publicUrl ? `${API_PROXY_URL}${props.asset.publicUrl}` : "";
+  return (
+    <div className="overflow-hidden rounded-lg border bg-background">
+      <div className="flex h-9 items-center justify-between border-b px-3 text-xs font-medium">
+        <span>{props.label}</span>
+        {props.asset?.selectedAsMain ? <Badge>商城主图</Badge> : null}
+      </div>
+      <div className={`flex aspect-square items-center justify-center overflow-hidden ${props.transparent ? "bg-muted" : "bg-white"}`}>
+        {url ? <img src={url} alt={props.label} className="size-full object-contain" /> : <ImageIcon className="size-8 text-muted-foreground" />}
+      </div>
+      {props.selectable && props.asset ? (
+        <div className="border-t p-2">
+          <Button className="w-full" size="sm" variant={props.asset.selectedAsMain ? "secondary" : "outline"} disabled={props.busy || props.asset.selectedAsMain} onClick={() => void props.onSelect?.(props.asset!.imageId)}>
+            {props.asset.selectedAsMain ? "已选择" : "设为商城主图"}
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1116,6 +1293,11 @@ function subcategoriesFor(category: string, current = ""): string[] {
 function positiveNumber(value: string): boolean {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0;
+}
+
+function positiveInteger(value: string): boolean {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0;
 }
 
 function csv(value: string): string {

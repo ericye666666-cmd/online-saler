@@ -42,7 +42,7 @@ const missingMeasurements = workspaceReadiness({ product, image, job, form: from
 assert.equal(missingMeasurements.hasAi, true);
 assert.equal(missingMeasurements.canSaveAndNext, false);
 
-const completeForm = { ...fromAi, lengthCm: "92", chestWidthCm: "48", conditionGrade: "GOOD", defects: "None" };
+const completeForm = { ...fromAi, lengthCm: "92", chestWidthCm: "48", conditionGrade: "GOOD", priceKsh: "850", defects: "None" };
 const ready = workspaceReadiness({ product, image, job, form: completeForm });
 assert.equal(ready.canSaveAndNext, true);
 assert.equal(ready.label, "Ready to save");
@@ -68,6 +68,7 @@ assert.deepEqual(body.measurements, [
 ]);
 assert.equal(body.subcategory, "SHORT_DRESSES_SKIRTS");
 assert.equal(body.gender, "WOMEN");
+assert.equal(body.priceKsh, 850);
 assert.equal(body.defects[0].description, "small stain on cuff");
 
 const kidsForm = {

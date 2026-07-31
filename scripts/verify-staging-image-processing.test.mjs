@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deflateSync } from "node:zlib";
 
-import { inspectTransparentPng } from "./verify-staging-image-processing.mjs";
+import { inspectJpeg, inspectTransparentPng } from "./verify-staging-image-processing.mjs";
 
 function chunk(type, data) {
   const length = Buffer.alloc(4);
@@ -34,4 +34,12 @@ test("accepts an RGBA PNG containing transparent and opaque pixels", () => {
 
 test("rejects output without transparent background pixels", () => {
   assert.throws(() => inspectTransparentPng(rgbaPng([255, 255])), /transparent background/);
+});
+
+test("accepts a complete JPEG byte stream", () => {
+  assert.equal(inspectJpeg(Buffer.from([255, 216, 255, 224, 0, 255, 217])).byteLength, 7);
+});
+
+test("rejects a truncated JPEG byte stream", () => {
+  assert.throws(() => inspectJpeg(Buffer.from([255, 216, 255, 224])), /EOI marker/);
 });

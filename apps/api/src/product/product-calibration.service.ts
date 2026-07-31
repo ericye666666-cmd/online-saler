@@ -38,6 +38,7 @@ export interface CalibrateProductInput {
   brand?: string;
   sizeLabel?: string;
   conditionGrade: ConditionGrade;
+  priceKsh?: number;
   measurements: CalibrationMeasurementInput[];
   defects: CalibrationDefectInput[];
 }
@@ -90,6 +91,7 @@ export class ProductCalibrationService {
           brand: input.brand ?? null,
           finalSizeLabel: input.sizeLabel ?? null,
           conditionGrade: input.conditionGrade,
+          priceKsh: input.priceKsh,
           status: ProductStatus.CALIBRATED
         }
       }),
@@ -178,6 +180,9 @@ export class ProductCalibrationService {
     }
     if (!input.conditionGrade) {
       throw new BadRequestException("conditionGrade must be confirmed by an employee");
+    }
+    if (input.priceKsh !== undefined && (!Number.isInteger(input.priceKsh) || input.priceKsh <= 0)) {
+      throw new BadRequestException("priceKsh must be a positive integer");
     }
     if (!Array.isArray(input.measurements)) {
       throw new BadRequestException("measurements must be confirmed by an employee");

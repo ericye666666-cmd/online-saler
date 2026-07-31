@@ -74,6 +74,14 @@ export interface StartImageProcessingRequest {
   operation: ImageProcessingOperation;
 }
 
+export const BACKGROUND_REMOVAL_MODES = ["auto", "lightweight", "rembg_birefnet"] as const;
+
+export type BackgroundRemovalMode = (typeof BACKGROUND_REMOVAL_MODES)[number];
+
+export interface RunImageProcessingRequest {
+  backgroundRemovalMode?: BackgroundRemovalMode;
+}
+
 export interface RetryImageProcessingRequest {
   reason?: string;
 }
@@ -102,4 +110,8 @@ export function isImageProcessingOperation(value: string): value is ImageProcess
 
 export function isImageProcessingStatus(value: string): value is ImageProcessingStatus {
   return IMAGE_PROCESSING_STATUSES.includes(value as ImageProcessingStatus);
+}
+
+export function isBackgroundRemovalMode(value: string): value is BackgroundRemovalMode {
+  return BACKGROUND_REMOVAL_MODES.includes(value as BackgroundRemovalMode);
 }
