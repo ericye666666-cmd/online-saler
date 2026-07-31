@@ -64,9 +64,11 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
 
       if (!response.ok) {
         const detail = (await response.text()).slice(0, 500);
-        const code = response.status === 400 || response.status === 413 || response.status === 415 || response.status === 422
+        const rejected = [400, 413, 415, 422].includes(response.status);
+        const timedOut = [408, 504].includes(response.status);
+        const code = rejected
           ? "PROCESSOR_REJECTED_IMAGE"
-          : response.status === 408 || response.status === 504
+          : timedOut
             ? "PROCESSOR_TIMEOUT"
             : "UNKNOWN";
         throw new BackgroundRemovalProviderError(
@@ -84,7 +86,12 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
       }
 
       const qualityScoreHeader = response.headers.get("x-cutout-quality-score");
-      const qualityScore = qualityScoreHeader === null ? undefined : Number(qualityScoreHeader);
+      const parsedQualityScore = qualityScoreHeader === null
+        ? undefined
+        : Number(qualityScoreHeader);
+      const qualityScore = parsedQualityScore !== undefined && Number.isFinite(parsedQualityScore)
+        ? parsedQualityScore
+        : undefined;
       const qualityIssues = (response.headers.get("x-cutout-quality-issues") ?? "")
         .split(",")
         .map((value) => value.trim())
@@ -96,7 +103,7 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
         provider: this.providerName,
         processorVersion: this.processorVersion,
         method: response.headers.get("x-cutout-method") ?? undefined,
-        qualityScore: Number.isFinite(qualityScore) ? qualityScore : undefined,
+        qualityScore,
         qualityIssues
       };
     } catch (error) {
