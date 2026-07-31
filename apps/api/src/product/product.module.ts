@@ -4,12 +4,14 @@ import { ProductBarcodeController } from "./product-barcode.controller";
 import { ProductBarcodeService } from "./product-barcode.service";
 import { ProductCalibrationController } from "./product-calibration.controller";
 import { ProductCalibrationService } from "./product-calibration.service";
+import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
 import { ProductImageProcessingController } from "./product-image-processing.controller";
 import { ProductImageProcessingService } from "./product-image-processing.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
 import { PRODUCT_REPOSITORY } from "./product.repository";
 import { ProductSetupController } from "./product-setup.controller";
 import { PrismaProductRepository } from "./prisma-product.repository";
+import { RemoveBgProvider } from "./remove-bg.provider";
 import { ProductStateMachine } from "./product-state-machine";
 
 @Module({
@@ -25,6 +27,8 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductBarcodeService,
     ProductImageStorageService,
     ProductImageProcessingService,
+    ProductImageJobRunnerService,
+    RemoveBgProvider,
     ProductStateMachine,
     {
       provide: PRODUCT_REPOSITORY,
@@ -35,7 +39,8 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductApplicationService,
     ProductBarcodeService,
     ProductImageStorageService,
-    ProductImageProcessingService
+    ProductImageProcessingService,
+    ProductImageJobRunnerService
   ]
 })
 export class ProductModule {}
