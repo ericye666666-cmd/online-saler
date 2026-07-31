@@ -27,13 +27,16 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
+      const payload = new Uint8Array(input.body.length);
+      payload.set(input.body);
+
       const response = await fetch(`${serviceUrl.replace(/\/$/, "")}/remove-background`, {
         method: "POST",
         headers: {
           "Content-Type": input.contentType,
           "X-Filename": input.filename
         },
-        body: input.body,
+        body: payload,
         signal: controller.signal
       });
 
