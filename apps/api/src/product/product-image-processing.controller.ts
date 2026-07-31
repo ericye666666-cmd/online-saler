@@ -1,4 +1,14 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, Post } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Res
+} from "@nestjs/common";
+import { prisma } from "@online-saler/database";
 import {
   isImageProcessingOperation,
   type RetryImageProcessingRequest,
@@ -6,11 +16,17 @@ import {
   type StartImageProcessingRequest
 } from "@online-saler/shared-types";
 import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
+import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
 import { ProductImageProcessingService } from "./product-image-processing.service";
+import { ProductImageStorageService } from "./product-image-storage.service";
 
 @Controller()
 export class ProductImageProcessingController {
-  constructor(private readonly imageProcessing: ProductImageProcessingService) {}
+  constructor(
+    private readonly imageProcessing: ProductImageProcessingService,
+    private readonly jobRunner: ProductImageJobRunnerService,
+    private readonly storage: ProductImageStorageService
+  ) {}
 
   @Post("products/:productId/images/:imageId/processing-jobs")
   async start(
@@ -31,6 +47,15 @@ export class ProductImageProcessingController {
     });
   }
 
+  @Post("image-processing-jobs/:jobId/run")
+  async run(
+    @Param("jobId") jobId: string,
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    return this.jobRunner.run(jobId);
+  }
+
   @Get("products/:productId/image-comparison")
   async comparison(
     @Param("productId") productId: string,
@@ -38,6 +63,26 @@ export class ProductImageProcessingController {
   ) {
     await requireAdminPermission(adminUserId, "page.product.digitalization");
     return this.imageProcessing.getComparison(productId);
+  }
+
+  @Get("products/:productId/image-assets/:assetId/content")
+  async assetContent(
+    @Param("productId") productId: string,
+    @Param("assetId") assetId: string,
+    @Res() response: any
+  ) {
+    const asset = await prisma.productImageVariantAsset.findFirst({
+      where: { id: assetId, productId }
+    });
+    if (!asset?.storageUrl.startsWith(`gs://${this.storage.bucket}/`)) {
+      throw new BadRequestException("Stored image asset not found");
+    }
+
+    const objectName = asset.storageUrl.slice(`gs://${this.storage.bucket}/`.length);
+    const stored = await this.storage.download(objectName);
+    response.setHeader("Content-Type", stored.contentType);
+    response.setHeader("Cache-Control", "private, max-age=3600");
+    response.send(Buffer.from(stored.body));
   }
 
   @Post("products/:productId/main-image")
