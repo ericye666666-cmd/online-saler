@@ -47,9 +47,16 @@ export class RemoveBgProvider {
 
     try {
       const form = new FormData();
+      const payload = new Uint8Array(input.body.length);
+      payload.set(input.body);
+
       form.append("size", "auto");
       form.append("format", "png");
-      form.append("image_file", new Blob([input.body], { type: input.contentType }), input.filename);
+      form.append(
+        "image_file",
+        new Blob([payload.buffer], { type: input.contentType }),
+        input.filename
+      );
 
       const response = await fetch(this.endpoint, {
         method: "POST",
