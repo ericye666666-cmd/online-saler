@@ -29,8 +29,9 @@ docker run --rm -p 8080:8080 online-saler-lightweight-cutout
 Configure the main API with:
 
 ```text
-BACKGROUND_REMOVAL_PROVIDER=lightweight
+BACKGROUND_REMOVAL_PROVIDER=auto
 LIGHTWEIGHT_CUTOUT_SERVICE_URL=http://localhost:8080
+REMBG_BIREFNET_SERVICE_URL=http://localhost:8081
 ```
 
 ## Guardrails
@@ -38,4 +39,4 @@ LIGHTWEIGHT_CUTOUT_SERVICE_URL=http://localhost:8080
 - No generative model is used.
 - Original product pixels are retained; only alpha is generated.
 - This first version assumes a controlled, mostly uniform measurement-board background.
-- White, translucent, lace and highly reflective garments may receive a low quality score and will be routed to the BiRefNet fallback in the later auto-routing PR.
+- White, translucent, lace and highly reflective garments may receive a low quality score and will be routed to the BiRefNet fallback when `BACKGROUND_REMOVAL_PROVIDER=auto`.

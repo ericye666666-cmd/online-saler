@@ -56,6 +56,10 @@ export interface ImageProcessingJobRecord {
   status: ImageProcessingStatus;
   provider: string | null;
   processorVersion: string | null;
+  qualityScore: number | null;
+  qualityIssues: string[];
+  fallbackFrom: string | null;
+  fallbackReason: string | null;
   outputImageId: string | null;
   retryCount: number;
   failureCode: ImageProcessingFailureCode | null;

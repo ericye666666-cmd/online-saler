@@ -54,7 +54,9 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
         body: Buffer.from(await response.arrayBuffer()),
         contentType: "image/png",
         provider: "lightweight-opencv",
-        processorVersion: response.headers.get("x-processor-version") ?? "v1.0"
+        processorVersion: response.headers.get("x-processor-version") ?? "v1.0",
+        qualityScore: parseQualityScore(response.headers.get("x-quality-score")),
+        qualityIssues: parseQualityIssues(response.headers.get("x-quality-issues"))
       };
     } catch (error) {
       if (error instanceof BackgroundRemovalProviderError) throw error;
@@ -72,4 +74,18 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
       clearTimeout(timeout);
     }
   }
+}
+
+function parseQualityScore(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseQualityIssues(value: string | null): string[] {
+  if (!value?.trim()) return [];
+  return value
+    .split(",")
+    .map((issue) => issue.trim())
+    .filter(Boolean);
 }

@@ -45,6 +45,10 @@ model ProductImageProcessingJob {
   status           ImageProcessingStatus    @default(PENDING)
   provider         String?
   processorVersion String?
+  qualityScore     Float?
+  qualityIssues    Json?
+  fallbackFrom     String?
+  fallbackReason   String?
   outputImageId    String?                  @unique
   retryCount       Int                      @default(0)
   retryReason      String?
