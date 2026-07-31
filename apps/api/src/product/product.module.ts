@@ -12,6 +12,7 @@ import { ProductImageStorageService } from "./product-image-storage.service";
 import { PRODUCT_REPOSITORY } from "./product.repository";
 import { ProductSetupController } from "./product-setup.controller";
 import { PrismaProductRepository } from "./prisma-product.repository";
+import { RembgBirefnetBackgroundRemovalProvider } from "./rembg-birefnet-background-removal.provider";
 import { RemoveBgProvider } from "./remove-bg.provider";
 import { SelectedBackgroundRemovalProvider } from "./selected-background-removal.provider";
 import { ProductStateMachine } from "./product-state-machine";
@@ -31,6 +32,7 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductImageProcessingService,
     ProductImageJobRunnerService,
     LightweightBackgroundRemovalProvider,
+    RembgBirefnetBackgroundRemovalProvider,
     RemoveBgProvider,
     SelectedBackgroundRemovalProvider,
     ProductStateMachine,
