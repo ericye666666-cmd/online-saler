@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { CheckCircle2Icon, CopyIcon, ExternalLinkIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
+import { CheckCircle2Icon, CopyIcon, ExternalLinkIcon, RefreshCwIcon, SearchIcon, UserPlusIcon } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,23 @@ type AffiliateRow = {
     orders: number;
     commissions: number;
   };
+};
+
+type CustomerSearchRow = {
+  id: string;
+  email: string;
+  displayName?: string | null;
+  phone?: string | null;
+  status: string;
+  _count: {
+    orders: number;
+  };
+  affiliateProfile?: {
+    id: string;
+    affiliateCode: string;
+    displayName: string;
+    status: string;
+  } | null;
 };
 
 type LinkRow = {
@@ -210,6 +227,8 @@ export function AffiliateCenterPage({
   const canExport = hasPermission("action.affiliate.export");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [affiliates, setAffiliates] = useState<AffiliateRow[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerRows, setCustomerRows] = useState<CustomerSearchRow[]>([]);
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [clicks, setClicks] = useState<ClickRow[]>([]);
   const [orders, setOrders] = useState<AttributedOrderRow[]>([]);
@@ -274,6 +293,46 @@ export function AffiliateCenterPage({
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "创建推广者失败。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function searchCustomerAccounts() {
+    if (!adminUserId || customerSearch.trim().length < 2) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      setCustomerRows(await request<CustomerSearchRow[]>("/operations/affiliate/customers/search", {
+        query: { adminUserId, q: customerSearch.trim() }
+      }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Customer search failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function enableCustomerAffiliate(customer: CustomerSearchRow) {
+    if (!adminUserId) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await request(`/operations/affiliate/customers/${customer.id}/enable-affiliate`, {
+        method: "POST",
+        body: JSON.stringify({
+          adminUserId,
+          displayName: customer.displayName || customer.email,
+          phone: customer.phone || undefined,
+          email: customer.email
+        })
+      });
+      setMessage("推广者权限已开通。顾客重新打开商城后会看到推广者中台。");
+      await Promise.all([searchCustomerAccounts(), load()]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not enable seller access.");
     } finally {
       setBusy(false);
     }
@@ -396,10 +455,15 @@ export function AffiliateCenterPage({
       {view === "affiliates" ? (
         <AffiliatesView
           affiliates={affiliates}
+          customerSearch={customerSearch}
+          customerRows={customerRows}
           form={affiliateForm}
           canEdit={canEdit}
           copied={copied}
           busy={busy}
+          onCustomerSearchChange={setCustomerSearch}
+          onSearchCustomers={searchCustomerAccounts}
+          onEnableCustomer={enableCustomerAffiliate}
           onFormChange={setAffiliateForm}
           onCreate={createAffiliate}
           onCopy={copy}
@@ -434,20 +498,30 @@ export function AffiliateCenterPage({
 
 function AffiliatesView({
   affiliates,
+  customerSearch,
+  customerRows,
   form,
   canEdit,
   copied,
   busy,
+  onCustomerSearchChange,
+  onSearchCustomers,
+  onEnableCustomer,
   onFormChange,
   onCreate,
   onCopy,
   onStatus
 }: {
   affiliates: AffiliateRow[];
+  customerSearch: string;
+  customerRows: CustomerSearchRow[];
   form: AffiliateForm;
   canEdit: boolean;
   copied: string;
   busy: boolean;
+  onCustomerSearchChange: (value: string) => void;
+  onSearchCustomers: () => void;
+  onEnableCustomer: (customer: CustomerSearchRow) => void;
   onFormChange: (form: AffiliateForm) => void;
   onCreate: () => void;
   onCopy: (value: string, key: string) => void;
@@ -455,6 +529,82 @@ function AffiliatesView({
 }) {
   return (
     <>
+      {canEdit ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>从顾客账号开通推广者</CardTitle>
+            <CardDescription>搜索已用 Google 登录过的顾客账号，直接开通推广者权限。开通后，该顾客前台右上角会从 Join seller 变成推广者中台。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2 md:flex-row">
+              <Input
+                value={customerSearch}
+                onChange={(event) => onCustomerSearchChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    onSearchCustomers();
+                  }
+                }}
+                placeholder="搜索 Google 邮箱、姓名或手机号"
+              />
+              <Button disabled={busy || customerSearch.trim().length < 2} onClick={onSearchCustomers}>
+                <SearchIcon data-icon="inline-start" />
+                搜索账号
+              </Button>
+            </div>
+            <div className="overflow-x-auto rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>顾客账号</TableHead>
+                    <TableHead>手机号</TableHead>
+                    <TableHead>订单数</TableHead>
+                    <TableHead>推广者状态</TableHead>
+                    <TableHead>操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {customerRows.length === 0 ? (
+                    <EmptyRow colSpan={5} text="输入至少2个字符后搜索顾客账号。" />
+                  ) : customerRows.map((customer) => (
+                    <TableRow key={customer.id}>
+                      <TableCell>
+                        <div className="font-medium">{customer.displayName || customer.email}</div>
+                        <div className="text-muted-foreground text-xs">{customer.email}</div>
+                      </TableCell>
+                      <TableCell>{customer.phone || "-"}</TableCell>
+                      <TableCell>{customer._count.orders}</TableCell>
+                      <TableCell>
+                        {customer.affiliateProfile ? (
+                          <div>
+                            <StatusBadge status={customer.affiliateProfile.status} />
+                            <div className="mt-1 font-mono text-muted-foreground text-xs">{customer.affiliateProfile.affiliateCode}</div>
+                          </div>
+                        ) : (
+                          <Badge variant="outline">未开通</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant={customer.affiliateProfile?.status === "ACTIVE" ? "outline" : "default"}
+                          disabled={busy}
+                          onClick={() => void onEnableCustomer(customer)}
+                        >
+                          <UserPlusIcon data-icon="inline-start" />
+                          {customer.affiliateProfile?.status === "ACTIVE" ? "重新启用" : "开通推广者"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {canEdit ? (
         <Card>
           <CardHeader>

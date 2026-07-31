@@ -8,11 +8,11 @@ import {
   Menu,
   Search,
   ShoppingBag,
-  UserRound,
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { categories } from "../data/products";
+import { SellerHeaderAction } from "./seller-header-action";
 
 type CatalogCategory = (typeof categories)[number];
 
@@ -340,8 +340,7 @@ export function SiteHeader({
           <Link className="depopIconButton" href="/cart" aria-label="Open cart">
             <ShoppingBag size={23} />
           </Link>
-          <Link className="depopPrimaryAction" href="/seller">Seller dashboard</Link>
-          <Link className="depopSecondaryAction" href="/seller/access">Join seller</Link>
+          <SellerHeaderAction />
         </div>
 
         <button
@@ -353,7 +352,7 @@ export function SiteHeader({
         >
           <Search size={23} />
         </button>
-        <Link className="depopMobileSellerButton" href="/seller">Seller</Link>
+        <SellerHeaderAction variant="mobile-compact" />
       </div>
 
       {mobileSearchOpen ? (
@@ -477,8 +476,7 @@ export function SiteHeader({
                   <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close"><X size={25} /></button>
                 </div>
                 <div className="depopMobileMenuActions">
-                  <Link className="depopPrimaryAction" href="/seller"><UserRound size={18} /> Seller dashboard</Link>
-                  <Link className="depopSecondaryAction" href="/seller/access">Join as a seller</Link>
+                  <SellerHeaderAction variant="mobile-menu" />
                 </div>
                 <div className="depopMobileMenuList">
                   {navigationGroups.map((group) => (

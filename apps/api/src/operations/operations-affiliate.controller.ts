@@ -4,6 +4,7 @@ import { OperationsAffiliateService, type CommissionQueueKey } from "./operation
 
 type AffiliateBody = {
   adminUserId?: string;
+  customerId?: string;
   affiliateCode?: string;
   displayName?: string;
   phone?: string;
@@ -51,6 +52,16 @@ export class OperationsAffiliateController {
   @Post("affiliates")
   createAffiliate(@Body() body: AffiliateBody) {
     return this.affiliate.createAffiliate(body);
+  }
+
+  @Get("customers/search")
+  searchCustomers(@Query("q") query?: string, @Query("adminUserId") adminUserId?: string) {
+    return this.affiliate.searchCustomers(adminUserId, query);
+  }
+
+  @Post("customers/:customerId/enable-affiliate")
+  enableCustomerAffiliate(@Param("customerId") customerId: string, @Body() body: AffiliateBody) {
+    return this.affiliate.enableCustomerAffiliate(customerId, body);
   }
 
   @Patch("affiliates/:affiliateId")
