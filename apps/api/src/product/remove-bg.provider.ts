@@ -1,27 +1,13 @@
 import { Injectable } from "@nestjs/common";
-
-export interface BackgroundRemovalResult {
-  body: Buffer;
-  contentType: "image/png";
-  provider: "remove.bg";
-  processorVersion: "v1.0";
-}
-
-export class BackgroundRemovalProviderError extends Error {
-  constructor(
-    readonly code:
-      | "PROCESSOR_NOT_CONFIGURED"
-      | "PROCESSOR_TIMEOUT"
-      | "PROCESSOR_REJECTED_IMAGE"
-      | "UNKNOWN",
-    message: string
-  ) {
-    super(message);
-  }
-}
+import {
+  BackgroundRemovalProviderError,
+  type BackgroundRemovalInput,
+  type BackgroundRemovalProvider,
+  type BackgroundRemovalResult
+} from "./background-removal.provider";
 
 @Injectable()
-export class RemoveBgProvider {
+export class RemoveBgProvider implements BackgroundRemovalProvider {
   private readonly endpoint = "https://api.remove.bg/v1.0/removebg";
   private readonly timeoutMs = 45_000;
 
@@ -29,11 +15,7 @@ export class RemoveBgProvider {
     return Boolean(process.env.REMOVE_BG_API_KEY?.trim());
   }
 
-  async removeBackground(input: {
-    body: Buffer;
-    contentType: string;
-    filename: string;
-  }): Promise<BackgroundRemovalResult> {
+  async removeBackground(input: BackgroundRemovalInput): Promise<BackgroundRemovalResult> {
     const apiKey = process.env.REMOVE_BG_API_KEY?.trim();
     if (!apiKey) {
       throw new BackgroundRemovalProviderError(
@@ -96,3 +78,5 @@ export class RemoveBgProvider {
     }
   }
 }
+
+export { BackgroundRemovalProviderError } from "./background-removal.provider";
