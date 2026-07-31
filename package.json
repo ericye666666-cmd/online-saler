@@ -18,6 +18,7 @@
     "db:push": "npm run db:push -w @online-saler/database",
     "db:push:staging": "npm run db:push -w @online-saler/database -- --skip-generate --accept-data-loss",
     "db:bootstrap-staging": "npm run db:push:staging && node packages/database/prisma/seed-staging-test-employee.mjs",
+    "db:migrate-staging": "node scripts/deploy-staging-migrations.mjs",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:api": "npm run typecheck -w @online-saler/database && npm run typecheck -w @online-saler/shared-types && npm run typecheck -w @online-saler/business-rules && npm run typecheck -w @online-saler/api",

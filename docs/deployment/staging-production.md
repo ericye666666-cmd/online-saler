@@ -35,20 +35,41 @@ The staging API deployment is configured by `.github/workflows/deploy-api-stagin
 Staging resources:
 
 - Cloud Run service: `online-saler-api-staging`
+- Cloud Run service: `online-saler-lightweight-cutout-staging`
+- Cloud Run service: `online-saler-rembg-birefnet-staging`
 - Runtime service account: `online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com`
 - Cloud SQL instance connection name: `online-saler-staging:africa-south1:online-saler-staging-db`
 - PostgreSQL database: `online_saler_staging`
 - PostgreSQL application user: `online_saler_app`
 - Secret Manager secret: `STAGING_DATABASE_URL`
 - Runtime environment variable: `DATABASE_URL`
+- Runtime environment variable: `BACKGROUND_REMOVAL_PROVIDER=auto`
+- Runtime environment variable: `LIGHTWEIGHT_CUTOUT_SERVICE_URL`
+- Runtime environment variable: `REMBG_BIREFNET_SERVICE_URL`
 
 The workflow must:
 
-1. Build and push the API image.
-2. Deploy Cloud Run with the dedicated runtime service account.
-3. Attach the Cloud SQL instance with the Cloud SQL connector.
-4. Inject `DATABASE_URL` from `STAGING_DATABASE_URL:latest`.
-5. Verify the public `/health` endpoint.
+1. Build and push the lightweight OpenCV cutout image.
+2. Deploy and verify `online-saler-lightweight-cutout-staging`.
+3. Build and push the rembg BiRefNet image.
+4. Deploy and verify `online-saler-rembg-birefnet-staging`.
+5. Build and push the API image.
+6. Run `prisma migrate deploy` against staging and seed the staging operator baseline.
+7. Deploy API Cloud Run with the dedicated runtime service account.
+8. Attach the Cloud SQL instance with the Cloud SQL connector.
+9. Inject `DATABASE_URL` from `STAGING_DATABASE_URL:latest`.
+10. Inject the two image processor URLs and set `BACKGROUND_REMOVAL_PROVIDER=auto`.
+11. Verify `/health`, real product creation, image upload/retrieval, and a real `REMOVE_BACKGROUND` image-processing job.
+
+Staging must use migrations for schema changes:
+
+```text
+npm run db:migrate-staging
+```
+
+`db:migrate-staging` runs `prisma migrate deploy` and then refreshes the staging test operator and role baseline. `db:push:staging` remains available only for explicit bootstrap or repair work and must not be the normal deployment path.
+
+If staging was previously initialized with `db push`, the script only baselines existing migrations after Prisma confirms the live staging schema matches the repository schema. It refuses to mark migrations as applied when schema drift exists.
 
 The secret value must never be committed to GitHub or written into documentation. The GitHub deployment identity must have permission to deploy Cloud Run and act as the runtime service account. The runtime service account requires only the permissions needed to connect to Cloud SQL and read the required secret.
 
