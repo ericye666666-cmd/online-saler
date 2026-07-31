@@ -1,6 +1,7 @@
 import { readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const schemaPath = "packages/database/prisma";
 const migrationsPath = join(schemaPath, "migrations");
@@ -26,9 +27,26 @@ function run(command, args, options = {}) {
   }
 
   if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+    throw new MigrationCommandError(
+      `${command} ${args.join(" ")} failed with exit code ${result.status ?? 1}.`,
+      result.status ?? 1
+    );
   }
   return { status: 0, stdout: "", stderr: "" };
+}
+
+export class MigrationCommandError extends Error {
+  constructor(message, exitCode = 1) {
+    super(message);
+    this.name = "MigrationCommandError";
+    this.exitCode = exitCode;
+  }
+}
+
+export function classifyMigrationFailure(output) {
+  if (output.includes("P3005")) return "P3005";
+  if (output.includes("P3009")) return "P3009";
+  return null;
 }
 
 function printCaptured(result) {
@@ -49,15 +67,8 @@ function migrateDeploy() {
   });
 }
 
-function baselineExistingStagingSchema() {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    console.error("DATABASE_URL is required before staging migrations can run.");
-    process.exit(1);
-  }
-
-  console.log("Checking whether the existing staging schema matches Prisma before baselining migrations...");
-  const diff = run(
+function schemaDiff(databaseUrl) {
+  return run(
     "npx",
     [
       "prisma",
@@ -71,44 +82,173 @@ function baselineExistingStagingSchema() {
     ],
     { capture: true }
   );
+}
+
+async function readMigrationHistory() {
+  const { PrismaClient } = await import("@prisma/client");
+  const prisma = new PrismaClient();
+
+  try {
+    return await prisma.$queryRawUnsafe(`
+      SELECT
+        migration_name AS "migrationName",
+        started_at AS "startedAt",
+        finished_at AS "finishedAt",
+        rolled_back_at AS "rolledBackAt"
+      FROM "_prisma_migrations"
+      ORDER BY started_at ASC
+    `);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+export function buildMigrationHistoryRecoveryPlan(localMigrationNames, migrationHistory) {
+  const localNames = new Set(localMigrationNames);
+  const unresolvedFailedRows = migrationHistory.filter(
+    (row) => row.finishedAt == null && row.rolledBackAt == null
+  );
+
+  if (unresolvedFailedRows.length === 0) {
+    throw new MigrationCommandError(
+      "Prisma reported P3009, but _prisma_migrations contains no unresolved failed migration. Refusing automatic recovery."
+    );
+  }
+
+  const unknownFailed = unresolvedFailedRows.filter((row) => !localNames.has(row.migrationName));
+  if (unknownFailed.length > 0) {
+    throw new MigrationCommandError(
+      `Failed migration is not present in this release: ${unknownFailed
+        .map((row) => row.migrationName)
+        .join(", ")}. Refusing automatic recovery.`
+    );
+  }
+
+  const appliedNames = new Set(
+    migrationHistory
+      .filter((row) => row.finishedAt != null && row.rolledBackAt == null)
+      .map((row) => row.migrationName)
+  );
+
+  return {
+    failedMigrations: unresolvedFailedRows.map((row) => ({
+      migrationName: row.migrationName,
+      startedAt: row.startedAt
+    })),
+    migrationsToResolve: localMigrationNames.filter((name) => !appliedNames.has(name))
+  };
+}
+
+function requireDatabaseUrl() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new MigrationCommandError("DATABASE_URL is required before staging migrations can run.");
+  }
+  return databaseUrl;
+}
+
+function assertSchemaMatchesTarget(databaseUrl, diffRunner = schemaDiff) {
+  console.log("Comparing the staging database schema with the target Prisma schema...");
+  const diff = diffRunner(databaseUrl);
 
   if (diff.status !== 0) {
     printCaptured(diff);
-    console.error(
-      "Staging database is not migration-baseline-safe. Refusing to mark migrations as applied while schema drift exists."
+    throw new MigrationCommandError(
+      "Staging schema drift detected. Refusing to resolve migration history while the database differs from the target Prisma schema.",
+      diff.status
     );
-    process.exit(diff.status);
   }
+
+  console.log("Staging schema matches the target Prisma schema.");
+}
+
+function resolveAppliedMigration(migrationName, commandRunner = run) {
+  console.log(`Resolving migration as applied after schema verification: ${migrationName}`);
+  commandRunner("npx", [
+    "prisma",
+    "migrate",
+    "resolve",
+    "--schema",
+    schemaPath,
+    "--applied",
+    migrationName
+  ]);
+}
+
+export async function recoverP3009({
+  databaseUrl,
+  localMigrationNames,
+  historyReader = readMigrationHistory,
+  diffRunner = schemaDiff,
+  resolver = resolveAppliedMigration
+}) {
+  const migrationHistory = await historyReader();
+  const plan = buildMigrationHistoryRecoveryPlan(localMigrationNames, migrationHistory);
+
+  for (const failed of plan.failedMigrations) {
+    const startedAt = failed.startedAt ? new Date(failed.startedAt).toISOString() : "unknown";
+    console.log(`Unresolved failed migration: ${failed.migrationName} (started ${startedAt})`);
+  }
+
+  assertSchemaMatchesTarget(databaseUrl, diffRunner);
+
+  for (const migrationName of plan.migrationsToResolve) {
+    resolver(migrationName);
+  }
+
+  return plan;
+}
+
+function baselineExistingStagingSchema() {
+  const databaseUrl = requireDatabaseUrl();
+  console.log("Checking whether the existing staging schema matches Prisma before baselining migrations...");
+  assertSchemaMatchesTarget(databaseUrl);
 
   for (const migrationName of listMigrationNames()) {
-    console.log(`Marking existing staging migration as applied: ${migrationName}`);
-    run("npx", [
-      "prisma",
-      "migrate",
-      "resolve",
-      "--schema",
-      schemaPath,
-      "--applied",
-      migrationName
-    ]);
+    resolveAppliedMigration(migrationName);
   }
 }
 
-const firstDeploy = migrateDeploy();
-if (firstDeploy.status === 0) {
-  printCaptured(firstDeploy);
-} else if (`${firstDeploy.stdout}\n${firstDeploy.stderr}`.includes("P3005")) {
-  printCaptured(firstDeploy);
-  baselineExistingStagingSchema();
+export async function main() {
+  const firstDeploy = migrateDeploy();
+  const deployOutput = `${firstDeploy.stdout}\n${firstDeploy.stderr}`;
+  const failureCode = classifyMigrationFailure(deployOutput);
 
-  const secondDeploy = migrateDeploy();
-  printCaptured(secondDeploy);
-  if (secondDeploy.status !== 0) {
-    process.exit(secondDeploy.status);
+  if (firstDeploy.status === 0) {
+    printCaptured(firstDeploy);
+  } else if (failureCode === "P3005") {
+    printCaptured(firstDeploy);
+    baselineExistingStagingSchema();
+
+    const secondDeploy = migrateDeploy();
+    printCaptured(secondDeploy);
+    if (secondDeploy.status !== 0) {
+      throw new MigrationCommandError("Prisma migrate deploy failed after P3005 recovery.", secondDeploy.status);
+    }
+  } else if (failureCode === "P3009") {
+    printCaptured(firstDeploy);
+    await recoverP3009({
+      databaseUrl: requireDatabaseUrl(),
+      localMigrationNames: listMigrationNames()
+    });
+
+    const secondDeploy = migrateDeploy();
+    printCaptured(secondDeploy);
+    if (secondDeploy.status !== 0) {
+      throw new MigrationCommandError("Prisma migrate deploy failed after P3009 recovery.", secondDeploy.status);
+    }
+  } else {
+    printCaptured(firstDeploy);
+    throw new MigrationCommandError("Prisma migrate deploy failed.", firstDeploy.status);
   }
-} else {
-  printCaptured(firstDeploy);
-  process.exit(firstDeploy.status);
+
+  run("node", [seedScript]);
 }
 
-run("node", [seedScript]);
+const isEntrypoint = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isEntrypoint) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = error?.exitCode ?? 1;
+  });
+}
