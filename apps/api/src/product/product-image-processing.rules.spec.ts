@@ -4,13 +4,19 @@ import {
   MAX_IMAGE_PROCESSING_RETRIES,
   canRetryImageProcessing,
   isSelectableMainVariant,
+  sourceVariantForOperation,
   targetVariantForOperation
 } from "./product-image-processing.rules";
 
 describe("Product image processing rules", () => {
-  it("maps each processing operation to one deterministic output variant", () => {
+  it("maps each operation to one deterministic source and output variant", () => {
+    assert.equal(sourceVariantForOperation("REMOVE_BACKGROUND"), "ORIGINAL");
     assert.equal(targetVariantForOperation("REMOVE_BACKGROUND"), "CUTOUT_TRANSPARENT");
+
+    assert.equal(sourceVariantForOperation("COMPOSE_WHITE_BACKGROUND"), "CUTOUT_TRANSPARENT");
     assert.equal(targetVariantForOperation("COMPOSE_WHITE_BACKGROUND"), "CUTOUT_WHITE");
+
+    assert.equal(sourceVariantForOperation("OPTIMIZE_MAIN_IMAGE"), "CUTOUT_WHITE");
     assert.equal(targetVariantForOperation("OPTIMIZE_MAIN_IMAGE"), "OPTIMIZED_MAIN");
   });
 
