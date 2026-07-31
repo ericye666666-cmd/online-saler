@@ -2,17 +2,17 @@
 
 ## Goal
 
-Keep every real product photo unchanged while generating two employee-reviewable derivatives:
+Keep every real product photo unchanged while generating employee-reviewable derivatives:
 
 1. Pixel-preserving cutout on transparent and white backgrounds.
 2. Deterministic Storefront main image.
 
-This pipeline must never redraw the garment or alter pockets, buttons, logos, fabric, defects, proportions, or silhouette.
+The pipeline must never redraw the garment or alter pockets, buttons, logos, fabric, defects, proportions or silhouette.
 
 ## Image variants
 
 - `ORIGINAL`: immutable uploaded source image stored by the existing `ProductImage` model.
-- `CUTOUT_TRANSPARENT`: original garment pixels with transparent background.
+- `CUTOUT_TRANSPARENT`: original garment RGB pixels with a generated alpha channel.
 - `CUTOUT_WHITE`: the transparent cutout composited onto `#FFFFFF`.
 - `OPTIMIZED_MAIN`: deterministic crop, centering, padding, exposure and white-balance adjustment based on the cutout.
 
@@ -24,39 +24,84 @@ Derived files are persisted as `ProductImageVariantAsset` records. The original 
 - `COMPOSE_WHITE_BACKGROUND`: requires `CUTOUT_TRANSPARENT` and targets `CUTOUT_WHITE`.
 - `OPTIMIZE_MAIN_IMAGE`: requires `CUTOUT_WHITE` and targets `OPTIMIZED_MAIN`.
 
-Each operation has its own `ProductImageProcessingJob` and independent status:
+Each operation has an independent `ProductImageProcessingJob` status:
 
 - `PENDING`
 - `RUNNING`
 - `SUCCEEDED`
 - `FAILED`
 
-A failed image-processing job must not delete the product, block OpenAI extraction for other batch items, or overwrite the original image. A failed job can be retried independently up to the configured retry limit.
+A failed image job must not delete the product, block OpenAI extraction for other batch items, overwrite the original image or require OpenAI recognition to run again.
+
+## Background-removal providers
+
+The API uses a selectable provider layer controlled by `BACKGROUND_REMOVAL_PROVIDER`.
+
+### Lightweight OpenCV provider
+
+Default mode: `lightweight`.
+
+The CPU-only service in `services/lightweight-cutout` performs:
+
+1. EXIF-safe decoding of the original image.
+2. Empty-board template difference when `LIGHTWEIGHT_BACKGROUND_TEMPLATE_OBJECT` is configured.
+3. Border-derived background estimation when no template is configured.
+4. Morphological removal of thin board marks and isolated noise.
+5. GrabCut foreground refinement.
+6. Alpha-channel generation while preserving the original subject RGB pixels.
+7. Simple quality scoring for size, frame contact and fragmentation.
+
+Runtime configuration:
+
+- `LIGHTWEIGHT_CUTOUT_SERVICE_URL`
+- `LIGHTWEIGHT_CUTOUT_AUTH_MODE=google_identity`
+- `LIGHTWEIGHT_BACKGROUND_TEMPLATE_OBJECT` optional Cloud Storage object name
+
+The Staging processor runs as a private Cloud Run service with CPU-only scale-to-zero configuration.
+
+### remove.bg provider
+
+Mode: `remove_bg`.
+
+This remains available as an optional paid fallback but is not the default. It requires `REMOVE_BG_API_KEY`.
+
+### Automatic provider mode
+
+Mode: `auto` currently prefers the lightweight provider and uses remove.bg only when the lightweight service is unavailable and remove.bg is configured.
+
+A later PR will add the self-hosted `rembg + BiRefNet` provider and quality-based fallback:
+
+```text
+lightweight OpenCV
+→ quality check
+→ rembg + BiRefNet when the lightweight result is not acceptable
+→ employee review when both engines fail
+```
 
 ## Main-image selection
 
 `ProductMainImageSelection` stores the employee-selected Storefront image without changing the original product photo.
 
-Allowed main-image variants:
+Allowed customer-facing variants:
 
 - `ORIGINAL`
 - `CUTOUT_WHITE`
 - `OPTIMIZED_MAIN`
 
-`CUTOUT_TRANSPARENT` cannot be selected directly as a customer-facing main image.
+`CUTOUT_TRANSPARENT` cannot be selected directly as a Storefront main image.
 
 ## Employee review
 
-The existing calibration page will eventually display:
+The calibration workspace will display:
 
 - Original
 - Transparent cutout
 - White-background cutout
 - Optimized main image
 
-The employee selects the final Storefront main image and confirms that the garment has not changed before approving the product.
+The employee selects the final Storefront main image and confirms that the garment has not changed before approval.
 
-## First-version guardrails
+## Guardrails
 
 Allowed:
 
@@ -73,23 +118,16 @@ Not allowed:
 - Generative wrinkle removal
 - Adding or removing garment details
 - Hiding real defects
-- Changing color, texture, logo, shape, or proportions
+- Changing color, texture, logo, shape or proportions
 - Automatically publishing an unreviewed derivative
 
-## API foundation
+## API
 
 - `POST /products/:productId/images/:imageId/processing-jobs`
-  - Creates an idempotent pending job for one supported operation.
-  - Rejects the request when the source image variant does not match the operation.
-- `GET /products/:productId/image-comparison`
-  - Returns the latest original, cutout and optimized variants, current selection and processing jobs.
+- `POST /image-processing-jobs/:jobId/run`
 - `POST /image-processing-jobs/:jobId/retry`
-  - Resets an eligible failed job to `PENDING` without rerunning OpenAI extraction.
+- `GET /products/:productId/image-comparison`
+- `GET /products/:productId/image-assets/:assetId/content`
 - `POST /products/:productId/main-image`
-  - Records the employee-selected customer-facing image.
 
 The shared TypeScript contracts live in `packages/shared-types/src/image-processing.ts`.
-
-## Deferred to the processor PR
-
-This persistence/API foundation does not yet call a background-removal provider or write output image files. The processor implementation must claim pending jobs, create derived files, persist `ProductImageVariantAsset`, and mark each job succeeded or failed without touching the original upload.
