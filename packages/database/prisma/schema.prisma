@@ -631,6 +631,7 @@ model Customer {
   lastLoginAt                DateTime?
   checkoutDrafts             CheckoutDraft[]
   orders                     Order[]
+  affiliateProfile           Affiliate?
   affiliateClicks            AffiliateClick[]
   affiliateAttributions      AffiliateAttribution[]
   customerServiceCases       CustomerServiceCase[]
@@ -841,6 +842,7 @@ model MpesaCallback {
 
 model Affiliate {
   id                String                 @id @default(uuid())
+  customerId        String?                @unique
   affiliateCode     String                 @unique
   displayName       String
   phone             String?
@@ -848,6 +850,7 @@ model Affiliate {
   status            AffiliateStatus        @default(ACTIVE)
   commissionRateBps Int?
   disabledAt        DateTime?
+  customer          Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
   links             AffiliateLink[]
   clicks            AffiliateClick[]
   attributions      AffiliateAttribution[]

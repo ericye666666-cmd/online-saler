@@ -19,6 +19,7 @@ export type CommissionQueueKey = "pending" | "confirmed" | "paid" | "exceptions"
 
 type AffiliateInput = {
   adminUserId?: string;
+  customerId?: string;
   affiliateCode?: string;
   displayName?: string;
   phone?: string;
@@ -123,18 +124,87 @@ export class OperationsAffiliateService {
 
   async createAffiliate(input: AffiliateInput) {
     await this.access.requirePermission(input.adminUserId, AFFILIATE_EDIT);
-    const displayName = input.displayName?.trim();
+    const linkedCustomer = input.customerId
+      ? await prisma.customer.findUnique({ where: { id: input.customerId } })
+      : null;
+    if (input.customerId && !linkedCustomer) throw new NotFoundException("Customer account was not found.");
+    const displayName = input.displayName?.trim() || linkedCustomer?.displayName || linkedCustomer?.email;
     if (!displayName) throw new BadRequestException("Affiliate display name is required.");
     const affiliateCode = normalizeAffiliateCode(input.affiliateCode) ?? await uniqueAffiliateCode(displayName);
     const commissionRateBps = normalizeOptionalRate(input.commissionRateBps);
 
     return prisma.affiliate.create({
       data: {
+        customerId: linkedCustomer?.id ?? null,
         affiliateCode,
         displayName,
-        phone: cleanOptional(input.phone),
-        email: cleanOptional(input.email)?.toLowerCase() ?? null,
+        phone: cleanOptional(input.phone) ?? linkedCustomer?.phone ?? null,
+        email: cleanOptional(input.email)?.toLowerCase() ?? linkedCustomer?.email.toLowerCase() ?? null,
         commissionRateBps
+      }
+    });
+  }
+
+  async searchCustomers(adminUserId: string | undefined, query: string | undefined) {
+    await this.access.requirePermission(adminUserId, AFFILIATE_VIEW);
+    const term = query?.trim();
+    if (!term || term.length < 2) return [];
+    return prisma.customer.findMany({
+      where: {
+        OR: [
+          { email: { contains: term, mode: "insensitive" } },
+          { normalizedEmail: { contains: term.toLowerCase(), mode: "insensitive" } },
+          { displayName: { contains: term, mode: "insensitive" } },
+          { phone: { contains: term } }
+        ]
+      },
+      include: {
+        affiliateProfile: true,
+        _count: { select: { orders: true } }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 20
+    });
+  }
+
+  async enableCustomerAffiliate(customerId: string, input: AffiliateInput) {
+    await this.access.requirePermission(input.adminUserId, AFFILIATE_EDIT);
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      include: { affiliateProfile: true }
+    });
+    if (!customer) throw new NotFoundException("Customer account was not found.");
+    const displayName = input.displayName?.trim() || customer.displayName || customer.email;
+    const commissionRateBps = normalizeOptionalRate(input.commissionRateBps);
+    const existing = customer.affiliateProfile ?? await prisma.affiliate.findFirst({
+      where: { email: customer.email.toLowerCase() }
+    });
+
+    if (existing) {
+      return prisma.affiliate.update({
+        where: { id: existing.id },
+        data: {
+          customerId: customer.id,
+          displayName,
+          phone: cleanOptional(input.phone) ?? customer.phone ?? existing.phone,
+          email: customer.email.toLowerCase(),
+          commissionRateBps: input.commissionRateBps === undefined ? existing.commissionRateBps : commissionRateBps,
+          status: AffiliateStatus.ACTIVE,
+          disabledAt: null
+        }
+      });
+    }
+
+    const affiliateCode = normalizeAffiliateCode(input.affiliateCode) ?? await uniqueAffiliateCode(displayName);
+    return prisma.affiliate.create({
+      data: {
+        customerId: customer.id,
+        affiliateCode,
+        displayName,
+        phone: cleanOptional(input.phone) ?? customer.phone ?? null,
+        email: customer.email.toLowerCase(),
+        commissionRateBps,
+        status: AffiliateStatus.ACTIVE
       }
     });
   }
