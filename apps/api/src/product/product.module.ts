@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { LightweightBackgroundRemovalProvider } from "./lightweight-background-removal.provider";
 import { ProductApplicationService } from "./product-application.service";
 import { ProductBarcodeController } from "./product-barcode.controller";
 import { ProductBarcodeService } from "./product-barcode.service";
@@ -12,6 +13,7 @@ import { PRODUCT_REPOSITORY } from "./product.repository";
 import { ProductSetupController } from "./product-setup.controller";
 import { PrismaProductRepository } from "./prisma-product.repository";
 import { RemoveBgProvider } from "./remove-bg.provider";
+import { SelectedBackgroundRemovalProvider } from "./selected-background-removal.provider";
 import { ProductStateMachine } from "./product-state-machine";
 
 @Module({
@@ -28,7 +30,9 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductImageStorageService,
     ProductImageProcessingService,
     ProductImageJobRunnerService,
+    LightweightBackgroundRemovalProvider,
     RemoveBgProvider,
+    SelectedBackgroundRemovalProvider,
     ProductStateMachine,
     {
       provide: PRODUCT_REPOSITORY,

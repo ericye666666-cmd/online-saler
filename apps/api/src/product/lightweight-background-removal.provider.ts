@@ -7,20 +7,19 @@ import {
 } from "./background-removal.provider";
 
 @Injectable()
-export class RemoveBgProvider implements BackgroundRemovalProvider {
-  private readonly endpoint = "https://api.remove.bg/v1.0/removebg";
-  private readonly timeoutMs = 45_000;
+export class LightweightBackgroundRemovalProvider implements BackgroundRemovalProvider {
+  private readonly timeoutMs = 60_000;
 
   isConfigured(): boolean {
-    return Boolean(process.env.REMOVE_BG_API_KEY?.trim());
+    return Boolean(process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL?.trim());
   }
 
   async removeBackground(input: BackgroundRemovalInput): Promise<BackgroundRemovalResult> {
-    const apiKey = process.env.REMOVE_BG_API_KEY?.trim();
-    if (!apiKey) {
+    const serviceUrl = process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL?.trim();
+    if (!serviceUrl) {
       throw new BackgroundRemovalProviderError(
         "PROCESSOR_NOT_CONFIGURED",
-        "REMOVE_BG_API_KEY is not configured"
+        "LIGHTWEIGHT_CUTOUT_SERVICE_URL is not configured"
       );
     }
 
@@ -28,55 +27,49 @@ export class RemoveBgProvider implements BackgroundRemovalProvider {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const form = new FormData();
       const payload = new Uint8Array(input.body.length);
       payload.set(input.body);
 
-      form.append("size", "auto");
-      form.append("format", "png");
-      form.append(
-        "image_file",
-        new Blob([payload.buffer], { type: input.contentType }),
-        input.filename
-      );
-
-      const response = await fetch(this.endpoint, {
+      const response = await fetch(`${serviceUrl.replace(/\/$/, "")}/remove-background`, {
         method: "POST",
-        headers: { "X-Api-Key": apiKey },
-        body: form,
+        headers: {
+          "Content-Type": input.contentType,
+          "X-Filename": input.filename
+        },
+        body: payload,
         signal: controller.signal
       });
 
       if (!response.ok) {
         const detail = (await response.text()).slice(0, 500);
-        const code = response.status === 400 || response.status === 422
-          ? "PROCESSOR_REJECTED_IMAGE"
-          : "UNKNOWN";
         throw new BackgroundRemovalProviderError(
-          code,
-          `remove.bg failed: ${response.status} ${detail || response.statusText}`
+          response.status === 400 || response.status === 422
+            ? "PROCESSOR_REJECTED_IMAGE"
+            : "UNKNOWN",
+          `Lightweight cutout failed: ${response.status} ${detail || response.statusText}`
         );
       }
 
       return {
         body: Buffer.from(await response.arrayBuffer()),
         contentType: "image/png",
-        provider: "remove.bg",
-        processorVersion: "v1.0"
+        provider: "lightweight-opencv",
+        processorVersion: response.headers.get("x-processor-version") ?? "v1.0"
       };
     } catch (error) {
       if (error instanceof BackgroundRemovalProviderError) throw error;
       if (error instanceof Error && error.name === "AbortError") {
-        throw new BackgroundRemovalProviderError("PROCESSOR_TIMEOUT", "remove.bg request timed out");
+        throw new BackgroundRemovalProviderError(
+          "PROCESSOR_TIMEOUT",
+          "Lightweight cutout request timed out"
+        );
       }
       throw new BackgroundRemovalProviderError(
         "UNKNOWN",
-        error instanceof Error ? error.message : "Unknown background removal failure"
+        error instanceof Error ? error.message : "Unknown lightweight cutout failure"
       );
     } finally {
       clearTimeout(timeout);
     }
   }
 }
-
-export { BackgroundRemovalProviderError } from "./background-removal.provider";
