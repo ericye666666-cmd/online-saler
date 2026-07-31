@@ -6,11 +6,14 @@ on:
       - develop
     paths:
       - "apps/api/**"
+      - "apps/image-processor-lightweight/**"
+      - "apps/image-processor-rembg/**"
       - "packages/business-rules/**"
       - "packages/shared-types/**"
       - "packages/database/**"
       - "package.json"
       - "package-lock.json"
+      - "scripts/deploy-staging-migrations.mjs"
       - "tsconfig.base.json"
       - "Dockerfile.api"
       - ".dockerignore"
@@ -23,6 +26,10 @@ permissions:
 
 env:
   IMAGE_NAME: api
+  LIGHTWEIGHT_IMAGE_NAME: image-processor-lightweight
+  REMBG_IMAGE_NAME: image-processor-rembg
+  LIGHTWEIGHT_SERVICE_NAME: online-saler-lightweight-cutout-staging
+  REMBG_SERVICE_NAME: online-saler-rembg-birefnet-staging
   MIGRATION_JOB_NAME: online-saler-db-migrate-staging
   STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
   STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
@@ -31,7 +38,7 @@ env:
 
 jobs:
   deploy:
-    name: Bootstrap schema, storage, build and deploy API
+    name: Migrate schema, storage, build and deploy API
     runs-on: ubuntu-latest
 
     steps:
@@ -81,6 +88,100 @@ jobs:
             "${{ vars.GCP_REGION }}-docker.pkg.dev" \
             --quiet
 
+      - name: Build lightweight cutout image
+        run: |
+          LIGHTWEIGHT_IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${LIGHTWEIGHT_IMAGE_NAME}:${GITHUB_SHA}"
+
+          docker build \
+            --file apps/image-processor-lightweight/Dockerfile \
+            --tag "${LIGHTWEIGHT_IMAGE_URI}" \
+            apps/image-processor-lightweight
+
+          echo "LIGHTWEIGHT_IMAGE_URI=${LIGHTWEIGHT_IMAGE_URI}" >> "${GITHUB_ENV}"
+
+      - name: Push lightweight cutout image
+        run: docker push "${LIGHTWEIGHT_IMAGE_URI}"
+
+      - name: Deploy lightweight cutout service
+        id: deploy_lightweight_cutout
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.LIGHTWEIGHT_SERVICE_NAME }}
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ env.LIGHTWEIGHT_IMAGE_URI }}
+          flags: >-
+            --allow-unauthenticated
+            --port=8080
+            --memory=1Gi
+            --cpu=1
+            --min-instances=0
+            --max-instances=2
+            --concurrency=1
+            --timeout=300s
+            --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
+
+      - name: Verify lightweight cutout service
+        run: |
+          LIGHTWEIGHT_CUTOUT_SERVICE_URL="${{ steps.deploy_lightweight_cutout.outputs.url }}"
+          echo "LIGHTWEIGHT_CUTOUT_SERVICE_URL=${LIGHTWEIGHT_CUTOUT_SERVICE_URL}" >> "${GITHUB_ENV}"
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 10 \
+            --retry-delay 5 \
+            "${LIGHTWEIGHT_CUTOUT_SERVICE_URL}/health"
+
+      - name: Build rembg BiRefNet image
+        run: |
+          REMBG_IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${REMBG_IMAGE_NAME}:${GITHUB_SHA}"
+
+          docker build \
+            --file apps/image-processor-rembg/Dockerfile \
+            --tag "${REMBG_IMAGE_URI}" \
+            apps/image-processor-rembg
+
+          echo "REMBG_IMAGE_URI=${REMBG_IMAGE_URI}" >> "${GITHUB_ENV}"
+
+      - name: Push rembg BiRefNet image
+        run: docker push "${REMBG_IMAGE_URI}"
+
+      - name: Deploy rembg BiRefNet service
+        id: deploy_rembg_birefnet
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.REMBG_SERVICE_NAME }}
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ env.REMBG_IMAGE_URI }}
+          flags: >-
+            --allow-unauthenticated
+            --port=8080
+            --memory=16Gi
+            --cpu=4
+            --min-instances=0
+            --max-instances=1
+            --concurrency=1
+            --timeout=600s
+            --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
+          env_vars: |
+            REMBG_MODEL=birefnet-general
+            MAX_IMAGE_BYTES=20971520
+
+      - name: Verify rembg BiRefNet service
+        run: |
+          REMBG_BIREFNET_SERVICE_URL="${{ steps.deploy_rembg_birefnet.outputs.url }}"
+          echo "REMBG_BIREFNET_SERVICE_URL=${REMBG_BIREFNET_SERVICE_URL}" >> "${GITHUB_ENV}"
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 24 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "${REMBG_BIREFNET_SERVICE_URL}/health"
+
       - name: Build Docker image
         run: |
           IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${IMAGE_NAME}:${GITHUB_SHA}"
@@ -105,12 +206,12 @@ jobs:
             --set-cloudsql-instances "${STAGING_CLOUD_SQL_INSTANCE}" \
             --set-secrets "DATABASE_URL=STAGING_DATABASE_URL:latest" \
             --command npm \
-            --args run,db:bootstrap-staging \
+            --args run,db:migrate-staging \
             --max-retries 0 \
             --task-timeout 10m \
             --quiet
 
-      - name: Synchronize staging schema and seed test operator
+      - name: Run staging migrations and seed test operator
         id: synchronize_staging_schema
         run: |
           set +e
@@ -171,6 +272,10 @@ jobs:
           env_vars: |
             NODE_ENV=staging
             PRODUCT_IMAGE_BUCKET=${{ env.PRODUCT_IMAGE_BUCKET }}
+            BACKGROUND_REMOVAL_PROVIDER=auto
+            LIGHTWEIGHT_CUTOUT_SERVICE_URL=${{ steps.deploy_lightweight_cutout.outputs.url }}
+            REMBG_BIREFNET_SERVICE_URL=${{ steps.deploy_rembg_birefnet.outputs.url }}
+            BACKGROUND_REMOVAL_MIN_QUALITY_SCORE=0.75
             AI_PROVIDER_MODE=openai
             OPENAI_VISION_MODEL=${{ env.OPENAI_VISION_MODEL }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY_STAGING }}
@@ -252,6 +357,91 @@ jobs:
             "${SERVICE_URL}/products/${PRODUCT_ID}/images/${IMAGE_ID}/content" \
             --output /tmp/product-test-downloaded.png
           cmp /tmp/product-test.png /tmp/product-test-downloaded.png
+
+      - name: Verify image cutout auto routing
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
+            "${SERVICE_URL}/operations/access/login")"
+          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
+          PRODUCT_CODE="CUTOUT-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          PRODUCT_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
+            "${SERVICE_URL}/products")"
+          PRODUCT_ID="$(printf '%s' "${PRODUCT_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
+
+          python3 - <<'PY'
+          import struct
+          import zlib
+
+          width = 512
+          height = 512
+          rows = []
+          for y in range(height):
+              row = bytearray()
+              for x in range(width):
+                  if 142 <= x <= 370 and 92 <= y <= 430:
+                      row.extend([22, 22, 22])
+                  else:
+                      row.extend([248, 248, 248])
+              rows.append(b"\x00" + bytes(row))
+          raw = b"".join(rows)
+
+          def chunk(kind, data):
+              return (
+                  struct.pack(">I", len(data))
+                  + kind
+                  + data
+                  + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+              )
+
+          png = (
+              b"\x89PNG\r\n\x1a\n"
+              + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+              + chunk(b"IDAT", zlib.compress(raw))
+              + chunk(b"IEND", b"")
+          )
+
+          with open("/tmp/cutout-test.png", "wb") as file:
+              file.write(png)
+          PY
+
+          IMAGE_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Content-Type: image/png" \
+            --header "X-Image-Type: FRONT" \
+            --header "X-Employee-Id: 00000000-0000-4000-8000-000000000001" \
+            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
+            --data-binary @/tmp/cutout-test.png \
+            "${SERVICE_URL}/products/${PRODUCT_ID}/images/upload")"
+          IMAGE_ID="$(printf '%s' "${IMAGE_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
+
+          JOB_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
+            --data '{"operation":"REMOVE_BACKGROUND"}' \
+            "${SERVICE_URL}/products/${PRODUCT_ID}/images/${IMAGE_ID}/processing-jobs")"
+          JOB_ID="$(printf '%s' "${JOB_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
+
+          RUN_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
+            "${SERVICE_URL}/image-processing-jobs/${JOB_ID}/run")"
+          echo "${RUN_RESPONSE}"
+          echo "${RUN_RESPONSE}" | grep -q '"status":"SUCCEEDED"'
+          echo "${RUN_RESPONSE}" | grep -Eq '"provider":"(lightweight-opencv|rembg-birefnet)"'
+          ASSET_ID="$(printf '%s' "${RUN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).outputImageId))')"
+
+          curl --fail --silent --show-error \
+            "${SERVICE_URL}/products/${PRODUCT_ID}/image-assets/${ASSET_ID}/content" \
+            --output /tmp/cutout-test-transparent.png
+          file /tmp/cutout-test-transparent.png | grep -q "PNG image data"
 
       - name: Verify Operations workspace API
         run: |
