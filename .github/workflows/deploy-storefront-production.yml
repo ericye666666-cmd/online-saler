@@ -61,6 +61,7 @@ jobs:
 
           docker build \
             --file Dockerfile.storefront \
+            --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_PRODUCTION }}" \
             --tag "${IMAGE_URI}" \
             .
 
@@ -89,6 +90,7 @@ jobs:
             NODE_ENV=production
             API_URL=${{ vars.API_URL_PRODUCTION }}
             STOREFRONT_PUBLIC_URL=${{ vars.STOREFRONT_PUBLIC_URL_PRODUCTION }}
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_PRODUCTION }}
             GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID_PRODUCTION }}
             MPESA_ENV=production
             MPESA_ENVIRONMENT=production
