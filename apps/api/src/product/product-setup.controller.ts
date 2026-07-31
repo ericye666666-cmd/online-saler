@@ -10,12 +10,7 @@ import {
   Req,
   Res
 } from "@nestjs/common";
-import {
-  ProductImageType,
-  ProductImageVariant,
-  ProductStatus,
-  prisma
-} from "@online-saler/database";
+import { ProductImageType, ProductStatus, prisma } from "@online-saler/database";
 import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
 import { ProductApplicationService } from "./product-application.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
@@ -91,10 +86,8 @@ export class ProductSetupController {
         id: imageId,
         productId: id,
         type: imageType,
-        variant: ProductImageVariant.ORIGINAL,
         originalUrl: `gs://${this.imageStorage.bucket}/${objectName}`,
         publicUrl: `/products/${id}/images/${imageId}/content`,
-        mimeType: contentType,
         uploadedByEmployeeId: employeeId?.trim() || undefined
       }
     });
@@ -133,7 +126,6 @@ export class ProductSetupController {
       data: {
         productId: id,
         type: body.type,
-        variant: ProductImageVariant.ORIGINAL,
         originalUrl: body.originalUrl.trim(),
         uploadedByEmployeeId: body.employeeId
       }
