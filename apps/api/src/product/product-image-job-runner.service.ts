@@ -8,17 +8,15 @@ import {
   prisma
 } from "@online-saler/database";
 import type { ImageProcessingJobRecord } from "@online-saler/shared-types";
+import { BackgroundRemovalProviderError } from "./background-removal.provider";
 import { ProductImageStorageService } from "./product-image-storage.service";
-import {
-  BackgroundRemovalProviderError,
-  RemoveBgProvider
-} from "./remove-bg.provider";
+import { SelectedBackgroundRemovalProvider } from "./selected-background-removal.provider";
 
 @Injectable()
 export class ProductImageJobRunnerService {
   constructor(
     private readonly storage: ProductImageStorageService,
-    private readonly removeBg: RemoveBgProvider
+    private readonly backgroundRemoval: SelectedBackgroundRemovalProvider
   ) {}
 
   async run(jobId: string): Promise<ImageProcessingJobRecord> {
@@ -30,8 +28,8 @@ export class ProductImageJobRunnerService {
       },
       data: {
         status: ImageProcessingStatus.RUNNING,
-        provider: "remove.bg",
-        processorVersion: "v1.0",
+        provider: null,
+        processorVersion: null,
         startedAt: new Date(),
         completedAt: null,
         failureCode: null,
@@ -61,20 +59,20 @@ export class ProductImageJobRunnerService {
       });
       if (!source) {
         throw new BackgroundRemovalProviderError(
-          "PROCESSOR_REJECTED_IMAGE",
+          "SOURCE_IMAGE_NOT_FOUND",
           "FRONT source image no longer exists"
         );
       }
       if (!source.originalUrl.startsWith(`gs://${this.storage.bucket}/`)) {
         throw new BackgroundRemovalProviderError(
-          "PROCESSOR_REJECTED_IMAGE",
+          "SOURCE_IMAGE_NOT_FOUND",
           "Source image is not stored in the configured product image bucket"
         );
       }
 
       const sourceObjectName = source.originalUrl.slice(`gs://${this.storage.bucket}/`.length);
       const stored = await this.storage.download(sourceObjectName);
-      const result = await this.removeBg.removeBackground({
+      const result = await this.backgroundRemoval.removeBackground({
         body: Buffer.from(stored.body),
         contentType: stored.contentType,
         filename: `${source.id}.png`
@@ -97,7 +95,15 @@ export class ProductImageJobRunnerService {
         "cutout-transparent",
         result.contentType
       );
-      await this.storage.upload(outputObjectName, result.contentType, result.body);
+
+      try {
+        await this.storage.upload(outputObjectName, result.contentType, result.body);
+      } catch (error) {
+        throw new BackgroundRemovalProviderError(
+          "OUTPUT_UPLOAD_FAILED",
+          error instanceof Error ? error.message : "Transparent cutout upload failed"
+        );
+      }
 
       const asset = await prisma.$transaction(async (tx) => {
         const saved = await tx.productImageVariantAsset.upsert({
