@@ -31,7 +31,6 @@ model ProductImageVariantAsset {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  @@unique([productId, sourceImageId, variant])
   @@index([productId, variant, createdAt])
   @@index([sourceImageId])
 }
