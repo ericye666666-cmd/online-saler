@@ -34,6 +34,7 @@ These are not secrets, but they must point to production resources before the ma
 | `API_URL_PRODUCTION` | Production API service URL. |
 | `STOREFRONT_PUBLIC_URL_PRODUCTION` | Customer-facing Storefront URL. |
 | `GOOGLE_CLIENT_ID_PRODUCTION` | Google OAuth web client ID. |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_PRODUCTION` | Browser Google Maps key restricted to the production Storefront domain; Maps JavaScript API and Places API must be enabled. |
 | `MPESA_CALLBACK_URL_PRODUCTION` | Full callback URL, usually `<storefront-url>/api/payments/mpesa/callback`. |
 
 ## Runtime M-Pesa configuration

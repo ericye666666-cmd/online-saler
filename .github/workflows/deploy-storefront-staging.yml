@@ -83,6 +83,7 @@ jobs:
 
           docker build \
             --file Dockerfile.storefront \
+            --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_STAGING }}" \
             --tag "${IMAGE_URI}" \
             .
 
@@ -111,6 +112,7 @@ jobs:
             NODE_ENV=staging
             API_URL=${{ env.API_URL }}
             STOREFRONT_PUBLIC_URL=${{ env.STOREFRONT_PUBLIC_URL }}
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_STAGING }}
             GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID_STAGING }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET_STAGING }}
             CUSTOMER_SESSION_SECRET=${{ secrets.CUSTOMER_SESSION_SECRET_STAGING }}

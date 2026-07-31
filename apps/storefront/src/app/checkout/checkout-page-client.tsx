@@ -1,14 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ArrowRight, CheckCircle2, Clock3, CreditCard, MapPin, Navigation, PackageCheck, RefreshCw, Smartphone, Truck } from "lucide-react";
+import type { ReactNode } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { KIKUYU_DELIVERY_FEE_KSH } from "@online-saler/business-rules";
+import {
+  checkoutStage,
+  checkoutStepStatus,
+  deliveryRequiresAddress,
+  googleMapsConfigured,
+  type CheckoutStage,
+  type FulfillmentChoice
+} from "../cart-checkout-ui";
 import { CART_STORAGE_KEY, cartSubtotalKsh, parseCartSnapshot, type CartSnapshot } from "../storefront-cart";
-import { moneyKsh, type PublicProduct } from "../storefront-products";
+import { moneyKsh, productImageSrc, productMeta, type PublicProduct } from "../storefront-products";
 import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded } from "../../payments/payment-ui";
 
 type CheckoutState = "loading" | "empty" | "ready" | "unavailable";
-type FulfillmentChoice = "PICKUP" | "KIKUYU_LOCAL_DELIVERY";
 type Reservation = {
   orderId: string;
   orderNumber: string;
@@ -36,6 +45,36 @@ type PaymentState = {
   customerMessage?: string | null;
   receiptNumber?: string | null;
   resultDescription?: string | null;
+};
+
+const GOOGLE_MAPS_SCRIPT_ID = "direct-loop-google-maps-places";
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+type GoogleMapsWindow = Window & {
+  google?: {
+    maps?: {
+      places?: {
+        Autocomplete: new (
+          input: HTMLInputElement,
+          options: Record<string, unknown>
+        ) => {
+          addListener: (eventName: string, handler: () => void) => { remove?: () => void };
+          getPlace: () => {
+            formatted_address?: string;
+            name?: string;
+            place_id?: string;
+            geometry?: {
+              location?: {
+                lat: () => number;
+                lng: () => number;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+  __directLoopGoogleMapsPromise?: Promise<void>;
 };
 
 export function CheckoutPageClient() {
@@ -119,7 +158,7 @@ export function CheckoutPageClient() {
           productId: snapshot.item.productId,
           phone,
           fulfillmentMethod: fulfillment,
-          deliveryAddress: fulfillment === "KIKUYU_LOCAL_DELIVERY" ? deliveryAddress : null,
+          deliveryAddress: deliveryRequiresAddress(fulfillment) ? deliveryAddress : null,
           deliveryNote: deliveryNote || null
         })
       });
@@ -180,26 +219,26 @@ export function CheckoutPageClient() {
   }
 
   if (state === "loading") {
-    return <section className="empty-store"><h1>Checkout</h1><p>Checking item availability...</p></section>;
+    return <CheckoutEmpty title="Checkout" body="Checking the selected item..." />;
   }
 
   if (state === "empty") {
     return (
-      <section className="empty-store">
-        <h1>Checkout</h1>
-        <p>Your cart is empty.</p>
-        <Link className="reserve-link" href="/">Browse items</Link>
-      </section>
+      <CheckoutEmpty
+        title="Your cart is empty"
+        body="Choose an available item before starting checkout."
+        action={<Link className="commercePrimaryButton" href="/">Browse items <ArrowRight size={16} /></Link>}
+      />
     );
   }
 
   if (state === "unavailable" || !product) {
     return (
-      <section className="empty-store">
-        <h1>Checkout</h1>
-        <p>This item is no longer available.</p>
-        <Link className="reserve-link" href="/">Browse another item</Link>
-      </section>
+      <CheckoutEmpty
+        title="This item is no longer available"
+        body="Second-hand items sell one at a time. Pick another available piece from the shop."
+        action={<Link className="commerceSecondaryButton" href="/">Browse another item</Link>}
+      />
     );
   }
 
@@ -212,122 +251,343 @@ export function CheckoutPageClient() {
   const isPaymentSucceeded = paymentSucceeded(payment?.orderStatus, paymentStatus);
   const isPaymentFailed = paymentFailed(paymentStatus);
   const isPaymentRetryable = canRetryPayment(paymentStatus, secondsRemaining);
+  const requiresAddress = deliveryRequiresAddress(fulfillment);
+  const currentStage = checkoutStage(Boolean(reservation), isPaymentSucceeded);
+  const imageSrc = productImageSrc(product);
 
   return (
-    <section className="checkout-layout" aria-label="Checkout">
-      <form className="checkout-form" onSubmit={submitCheckout}>
+    <section className="commerceCheckoutShell" aria-label="Checkout">
+      <div className="checkoutHero">
         <div>
-          <p className="detail-meta">One item checkout</p>
-          <h1>{reservation ? "Item reserved" : "Checkout"}</h1>
-          <p className="checkout-note">
+          <span className="checkoutKicker">Checkout</span>
+          <h1>{reservation ? "Complete payment" : "Delivery and payment"}</h1>
+          <p className="checkoutLead">
             {reservation
               ? `Order ${reservation.orderNumber} is reserved for payment.`
               : "Your item is reserved for 15 minutes only after you continue to payment."}
           </p>
         </div>
+        <CheckoutProgress stage={currentStage} />
+      </div>
 
-        {reservation ? (
-          <div className="reservation-confirmation" role="status">
-            <strong>{secondsRemaining > 0 ? `${minutes}:${seconds}` : "Reservation expired"}</strong>
-            <span>{secondsRemaining > 0 ? "remaining to complete M-Pesa payment" : "Return to the item and try again."}</span>
-            <p>Phone: +{reservation.phone}</p>
-            <div className={`payment-status ${isPaymentSucceeded ? "success" : isPaymentFailed ? "failed" : ""}`}>
-              <b>
-                {paymentHeading({
-                  orderStatus: payment?.orderStatus,
-                  paymentStatus,
-                  paymentLoading
-                })}
-              </b>
-              <span>
-                {paymentBody({
-                  orderStatus: payment?.orderStatus,
-                  paymentStatus,
-                  receiptNumber: payment?.receiptNumber,
-                  paymentError,
-                  customerMessage: payment?.customerMessage,
-                  resultDescription: payment?.resultDescription
-                })}
-              </span>
+      <div className="commerceCheckoutGrid">
+        <div className="checkoutStack">
+          <section className="checkoutPanel">
+            <h2>{reservation ? "M-Pesa request" : "How should we fulfill it?"}</h2>
+
+            {reservation ? (
+              <div className="reservationCard" role="status">
+                <div className="reservationTimer">
+                  <div>
+                    <strong>{secondsRemaining > 0 ? `${minutes}:${seconds}` : "Expired"}</strong>
+                    <span>{secondsRemaining > 0 ? "remaining to complete payment" : "Return to the item and try again."}</span>
+                  </div>
+                  <Clock3 size={26} />
+                </div>
+                <p>M-Pesa phone: +{reservation.phone}</p>
+                <div className={`paymentStatusCard ${isPaymentSucceeded ? "success" : isPaymentFailed ? "failed" : ""}`}>
+                  <b>
+                    {paymentHeading({
+                      orderStatus: payment?.orderStatus,
+                      paymentStatus,
+                      paymentLoading
+                    })}
+                  </b>
+                  <span>
+                    {paymentBody({
+                      orderStatus: payment?.orderStatus,
+                      paymentStatus,
+                      receiptNumber: payment?.receiptNumber,
+                      paymentError,
+                      customerMessage: payment?.customerMessage,
+                      resultDescription: payment?.resultDescription
+                    })}
+                  </span>
+                </div>
+                <div className="checkoutPaymentActions">
+                  <button className="commerceSecondaryButton" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
+                    <RefreshCw size={16} /> {refreshingPayment ? "Refreshing..." : "Refresh status"}
+                  </button>
+                  {isPaymentSucceeded ? (
+                    <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
+                      View order <ArrowRight size={16} />
+                    </Link>
+                  ) : null}
+                </div>
+                {paymentError || isPaymentRetryable ? (
+                  <button className="commerceSecondaryButton full" type="button" disabled={paymentLoading || secondsRemaining <= 0} onClick={() => initiatePayment(reservation.orderId)}>
+                    <Smartphone size={16} /> {paymentLoading ? "Retrying..." : "Retry M-Pesa"}
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <form className="checkoutForm" onSubmit={submitCheckout}>
+                <label className="checkoutField">
+                  <span>M-Pesa phone</span>
+                  <input
+                    autoComplete="tel"
+                    inputMode="tel"
+                    name="phone"
+                    placeholder="07..."
+                    required
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                  />
+                </label>
+
+                <div className="commerceOptionGrid" role="radiogroup" aria-label="Fulfillment">
+                  <label className={`commerceOption ${fulfillment === "PICKUP" ? "selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="fulfillment"
+                      value="PICKUP"
+                      checked={fulfillment === "PICKUP"}
+                      onChange={() => setFulfillment("PICKUP")}
+                    />
+                    <PackageCheck size={20} />
+                    <div>
+                      <span>Free</span>
+                      <strong>Kikuyu pickup</strong>
+                      <p>Collect from the Kikuyu warehouse after payment is confirmed.</p>
+                    </div>
+                  </label>
+                  <label className={`commerceOption ${fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="fulfillment"
+                      value="KIKUYU_LOCAL_DELIVERY"
+                      checked={fulfillment === "KIKUYU_LOCAL_DELIVERY"}
+                      onChange={() => setFulfillment("KIKUYU_LOCAL_DELIVERY")}
+                    />
+                    <Truck size={20} />
+                    <div>
+                      <span>{moneyKsh(KIKUYU_DELIVERY_FEE_KSH)}</span>
+                      <strong>Kikuyu local delivery</strong>
+                      <p>Use address search or type a landmark manually.</p>
+                    </div>
+                  </label>
+                </div>
+
+                {requiresAddress ? (
+                  <GoogleAddressField
+                    value={deliveryAddress}
+                    onChange={setDeliveryAddress}
+                    disabled={submitting}
+                  />
+                ) : null}
+
+                <label className="checkoutField">
+                  <span>{fulfillment === "PICKUP" ? "Pickup note" : "Delivery note"}</span>
+                  <textarea
+                    name="deliveryNote"
+                    placeholder="Optional note for the team"
+                    value={deliveryNote}
+                    onChange={(event) => setDeliveryNote(event.target.value)}
+                  />
+                </label>
+
+                {error ? <p className="checkoutError" role="alert">{error}</p> : null}
+                <button className="commercePrimaryButton full" type="submit" disabled={submitting}>
+                  <CreditCard size={17} /> {submitting ? "Reserving item..." : "Continue to M-Pesa payment"}
+                </button>
+              </form>
+            )}
+          </section>
+
+          <section className="commerceFeatureGrid" aria-label="Checkout safeguards">
+            <div className="commerceFeature">
+              <Clock3 size={18} />
+              <div><strong>15 minute lock</strong><span>Stock is locked only after you continue to payment.</span></div>
             </div>
-            <div className="payment-actions">
-              <button className="reserve-button secondary" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
-                {refreshingPayment ? "Refreshing..." : "Refresh payment status"}
-              </button>
-              {isPaymentSucceeded ? (
-                <Link className="reserve-button secondary successLink" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
-                  View order
-                </Link>
-              ) : null}
+            <div className="commerceFeature">
+              <CheckCircle2 size={18} />
+              <div><strong>Live check</strong><span>The server checks price and availability again.</span></div>
             </div>
-            {paymentError || isPaymentRetryable ? (
-              <button className="reserve-button secondary" type="button" disabled={paymentLoading || secondsRemaining <= 0} onClick={() => initiatePayment(reservation.orderId)}>
-                {paymentLoading ? "Retrying..." : "Retry M-Pesa"}
-              </button>
-            ) : null}
-          </div>
-        ) : (
-          <>
-            <label>
-              <span>M-Pesa phone</span>
-              <input
-                autoComplete="tel"
-                inputMode="tel"
-                name="phone"
-                placeholder="07..."
-                required
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>Fulfillment</span>
-              <select name="fulfillment" value={fulfillment} onChange={(event) => setFulfillment(event.target.value as FulfillmentChoice)}>
-                <option value="PICKUP">Kikuyu pickup</option>
-                <option value="KIKUYU_LOCAL_DELIVERY">Kikuyu local delivery</option>
-              </select>
-            </label>
-            {fulfillment === "KIKUYU_LOCAL_DELIVERY" ? (
-              <label>
-                <span>Delivery address</span>
-                <textarea
-                  name="deliveryAddress"
-                  placeholder="Estate, building and nearby landmark"
-                  required
-                  value={deliveryAddress}
-                  onChange={(event) => setDeliveryAddress(event.target.value)}
-                />
-              </label>
-            ) : null}
-            <label>
-              <span>{fulfillment === "PICKUP" ? "Pickup note" : "Delivery note"}</span>
-              <textarea
-                name="deliveryNote"
-                placeholder="Optional"
-                value={deliveryNote}
-                onChange={(event) => setDeliveryNote(event.target.value)}
-              />
-            </label>
-
-            {error ? <p className="checkout-error" role="alert">{error}</p> : null}
-            <button className="reserve-button" type="submit" disabled={submitting}>
-              {submitting ? "Reserving item..." : "Continue to M-Pesa payment"}
-            </button>
-          </>
-        )}
-      </form>
-
-      <aside className="checkout-summary">
-        <h2>Order summary</h2>
-        <div className="summary-item">
-          <span>{product.title ?? "Second-hand item"}</span>
-          <strong>{moneyKsh(product.priceKsh)}</strong>
+            <div className="commerceFeature">
+              <MapPin size={18} />
+              <div><strong>Kikuyu only</strong><span>Pickup is free. Local delivery is KSh 50.</span></div>
+            </div>
+          </section>
         </div>
-        <div className="summary-row"><span>Item</span><strong>{moneyKsh(itemTotal)}</strong></div>
-        <div className="summary-row"><span>{fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "Delivery" : "Pickup"}</span><strong>{moneyKsh(deliveryFee)}</strong></div>
-        <div className="summary-row total"><span>Total</span><strong>{moneyKsh(total)}</strong></div>
-        <p className="checkout-note">The server checks the live price and availability before creating the reservation.</p>
-      </aside>
+
+        <aside className="checkoutSummaryPanel">
+          <h2>Order summary</h2>
+          <SummaryProduct product={product} imageSrc={imageSrc} />
+          <div className="commerceSummaryRows">
+            <div className="commerceSummaryRow"><span>Item</span><strong>{moneyKsh(itemTotal)}</strong></div>
+            <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{moneyKsh(deliveryFee)}</strong></div>
+            <div className="commerceSummaryRow total"><span>Total</span><strong>{moneyKsh(total)}</strong></div>
+          </div>
+          <p className="commerceSummaryLine"><CreditCard size={16} /> M-Pesa request is sent to your phone after this step.</p>
+          <p className="commerceSummaryLine"><Clock3 size={16} /> Cart itself does not reserve the item.</p>
+        </aside>
+      </div>
     </section>
   );
+}
+
+function CheckoutEmpty({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
+  return (
+    <section className="checkoutEmptyState">
+      <h1>{title}</h1>
+      <p>{body}</p>
+      {action}
+    </section>
+  );
+}
+
+function CheckoutProgress({ stage }: { stage: CheckoutStage }) {
+  const steps: Array<{ key: CheckoutStage; label: string }> = [
+    { key: "details", label: "Details" },
+    { key: "payment", label: "M-Pesa" },
+    { key: "complete", label: "Done" }
+  ];
+
+  return (
+    <div className="checkoutProgress" aria-label="Checkout progress">
+      {steps.map((step, index) => (
+        <div key={step.key} className={`checkoutStep ${checkoutStepStatus(stage, step.key)}`}>
+          <span>{String(index + 1).padStart(2, "0")}</span>
+          <strong>{step.label}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummaryProduct({ product, imageSrc }: { product: PublicProduct; imageSrc: string }) {
+  return (
+    <div className="summaryProduct">
+      <div className="summaryProductImage">
+        {imageSrc ? <img src={imageSrc} alt="" /> : null}
+      </div>
+      <div>
+        <strong>{product.title ?? "Second-hand item"}</strong>
+        <span>{productMeta(product) || "Kikuyu warehouse"}</span>
+      </div>
+    </div>
+  );
+}
+
+function GoogleAddressField({
+  value,
+  onChange,
+  disabled
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [mapsState, setMapsState] = useState<"manual" | "loading" | "ready">(
+    googleMapsConfigured(GOOGLE_MAPS_API_KEY) ? "loading" : "manual"
+  );
+  const [placeDetails, setPlaceDetails] = useState<{ name: string; address: string; placeId?: string } | null>(null);
+
+  useEffect(() => {
+    const apiKey = GOOGLE_MAPS_API_KEY;
+    if (!apiKey || !inputRef.current) {
+      setMapsState("manual");
+      return;
+    }
+
+    let listener: { remove?: () => void } | null = null;
+    let disposed = false;
+    setMapsState("loading");
+
+    loadGoogleMaps(apiKey)
+      .then(() => {
+        if (disposed || !inputRef.current) return;
+        const mapsWindow = window as GoogleMapsWindow;
+        const Autocomplete = mapsWindow.google?.maps?.places?.Autocomplete;
+        if (!Autocomplete) {
+          setMapsState("manual");
+          return;
+        }
+        const autocomplete = new Autocomplete(inputRef.current, {
+          componentRestrictions: { country: "ke" },
+          fields: ["formatted_address", "geometry", "name", "place_id"]
+        });
+        listener = autocomplete.addListener("place_changed", () => {
+          const place = autocomplete.getPlace();
+          const nextAddress = place.formatted_address ?? place.name ?? inputRef.current?.value ?? "";
+          onChange(nextAddress);
+          setPlaceDetails({
+            name: place.name ?? "Selected delivery place",
+            address: nextAddress,
+            placeId: place.place_id
+          });
+        });
+        setMapsState("ready");
+      })
+      .catch(() => setMapsState("manual"));
+
+    return () => {
+      disposed = true;
+      listener?.remove?.();
+    };
+  }, [onChange]);
+
+  return (
+    <div className="deliveryAddressBox">
+      <label className="checkoutField">
+        <span>Delivery address</span>
+        <input
+          ref={inputRef}
+          autoComplete="street-address"
+          disabled={disabled}
+          name="deliveryAddress"
+          placeholder="Search Kikuyu estate, road or landmark"
+          required
+          value={value}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setPlaceDetails(null);
+          }}
+        />
+      </label>
+      <div className={`deliveryMapStatus ${mapsState === "ready" ? "ready" : ""}`}>
+        <Navigation size={16} />
+        <span>
+          {mapsState === "ready"
+            ? "Google address suggestions are ready. Choose a place or keep typing manually."
+            : mapsState === "loading"
+              ? "Loading Google address suggestions..."
+              : "Address suggestions are not configured yet. You can still type the address manually."}
+        </span>
+      </div>
+      {placeDetails ? (
+        <div className="deliveryPlacePreview">
+          <strong>{placeDetails.name}</strong>
+          <span>{placeDetails.address}</span>
+        </div>
+      ) : null}
+      <p className="deliveryMapHint">Delivery is limited to Kikuyu local area. The team will confirm the landmark by phone.</p>
+    </div>
+  );
+}
+
+function loadGoogleMaps(apiKey: string): Promise<void> {
+  const mapsWindow = window as GoogleMapsWindow;
+  if (mapsWindow.google?.maps?.places) return Promise.resolve();
+  if (mapsWindow.__directLoopGoogleMapsPromise) return mapsWindow.__directLoopGoogleMapsPromise;
+
+  mapsWindow.__directLoopGoogleMapsPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById(GOOGLE_MAPS_SCRIPT_ID) as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Google Maps failed to load")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = GOOGLE_MAPS_SCRIPT_ID;
+    script.async = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&loading=async`;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Google Maps failed to load"));
+    document.head.appendChild(script);
+  });
+
+  return mapsWindow.__directLoopGoogleMapsPromise;
 }

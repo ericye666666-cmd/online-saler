@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight, Clock3, CreditCard, MapPin, ShieldCheck, ShoppingBag, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { CART_STORAGE_KEY, cartSubtotalKsh, parseCartSnapshot, type CartSnapshot } from "../storefront-cart";
 import { moneyKsh, productImageSrc, productMeta, type PublicProduct } from "../storefront-products";
@@ -42,52 +44,146 @@ export function CartPageClient() {
   }
 
   if (state === "loading") {
-    return <section className="empty-store"><h1>Your cart</h1><p>Checking item availability...</p></section>;
+    return <CheckoutEmpty title="Your cart" body="Checking the selected item..." />;
   }
 
   if (state === "empty") {
     return (
-      <section className="empty-store">
-        <h1>Your cart</h1>
-        <p>No item selected yet.</p>
-        <Link className="reserve-link" href="/">Browse items</Link>
-      </section>
+      <CheckoutEmpty
+        title="Your cart is empty"
+        body="Choose one available item from the shop, then come back here to confirm details before payment."
+        action={<Link className="commercePrimaryButton" href="/">Browse items <ArrowRight size={16} /></Link>}
+      />
     );
   }
 
   if (state === "unavailable" || !product) {
     return (
-      <section className="empty-store">
-        <h1>Your cart</h1>
-        <p>This item is no longer available.</p>
-        <button className="secondary-button" type="button" onClick={clearCart}>Clear cart</button>
-      </section>
+      <CheckoutEmpty
+        title="This item is no longer available"
+        body="Second-hand items are one of one. Clear the cart and pick another available piece."
+        action={<button className="commerceSecondaryButton" type="button" onClick={clearCart}>Clear cart</button>}
+      />
     );
   }
 
   const subtotal = cartSubtotalKsh(snapshot);
+  const imageSrc = productImageSrc(product);
 
   return (
-    <section className="checkout-layout" aria-label="Cart item">
-      <article className="cart-item">
-        <div className="cart-photo">
-          {productImageSrc(product) ? <img src={productImageSrc(product)} alt={product.title ?? "Selected item"} /> : <span>No photo</span>}
+    <section className="commerceCheckoutShell" aria-label="Shopping cart">
+      <div className="checkoutHero">
+        <div>
+          <span className="checkoutKicker">Cart</span>
+          <h1>Review your item</h1>
+          <p className="checkoutLead">One selected piece, checked again before payment.</p>
         </div>
-        <div className="cart-copy">
-          <p className="detail-meta">{productMeta(product)}</p>
-          <h1>{product.title ?? "Second-hand item"}</h1>
-          <strong>{moneyKsh(product.priceKsh)}</strong>
-          <p className="checkout-note">Cart does not reserve this item. Stock is checked again before payment.</p>
-          <button className="secondary-button" type="button" onClick={clearCart}>Remove</button>
-        </div>
-      </article>
+        <CheckoutProgress stage="details" />
+      </div>
 
-      <aside className="checkout-summary">
-        <h2>Order summary</h2>
-        <div className="summary-row"><span>Item</span><strong>{moneyKsh(subtotal)}</strong></div>
-        <div className="summary-row"><span>Delivery</span><strong>Choose next</strong></div>
-        <Link className="reserve-link full" href="/checkout">Continue</Link>
-      </aside>
+      <div className="commerceCheckoutGrid">
+        <div className="checkoutStack">
+          <article className="checkoutPanel cartProductCard">
+            <div className="cartProductImage">
+              {imageSrc ? <img src={imageSrc} alt={product.title ?? "Selected item"} /> : <span>No photo</span>}
+            </div>
+            <div className="cartProductCopy">
+              <p className="cartProductMeta">{productMeta(product) || "Second-hand fashion / Kikuyu"}</p>
+              <div className="cartProductTitleRow">
+                <h2>{product.title ?? "Second-hand item"}</h2>
+                <strong className="cartProductPrice">{moneyKsh(product.priceKsh)}</strong>
+              </div>
+              <div className="cartMetaGrid" aria-label="Item details">
+                <div><span>Size</span><strong>{product.size ?? "Pending"}</strong></div>
+                <div><span>Condition</span><strong>{product.conditionGrade ?? "Pending"}</strong></div>
+                <div><span>Location</span><strong>Kikuyu</strong></div>
+              </div>
+              <div className="commerceNotice">
+                <Clock3 size={18} />
+                <div>
+                  <strong>Cart does not reserve stock</strong>
+                  <p>Availability is checked again when you continue to M-Pesa payment.</p>
+                </div>
+              </div>
+              <div className="commerceActions">
+                <button className="commerceTextButton" type="button" onClick={clearCart}>
+                  <Trash2 size={16} /> Remove item
+                </button>
+                <Link className="commerceSecondaryButton" href="/">Continue shopping</Link>
+              </div>
+            </div>
+          </article>
+
+          <section className="commerceFeatureGrid" aria-label="Checkout notes">
+            <div className="commerceFeature">
+              <MapPin size={18} />
+              <div><strong>Kikuyu pickup</strong><span>Free pickup from the Kikuyu warehouse.</span></div>
+            </div>
+            <div className="commerceFeature">
+              <ShoppingBag size={18} />
+              <div><strong>Local delivery</strong><span>Delivery inside the Kikuyu area is KSh 50.</span></div>
+            </div>
+            <div className="commerceFeature">
+              <ShieldCheck size={18} />
+              <div><strong>One available</strong><span>Every listed item is a single second-hand piece.</span></div>
+            </div>
+          </section>
+        </div>
+
+        <aside className="checkoutSummaryPanel">
+          <h2>Order summary</h2>
+          <SummaryProduct product={product} imageSrc={imageSrc} />
+          <div className="commerceSummaryRows">
+            <div className="commerceSummaryRow"><span>Item</span><strong>{moneyKsh(subtotal)}</strong></div>
+            <div className="commerceSummaryRow"><span>Fulfillment</span><strong>Choose next</strong></div>
+            <div className="commerceSummaryRow total"><span>Due now</span><strong>{moneyKsh(subtotal)}</strong></div>
+          </div>
+          <p className="commerceSummaryLine"><CreditCard size={16} /> M-Pesa starts after you confirm pickup or delivery.</p>
+          <Link className="commercePrimaryButton full" href="/checkout">Continue to checkout <ArrowRight size={16} /></Link>
+        </aside>
+      </div>
     </section>
+  );
+}
+
+function CheckoutEmpty({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
+  return (
+    <section className="checkoutEmptyState">
+      <h1>{title}</h1>
+      <p>{body}</p>
+      {action}
+    </section>
+  );
+}
+
+export function CheckoutProgress({ stage }: { stage: "details" | "payment" | "complete" }) {
+  const steps: Array<{ key: "details" | "payment" | "complete"; label: string; status: string }> = [
+    { key: "details", label: "Details", status: stage === "details" ? "current" : "done" },
+    { key: "payment", label: "M-Pesa", status: stage === "complete" ? "done" : stage === "payment" ? "current" : "pending" },
+    { key: "complete", label: "Done", status: stage === "complete" ? "current" : "pending" }
+  ];
+  return (
+    <div className="checkoutProgress" aria-label="Checkout progress">
+      {steps.map((step, index) => (
+        <div key={step.key} className={`checkoutStep ${step.status}`}>
+          <span>{String(index + 1).padStart(2, "0")}</span>
+          <strong>{step.label}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SummaryProduct({ product, imageSrc }: { product: PublicProduct; imageSrc: string }) {
+  return (
+    <div className="summaryProduct">
+      <div className="summaryProductImage">
+        {imageSrc ? <img src={imageSrc} alt="" /> : null}
+      </div>
+      <div>
+        <strong>{product.title ?? "Second-hand item"}</strong>
+        <span>{productMeta(product) || "Kikuyu warehouse"}</span>
+      </div>
+    </div>
   );
 }
