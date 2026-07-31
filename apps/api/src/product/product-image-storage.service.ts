@@ -26,8 +26,17 @@ export class ProductImageStorageService {
   }
 
   objectName(productId: string, imageId: string, contentType: string): string {
-    const extension = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
-    return `staging/products/${productId}/${imageId}.${extension}`;
+    return `staging/products/${productId}/${imageId}.${this.extension(contentType)}`;
+  }
+
+  derivedObjectName(
+    productId: string,
+    assetId: string,
+    variantSlug: string,
+    contentType: string
+  ): string {
+    const safeVariant = variantSlug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    return `staging/products/${productId}/derived/${safeVariant}/${assetId}.${this.extension(contentType)}`;
   }
 
   async upload(objectName: string, contentType: string, body: Buffer): Promise<void> {
@@ -74,6 +83,10 @@ export class ProductImageStorageService {
       body: await response.arrayBuffer(),
       contentType: response.headers.get("content-type") ?? "application/octet-stream"
     };
+  }
+
+  private extension(contentType: string): string {
+    return contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
   }
 
   private async accessToken(): Promise<string> {
