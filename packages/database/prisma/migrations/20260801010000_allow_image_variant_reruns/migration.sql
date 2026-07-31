@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS "ProductImageVariantAsset_productId_sourceImageId_variant_key";

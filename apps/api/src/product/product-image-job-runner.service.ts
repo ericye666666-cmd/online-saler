@@ -151,17 +151,7 @@ export class ProductImageJobRunnerService {
     },
     result: ProcessingResult
   ) {
-    const existingAsset = await prisma.productImageVariantAsset.findUnique({
-      where: {
-        productId_sourceImageId_variant: {
-          productId: job.productId,
-          sourceImageId: job.sourceImageId,
-          variant: job.targetVariant
-        }
-      },
-      select: { id: true }
-    });
-    const assetId = existingAsset?.id ?? randomUUID();
+    const assetId = randomUUID();
     const variantSlug = job.targetVariant.toLowerCase().replaceAll("_", "-");
     const outputObjectName = this.storage.derivedObjectName(
       job.productId,
@@ -172,26 +162,12 @@ export class ProductImageJobRunnerService {
     await this.storage.upload(outputObjectName, result.contentType, result.body);
 
     return prisma.$transaction(async (tx) => {
-      const saved = await tx.productImageVariantAsset.upsert({
-        where: {
-          productId_sourceImageId_variant: {
-            productId: job.productId,
-            sourceImageId: job.sourceImageId,
-            variant: job.targetVariant
-          }
-        },
-        create: {
+      const saved = await tx.productImageVariantAsset.create({
+        data: {
           id: assetId,
           productId: job.productId,
           sourceImageId: job.sourceImageId,
           variant: job.targetVariant,
-          storageUrl: `gs://${this.storage.bucket}/${outputObjectName}`,
-          publicUrl: `/products/${job.productId}/image-assets/${assetId}/content`,
-          mimeType: result.contentType,
-          widthPx: "widthPx" in result ? result.widthPx : null,
-          heightPx: "heightPx" in result ? result.heightPx : null
-        },
-        update: {
           storageUrl: `gs://${this.storage.bucket}/${outputObjectName}`,
           publicUrl: `/products/${job.productId}/image-assets/${assetId}/content`,
           mimeType: result.contentType,
