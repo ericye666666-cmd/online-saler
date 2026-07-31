@@ -97,6 +97,8 @@ jobs:
       - name: Verify Operations page
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          HTML_FILE="$(mktemp)"
+          CSS_FILE="$(mktemp)"
 
           echo "Service URL: ${SERVICE_URL}"
           curl \
@@ -106,7 +108,9 @@ jobs:
             --retry 10 \
             --retry-delay 5 \
             "${SERVICE_URL}" \
-            | grep -q "Online Saler Operations"
+            --output "${HTML_FILE}"
+
+          grep -q "Online Saler Operations" "${HTML_FILE}"
 
           curl \
             --fail \
@@ -116,3 +120,25 @@ jobs:
             --retry-delay 5 \
             "${SERVICE_URL}/system/accounts" \
             | grep -q "Online Saler Operations"
+
+          CSS_PATH="$(grep -o '/_next/static/[^"]*\.css' "${HTML_FILE}" | head -n 1)"
+          if [ -z "${CSS_PATH}" ]; then
+            echo "Operations page did not include a CSS asset." >&2
+            exit 1
+          fi
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 10 \
+            --retry-delay 5 \
+            "${SERVICE_URL}${CSS_PATH}" \
+            --output "${CSS_FILE}"
+
+          grep -q "\.flex" "${CSS_FILE}"
+          grep -q "\.rounded-xl" "${CSS_FILE}"
+          if grep -q "@apply" "${CSS_FILE}"; then
+            echo "Operations CSS still contains unresolved Tailwind @apply directives." >&2
+            exit 1
+          fi

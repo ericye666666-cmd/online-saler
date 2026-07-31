@@ -390,12 +390,17 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
 
 function LoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+      <Card className="w-full max-w-md shadow-sm">
         <CardHeader>
-          <CardTitle>正在打开后台</CardTitle>
-          <CardDescription>正在读取账号权限。</CardDescription>
+          <CardTitle>正在打开 Online Saler Operations</CardTitle>
+          <CardDescription>正在读取后台账号和权限。</CardDescription>
         </CardHeader>
+        <CardContent>
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/2 rounded-full bg-primary" />
+          </div>
+        </CardContent>
       </Card>
     </div>
   );
@@ -421,42 +426,105 @@ function LoginScreen() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>后台登录</CardTitle>
-          <CardDescription>使用后台账号登录。顾客 Google 登录不适用于这里。</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="admin-login">登录账号或邮箱</Label>
-            <Input id="admin-login" value={loginAccount} onChange={(event) => setLoginAccount(event.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="admin-password">密码</Label>
-            <Input
-              id="admin-password"
-              type="password"
-              value={password}
-              placeholder="Staging 初始密码为 ChangeMe43!"
-              onChange={(event) => setPassword(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void submit();
-              }}
-            />
-          </div>
-          {localError || error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm">
-              {localError || error}
+    <div className="min-h-screen bg-muted/30 p-4 md:p-8">
+      <div className="mx-auto grid min-h-[calc(100vh-2rem)] w-full max-w-6xl overflow-hidden rounded-2xl border bg-background shadow-sm md:min-h-[calc(100vh-4rem)] lg:grid-cols-[1fr_440px]">
+        <section className="hidden border-r bg-sidebar p-10 lg:flex lg:flex-col lg:justify-between">
+          <div className="flex flex-col gap-10">
+            <div className="flex items-center gap-3">
+              <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <Building2Icon />
+              </div>
+              <div>
+                <p className="font-semibold text-lg">Online Saler</p>
+                <p className="text-muted-foreground text-sm">Operations Control Center</p>
+              </div>
             </div>
-          ) : null}
-        </CardContent>
-        <CardFooter>
-          <Button className="w-full" disabled={busy} onClick={() => void submit()}>
-            {busy ? "正在登录..." : "登录"}
-          </Button>
-        </CardFooter>
-      </Card>
+
+            <div className="max-w-xl">
+              <Badge variant="secondary">Staging</Badge>
+              <h1 className="mt-5 font-semibold text-4xl tracking-tight">
+                Kikuyu 二手服装运营中台
+              </h1>
+              <p className="mt-4 text-muted-foreground">
+                用一套后台完成商品数字化、仓库履约、订单处理、推广佣金、客服和数据分析。
+              </p>
+            </div>
+
+            <div className="grid gap-3">
+              {[
+                ["商品中心", "批次、AI 识别、人工校准、Barcode 和发布"],
+                ["仓库履约", "已付款订单拣货、打包、自提和配送"],
+                ["系统权限", "后台账号、角色和操作权限统一控制"]
+              ].map(([title, description]) => (
+                <div key={title} className="flex gap-3 rounded-xl border bg-background/70 p-4">
+                  <ShieldCheckIcon className="mt-0.5 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium">{title}</p>
+                    <p className="text-muted-foreground text-sm">{description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-muted-foreground text-xs">
+            顾客 Google 登录和后台员工登录相互独立。这里仅用于内部运营人员。
+          </p>
+        </section>
+
+        <section className="flex items-center justify-center p-4 md:p-10">
+          <Card className="w-full max-w-md shadow-none ring-0">
+            <CardHeader>
+              <div className="mb-3 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground lg:hidden">
+                <Building2Icon />
+              </div>
+              <CardTitle className="text-2xl">后台登录</CardTitle>
+              <CardDescription>使用后台账号进入 Operations。顾客 Google 登录不适用于这里。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="admin-login">登录账号或邮箱</Label>
+                <Input
+                  id="admin-login"
+                  autoComplete="username"
+                  value={loginAccount}
+                  onChange={(event) => setLoginAccount(event.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="admin-password">密码</Label>
+                <Input
+                  id="admin-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  placeholder="输入后台密码"
+                  onChange={(event) => setPassword(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void submit();
+                  }}
+                />
+              </div>
+              {localError || error ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm">
+                  {localError || error}
+                </div>
+              ) : null}
+              <div className="rounded-lg border bg-muted/40 p-3 text-muted-foreground text-sm">
+                Staging 默认账号是 <span className="font-mono text-foreground">superadmin</span>。如果密码无效，需要重置 Staging Super Admin。
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-3">
+              <Button className="w-full" disabled={busy} onClick={() => void submit()}>
+                {busy ? "正在登录..." : "登录后台"}
+              </Button>
+              <p className="text-center text-muted-foreground text-xs">
+                所有后台操作会按账号、角色和权限记录。
+              </p>
+            </CardFooter>
+          </Card>
+        </section>
+      </div>
     </div>
   );
 }
@@ -465,6 +533,9 @@ function AccessDenied() {
   return (
     <Card className="mx-auto mt-12 max-w-lg">
       <CardHeader>
+        <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+          <ShieldCheckIcon />
+        </div>
         <CardTitle>403 无权限访问</CardTitle>
         <CardDescription>当前后台账号没有访问这个页面的权限。</CardDescription>
       </CardHeader>
