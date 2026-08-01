@@ -355,7 +355,7 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
               </DropdownMenu>
             </div>
           </div>
-          <nav className="flex gap-1 overflow-x-auto pb-1" aria-label="Operations modules">
+          <nav className="hidden gap-1 overflow-x-auto pb-1 md:flex" aria-label="Operations modules">
             {visibleModules.map((module) => {
               const Icon = module.icon;
               const selected = module.key === activeModule.key;
