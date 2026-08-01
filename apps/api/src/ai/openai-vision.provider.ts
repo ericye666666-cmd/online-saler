@@ -106,8 +106,7 @@ export class OpenAIVisionProvider implements AIProvider {
             ]
           }
         ],
-        text: { format: { type: "json_object" } },
-        max_output_tokens: 1400
+        ...openAIVisionResponseSettings()
       })
     });
 
@@ -117,7 +116,7 @@ export class OpenAIVisionProvider implements AIProvider {
       throw new InternalServerErrorException(openAIErrorMessage(response.status, payload));
     }
 
-    const rawOutput = parseOutputText(payload);
+    const rawOutput = parseOpenAIVisionOutput(payload);
     return {
       provider: "openai",
       model: this.model(),
@@ -138,7 +137,18 @@ export class OpenAIVisionProvider implements AIProvider {
   }
 }
 
-function parseOutputText(payload: ResponsesApiPayload): unknown {
+export function openAIVisionResponseSettings() {
+  return {
+    reasoning: { effort: "none" },
+    text: {
+      verbosity: "low",
+      format: { type: "json_object" }
+    },
+    max_output_tokens: 3000
+  } as const;
+}
+
+export function parseOpenAIVisionOutput(payload: ResponsesApiPayload): unknown {
   if (typeof payload.output_text === "string") {
     return parseJsonObject(payload.output_text);
   }
@@ -152,7 +162,11 @@ function parseOutputText(payload: ResponsesApiPayload): unknown {
     .trim();
 
   if (!text) {
-    throw new InternalServerErrorException("OpenAI did not return a readable product recognition result");
+    const status = String(payload.status ?? "unknown");
+    const reason = String(payload.incomplete_details?.reason ?? payload.error?.message ?? "no_output_text");
+    throw new InternalServerErrorException(
+      `OpenAI did not return a readable product recognition result (${status}: ${reason})`
+    );
   }
   return parseJsonObject(text);
 }
