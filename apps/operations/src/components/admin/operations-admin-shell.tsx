@@ -19,9 +19,7 @@ import {
   SearchIcon,
   SettingsIcon,
   ShieldCheckIcon,
-  SparklesIcon,
   TruckIcon,
-  UploadIcon,
   UserCogIcon,
   UsersIcon,
   XCircleIcon
@@ -97,16 +95,13 @@ export const operationsModules: ModuleNav[] = [
     icon: PackageCheckIcon,
     permission: "module.product",
     items: [
-      { label: "商品工作台", href: "/", icon: LayoutDashboardIcon, permission: "page.product.digitalization", badge: "Live" },
+      { label: "今日工作", href: "/", icon: LayoutDashboardIcon, permission: "page.product.digitalization", badge: "Live" },
       { label: "新建批次", href: "/product/new-batch", icon: PackageCheckIcon, permission: "page.product.digitalization" },
-      { label: "待上传", href: "/product/waiting-upload", icon: UploadIcon, permission: "page.product.digitalization" },
-      { label: "待 AI 识别", href: "/product/waiting-ai", icon: SparklesIcon, permission: "page.product.digitalization" },
-      { label: "图片与信息校准", href: "/product/calibration", icon: ClipboardCheckIcon, permission: "page.product.digitalization" },
-      { label: "待审核", href: "/product/review", icon: ShieldCheckIcon, permission: "page.product.control" },
-      { label: "已发布", href: "/product/published", icon: PackageCheckIcon, permission: "page.product.control" },
-      { label: "已拒绝", href: "/product/rejected", icon: XCircleIcon, permission: "page.product.control" },
-      { label: "Barcode", href: "/product/barcode", icon: ScanBarcodeIcon, permission: "page.product.control" },
-      { label: "分类与属性", href: "/product/taxonomy", icon: SettingsIcon, permission: "page.product.control" }
+      { label: "进行中批次", href: "/product/batches", icon: ClipboardCheckIcon, permission: "page.product.digitalization" },
+      { label: "待处理异常", href: "/product/exceptions", icon: XCircleIcon, permission: "page.product.digitalization" },
+      { label: "商品查询", href: "/product/search", icon: SearchIcon, permission: "page.product.digitalization" },
+      { label: "分类与属性", href: "/product/taxonomy", icon: SettingsIcon, permission: "page.product.control" },
+      { label: "已完成", href: "/product/completed", icon: PackageCheckIcon, permission: "page.product.digitalization" }
     ]
   },
   {
@@ -217,7 +212,7 @@ function moduleForPath(pathname: string): ModuleKey {
 function sectionForPath(pathname: string): string {
   const matchingItem = operationsModules.flatMap((module) => module.items).find((item) => item.href && item.href !== "/" && pathname.startsWith(item.href));
   if (matchingItem) return matchingItem.label;
-  if (pathname === "/") return "商品工作台";
+  if (pathname === "/") return "今日工作";
   if (pathname.startsWith("/control")) return "商品控制";
   if (pathname.startsWith("/debug")) return "调试工具";
   return "工作台";

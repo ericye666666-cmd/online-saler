@@ -1,3 +1,3 @@
-import { NewBatchPage } from "../product-center-client";
+import { NewBatchPage } from "../product-batch-workbench-client";
 
 export default NewBatchPage;

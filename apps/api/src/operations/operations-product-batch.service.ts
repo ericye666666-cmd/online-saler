@@ -13,6 +13,7 @@ import { ProductBarcodeService } from "../product/product-barcode.service";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsProductControlService } from "./operations-product-control.service";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
+import { deriveProductFactoryBatchFlow, startOfDayAtUtcOffset } from "./product-factory-batch-flow";
 import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
@@ -22,6 +23,8 @@ const PRODUCT_EDIT_ACTION = "action.product.edit";
 const PRODUCT_APPROVE_ACTION = "action.product.approve";
 
 type ProductQueue =
+  | "all"
+  | "exceptions"
   | "waiting-upload"
   | "waiting-ai"
   | "calibration"
@@ -72,7 +75,23 @@ export class OperationsProductBatchService {
     await this.access.requirePermission(adminUserId, PRODUCT_DIGITALIZE_PAGE);
     const operatorId = employeeIdOrDefault(employeeId);
     const whereOperator = { createdByEmployeeId: operatorId, ...productFactoryVisibilityWhere() };
-    const [activeBatches, waitingUpload, waitingAi, waitingCalibration, waitingReview, published, rejected, barcodeReady] =
+    const todayStart = startOfDayAtUtcOffset(new Date(), 180);
+    const [
+      activeBatches,
+      activeBatchCount,
+      todayNewBatches,
+      todayCompletedProducts,
+      waitingUpload,
+      waitingAi,
+      waitingCalibration,
+      waitingLabelApply,
+      waitingReview,
+      waitingStorage,
+      published,
+      rejected,
+      barcodeReady,
+      exceptions
+    ] =
       await Promise.all([
         prisma.productBatch.findMany({
           where: { status: ProductBatchStatus.OPEN, createdByEmployeeId: operatorId },
@@ -85,28 +104,87 @@ export class OperationsProductBatchService {
           orderBy: { createdAt: "desc" },
           take: 12
         }),
+        prisma.productBatch.count({
+          where: { status: ProductBatchStatus.OPEN, createdByEmployeeId: operatorId }
+        }),
+        prisma.productBatch.count({
+          where: { createdByEmployeeId: operatorId, createdAt: { gte: todayStart } }
+        }),
+        prisma.product.count({
+          where: { ...whereOperator, status: ProductStatus.PUBLISHED, publishedAt: { gte: todayStart } }
+        }),
         prisma.product.count({ where: { ...whereOperator, status: ProductStatus.DRAFT } }),
         prisma.product.count({ where: { ...whereOperator, status: { in: [ProductStatus.PHOTOGRAPHED, ProductStatus.AI_PROCESSING] } } }),
-        prisma.product.count({ where: { ...whereOperator, status: { in: [ProductStatus.AI_PROCESSED, ProductStatus.CALIBRATION_PENDING, ProductStatus.CALIBRATED] } } }),
-        prisma.product.count({ where: { ...whereOperator, status: { in: [ProductStatus.BARCODE_ASSIGNED, ProductStatus.REVIEW_PENDING] } } }),
+        prisma.product.count({ where: { ...whereOperator, status: { in: [ProductStatus.AI_PROCESSED, ProductStatus.CALIBRATION_PENDING] } } }),
+        prisma.product.count({ where: { ...whereOperator, status: ProductStatus.BARCODE_ASSIGNED, labelPrintedAt: null } }),
+        prisma.product.count({
+          where: {
+            ...whereOperator,
+            OR: [
+              { status: ProductStatus.BARCODE_ASSIGNED, labelPrintedAt: { not: null } },
+              { status: ProductStatus.REVIEW_PENDING }
+            ]
+          }
+        }),
+        prisma.product.count({ where: { ...whereOperator, status: { in: [ProductStatus.APPROVED, ProductStatus.READY_FOR_STORAGE] } } }),
         prisma.product.count({ where: { ...whereOperator, status: ProductStatus.PUBLISHED } }),
         prisma.product.count({ where: { ...whereOperator, status: ProductStatus.ARCHIVED } }),
-        prisma.product.count({ where: { ...whereOperator, status: ProductStatus.CALIBRATED } })
+        prisma.product.count({ where: { ...whereOperator, status: ProductStatus.CALIBRATED } }),
+        prisma.product.count({ where: { ...whereOperator, status: ProductStatus.REWORK_REQUIRED } })
       ]);
+
+    const serializedBatches = activeBatches.map((batch) => this.serializeBatch(batch));
 
     return {
       employeeId: operatorId,
-      activeBatches: activeBatches.map((batch) => this.serializeBatch(batch)),
+      metrics: {
+        todayNewBatches,
+        todayCompletedProducts,
+        activeBatchCount,
+        exceptionCount: exceptions
+      },
+      continueBatch: serializedBatches[0] ?? null,
+      activeBatches: serializedBatches,
+      tasks: {
+        upload: waitingUpload,
+        aiImage: waitingAi,
+        calibration: waitingCalibration,
+        labelApply: waitingLabelApply,
+        review: waitingReview,
+        storage: waitingStorage
+      },
       queues: {
         waitingUpload,
         waitingAi,
         waitingCalibration,
         waitingReview,
+        waitingStorage,
         published,
         rejected,
-        barcodeReady
+        barcodeReady,
+        exceptions
       }
     };
+  }
+
+  async listBatches(input: { adminUserId?: string; employeeId?: string; status?: ProductBatchStatus }) {
+    await this.access.requirePermission(input.adminUserId, PRODUCT_DIGITALIZE_PAGE);
+    const operatorId = employeeIdOrDefault(input.employeeId);
+    const batches = await prisma.productBatch.findMany({
+      where: {
+        createdByEmployeeId: operatorId,
+        ...(input.status ? { status: input.status } : {})
+      },
+      include: {
+        products: {
+          include: this.productInclude(),
+          orderBy: { batchItemNumber: "asc" }
+        }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 100
+    });
+    return batches.map((batch) => this.serializeBatch(batch));
   }
 
   async createBatch(input: { adminUserId?: string; employeeId?: string; targetCount?: number; note?: string }) {
@@ -324,6 +402,8 @@ export class OperationsProductBatchService {
   }
 
   private queueWhere(queue: ProductQueue): Record<string, unknown> {
+    if (queue === "all") return {};
+    if (queue === "exceptions") return { status: ProductStatus.REWORK_REQUIRED };
     if (queue === "waiting-upload") return { status: ProductStatus.DRAFT };
     if (queue === "waiting-ai") return { status: { in: [ProductStatus.PHOTOGRAPHED, ProductStatus.AI_PROCESSING] } };
     if (queue === "calibration") return { status: { in: [ProductStatus.AI_PROCESSED, ProductStatus.CALIBRATION_PENDING, ProductStatus.CALIBRATED] } };
@@ -364,6 +444,7 @@ export class OperationsProductBatchService {
       acc[product.status] = (acc[product.status] ?? 0) + 1;
       return acc;
     }, {});
+    const flow = deriveProductFactoryBatchFlow(batch.products);
     return {
       id: batch.id,
       batchCode: batch.batchCode,
@@ -373,7 +454,8 @@ export class OperationsProductBatchService {
       note: batch.note,
       createdAt: batch.createdAt.toISOString(),
       updatedAt: batch.updatedAt.toISOString(),
-      completedCount: (counts.BARCODE_ASSIGNED ?? 0) + (counts.READY_FOR_STORAGE ?? 0) + (counts.PUBLISHED ?? 0),
+      completedCount: (counts.PUBLISHED ?? 0) + (counts.ARCHIVED ?? 0),
+      ...flow,
       counts,
       products: batch.products
     };
