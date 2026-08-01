@@ -1,6 +1,9 @@
 import { ProductQueuePage } from "../product-center-client";
+import { ProductBatchCalibrationPage } from "../product-batch-calibration-client";
 
-export default function CalibrationPage() {
+export default async function CalibrationPage({ searchParams }: { searchParams: Promise<{ batchId?: string }> }) {
+  const { batchId } = await searchParams;
+  if (batchId) return <ProductBatchCalibrationPage batchId={batchId} />;
   return (
     <ProductQueuePage
       queue="calibration"

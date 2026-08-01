@@ -36,7 +36,9 @@ export interface CalibrateProductInput {
   pattern: string;
   sleeveType: string;
   brand?: string;
+  tagSize?: string;
   sizeLabel?: string;
+  description?: string;
   conditionGrade: ConditionGrade;
   priceKsh?: number;
   measurements: CalibrationMeasurementInput[];
@@ -75,6 +77,7 @@ export class ProductCalibrationService {
       pattern: input.pattern,
       sleeveType: input.sleeveType,
       brandLabel: input.brand ?? null,
+      tagSize: input.tagSize ?? null,
       sizeLabel: input.sizeLabel ?? null
     };
 
@@ -89,7 +92,9 @@ export class ProductCalibrationService {
           gender: input.gender ?? null,
           kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
           brand: input.brand ?? null,
+          tagSize: input.tagSize ?? null,
           finalSizeLabel: input.sizeLabel ?? null,
+          description: input.description ?? null,
           conditionGrade: input.conditionGrade,
           priceKsh: input.priceKsh,
           status: ProductStatus.CALIBRATED

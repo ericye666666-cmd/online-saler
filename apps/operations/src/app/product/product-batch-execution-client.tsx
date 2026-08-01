@@ -54,7 +54,7 @@ type ProductRecord = {
   batchItemNumber?: number | null;
   status: string;
   images?: ProductImage[];
-  aiExtractions?: Array<{ status?: string | null; errorMessage?: string | null }>;
+  aiExtractions?: Array<{ status?: string | null; errorMessage?: string | null; inputImageIds?: unknown }>;
 };
 
 type ProductBatch = {
@@ -243,7 +243,7 @@ async function runProductAi(product: ProductRecord, ids: ReturnType<typeof useOp
   });
 }
 
-export function ProductBatchUploadPage({ batchId }: { batchId: string }) {
+export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId: string; initialProductId?: string }) {
   const ids = useOperationIds();
   const router = useRouter();
   const [batch, setBatch] = useState<ProductBatch | null>(null);
@@ -257,11 +257,12 @@ export function ProductBatchUploadPage({ batchId }: { batchId: string }) {
     if (!ids.adminUserId) return;
     const loaded = await loadBatch(batchId, ids.adminUserId);
     setBatch(loaded);
-    setCurrentIndex((index) => Math.min(
-      loaded.products.length - 1,
-      index === 0 ? firstProductMissingFront(loaded.products) : index
-    ));
-  }, [batchId, ids.adminUserId]);
+    setCurrentIndex((index) => {
+      const requested = initialProductId ? loaded.products.findIndex((product) => product.id === initialProductId) : -1;
+      if (requested >= 0) return requested;
+      return Math.min(loaded.products.length - 1, index === 0 ? firstProductMissingFront(loaded.products) : index);
+    });
+  }, [batchId, ids.adminUserId, initialProductId]);
 
   useEffect(() => {
     void load().catch((caught) => setError(errorMessage(caught, "无法读取批次。")));
@@ -669,7 +670,10 @@ function newestImageOfType(product: ProductRecord | null, type: ProductFactoryIm
 }
 
 function hasSucceededAi(product: ProductRecord) {
-  return product.aiExtractions?.some((extraction) => extraction.status === "SUCCEEDED") ?? false;
+  const extraction = product.aiExtractions?.find((candidate) => candidate.status === "SUCCEEDED");
+  const latestFrontId = newestImageOfType(product, "FRONT")?.id;
+  if (!extraction || !latestFrontId) return false;
+  return Array.isArray(extraction.inputImageIds) && extraction.inputImageIds.includes(latestFrontId);
 }
 
 function stateFromProduct(product: ProductRecord, comparison: ProductImageComparisonResponse): ProcessingState {

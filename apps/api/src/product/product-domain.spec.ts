@@ -160,6 +160,20 @@ describe("Product domain service", () => {
     assert.equal(repository.auditLogs[0].action, "PRODUCT_REQUEST_REWORK");
   });
 
+  it("allows calibration to return directly to photography with a reason", async () => {
+    const repository = new InMemoryProductRepository();
+    const service = new ProductApplicationService(repository, new ProductStateMachine());
+    const product = await repository.createWithStatus("P-RETAKE", ProductStatus.CALIBRATION_PENDING);
+
+    const photographed = await transition(service, product.id, ProductStatus.PHOTOGRAPHED, {
+      reason: "Front image is blurred."
+    });
+
+    assert.equal(photographed.status, ProductStatus.PHOTOGRAPHED);
+    assert.equal(repository.auditLogs[0].action, "PRODUCT_RETAKE_PHOTOS");
+    assert.equal(repository.auditLogs[0].reason, "Front image is blurred.");
+  });
+
   it("requires a reason for manual rework and archive exceptions", async () => {
     const repository = new InMemoryProductRepository();
     const service = new ProductApplicationService(repository, new ProductStateMachine());

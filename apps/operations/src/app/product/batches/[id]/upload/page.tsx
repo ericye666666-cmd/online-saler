@@ -1,6 +1,7 @@
 import { ProductBatchUploadPage } from "../../../product-batch-execution-client";
 
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ productId?: string }> }) {
   const { id } = await params;
-  return <ProductBatchUploadPage batchId={id} />;
+  const { productId } = await searchParams;
+  return <ProductBatchUploadPage batchId={id} initialProductId={productId} />;
 }

@@ -760,7 +760,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     const saved = draftKey ? localStorage.getItem(draftKey) : null;
     if (saved) {
       try {
-        setForm(JSON.parse(saved) as WorkspaceForm);
+        setForm({ ...formFromProductAndAi(props.product, latestExtraction), ...(JSON.parse(saved) as Partial<WorkspaceForm>) });
         return;
       } catch {
         localStorage.removeItem(draftKey);

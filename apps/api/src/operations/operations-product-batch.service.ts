@@ -401,6 +401,25 @@ export class OperationsProductBatchService {
     });
   }
 
+  async markProductForRetake(productId: string, input: { adminUserId?: string; employeeId?: string; reason?: string }) {
+    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    if (!input.reason?.trim()) throw new BadRequestException("Retake reason is required.");
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new NotFoundException("Product not found.");
+    const actor = {
+      actorType: ActorType.EMPLOYEE,
+      actorId: employeeIdOrDefault(input.employeeId),
+      sourceApp: SourceApp.OPERATIONS
+    };
+    await this.products.transitionProduct({
+      productId,
+      toStatus: ProductStatus.PHOTOGRAPHED,
+      reason: input.reason.trim(),
+      actor
+    });
+    return prisma.product.findUnique({ where: { id: productId }, include: this.productInclude() });
+  }
+
   private queueWhere(queue: ProductQueue): Record<string, unknown> {
     if (queue === "all") return {};
     if (queue === "exceptions") return { status: ProductStatus.REWORK_REQUIRED };

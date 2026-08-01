@@ -32,6 +32,7 @@ assert.equal(fromAi.category, "DRESSES");
 assert.equal(fromAi.subcategory, "SHORT_DRESSES_SKIRTS");
 assert.equal(fromAi.audience, "WOMEN");
 assert.equal(fromAi.brand, "Mock Brand");
+assert.equal(fromAi.tagSize, "M");
 assert.equal(fromAi.sizeLabel, "M");
 
 const missingPhoto = workspaceReadiness({ product: { status: "DRAFT" }, image: null, job: null, form: fromAi });
@@ -59,7 +60,13 @@ assert.equal(barcoded.label, "Complete");
 const body = buildCalibrationBody({
   employeeId: "employee-1",
   extractionId: "ai-1",
-  form: { ...completeForm, shoulderWidthCm: "39", defects: "small stain on cuff" }
+  form: {
+    ...completeForm,
+    shoulderWidthCm: "39",
+    tagSize: "UK 12",
+    description: "Black short sleeve dress.",
+    defects: "small stain on cuff"
+  }
 });
 assert.deepEqual(body.measurements, [
   { type: "LENGTH", valueCm: 92 },
@@ -69,6 +76,8 @@ assert.deepEqual(body.measurements, [
 assert.equal(body.subcategory, "SHORT_DRESSES_SKIRTS");
 assert.equal(body.gender, "WOMEN");
 assert.equal(body.priceKsh, 850);
+assert.equal(body.tagSize, "UK 12");
+assert.equal(body.description, "Black short sleeve dress.");
 assert.equal(body.defects[0].description, "small stain on cuff");
 
 const kidsForm = {
