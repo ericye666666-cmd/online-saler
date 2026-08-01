@@ -1,5 +1,5 @@
-import { FulfillmentQueuePage } from "../fulfillment-client";
+import { LegacyWarehouseRedirect } from "../legacy-warehouse-redirect";
 
 export default function Page() {
-  return <FulfillmentQueuePage queue="picking" />;
+  return <LegacyWarehouseRedirect pathname="/warehouse/picking-active" />;
 }

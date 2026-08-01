@@ -1,5 +1,5 @@
-import { WarehouseWorkbenchPage } from "./fulfillment-client";
+import { LegacyWarehouseRedirect } from "./legacy-warehouse-redirect";
 
 export default function Page() {
-  return <WarehouseWorkbenchPage />;
+  return <LegacyWarehouseRedirect pathname="/warehouse" />;
 }

@@ -1,5 +1,5 @@
-import { FulfillmentQueuePage } from "../fulfillment-client";
+import { LegacyWarehouseRedirect } from "../legacy-warehouse-redirect";
 
 export default function Page() {
-  return <FulfillmentQueuePage queue="delivery" />;
+  return <LegacyWarehouseRedirect pathname="/warehouse/delivery" />;
 }

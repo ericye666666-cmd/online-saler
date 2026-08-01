@@ -11,73 +11,77 @@ const modules: NavigationModule[] = [
   {
     key: "product",
     label: "商品中心",
-    items: [
-      {
-        label: "商品工作台",
-        href: "/",
-        routePrefixes: ["/product/calibration", "/product/barcode", "/product/review"],
-        permission: "page.product.digitalization"
-      },
-      { label: "商品控制", href: "/control", permission: "page.product.control" }
-    ]
-  },
-  {
-    key: "warehouse",
-    label: "仓库履约",
-    items: [{ label: "待拣货", href: "/warehouse/picking", permission: "action.warehouse.view" }]
+    items: [{ label: "商品工作台", href: "/", permission: "page.product.digitalization" }]
   },
   {
     key: "orders",
     label: "订单中心",
-    items: [{ label: "全部订单", href: "/orders", permission: "action.orders.view" }]
+    items: [
+      { label: "订单工作台", href: "/orders", permission: "page.orders.workbench" },
+      { label: "全部订单", href: "/orders/all", permission: "page.orders.all" },
+      { label: "售后订单", href: "/orders/after-sales", permission: "page.orders.after-sale" },
+      { label: "异常订单", href: "/orders/exceptions", permission: "page.orders.exceptions" }
+    ]
   },
+  { key: "affiliate", label: "推广中心", items: [] },
+  { key: "service", label: "客服中心", items: [] },
+  { key: "analytics", label: "数据中心", items: [] },
   {
     key: "system",
     label: "系统管理",
-    items: [{ label: "账号角色", href: "/system/accounts", permission: "page.system.accounts" }]
+    items: [{ label: "货架位管理", href: "/system/warehouse/locations", permission: "page.system.warehouse-locations" }]
   }
 ];
 
-const productSession: OperationsSession = {
+const pickerSession: OperationsSession = {
   adminUser: {
-    id: "admin-1",
-    loginAccount: "product.operator",
-    name: "Product Operator",
+    id: "admin-picker",
+    loginAccount: "picker.operator",
+    name: "Picker Operator",
     status: "ACTIVE"
   },
   roles: [],
-  permissions: ["page.product.digitalization"]
+  permissions: ["module.orders", "page.orders.workbench", "page.orders.all", "orders.view", "orders.pick"]
 };
 
-assert.equal(hasPermission(productSession, "page.product.digitalization"), true);
-assert.equal(hasPermission(productSession, "action.system.manage-users"), false);
+assert.equal(hasPermission(pickerSession, "orders.pick"), true);
+assert.equal(hasPermission(pickerSession, "orders.pack"), false);
 
-const productNavigation = filterNavigation(modules, productSession);
-assert.deepEqual(productNavigation.map((module) => module.key), ["product"]);
-assert.deepEqual(productNavigation[0].items.map((item) => item.label), ["商品工作台"]);
+const navigation = filterNavigation(modules, pickerSession);
+assert.deepEqual(navigation.map((module) => module.label), ["订单中心"]);
+assert.deepEqual(navigation[0].items.map((item) => item.label), ["订单工作台", "全部订单"]);
 
-assert.equal(canAccessPath("/", modules, productSession), true);
-assert.equal(canAccessPath("/product/calibration", modules, productSession), true);
-assert.equal(canAccessPath("/product/barcode", modules, productSession), true);
-assert.equal(canAccessPath("/product/review", modules, productSession), true);
-assert.equal(canAccessPath("/debug/ai", modules, productSession), false);
-assert.equal(canAccessPath("/warehouse/picking", modules, productSession), false);
-assert.equal(canAccessPath("/system/accounts", modules, productSession), false);
+assert.equal(canAccessPath("/orders", modules, pickerSession), true);
+assert.equal(canAccessPath("/orders/all", modules, pickerSession), true);
+assert.equal(canAccessPath("/orders/order-123", modules, pickerSession), true);
+assert.equal(canAccessPath("/orders/after-sales", modules, pickerSession), false);
+assert.equal(canAccessPath("/orders/exceptions", modules, pickerSession), false);
+assert.equal(canAccessPath("/system/warehouse/locations", modules, pickerSession), false);
+assert.equal(modules.some((module) => module.label === "仓库履约"), false);
 
-const warehouseSession: OperationsSession = {
+const managerSession: OperationsSession = {
   adminUser: {
-    id: "admin-2",
-    loginAccount: "warehouse.operator",
-    name: "Warehouse Operator",
+    id: "admin-manager",
+    loginAccount: "operations.manager",
+    name: "Operations Manager",
     status: "ACTIVE"
   },
   roles: [],
-  permissions: ["action.warehouse.view", "action.orders.view"]
+  permissions: [
+    "module.orders",
+    "module.system",
+    "page.orders.workbench",
+    "page.orders.all",
+    "page.orders.after-sale",
+    "page.orders.exceptions",
+    "page.system.warehouse-locations",
+    "orders.view",
+    "warehouse-locations.view"
+  ]
 };
 
-const warehouseNavigation = filterNavigation(modules, warehouseSession);
-assert.deepEqual(warehouseNavigation.map((module) => module.key), ["warehouse", "orders"]);
-assert.equal(canAccessPath("/warehouse/picking", modules, warehouseSession), true);
-assert.equal(canAccessPath("/orders", modules, warehouseSession), true);
-assert.equal(canAccessPath("/system/accounts", modules, warehouseSession), false);
-assert.equal(canAccessPath("/product/calibration", modules, warehouseSession), false);
+assert.equal(canAccessPath("/orders/after-sales", modules, managerSession), true);
+assert.equal(canAccessPath("/orders/exceptions", modules, managerSession), true);
+assert.equal(canAccessPath("/system/warehouse/locations", modules, managerSession), true);
+
+console.log("Operations access tests passed");

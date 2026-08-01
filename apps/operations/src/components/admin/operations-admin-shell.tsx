@@ -16,7 +16,6 @@ import {
   LayoutDashboardIcon,
   LogOutIcon,
   PackageCheckIcon,
-  ScanBarcodeIcon,
   SearchIcon,
   SettingsIcon,
   ShieldCheckIcon,
@@ -77,7 +76,7 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
-type ModuleKey = "product" | "warehouse" | "orders" | "affiliate" | "service" | "analytics" | "system";
+type ModuleKey = "product" | "orders" | "affiliate" | "service" | "analytics" | "system";
 
 type ModuleItem = NavigationItem & {
   icon: typeof PackageCheckIcon;
@@ -121,42 +120,20 @@ export const operationsModules: ModuleNav[] = [
     ]
   },
   {
-    key: "warehouse",
-    label: "仓库履约",
-    icon: BoxesIcon,
-    permission: "module.warehouse",
-    items: [
-      { label: "履约工作台", href: "/warehouse", icon: LayoutDashboardIcon, permission: "action.warehouse.view" },
-      { label: "待拣货", href: "/warehouse/picking", icon: BoxesIcon, permission: "action.warehouse.view" },
-      { label: "拣货中", href: "/warehouse/picking-active", icon: ScanBarcodeIcon, permission: "action.warehouse.view" },
-      { label: "待打包", href: "/warehouse/packing", icon: PackageCheckIcon, permission: "action.warehouse.view" },
-      { label: "已打包", href: "/warehouse/packed", icon: PackageCheckIcon, permission: "action.warehouse.view" },
-      { label: "待自提", href: "/warehouse/pickup", icon: ClipboardCheckIcon, permission: "action.warehouse.view" },
-      { label: "待配送", href: "/warehouse/delivery", icon: TruckIcon, permission: "action.warehouse.view" },
-      { label: "已完成", href: "/warehouse/completed", icon: PackageCheckIcon, permission: "action.warehouse.view" },
-      { label: "异常订单", href: "/warehouse/exceptions", icon: XCircleIcon, permission: "action.warehouse.view" },
-      { label: "库存查询", href: "/warehouse/inventory", icon: SearchIcon, permission: "action.warehouse.view" }
-    ]
-  },
-  {
     key: "orders",
     label: "订单中心",
     icon: BriefcaseBusinessIcon,
     permission: "module.orders",
     items: [
-      { label: "全部订单", href: "/orders", icon: BriefcaseBusinessIcon, permission: "action.orders.view" },
-      { label: "待付款", href: "/orders/pending-payment", icon: CircleDollarSignIcon, permission: "action.orders.view" },
-      { label: "支付处理中", href: "/orders/payment-processing", icon: CircleDollarSignIcon, permission: "action.orders.view" },
-      { label: "已付款", href: "/orders/paid", icon: ClipboardCheckIcon, permission: "action.orders.view" },
-      { label: "已取消", href: "/orders/cancelled", icon: XCircleIcon, permission: "action.orders.view" },
-      { label: "已过期", href: "/orders/expired", icon: XCircleIcon, permission: "action.orders.view" },
-      { label: "已退款", href: "/orders/refunded", icon: CircleDollarSignIcon, permission: "action.orders.view" },
-      { label: "异常支付", href: "/orders/payment-exceptions", icon: XCircleIcon, permission: "action.orders.view" }
+      { label: "订单工作台", href: "/orders", icon: LayoutDashboardIcon, permission: "page.orders.workbench" },
+      { label: "全部订单", href: "/orders/all", icon: BriefcaseBusinessIcon, permission: "page.orders.all" },
+      { label: "售后订单", href: "/orders/after-sales", icon: HeadphonesIcon, permission: "page.orders.after-sale" },
+      { label: "异常订单", href: "/orders/exceptions", icon: XCircleIcon, permission: "page.orders.exceptions" }
     ]
   },
   {
     key: "affiliate",
-    label: "推广佣金",
+    label: "推广中心",
     icon: CircleDollarSignIcon,
     permission: "module.affiliate",
     items: [
@@ -172,7 +149,7 @@ export const operationsModules: ModuleNav[] = [
   },
   {
     key: "service",
-    label: "客户服务",
+    label: "客服中心",
     icon: HeadphonesIcon,
     permission: "module.customer-service",
     items: [
@@ -187,7 +164,7 @@ export const operationsModules: ModuleNav[] = [
   },
   {
     key: "analytics",
-    label: "数据分析",
+    label: "数据中心",
     icon: BarChart3Icon,
     permission: "module.analytics",
     items: [
@@ -208,6 +185,7 @@ export const operationsModules: ModuleNav[] = [
     permission: "module.system",
     items: [
       { label: "商品工厂配置", href: "/system/product-factory", icon: SettingsIcon, permission: "page.product.control" },
+      { label: "仓库配置 · 货架位", href: "/system/warehouse/locations", icon: BoxesIcon, permission: "page.system.warehouse-locations" },
       { label: "账号管理", href: "/system/accounts", icon: UsersIcon, permission: "page.system.accounts" },
       { label: "角色管理", href: "/system/roles", icon: UserCogIcon, permission: "page.system.roles" },
       { label: "权限管理", href: "/system/permissions", icon: ShieldCheckIcon, permission: "page.system.permissions" }
@@ -216,7 +194,7 @@ export const operationsModules: ModuleNav[] = [
 ];
 
 function moduleForPath(pathname: string): ModuleKey {
-  if (pathname.startsWith("/warehouse")) return "warehouse";
+  if (pathname.startsWith("/warehouse")) return "orders";
   if (pathname.startsWith("/orders")) return "orders";
   if (pathname.startsWith("/affiliate")) return "affiliate";
   if (pathname.startsWith("/customer-service")) return "service";
@@ -468,7 +446,7 @@ function LoginScreen() {
             <div className="grid gap-3">
               {[
                 ["商品中心", "批次、AI 识别、人工校准、Barcode 和发布"],
-                ["仓库履约", "已付款订单拣货、打包、自提和配送"],
+                ["订单中心", "从付款、拣货和打包到自提、配送、售后与异常"],
                 ["系统权限", "后台账号、角色和操作权限统一控制"]
               ].map(([title, description]) => (
                 <div key={title} className="flex gap-3 rounded-xl border bg-background/70 p-4">
