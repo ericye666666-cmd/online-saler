@@ -3,6 +3,7 @@ import {
   assignBatchFrontFiles,
   firstProductMissingFront,
   imageUploadIssue,
+  shouldAdvanceWithoutUploading,
   uploadedFrontCount
 } from "./product-factory-upload-flow";
 
@@ -25,3 +26,15 @@ assert.deepEqual(
     { productId: "03", file: "third.jpg" }
   ]
 );
+assert.equal(shouldAdvanceWithoutUploading({
+  currentIndex: 0,
+  productCount: 10,
+  selectedImageCount: 0,
+  pendingBatchFrontCount: 10
+}), false);
+assert.equal(shouldAdvanceWithoutUploading({
+  currentIndex: 0,
+  productCount: 10,
+  selectedImageCount: 0,
+  pendingBatchFrontCount: 0
+}), true);

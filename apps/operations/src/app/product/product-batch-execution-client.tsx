@@ -35,6 +35,7 @@ import {
   assignBatchFrontFiles,
   firstProductMissingFront,
   imageUploadIssue,
+  shouldAdvanceWithoutUploading,
   uploadedFrontCount,
   type ProductFactoryImageType
 } from "./product-factory-upload-flow";
@@ -330,7 +331,12 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       return;
     }
     const selected = PRODUCT_FACTORY_IMAGE_TYPES.filter((type) => files[type]);
-    if (selected.length === 0 && currentIndex < batch.products.length - 1) {
+    if (shouldAdvanceWithoutUploading({
+      currentIndex,
+      productCount: batch.products.length,
+      selectedImageCount: selected.length,
+      pendingBatchFrontCount
+    })) {
       setCurrentIndex((index) => index + 1);
       return;
     }

@@ -43,3 +43,14 @@ export function assignBatchFrontFiles<TFile>(
     .slice(0, files.length)
     .map((product, index) => ({ productId: product.id, file: files[index]! }));
 }
+
+export function shouldAdvanceWithoutUploading(input: {
+  currentIndex: number;
+  productCount: number;
+  selectedImageCount: number;
+  pendingBatchFrontCount: number;
+}): boolean {
+  return input.selectedImageCount === 0
+    && input.pendingBatchFrontCount === 0
+    && input.currentIndex < input.productCount - 1;
+}
