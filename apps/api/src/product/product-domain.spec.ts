@@ -263,6 +263,7 @@ class InMemoryProductRepository implements ProductRepository {
       kidsAgeRange: null,
       tagSize: null,
       finalSizeLabel: null,
+      ukSizeLabel: null,
       conditionGrade: null,
       priceKsh: null,
       labelPrintedAt: null,

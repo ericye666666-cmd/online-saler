@@ -45,6 +45,7 @@ export interface CalibrateProductInput {
   brand?: string;
   tagSize?: string;
   sizeLabel?: string;
+  ukSizeLabel?: string;
   description?: string;
   conditionGrade: ConditionGrade;
   priceKsh?: number;
@@ -93,7 +94,8 @@ export class ProductCalibrationService {
       fabricWeight: input.fabricWeight,
       brandLabel: input.brand ?? null,
       tagSize: input.tagSize ?? null,
-      sizeLabel: input.sizeLabel ?? null
+      sizeLabel: input.sizeLabel ?? null,
+      ukSizeLabel: input.ukSizeLabel ?? null
     };
 
     const operations: Prisma.PrismaPromise<unknown>[] = [
@@ -115,6 +117,7 @@ export class ProductCalibrationService {
           brand: input.brand ?? null,
           tagSize: input.tagSize ?? null,
           finalSizeLabel: input.sizeLabel ?? null,
+          ukSizeLabel: input.ukSizeLabel ?? null,
           description: input.description ?? null,
           conditionGrade: input.conditionGrade,
           priceKsh: input.priceKsh,

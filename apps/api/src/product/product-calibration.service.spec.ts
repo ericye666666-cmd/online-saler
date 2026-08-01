@@ -82,6 +82,7 @@ describe("ProductCalibrationService", () => {
       stretchLevel: ProductStretchLevel.LOW,
       fabricWeight: ProductFabricWeight.HEAVY,
       sizeLabel: "M",
+      ukSizeLabel: "UK M",
       conditionGrade: ConditionGrade.GOOD,
       priceKsh: 850,
       measurements: [{ type: "LENGTH", valueCm: 72 }],
@@ -93,11 +94,13 @@ describe("ProductCalibrationService", () => {
     assert.equal(productUpdate?.fitType, "REGULAR");
     assert.equal(productUpdate?.stretchLevel, "LOW");
     assert.equal(productUpdate?.fabricWeight, "HEAVY");
+    assert.equal(productUpdate?.ukSizeLabel, "UK M");
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "STRIPED"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "LONG"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "REGULAR"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "LOW"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "HEAVY"));
+    assert.ok(decisionUpdates.some((update) => update.finalValueJson === "UK M"));
     assert.ok(decisionUpdates.every((update) => !("aiValueJson" in update)));
     assert.ok(measurementUpdates.every((update) => !("aiValueCm" in update) && !("aiConfidence" in update)));
   });

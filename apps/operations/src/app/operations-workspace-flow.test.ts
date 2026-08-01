@@ -22,6 +22,7 @@ const job: JsonRecord = {
     kidsAgeRange: { value: "NOT_APPLICABLE" },
     brandLabel: { value: "Mock Brand" },
     sizeLabel: { value: "M" },
+    ukSizeLabel: { value: "UK 12" },
     pattern: { value: "SOLID" },
     sleeveType: { value: "SHORT" }
   }
@@ -35,6 +36,7 @@ assert.equal(fromAi.audience, "WOMEN");
 assert.equal(fromAi.brand, "Mock Brand");
 assert.equal(fromAi.tagSize, "M");
 assert.equal(fromAi.sizeLabel, "M");
+assert.equal(fromAi.ukSizeLabel, "UK 12");
 
 const fromPersistedProduct = formFromProductAndAi(
   { ...product, pattern: "STRIPED", sleeveType: "LONG" },
@@ -97,6 +99,7 @@ const body = buildCalibrationBody({
   form: {
     ...completeForm,
     tagSize: "UK 12",
+    ukSizeLabel: "UK 12",
     description: "Black short sleeve dress.",
     defects: "small stain on cuff"
   }
@@ -113,6 +116,7 @@ assert.equal(body.subcategory, "SHORT_DRESSES_SKIRTS");
 assert.equal(body.gender, "WOMEN");
 assert.equal(body.priceKsh, 850);
 assert.equal(body.tagSize, "UK 12");
+assert.equal(body.ukSizeLabel, "UK 12");
 assert.equal(body.description, "Black short sleeve dress.");
 assert.equal(body.fitType, "UNKNOWN");
 assert.equal(body.stretchLevel, "UNKNOWN");

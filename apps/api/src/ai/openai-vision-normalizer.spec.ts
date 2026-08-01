@@ -14,6 +14,7 @@ test("normalizes OpenAI clothing recognition values into the shared AI contract"
       sleeve: { value: "short", confidence: 0.81 },
       brand: { value: "Remon Soda Candy", confidence: 0.62 },
       size: { value: "M", confidence: 0.71 },
+      ukSize: { value: "UK 12", confidence: 0.69 },
       title: { value: "Red Graphic Short Sleeve Shirt", confidence: 0.86 },
       lengthCm: { value: 68.04, confidence: 0.81 },
       chest_width_cm: { value: "51.2", confidence: 0.78 },
@@ -32,6 +33,7 @@ test("normalizes OpenAI clothing recognition values into the shared AI contract"
   assert.equal(output.sleeveType.value, "SHORT");
   assert.equal(output.brandLabel.value, "Remon Soda Candy");
   assert.equal(output.sizeLabel.value, "M");
+  assert.equal(output.ukSizeLabel.value, "UK 12");
   assert.equal(output.title.value, "Red Graphic Short Sleeve Shirt");
   assert.equal(output.lengthCm.value, 68);
   assert.equal(output.chestWidthCm.value, 51.2);

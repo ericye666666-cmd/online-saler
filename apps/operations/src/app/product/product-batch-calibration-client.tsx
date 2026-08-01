@@ -563,6 +563,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
             {form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
             <FormInput fieldKey="tagSize" label="标签尺码" value={form.tagSize} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("tagSize", value)} />
             <FormSelect fieldKey="sizeLabel" label="平台推荐尺码" value={form.sizeLabel} values={sizeOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("sizeLabel", value)} />
+            <FormInput fieldKey="ukSizeLabel" label="英码" value={form.ukSizeLabel} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "ukSizeLabel")} hint="例如 UK 12、UK W32 或 UK M。" onChange={(value) => updateForm("ukSizeLabel", value)} />
           </div>
 
           <div className="border-t pt-4">
@@ -666,6 +667,7 @@ function FormInput(props: {
   inputMode?: "text" | "numeric" | "decimal";
   suggestion?: string;
   suggestionLabel?: string;
+  hint?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -673,6 +675,7 @@ function FormInput(props: {
       <span>{props.label}{props.required ? " *" : ""}</span>
       <Input className="mt-2" value={props.value} disabled={props.disabled} inputMode={props.inputMode} onChange={(event) => props.onChange(event.target.value)} />
       {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{props.suggestionLabel ?? "AI 建议"}：{props.suggestion}</span> : null}
+      {props.hint ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{props.hint}</span> : null}
     </label>
   );
 }

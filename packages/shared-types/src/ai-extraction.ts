@@ -5,7 +5,7 @@ export const AI_JOB_STATUSES = [
   "FAILED"
 ] as const;
 
-export const PRODUCT_AI_PROMPT_VERSION = "product-measurements-v1";
+export const PRODUCT_AI_PROMPT_VERSION = "product-measurements-uk-size-v2";
 
 export type AIJobStatus = (typeof AI_JOB_STATUSES)[number];
 
@@ -224,6 +224,7 @@ export const AI_EXTRACTED_FIELDS = [
   "sleeveType",
   "brandLabel",
   "sizeLabel",
+  "ukSizeLabel",
   "title",
   "lengthCm",
   "chestWidthCm",
@@ -254,6 +255,7 @@ export interface AIExtractionNormalizedOutput {
   sleeveType: AIFieldValue<AISleeveType>;
   brandLabel: AIFieldValue<string>;
   sizeLabel: AIFieldValue<string>;
+  ukSizeLabel: AIFieldValue<string>;
   title: AIFieldValue<string>;
   lengthCm: AIFieldValue<number>;
   chestWidthCm: AIFieldValue<number>;
@@ -305,6 +307,7 @@ export const requiresHumanConfirmation = (field: AIExtractedField, confidence: n
   const alwaysConfirm: AIExtractedField[] = [
     "brandLabel",
     "sizeLabel",
+    "ukSizeLabel",
     "lengthCm",
     "chestWidthCm",
     "shoulderWidthCm",

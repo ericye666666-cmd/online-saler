@@ -326,6 +326,7 @@ model Product {
   kidsAgeRange         String?
   tagSize              String?
   finalSizeLabel       String?
+  ukSizeLabel          String?
   conditionGrade       ConditionGrade?
   priceKsh             Int?
   labelPrintedAt       DateTime?
