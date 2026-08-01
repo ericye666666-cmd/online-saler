@@ -1243,7 +1243,8 @@ select:focus-visible {
   gap: 14px;
 }
 
-.thumbnailRail button {
+.thumbnailRail button,
+.thumbnailRail a {
   position: relative;
   overflow: hidden;
   aspect-ratio: 3 / 4;
@@ -1254,7 +1255,8 @@ select:focus-visible {
   padding: 0;
 }
 
-.thumbnailRail button.active {
+.thumbnailRail button.active,
+.thumbnailRail a.active {
   border: 2px solid var(--teal);
 }
 
@@ -1364,6 +1366,237 @@ select:focus-visible {
   color: var(--muted);
   font-size: 15px;
   line-height: 1.6;
+}
+
+.sellingPointList {
+  display: grid;
+  gap: 8px;
+  margin: -8px 0 22px;
+  padding: 0;
+  list-style: none;
+}
+
+.sellingPointList li {
+  position: relative;
+  padding-left: 18px;
+  color: #3f4945;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.sellingPointList li::before {
+  position: absolute;
+  top: 8px;
+  left: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  content: "";
+}
+
+.structuredDetailSection {
+  margin-top: 72px;
+  border-top: 1px solid var(--line);
+  padding-top: 32px;
+}
+
+.structuredDetailHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.structuredDetailHeading p {
+  margin: 0 0 5px;
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.structuredDetailHeading h2 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.structuredDetailHeading > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.detailAssetGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.detailAssetGrid figure {
+  min-width: 0;
+  margin: 0;
+}
+
+.detailAssetGrid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.detailAssetGrid figcaption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.detailFactsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 36px;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.detailFactsGrid > section {
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 24px;
+}
+
+.detailFactsGrid h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.detailFactsGrid p,
+.detailFactsGrid li {
+  color: #555e59;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.detailFactsGrid ul {
+  margin: 12px 0 0;
+  padding-left: 19px;
+}
+
+.detailFactsGrid dl {
+  margin: 18px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.detailFactsGrid dl > div {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) auto;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 9px 0;
+  font-size: 13px;
+}
+
+.detailFactsGrid dt {
+  color: var(--muted);
+}
+
+.detailFactsGrid dd {
+  margin: 0;
+  font-weight: 800;
+  text-align: right;
+}
+
+.detailTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.detailTags span {
+  border: 1px solid #d7dedb;
+  border-radius: 999px;
+  background: #f7f9f8;
+  color: #3d4843;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.detailMuted,
+.sizeDisclaimer {
+  color: var(--muted) !important;
+}
+
+.sourceImageSection,
+.fulfilmentNotice {
+  margin-top: 30px;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+}
+
+.sourceImageSection > div:first-child p {
+  margin: 0 0 5px;
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sourceImageSection h3,
+.fulfilmentNotice h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.sourceImageGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.sourceImageGrid figure {
+  min-width: 0;
+  margin: 0;
+}
+
+.sourceImageGrid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f7f7;
+  object-fit: contain;
+}
+
+.sourceImageGrid figcaption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.fulfilmentNotice ul {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding-left: 19px;
+  color: #555e59;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.sizeDisclaimer {
+  margin: 18px 0 0;
+  white-space: pre-line;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .catalogBuyBox {
@@ -1972,6 +2205,10 @@ select:focus-visible {
   .productGallery {
     max-width: 720px;
   }
+
+  .detailAssetGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -2219,6 +2456,42 @@ select:focus-visible {
 
   .relatedGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .structuredDetailSection {
+    margin-top: 48px;
+    padding-top: 24px;
+  }
+
+  .structuredDetailHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .structuredDetailHeading h2 {
+    font-size: 25px;
+  }
+
+  .detailAssetGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sourceImageGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailFactsGrid {
+    grid-template-columns: 1fr;
+    margin-top: 26px;
+  }
+
+  .detailFactsGrid > section {
+    padding: 19px;
+  }
+
+  .detailFactsGrid dl > div {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 

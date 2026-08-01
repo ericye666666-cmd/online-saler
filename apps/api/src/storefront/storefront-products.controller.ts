@@ -1,5 +1,12 @@
 import { Controller, Get, NotFoundException, Param, Query } from "@nestjs/common";
-import { InventoryItemStatus, Prisma, ProductGender, ProductStatus, prisma } from "@online-saler/database";
+import {
+  InventoryItemStatus,
+  Prisma,
+  ProductDetailStatus,
+  ProductGender,
+  ProductStatus,
+  prisma
+} from "@online-saler/database";
 
 type ProductListQuery = {
   category?: string;
@@ -23,7 +30,7 @@ export class StorefrontProductsController {
       take: 60
     });
 
-    return products.map(publicProduct);
+    return products.map(publicProduct).filter(Boolean);
   }
 
   @Get("filters")
@@ -72,7 +79,9 @@ export class StorefrontProductsController {
       throw new NotFoundException("Product is not available.");
     }
 
-    return publicProduct(product);
+    const result = publicProduct(product);
+    if (!result) throw new NotFoundException("Product details are not approved for publication.");
+    return result;
   }
 }
 
@@ -86,6 +95,17 @@ function productInclude() {
     },
     defects: {
       orderBy: { createdAt: "asc" as const }
+    },
+    detailProfiles: {
+      where: { status: ProductDetailStatus.APPROVED },
+      orderBy: { sourceDataVersion: "desc" as const },
+      take: 1,
+      include: {
+        assets: {
+          where: { status: ProductDetailStatus.READY },
+          orderBy: { type: "asc" as const }
+        }
+      }
     }
   };
 }
@@ -97,6 +117,9 @@ function basePublicWhere(): Prisma.ProductWhereInput {
       is: {
         status: InventoryItemStatus.AVAILABLE
       }
+    },
+    detailProfiles: {
+      some: { status: ProductDetailStatus.APPROVED }
     }
   };
 }
@@ -178,9 +201,42 @@ type ProductWithPublicRelations = Awaited<ReturnType<typeof prisma.product.findM
     description: string;
     customerSafeDescription: string | null;
   }>;
+  detailProfiles: Array<{
+    id: string;
+    status: ProductDetailStatus;
+    sourceDataVersion: number;
+    fitType: string | null;
+    stretchLevel: string | null;
+    fabricWeight: string | null;
+    bodyChestMinCm: unknown;
+    bodyChestMaxCm: unknown;
+    bodyWaistMinCm: unknown;
+    bodyWaistMaxCm: unknown;
+    bodyHipMinCm: unknown;
+    bodyHipMaxCm: unknown;
+    heightMinCm: unknown;
+    heightMaxCm: unknown;
+    weightMinKg: unknown;
+    weightMaxKg: unknown;
+    expectedFit: string | null;
+    recommendationConfidence: unknown;
+    recommendationBasis: unknown;
+    recommendationWarnings: unknown;
+    sizeDisclaimer: string | null;
+    finalOutputJson: unknown;
+    assets: Array<{
+      id: string;
+      type: string;
+      publicUrl: string | null;
+    }>;
+  }>;
 };
 
 function publicProduct(product: ProductWithPublicRelations) {
+  const detailProfile = product.detailProfiles.find(
+    (profile) => profile.sourceDataVersion === product.detailSourceVersion
+  );
+  if (!detailProfile) return null;
   const images = product.images
     .filter((image) => image.publicUrl)
     .map((image) => ({
@@ -201,6 +257,9 @@ function publicProduct(product: ProductWithPublicRelations) {
     brand: product.brand,
     size: product.finalSizeLabel ?? product.tagSize,
     conditionGrade: product.conditionGrade,
+    fitType: product.fitType,
+    stretchLevel: product.stretchLevel,
+    fabricWeight: product.fabricWeight,
     priceKsh: product.priceKsh,
     publishedAt: product.publishedAt,
     onlyOneAvailable: true,
@@ -213,6 +272,65 @@ function publicProduct(product: ProductWithPublicRelations) {
       type: defect.defectType,
       severity: defect.severity,
       description: defect.customerSafeDescription ?? defect.description
+    })),
+    detail: publicDetail(detailProfile)
+  };
+}
+
+export function publicDetail(profile: ProductWithPublicRelations["detailProfiles"][number]) {
+  const output = isRecord(profile.finalOutputJson) ? profile.finalOutputJson : {};
+  return {
+    profileId: profile.id,
+    title: stringValue(output.title),
+    sellingPoints: stringArray(output.sellingPoints),
+    shortDescription: stringValue(output.shortDescription),
+    fitSummary: stringValue(output.fitSummary),
+    measurementSummary: stringValue(output.measurementSummary),
+    conditionSummary: stringValue(output.conditionSummary),
+    styleTags: stringArray(output.styleTags),
+    missingInformation: stringArray(output.missingInformation),
+    warnings: stringArray(output.warnings),
+    fitType: profile.fitType,
+    stretchLevel: profile.stretchLevel,
+    fabricWeight: profile.fabricWeight,
+    bodyRanges: {
+      chest: numericRange(profile.bodyChestMinCm, profile.bodyChestMaxCm),
+      waist: numericRange(profile.bodyWaistMinCm, profile.bodyWaistMaxCm),
+      hip: numericRange(profile.bodyHipMinCm, profile.bodyHipMaxCm),
+      height: numericRange(profile.heightMinCm, profile.heightMaxCm),
+      weight: numericRange(profile.weightMinKg, profile.weightMaxKg)
+    },
+    expectedFit: profile.expectedFit,
+    recommendationConfidence: numberValue(profile.recommendationConfidence),
+    recommendationBasis: profile.recommendationBasis,
+    recommendationWarnings: profile.recommendationWarnings,
+    sizeDisclaimer: profile.sizeDisclaimer,
+    assets: profile.assets.map((asset) => ({
+      id: asset.id,
+      type: asset.type,
+      url: asset.publicUrl ?? `/product-detail-assets/${asset.id}/content`
     }))
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+}
+
+function numberValue(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function numericRange(min: unknown, max: unknown) {
+  return { min: numberValue(min), max: numberValue(max) };
 }

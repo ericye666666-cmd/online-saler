@@ -15,6 +15,41 @@ export type PublicDefect = {
   description: string | null;
 };
 
+export type PublicProductDetailAsset = {
+  id: string;
+  type: string;
+  url: string;
+};
+
+export type PublicProductDetail = {
+  profileId: string;
+  title: string | null;
+  sellingPoints: string[];
+  shortDescription: string | null;
+  fitSummary: string | null;
+  measurementSummary: string | null;
+  conditionSummary: string | null;
+  styleTags: string[];
+  missingInformation: string[];
+  warnings: string[];
+  fitType: string | null;
+  stretchLevel: string | null;
+  fabricWeight: string | null;
+  bodyRanges: {
+    chest: { min: number | null; max: number | null };
+    waist: { min: number | null; max: number | null };
+    hip: { min: number | null; max: number | null };
+    height: { min: number | null; max: number | null };
+    weight: { min: number | null; max: number | null };
+  };
+  expectedFit: string | null;
+  recommendationConfidence: number | null;
+  recommendationBasis: unknown;
+  recommendationWarnings: unknown;
+  sizeDisclaimer: string | null;
+  assets: PublicProductDetailAsset[];
+};
+
 export type PublicProduct = {
   id: string;
   title: string | null;
@@ -26,11 +61,15 @@ export type PublicProduct = {
   brand: string | null;
   size: string | null;
   conditionGrade: string | null;
+  fitType: string | null;
+  stretchLevel: string | null;
+  fabricWeight: string | null;
   priceKsh: number | null;
   onlyOneAvailable: boolean;
   images: PublicProductImage[];
   measurements: PublicMeasurement[];
   defects: PublicDefect[];
+  detail: PublicProductDetail;
 };
 
 export type PublicProductFilters = {
@@ -60,7 +99,21 @@ const API_PROXY_URL = "/api-proxy";
 
 export function productImageSrc(product: Pick<PublicProduct, "images">): string {
   const first = product.images[0];
-  return first?.url ? `${API_PROXY_URL}${first.url}` : "";
+  return first ? publicProductImageSrc(first) : "";
+}
+
+export function publicProductImageSrc(image: PublicProductImage): string {
+  if (!image.url) return "";
+  return image.url.startsWith("http") ? image.url : `${API_PROXY_URL}${image.url}`;
+}
+
+export function detailAssetSrc(asset: PublicProductDetailAsset): string {
+  if (!asset.url) return "";
+  return asset.url.startsWith("http") ? asset.url : `${API_PROXY_URL}${asset.url}`;
+}
+
+export function detailAsset(product: Pick<PublicProduct, "detail">, type: string): PublicProductDetailAsset | null {
+  return product.detail.assets.find((asset) => asset.type === type) ?? null;
 }
 
 export function moneyKsh(value: number | null): string {

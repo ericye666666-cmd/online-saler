@@ -73,6 +73,47 @@ export type ProductCondition =
   | (typeof apparelConditions)[number]
   | (typeof shoeConditionGrades)[number];
 
+export type ProductDetailAsset = {
+  id: string;
+  type: string;
+  image: string;
+};
+
+export type ProductSourceImage = {
+  id: string;
+  type: string;
+  image: string;
+};
+
+export type ProductDetail = {
+  sellingPoints: string[];
+  fitSummary: string;
+  measurementSummary: string;
+  conditionSummary: string;
+  styleTags: string[];
+  missingInformation: string[];
+  warnings: string[];
+  fitType: string;
+  stretchLevel: string;
+  fabricWeight: string;
+  expectedFit: string;
+  recommendationConfidence: number | null;
+  recommendationBasis: unknown;
+  recommendationWarnings: unknown;
+  bodyRanges: {
+    chest: { min: number | null; max: number | null };
+    waist: { min: number | null; max: number | null };
+    hip: { min: number | null; max: number | null };
+    height: { min: number | null; max: number | null };
+    weight: { min: number | null; max: number | null };
+  };
+  sizeDisclaimer: string;
+  measurements: Array<{ type: string; valueCm: string | null }>;
+  defects: Array<{ type: string; severity: string; description: string | null }>;
+  assets: ProductDetailAsset[];
+  sourceImages: ProductSourceImage[];
+};
+
 export type Product = {
   code: string;
   title: string;
@@ -91,6 +132,7 @@ export type Product = {
   image: string;
   ogImage: string;
   description: string;
+  detail?: ProductDetail;
 };
 
 export const seedProducts: Product[] = [

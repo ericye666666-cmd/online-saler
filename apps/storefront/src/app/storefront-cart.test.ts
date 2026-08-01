@@ -9,6 +9,7 @@ import {
 } from "./storefront-cart";
 import type { Product as CatalogProduct } from "./data/products";
 import type { PublicProduct } from "./storefront-products";
+import { testPublicDetail } from "./storefront-products.test-fixture";
 
 const product: PublicProduct = {
   id: "product-1",
@@ -21,11 +22,15 @@ const product: PublicProduct = {
   brand: "Mock Brand",
   size: "M",
   conditionGrade: "GOOD",
+  fitType: "REGULAR",
+  stretchLevel: "LOW",
+  fabricWeight: "REGULAR",
   priceKsh: 450,
   onlyOneAvailable: true,
   images: [{ id: "image-1", type: "FRONT", url: "/products/product-1/images/image-1/content" }],
   measurements: [],
-  defects: []
+  defects: [],
+  detail: testPublicDetail
 };
 
 const item = productToCartItem(product);

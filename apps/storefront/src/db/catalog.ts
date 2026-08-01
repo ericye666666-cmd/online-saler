@@ -1,7 +1,10 @@
 import {
+  detailAsset,
+  detailAssetSrc,
   fetchPublicProduct,
   fetchPublicProducts,
   productImageSrc,
+  publicProductImageSrc,
   type PublicProduct
 } from "../app/storefront-products";
 import type { Product } from "../app/data/products";
@@ -41,32 +44,58 @@ export async function getPublishedProduct(code: string): Promise<Product | null>
 function toCatalogProduct(product: PublicProduct): Product {
   const category = mapValue(categoryMap, product.category, "Tops");
   const brand = product.brand?.trim() || "Unbranded";
-  const image = productImageSrc(product) || "/products/920260718001.webp";
+  const frontAsset = detailAsset(product, "FRONT_MAIN");
+  const shareAsset = detailAsset(product, "SHARE_CARD");
+  const image = frontAsset ? detailAssetSrc(frontAsset) : productImageSrc(product) || "/products/920260718001.webp";
   const condition = mapValue(conditionMap, product.conditionGrade, "Good");
   const size = product.size?.trim() || product.kidsAgeRange?.trim() || "M";
   const color = display(product.color ?? "Unknown");
 
   return {
     code: product.id,
-    title: product.title?.trim() || "Second-hand item",
+    title: product.detail.title?.trim() || product.title?.trim() || "Second-hand item",
     category,
     brand,
     price: product.priceKsh ?? 0,
     size,
-    material: "Second-hand fabric",
+    material: display(product.detail.fabricWeight || product.fabricWeight || "Not specified"),
     color,
     store: "Kikuyu",
     status: "Available",
     condition: condition as Product["condition"],
     image,
-    ogImage: image,
-    description: [
+    ogImage: shareAsset ? detailAssetSrc(shareAsset) : image,
+    description: product.detail.shortDescription?.trim() || [
       brand === "Unbranded" ? null : brand,
       category,
       color,
       size,
       "checked in Kikuyu warehouse"
-    ].filter(Boolean).join(", ")
+    ].filter(Boolean).join(", "),
+    detail: {
+      sellingPoints: product.detail.sellingPoints,
+      fitSummary: product.detail.fitSummary ?? "",
+      measurementSummary: product.detail.measurementSummary ?? "",
+      conditionSummary: product.detail.conditionSummary ?? "",
+      styleTags: product.detail.styleTags,
+      missingInformation: product.detail.missingInformation,
+      warnings: product.detail.warnings,
+      fitType: display(product.detail.fitType || product.fitType || "Not confirmed"),
+      stretchLevel: display(product.detail.stretchLevel || product.stretchLevel || "Not confirmed"),
+      fabricWeight: display(product.detail.fabricWeight || product.fabricWeight || "Not confirmed"),
+      expectedFit: product.detail.expectedFit ?? "",
+      recommendationConfidence: product.detail.recommendationConfidence,
+      recommendationBasis: product.detail.recommendationBasis,
+      recommendationWarnings: product.detail.recommendationWarnings,
+      bodyRanges: product.detail.bodyRanges,
+      sizeDisclaimer: product.detail.sizeDisclaimer ?? "",
+      measurements: product.measurements,
+      defects: product.defects,
+      assets: product.detail.assets.map((asset) => ({ ...asset, image: detailAssetSrc(asset) })),
+      sourceImages: product.images
+        .filter((image) => ["LABEL", "DETAIL", "DEFECT"].includes(image.type))
+        .map((image) => ({ ...image, image: publicProductImageSrc(image) }))
+    }
   };
 }
 
