@@ -14,6 +14,8 @@ This audit distinguishes merged code from an employee-usable staging workflow. A
 
 ![Calibration queue before test-data isolation](./screenshots/staging-before-calibration.png)
 
+![Calibration queue after PR70 test-data isolation](./screenshots/staging-after-pr70-calibration.png)
+
 Observed on the live Operations staging deployment:
 
 - A new `0/10` batch exposes upload, AI, Barcode, print, and stock-in actions at the same time.
@@ -23,6 +25,8 @@ Observed on the live Operations staging deployment:
 - Calibration is a modal over a queue page, so the employee loses the batch as the primary context.
 - The current batch action can submit AI, but image-processing progress is not represented in the batch response.
 - Batch stock-in confirms placement without requiring the employee to scan the product and warehouse location.
+
+PR70 staging verification confirmed that deployment/E2E products are hidden by default, can be revealed explicitly by an administrator, and product statuses are shown in Chinese.
 
 ## Historical PR landing audit
 

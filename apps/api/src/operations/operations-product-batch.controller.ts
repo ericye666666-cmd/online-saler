@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
-import { ProductStatus, ReviewResult } from "@online-saler/database";
+import { ProductBatchStatus, ProductStatus, ReviewResult } from "@online-saler/database";
 import { OperationsProductBatchService } from "./operations-product-batch.service";
 
 type AdminEmployeeBody = {
@@ -24,6 +24,15 @@ export class OperationsProductBatchController {
   @Get("summary")
   summary(@Query("adminUserId") adminUserId?: string, @Query("employeeId") employeeId?: string) {
     return this.batches.summary(adminUserId, employeeId);
+  }
+
+  @Get()
+  list(
+    @Query("adminUserId") adminUserId?: string,
+    @Query("employeeId") employeeId?: string,
+    @Query("status") status?: ProductBatchStatus
+  ) {
+    return this.batches.listBatches({ adminUserId, employeeId, status });
   }
 
   @Post()

@@ -88,7 +88,7 @@ const PRODUCT_STATUS_OPTIONS = [
   "ARCHIVED"
 ] as const;
 
-type QueueKey = "waiting-upload" | "waiting-ai" | "calibration" | "review" | "published" | "rejected" | "barcode";
+type QueueKey = "all" | "exceptions" | "waiting-upload" | "waiting-ai" | "calibration" | "review" | "published" | "rejected" | "barcode";
 
 type QueueConfig = {
   queue: QueueKey;
@@ -364,6 +364,11 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
   const [editingProduct, setEditingProduct] = useState<JsonRecord | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const batchId = new URLSearchParams(window.location.search).get("batchId");
+    if (batchId) setBatchFilter(batchId);
+  }, []);
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
