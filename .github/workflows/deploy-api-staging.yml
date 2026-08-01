@@ -275,6 +275,7 @@ jobs:
             --add-cloudsql-instances=${{ env.STAGING_CLOUD_SQL_INSTANCE }}
           env_vars: |
             NODE_ENV=staging
+            STAGING_PILOT_BATCH_ENABLED=true
             PRODUCT_IMAGE_BUCKET=${{ env.PRODUCT_IMAGE_BUCKET }}
             BACKGROUND_REMOVAL_PROVIDER=auto
             LIGHTWEIGHT_CUTOUT_SERVICE_URL=${{ steps.deploy_lightweight_cutout.outputs.url }}

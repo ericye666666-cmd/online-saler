@@ -175,7 +175,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
     if (!batch) return;
     await run("publish", async () => {
       await request(`/operations/product-batches/${batch.id}/publish`, { method: "POST", body: JSON.stringify(ids) });
-    }, "本批 10 件已发布并完成。" );
+    }, `本批 ${batch.targetCount} 件已发布并完成。` );
   }
 
   if (!batch || !product) return <StatusMessage tone={error ? "danger" : "neutral"}>{error || "正在读取审核与入仓工作台..."}</StatusMessage>;
@@ -197,15 +197,15 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
         <div>
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-3" />返回批次</Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · 审核、入仓与发布</h1>
-          <p className="mt-1 text-sm text-muted-foreground">审核 {approvedCount}/10 · 入仓 {availableCount}/10 · 发布 {publishedCount}/10</p>
+          <p className="mt-1 text-sm text-muted-foreground">审核 {approvedCount}/{batch.targetCount} · 入仓 {availableCount}/{batch.targetCount} · 发布 {publishedCount}/{batch.targetCount}</p>
         </div>
         <Badge variant="outline">{batch.stageLabel}</Badge>
       </header>
 
       <div className="grid grid-cols-3 gap-2">
-        <ProgressMetric label="审核" value={approvedCount} />
-        <ProgressMetric label="入仓" value={availableCount} />
-        <ProgressMetric label="发布" value={publishedCount} />
+        <ProgressMetric label="审核" value={approvedCount} total={batch.targetCount} />
+        <ProgressMetric label="入仓" value={availableCount} total={batch.targetCount} />
+        <ProgressMetric label="发布" value={publishedCount} total={batch.targetCount} />
       </div>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
@@ -216,7 +216,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
           <div className="flex min-w-0 flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h2 className="font-semibold">第 {product.batchItemNumber}/10 件</h2>
+                <h2 className="font-semibold">第 {product.batchItemNumber}/{batch.targetCount} 件</h2>
                 <p className="text-xs text-muted-foreground">{product.productCode} · {product.labelAppliedAt && product.status === "BARCODE_ASSIGNED" ? "待审核" : productStatusLabel(product.status)}</p>
               </div>
               <div className="flex gap-2">
@@ -291,7 +291,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
       {allApproved && !allPrepared ? (
         <section className="rounded-md border p-4">
           <h2 className="font-semibold">审核完成</h2>
-          <p className="mt-1 text-sm text-muted-foreground">10 件均已通过审核。下一步将状态统一转为待入仓，不会自动分配货位。</p>
+          <p className="mt-1 text-sm text-muted-foreground">本批 {batch.targetCount} 件均已通过审核。下一步将状态统一转为待入仓，不会自动分配货位。</p>
           <Button className="mt-4" disabled={Boolean(busy)} onClick={() => void prepareStorage()}><PackageCheckIcon data-icon="inline-start" />准备扫码入仓</Button>
         </section>
       ) : null}
@@ -306,7 +306,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
             <Button type="submit" disabled={Boolean(busy)}>{busy === "confirm-storage" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <ScanLineIcon data-icon="inline-start" />}确认入仓</Button>
           </form>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-            {batch.products.map((item) => <div key={item.id} className={cn("rounded-md border px-3 py-2 text-xs", item.inventoryItem?.status === "AVAILABLE" && "border-emerald-500 bg-emerald-50/50")}><div className="font-medium">第 {item.batchItemNumber}/10 件</div><div className="mt-1 font-mono text-muted-foreground">{item.barcode}</div><div className="mt-1">{item.inventoryItem?.status === "AVAILABLE" ? `已入 ${item.inventoryItem.location?.locationCode ?? "货位"}` : "待扫描"}</div></div>)}
+            {batch.products.map((item) => <div key={item.id} className={cn("rounded-md border px-3 py-2 text-xs", item.inventoryItem?.status === "AVAILABLE" && "border-emerald-500 bg-emerald-50/50")}><div className="font-medium">第 {item.batchItemNumber}/{batch.targetCount} 件</div><div className="mt-1 font-mono text-muted-foreground">{item.barcode}</div><div className="mt-1">{item.inventoryItem?.status === "AVAILABLE" ? `已入 ${item.inventoryItem.location?.locationCode ?? "货位"}` : "待扫描"}</div></div>)}
           </div>
         </section>
       ) : null}
@@ -314,8 +314,8 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
       {allAvailable && publishedCount < batch.targetCount ? (
         <section className="rounded-md border p-4">
           <h2 className="font-semibold">库存确认完成</h2>
-          <p className="mt-1 text-sm text-muted-foreground">10 件均已绑定实际货位并进入可用库存。发布前系统会再次校验图片、标题、分类、尺码、尺寸、成色和价格。</p>
-          <Button className="mt-4" disabled={Boolean(busy)} onClick={() => void publishBatch()}>{busy === "publish" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SendIcon data-icon="inline-start" />}发布本批 10 件</Button>
+          <p className="mt-1 text-sm text-muted-foreground">本批 {batch.targetCount} 件均已绑定实际货位并进入可用库存。发布前系统会再次校验图片、标题、分类、尺码、尺寸、成色和价格。</p>
+          <Button className="mt-4" disabled={Boolean(busy)} onClick={() => void publishBatch()}>{busy === "publish" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SendIcon data-icon="inline-start" />}发布本批 {batch.targetCount} 件</Button>
         </section>
       ) : null}
 
@@ -336,8 +336,8 @@ function Fact({ label, value, wide = false, mono = false }: { label: string; val
   return <div className={wide ? "col-span-2" : ""}><div className="text-xs text-muted-foreground">{label}</div><div className={cn("mt-0.5 break-words", mono && "font-mono text-xs")}>{display}</div></div>;
 }
 
-function ProgressMetric({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-md border p-3 text-center"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{value}/10</div></div>;
+function ProgressMetric({ label, value, total }: { label: string; value: number; total: number }) {
+  return <div className="rounded-md border p-3 text-center"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{value}/{total}</div></div>;
 }
 
 function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; children: ReactNode }) {
@@ -386,8 +386,8 @@ function translateApiError(value: string) {
     [/already confirmed in storage/i, "该商品已经完成入仓，请勿重复扫描。"],
     [/location is not active or does not exist/i, "货位码不存在或未启用。"],
     [/Approve the product/i, "商品必须先通过审核。"],
-    [/must be approved/i, "本批 10 件必须全部审核通过。"],
-    [/must be scanned into storage/i, "本批 10 件必须全部扫码入仓。"]
+    [/must be approved/i, "本批商品必须全部审核通过。"],
+    [/must be scanned into storage/i, "本批商品必须全部扫码入仓。"]
   ];
   return translations.find(([pattern]) => pattern.test(value))?.[1] ?? value;
 }

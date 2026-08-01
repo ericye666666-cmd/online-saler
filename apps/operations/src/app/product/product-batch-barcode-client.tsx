@@ -235,15 +235,15 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
         <div>
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-3" />返回批次</Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · Barcode 与贴码</h1>
-          <p className="mt-1 text-sm text-muted-foreground">已生成 {barcodeCount}/10 · 已打印 {printedCount}/10 · 已贴码确认 {appliedCount}/10</p>
+          <p className="mt-1 text-sm text-muted-foreground">已生成 {barcodeCount}/{batch.targetCount} · 已打印 {printedCount}/{batch.targetCount} · 已贴码确认 {appliedCount}/{batch.targetCount}</p>
         </div>
         {readyForReview ? <Button asChild><Link href={`/product/review?batchId=${encodeURIComponent(batch.id)}`}>进入商品审核<ArrowRightIcon data-icon="inline-end" /></Link></Button> : null}
       </header>
 
       <div className="grid grid-cols-3 gap-2">
-        <ProgressMetric label="生成" value={barcodeCount} />
-        <ProgressMetric label="打印" value={printedCount} />
-        <ProgressMetric label="贴码" value={appliedCount} />
+        <ProgressMetric label="生成" value={barcodeCount} total={batch.targetCount} />
+        <ProgressMetric label="打印" value={printedCount} total={batch.targetCount} />
+        <ProgressMetric label="贴码" value={appliedCount} total={batch.targetCount} />
       </div>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
@@ -251,10 +251,10 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
       {barcodeCount < batch.targetCount ? (
         <section className="rounded-md border p-4">
           <h2 className="font-semibold">1. 生成本批 Barcode</h2>
-          <p className="mt-1 text-sm text-muted-foreground">只有 10 件全部完成人工校准后才允许生成。生成后每个码永久绑定一件商品。</p>
+          <p className="mt-1 text-sm text-muted-foreground">只有本批 {batch.targetCount} 件全部完成人工校准后才允许生成。生成后每个码永久绑定一件商品。</p>
           <Button className="mt-4" disabled={Boolean(busy) || !allCalibrated} onClick={() => void generateBarcodes()}>
             {busy === "generate" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <ScanBarcodeIcon data-icon="inline-start" />}
-            生成 10 个 Barcode
+            生成 {batch.targetCount} 个 Barcode
           </Button>
           {!allCalibrated ? <p className="mt-2 text-xs text-destructive">尚有商品未完成人工校准，暂不能生成。</p> : null}
         </section>
@@ -276,7 +276,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 print:grid-cols-2">
             {batch.products.map((product) => (
-              <LabelPreview key={product.id} batchCode={batch.batchCode} product={product} disabled={Boolean(busy)} onPrint={() => void printProducts([product])} />
+              <LabelPreview key={product.id} batchCode={batch.batchCode} product={product} targetCount={batch.targetCount} disabled={Boolean(busy)} onPrint={() => void printProducts([product])} />
             ))}
           </section>
 
@@ -292,18 +292,18 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
         </>
       ) : null}
 
-      {readyForReview ? <StatusMessage tone="neutral"><span className="flex items-center gap-2"><CheckCircle2Icon className="size-4 text-emerald-600" />本批 10 件已全部贴码确认，可以进入审核。</span></StatusMessage> : null}
+      {readyForReview ? <StatusMessage tone="neutral"><span className="flex items-center gap-2"><CheckCircle2Icon className="size-4 text-emerald-600" />本批 {batch.targetCount} 件已全部贴码确认，可以进入审核。</span></StatusMessage> : null}
     </div>
   );
 }
 
-function LabelPreview(props: { batchCode: string; product: ProductRecord; disabled: boolean; onPrint: () => void }) {
+function LabelPreview(props: { batchCode: string; product: ProductRecord; targetCount: number; disabled: boolean; onPrint: () => void }) {
   return (
     <article className={cn("overflow-hidden rounded-md border bg-white text-black", props.product.labelAppliedAt && "border-emerald-500")}>
       <div className="aspect-[3/2] p-3">
         <div className="flex items-start justify-between gap-2 text-xs">
           <span className="font-semibold">{props.batchCode}</span>
-          <span>第 {props.product.batchItemNumber ?? "-"}/10 件</span>
+          <span>第 {props.product.batchItemNumber ?? "-"}/{props.targetCount} 件</span>
         </div>
         <div className="mt-1 truncate text-sm font-semibold">{shortTitle(props.product.title || props.product.productCode)}</div>
         <BarcodeGraphic value={props.product.barcode || ""} />
@@ -327,8 +327,8 @@ function BarcodeGraphic({ value }: { value: string }) {
   return value ? <svg ref={ref} className="mt-2 h-16 w-full" aria-label={`Barcode ${value}`} /> : <div className="mt-4 text-center text-xs text-red-600">Barcode 未生成</div>;
 }
 
-function ProgressMetric({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-md border p-3 text-center"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{value}/10</div></div>;
+function ProgressMetric({ label, value, total }: { label: string; value: number; total: number }) {
+  return <div className="rounded-md border p-3 text-center"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{value}/{total}</div></div>;
 }
 
 function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; children: ReactNode }) {
