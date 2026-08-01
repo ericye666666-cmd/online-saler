@@ -22,23 +22,40 @@ export type ProductFactoryBatchNextAction =
   | "PRINT_AND_APPLY_LABELS"
   | "CONTINUE_REVIEW"
   | "SCAN_INTO_STORAGE"
+  | "REVIEW_PRODUCT_DETAILS"
   | "PUBLISH_PRODUCTS"
   | "RESOLVE_EXCEPTION"
   | "VIEW_COMPLETED";
 
 export type BatchFlowProduct = {
   status: string;
+  detailSourceVersion?: number | null;
   barcode?: string | null;
   labelPrintedAt?: Date | string | null;
   labelAppliedAt?: Date | string | null;
   images?: unknown[];
   aiExtractions?: Array<{ status?: string | null }>;
   reviews?: Array<{ result?: string | null }>;
+  detailProfiles?: Array<{
+    status?: string | null;
+    sourceDataVersion?: number | null;
+  }>;
   inventoryItem?: {
     locationId?: string | null;
     checkedInAt?: Date | string | null;
     status?: string | null;
   } | null;
+};
+
+export type ProductFactoryDetailProgress = {
+  eligibleCount: number;
+  pendingCount: number;
+  generatingCount: number;
+  readyCount: number;
+  failedCount: number;
+  outdatedCount: number;
+  approvedCount: number;
+  readyForPublish: boolean;
 };
 
 export type ProductFactoryBatchFlow = {
@@ -49,6 +66,7 @@ export type ProductFactoryBatchFlow = {
   nextActionLabel: string;
   stageCompletedCount: number;
   exceptionCount: number;
+  detailGeneration: ProductFactoryDetailProgress;
 };
 
 const STAGE_LABELS: Record<ProductFactoryBatchStage, string> = {
@@ -72,6 +90,7 @@ const ACTION_LABELS: Record<ProductFactoryBatchNextAction, string> = {
   PRINT_AND_APPLY_LABELS: "打印并贴码",
   CONTINUE_REVIEW: "继续审核",
   SCAN_INTO_STORAGE: "扫码入仓",
+  REVIEW_PRODUCT_DETAILS: "检查并批准商品详情",
   PUBLISH_PRODUCTS: "发布本批商品",
   RESOLVE_EXCEPTION: "处理异常商品",
   VIEW_COMPLETED: "查看已完成批次"
@@ -96,23 +115,42 @@ const STATUS_RANK: Record<string, number> = {
 export function deriveProductFactoryBatchFlow(products: BatchFlowProduct[]): ProductFactoryBatchFlow {
   const exceptionCount = products.filter(hasOpenException).length;
   if (exceptionCount > 0) {
-    return result("EXCEPTION", "RESOLVE_EXCEPTION", 0, exceptionCount);
+    return result("EXCEPTION", "RESOLVE_EXCEPTION", 0, exceptionCount, products);
   }
 
   if (products.length > 0 && products.every(isTerminal)) {
-    return result("COMPLETE", "VIEW_COMPLETED", products.length, 0);
+    return result("COMPLETE", "VIEW_COMPLETED", products.length, 0, products);
   }
 
   const stage = earliestIncompleteStage(products);
   const stageIndex = PRODUCT_FACTORY_BATCH_STAGES.indexOf(stage);
   const stageCompletedCount = products.filter((product) => productStageRank(product) > stageIndex).length;
-  const flow = result(stage, nextActionFor(stage), stageCompletedCount, 0);
+  const flow = result(stage, nextActionFor(stage, products), stageCompletedCount, 0, products);
   if (stage === "CALIBRATION") {
     flow.nextActionLabel = stageCompletedCount === 0
       ? "开始人工校准"
       : `继续人工校准（已完成 ${stageCompletedCount}/${products.length}）`;
   }
   return flow;
+}
+
+export function summarizeProductFactoryDetailProgress(
+  products: BatchFlowProduct[]
+): ProductFactoryDetailProgress {
+  const eligible = products.filter((product) => DETAIL_ELIGIBLE_STATUSES.has(product.status));
+  const currentStatuses = eligible.map((product) => currentDetailProfile(product)?.status ?? null);
+  const count = (status: string) => currentStatuses.filter((value) => value === status).length;
+  const approvedCount = count("APPROVED");
+  return {
+    eligibleCount: eligible.length,
+    pendingCount: currentStatuses.filter((status) => status === null || status === "PENDING").length,
+    generatingCount: count("GENERATING"),
+    readyCount: count("READY"),
+    failedCount: count("FAILED"),
+    outdatedCount: count("OUTDATED"),
+    approvedCount,
+    readyForPublish: products.length > 0 && eligible.length === products.length && approvedCount === products.length
+  };
 }
 
 export function startOfDayAtUtcOffset(now: Date, utcOffsetMinutes: number): Date {
@@ -147,7 +185,13 @@ function isTerminal(product: BatchFlowProduct): boolean {
   return product.status === "PUBLISHED" || product.status === "ARCHIVED";
 }
 
-function nextActionFor(stage: (typeof PRODUCT_FACTORY_BATCH_STAGES)[number]): ProductFactoryBatchNextAction {
+function nextActionFor(
+  stage: (typeof PRODUCT_FACTORY_BATCH_STAGES)[number],
+  products: BatchFlowProduct[]
+): ProductFactoryBatchNextAction {
+  if (stage === "PUBLISH" && !summarizeProductFactoryDetailProgress(products).readyForPublish) {
+    return "REVIEW_PRODUCT_DETAILS";
+  }
   const actions: Record<(typeof PRODUCT_FACTORY_BATCH_STAGES)[number], ProductFactoryBatchNextAction> = {
     UPLOAD: "CONTINUE_UPLOAD",
     AI_IMAGE: "START_AI_IMAGE",
@@ -165,7 +209,8 @@ function result(
   stage: ProductFactoryBatchStage,
   nextAction: ProductFactoryBatchNextAction,
   stageCompletedCount: number,
-  exceptionCount: number
+  exceptionCount: number,
+  products: BatchFlowProduct[]
 ): ProductFactoryBatchFlow {
   return {
     stage,
@@ -174,6 +219,24 @@ function result(
     nextAction,
     nextActionLabel: ACTION_LABELS[nextAction],
     stageCompletedCount,
-    exceptionCount
+    exceptionCount,
+    detailGeneration: summarizeProductFactoryDetailProgress(products)
   };
+}
+
+const DETAIL_ELIGIBLE_STATUSES = new Set([
+  "CALIBRATED",
+  "BARCODE_ASSIGNED",
+  "REVIEW_PENDING",
+  "APPROVED",
+  "READY_FOR_STORAGE",
+  "PUBLISHED",
+  "UNPUBLISHED",
+  "ARCHIVED"
+]);
+
+function currentDetailProfile(product: BatchFlowProduct) {
+  return product.detailProfiles?.find(
+    (profile) => profile.sourceDataVersion === product.detailSourceVersion
+  ) ?? null;
 }

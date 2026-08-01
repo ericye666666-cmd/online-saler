@@ -1,3 +1,5 @@
+import { requiredProductMeasurementTypes } from "@online-saler/business-rules";
+
 export type JsonRecord = Record<string, unknown>;
 
 export const STAGING_TEST_EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
@@ -236,35 +238,35 @@ export type MeasurementRequirement = {
 export function measurementFields(
   form: Pick<WorkspaceForm, "category" | "subcategory" | "sleeveType">
 ): MeasurementRequirement[] {
+  const requiredTypes = new Set(requiredProductMeasurementTypes(form));
   const isPants = form.category === "PANTS" || form.category === "SHORT" ||
     (form.category === "KIDS" && form.subcategory === "KIDS_PANTS");
   if (isPants) {
     return [
-      { key: "lengthCm", type: "OUTSEAM", label: "裤长", required: true },
-      { key: "waistCm", type: "WAIST", label: "腰宽", required: true },
-      { key: "hipCm", type: "HIP", label: "臀宽", required: true },
-      { key: "thighWidthCm", type: "THIGH_WIDTH", label: "大腿宽", required: true },
-      { key: "legOpeningCm", type: "LEG_OPENING", label: "裤脚宽", required: true },
+      { key: "lengthCm", type: "OUTSEAM", label: "裤长", required: requiredTypes.has("OUTSEAM") },
+      { key: "waistCm", type: "WAIST", label: "腰宽", required: requiredTypes.has("WAIST") },
+      { key: "hipCm", type: "HIP", label: "臀宽", required: requiredTypes.has("HIP") },
+      { key: "thighWidthCm", type: "THIGH_WIDTH", label: "大腿宽", required: requiredTypes.has("THIGH_WIDTH") },
+      { key: "legOpeningCm", type: "LEG_OPENING", label: "裤脚宽", required: requiredTypes.has("LEG_OPENING") },
       { key: "inseamCm", type: "INSEAM", label: "内长", required: false }
     ];
   }
 
   if (["SHOES", "BAG", "OTHERS", "TEXTILE", "OTHER"].includes(form.category)) return [];
 
-  const sleeveRequired = !["SLEEVELESS", "NOT_APPLICABLE"].includes(form.sleeveType);
   const upperBody: MeasurementRequirement[] = [
-    { key: "lengthCm", type: "LENGTH", label: "衣长", required: true },
-    { key: "chestWidthCm", type: "CHEST_WIDTH", label: "胸宽", required: true },
-    { key: "shoulderWidthCm", type: "SHOULDER_WIDTH", label: "肩宽", required: true },
-    { key: "sleeveLengthCm", type: "SLEEVE_LENGTH", label: "袖长", required: sleeveRequired }
+    { key: "lengthCm", type: "LENGTH", label: "衣长", required: requiredTypes.has("LENGTH") },
+    { key: "chestWidthCm", type: "CHEST_WIDTH", label: "胸宽", required: requiredTypes.has("CHEST_WIDTH") },
+    { key: "shoulderWidthCm", type: "SHOULDER_WIDTH", label: "肩宽", required: requiredTypes.has("SHOULDER_WIDTH") },
+    { key: "sleeveLengthCm", type: "SLEEVE_LENGTH", label: "袖长", required: requiredTypes.has("SLEEVE_LENGTH") }
   ];
   const isDress = form.category === "DRESSES" ||
     (form.category === "KIDS" && form.subcategory === "KIDS_DRESS");
   if (!isDress) return upperBody;
   return [
     ...upperBody,
-    { key: "waistCm", type: "WAIST", label: "腰宽", required: true },
-    { key: "hipCm", type: "HIP", label: "臀宽", required: true }
+    { key: "waistCm", type: "WAIST", label: "腰宽", required: requiredTypes.has("WAIST") },
+    { key: "hipCm", type: "HIP", label: "臀宽", required: requiredTypes.has("HIP") }
   ];
 }
 

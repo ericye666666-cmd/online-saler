@@ -88,9 +88,11 @@ export function summarizeDetailBatch(batch: DetailBatchSummaryInput) {
 
 @Injectable()
 export class ProductDetailGenerationService {
-  async listDetailGenerationBatches() {
+  async listDetailGenerationBatches(batchId?: string) {
     const batches = await prisma.productBatch.findMany({
-      where: { products: { some: { status: { in: CALIBRATED_OR_LATER_STATUSES } } } },
+      where: batchId?.trim()
+        ? { id: batchId.trim() }
+        : { products: { some: { status: { in: CALIBRATED_OR_LATER_STATUSES } } } },
       orderBy: { createdAt: "desc" },
       take: 50,
       select: {

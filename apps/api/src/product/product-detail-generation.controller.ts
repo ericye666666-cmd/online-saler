@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, Patch, Post, Res } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, Param, Patch, Post, Query, Res } from "@nestjs/common";
 import { ProductDetailStatus, prisma } from "@online-saler/database";
 import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
@@ -16,9 +16,12 @@ export class ProductDetailGenerationController {
   ) {}
 
   @Get("operations/product-detail-generation")
-  async generationBatches(@Headers(ADMIN_USER_HEADER) adminUserId?: string) {
+  async generationBatches(
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string,
+    @Query("batchId") batchId?: string
+  ) {
     await requireAdminPermission(adminUserId, "page.product.details");
-    return this.details.listDetailGenerationBatches();
+    return this.details.listDetailGenerationBatches(batchId);
   }
 
   @Get("product-detail-profiles/:profileId")

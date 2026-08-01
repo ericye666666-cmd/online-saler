@@ -657,6 +657,11 @@ export class OperationsProductBatchService {
       measurements: { orderBy: { measurementType: "asc" } },
       defects: { orderBy: { createdAt: "asc" } },
       reviews: { orderBy: { createdAt: "desc" }, take: 1 },
+      detailProfiles: {
+        orderBy: { sourceDataVersion: "desc" },
+        take: 1,
+        select: { status: true, sourceDataVersion: true }
+      },
       inventoryItem: { include: { location: true } },
       aiExtractions: {
         include: { fieldDecisions: { orderBy: { fieldName: "asc" } } },
