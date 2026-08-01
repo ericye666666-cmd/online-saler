@@ -75,18 +75,7 @@ export class OperationsProductFactoryAdminService {
 
   async configuration(adminUserId?: string) {
     await this.access.requirePermission(adminUserId, PRODUCT_CONTROL_PAGE);
-    const checks = [
-      check("OPENAI_API_KEY", "OpenAI API Key", Boolean(process.env.OPENAI_API_KEY?.trim()), true, "在 GitHub Environment staging 配置 OPENAI_API_KEY_STAGING。"),
-      check("OPENAI_VISION_MODEL", "OpenAI 视觉模型", Boolean(process.env.OPENAI_VISION_MODEL?.trim()), false, "部署工作流应设置 OPENAI_VISION_MODEL。", process.env.OPENAI_VISION_MODEL),
-      check("PRODUCT_IMAGE_BUCKET", "商品原图 Storage Bucket", Boolean(process.env.PRODUCT_IMAGE_BUCKET?.trim()), false, "部署工作流应设置 PRODUCT_IMAGE_BUCKET。", process.env.PRODUCT_IMAGE_BUCKET),
-      check("BACKGROUND_REMOVAL_PROVIDER", "抠图自动路由", process.env.BACKGROUND_REMOVAL_PROVIDER === "auto", false, "将 BACKGROUND_REMOVAL_PROVIDER 设为 auto。", process.env.BACKGROUND_REMOVAL_PROVIDER),
-      check("LIGHTWEIGHT_CUTOUT_SERVICE_URL", "lightweight OpenCV 服务", Boolean(process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL?.trim()), false, "重新运行 Deploy API to Staging。"),
-      check("REMBG_BIREFNET_SERVICE_URL", "rembg + BiRefNet 服务", Boolean(process.env.REMBG_BIREFNET_SERVICE_URL?.trim()), false, "重新运行 Deploy API to Staging。"),
-      check("BACKGROUND_REMOVAL_MIN_QUALITY_SCORE", "自动回退质量阈值", validThreshold(process.env.BACKGROUND_REMOVAL_MIN_QUALITY_SCORE), false, "设置 0 到 1 之间的质量阈值。", process.env.BACKGROUND_REMOVAL_MIN_QUALITY_SCORE ?? "0.75"),
-      check("OPERATIONS_URL", "Operations CORS 来源", Boolean(process.env.OPERATIONS_URL?.trim()), false, "设置 staging Operations URL。", process.env.OPERATIONS_URL),
-      { key: "PRINT_AGENT", label: "Deli 打印代理", status: "CLIENT_CHECK", secret: false, guidance: "本项由浏览器检查员工电脑的 http://127.0.0.1:8719。", value: null },
-      { key: "BATCH_SIZE", label: "固定批次大小", status: "CONFIGURED", secret: false, guidance: "第一阶段固定为 10 件。", value: "10" }
-    ];
+    const checks = productFactoryConfigurationChecks();
     return { checks, configured: checks.filter((item) => item.status === "CONFIGURED").length, total: checks.length };
   }
 
@@ -145,4 +134,26 @@ function validThreshold(value?: string) {
   if (!value?.trim()) return true;
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 && number <= 1;
+}
+
+export function productFactoryConfigurationChecks(env: NodeJS.ProcessEnv = process.env) {
+  return [
+    check("OPENAI_API_KEY", "OpenAI API Key", Boolean(env.OPENAI_API_KEY?.trim()), true, "在 GitHub Environment staging 配置 OPENAI_API_KEY_STAGING。"),
+    check("OPENAI_VISION_MODEL", "OpenAI 视觉模型", Boolean(env.OPENAI_VISION_MODEL?.trim()), false, "部署工作流应设置 OPENAI_VISION_MODEL。", env.OPENAI_VISION_MODEL),
+    check("PRODUCT_IMAGE_BUCKET", "商品原图 Storage Bucket", Boolean(env.PRODUCT_IMAGE_BUCKET?.trim()), false, "部署工作流应设置 PRODUCT_IMAGE_BUCKET。", env.PRODUCT_IMAGE_BUCKET),
+    check("BACKGROUND_REMOVAL_PROVIDER", "抠图自动路由", env.BACKGROUND_REMOVAL_PROVIDER === "auto", false, "将 BACKGROUND_REMOVAL_PROVIDER 设为 auto。", env.BACKGROUND_REMOVAL_PROVIDER),
+    check("LIGHTWEIGHT_CUTOUT_SERVICE_URL", "lightweight OpenCV 服务", Boolean(env.LIGHTWEIGHT_CUTOUT_SERVICE_URL?.trim()), false, "重新运行 Deploy API to Staging。"),
+    check("REMBG_BIREFNET_SERVICE_URL", "rembg + BiRefNet 服务", Boolean(env.REMBG_BIREFNET_SERVICE_URL?.trim()), false, "重新运行 Deploy API to Staging。"),
+    check("BACKGROUND_REMOVAL_MIN_QUALITY_SCORE", "自动回退质量阈值", validThreshold(env.BACKGROUND_REMOVAL_MIN_QUALITY_SCORE), false, "设置 0 到 1 之间的质量阈值。", env.BACKGROUND_REMOVAL_MIN_QUALITY_SCORE ?? "0.75"),
+    {
+      key: "OPERATIONS_API_CHANNEL",
+      label: "Operations API 通道",
+      status: "CONFIGURED",
+      secret: false,
+      guidance: "Operations 通过同源 /api-proxy 访问 API，无需浏览器跨域配置。",
+      value: "/api-proxy"
+    },
+    { key: "PRINT_AGENT", label: "Deli 打印代理", status: "CLIENT_CHECK", secret: false, guidance: "本项由浏览器检查员工电脑的 http://127.0.0.1:8719。", value: null },
+    { key: "BATCH_SIZE", label: "固定批次大小", status: "CONFIGURED", secret: false, guidance: "第一阶段固定为 10 件。", value: "10" }
+  ];
 }
