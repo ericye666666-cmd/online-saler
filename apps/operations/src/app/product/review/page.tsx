@@ -1,6 +1,9 @@
 import { ProductQueuePage } from "../product-center-client";
+import { ProductBatchReviewPage } from "../product-batch-review-client";
 
-export default function ReviewPage() {
+export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ batchId?: string }> }) {
+  const { batchId } = await searchParams;
+  if (batchId) return <ProductBatchReviewPage batchId={batchId} />;
   return (
     <ProductQueuePage
       queue="review"
