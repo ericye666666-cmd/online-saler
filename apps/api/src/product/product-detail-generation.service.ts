@@ -5,6 +5,10 @@ import {
   Prisma,
   prisma
 } from "@online-saler/database";
+import {
+  calculateGarmentFitRecommendation,
+  type GarmentFitRecommendation
+} from "@online-saler/business-rules";
 
 const CALIBRATED_OR_LATER = new Set<ProductStatus>([
   ProductStatus.CALIBRATED,
@@ -60,9 +64,16 @@ export class ProductDetailGenerationService {
             id: true,
             status: true,
             detailSourceVersion: true,
+            category: true,
+            subcategory: true,
+            gender: true,
+            finalSizeLabel: true,
             fitType: true,
             stretchLevel: true,
-            fabricWeight: true
+            fabricWeight: true,
+            measurements: {
+              select: { measurementType: true, finalValueCm: true }
+            }
           }
         }
       }
@@ -75,6 +86,22 @@ export class ProductDetailGenerationService {
     const jobs = await prisma.$transaction(async (transaction) => {
       const result = [];
       for (const product of batch.products) {
+        const recommendation = calculateGarmentFitRecommendation({
+          category: product.category,
+          subcategory: product.subcategory,
+          gender: product.gender,
+          platformSize: product.finalSizeLabel,
+          fitType: product.fitType,
+          stretchLevel: product.stretchLevel,
+          fabricWeight: product.fabricWeight,
+          measurements: Object.fromEntries(
+            product.measurements.map((measurement) => [
+              measurement.measurementType,
+              measurement.finalValueCm ? Number(measurement.finalValueCm) : null
+            ])
+          )
+        });
+        const fitData = profileFitData(recommendation);
         const profile = await transaction.productDetailProfile.upsert({
           where: {
             productId_sourceDataVersion: {
@@ -88,9 +115,15 @@ export class ProductDetailGenerationService {
             fitType: product.fitType,
             stretchLevel: product.stretchLevel,
             fabricWeight: product.fabricWeight,
-            sourceDataVersion: product.detailSourceVersion
+            sourceDataVersion: product.detailSourceVersion,
+            ...fitData
           },
-          update: {}
+          update: {
+            fitType: product.fitType,
+            stretchLevel: product.stretchLevel,
+            fabricWeight: product.fabricWeight,
+            ...fitData
+          }
         });
         const job = await transaction.productDetailGenerationJob.upsert({
           where: {
@@ -215,4 +248,24 @@ export class ProductDetailGenerationService {
       })
     ]);
   }
+}
+
+function profileFitData(recommendation: GarmentFitRecommendation) {
+  return {
+    bodyChestMinCm: recommendation.bodyChestMinCm,
+    bodyChestMaxCm: recommendation.bodyChestMaxCm,
+    bodyWaistMinCm: recommendation.bodyWaistMinCm,
+    bodyWaistMaxCm: recommendation.bodyWaistMaxCm,
+    bodyHipMinCm: recommendation.bodyHipMinCm,
+    bodyHipMaxCm: recommendation.bodyHipMaxCm,
+    heightMinCm: recommendation.heightMinCm,
+    heightMaxCm: recommendation.heightMaxCm,
+    weightMinKg: recommendation.weightMinKg,
+    weightMaxKg: recommendation.weightMaxKg,
+    expectedFit: recommendation.expectedFit,
+    recommendationConfidence: recommendation.confidence,
+    recommendationBasis: recommendation.basis,
+    recommendationWarnings: recommendation.warnings,
+    sizeDisclaimer: `${recommendation.disclaimer}\n${recommendation.disclaimerZh}`
+  };
 }

@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsx src/transaction-domain.test.ts && node -e \"const r=require('./dist/index.js'); if(r.RESERVATION_MINUTES!==15) process.exit(1); console.log('business-rules smoke ok')\"",
+    "test": "tsx --test src/transaction-domain.test.ts src/garment-fit-engine.test.ts && node -e \"const r=require('./dist/index.js'); if(r.RESERVATION_MINUTES!==15) process.exit(1); console.log('business-rules smoke ok')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }
