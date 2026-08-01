@@ -74,6 +74,9 @@ export function filterNavigation<T extends NavigationModule>(modules: readonly T
 }
 
 export function canAccessPath(pathname: string, modules: readonly NavigationModule[], session: OperationsSession | null): boolean {
+  if (pathname === "/warehouse/inventory") return hasPermission(session, "warehouse-locations.view");
+  if (pathname === "/warehouse" || pathname.startsWith("/warehouse/")) return hasPermission(session, "orders.view");
+
   const items = modules.flatMap((module) => module.items);
   if (pathname === "/") {
     const home = items.find((item) => item.href === "/");

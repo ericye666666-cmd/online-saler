@@ -439,7 +439,7 @@ function LoginScreen() {
                 Kikuyu 二手服装运营中台
               </h1>
               <p className="mt-4 text-muted-foreground">
-                用一套后台完成商品数字化、仓库履约、订单处理、推广佣金、客服和数据分析。
+                用一套后台完成商品数字化、订单全流程处理、推广佣金、客服和数据分析。
               </p>
             </div>
 

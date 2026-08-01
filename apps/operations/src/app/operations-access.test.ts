@@ -54,6 +54,8 @@ assert.deepEqual(navigation[0].items.map((item) => item.label), ["订单工作�
 assert.equal(canAccessPath("/orders", modules, pickerSession), true);
 assert.equal(canAccessPath("/orders/all", modules, pickerSession), true);
 assert.equal(canAccessPath("/orders/order-123", modules, pickerSession), true);
+assert.equal(canAccessPath("/warehouse/packing", modules, pickerSession), true);
+assert.equal(canAccessPath("/warehouse/inventory", modules, pickerSession), false);
 assert.equal(canAccessPath("/orders/after-sales", modules, pickerSession), false);
 assert.equal(canAccessPath("/orders/exceptions", modules, pickerSession), false);
 assert.equal(canAccessPath("/system/warehouse/locations", modules, pickerSession), false);
@@ -83,5 +85,6 @@ const managerSession: OperationsSession = {
 assert.equal(canAccessPath("/orders/after-sales", modules, managerSession), true);
 assert.equal(canAccessPath("/orders/exceptions", modules, managerSession), true);
 assert.equal(canAccessPath("/system/warehouse/locations", modules, managerSession), true);
+assert.equal(canAccessPath("/warehouse/inventory", modules, managerSession), true);
 
 console.log("Operations access tests passed");
