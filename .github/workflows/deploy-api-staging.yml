@@ -34,6 +34,7 @@ env:
   REMBG_SERVICE_NAME: online-saler-rembg-birefnet-staging
   MIGRATION_JOB_NAME: online-saler-db-migrate-staging
   SMOKE_CLEANUP_JOB_NAME: online-saler-deploy-smoke-cleanup-staging
+  LEGACY_TEST_BATCH_CODES: BATCH-1785507292547;BATCH-1785580900516
   STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
   STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
   PRODUCT_IMAGE_BUCKET: online-saler-staging-product-images
@@ -503,14 +504,30 @@ jobs:
             --service-account "${STAGING_RUNTIME_SERVICE_ACCOUNT}" \
             --set-cloudsql-instances "${STAGING_CLOUD_SQL_INSTANCE}" \
             --set-secrets "DATABASE_URL=STAGING_DATABASE_URL:latest" \
-            --set-env-vars "NODE_ENV=staging,PRODUCT_IMAGE_BUCKET=${PRODUCT_IMAGE_BUCKET},STAGING_TEST_DATA_CONFIRMATION=DELETE_STAGING_TEST_DATA" \
+            --set-env-vars "NODE_ENV=staging,PRODUCT_IMAGE_BUCKET=${PRODUCT_IMAGE_BUCKET},STAGING_TEST_DATA_CONFIRMATION=DRY_RUN,STAGING_TEST_BATCH_CODES=${LEGACY_TEST_BATCH_CODES}" \
             --command node \
             --args scripts/cleanup-staging-test-data.mjs \
             --max-retries 0 \
             --task-timeout 20m \
             --quiet
 
-      - name: Remove staging smoke-test data
+      - name: Inventory authorized staging test data
+        run: |
+          gcloud run jobs execute "${SMOKE_CLEANUP_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --wait \
+            --quiet
+
+      - name: Authorize staging test-data deletion
+        run: |
+          gcloud run jobs update "${SMOKE_CLEANUP_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --update-env-vars "STAGING_TEST_DATA_CONFIRMATION=DELETE_STAGING_TEST_DATA" \
+            --quiet
+
+      - name: Remove authorized staging test data
         run: |
           gcloud run jobs execute "${SMOKE_CLEANUP_JOB_NAME}" \
             --project "${{ vars.GCP_PROJECT_ID }}" \
