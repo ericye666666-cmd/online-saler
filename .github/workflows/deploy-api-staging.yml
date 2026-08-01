@@ -14,6 +14,8 @@ on:
       - "package.json"
       - "package-lock.json"
       - "scripts/deploy-staging-migrations.mjs"
+      - "scripts/cleanup-staging-test-data.mjs"
+      - "scripts/staging-test-data-cleanup-lib.mjs"
       - "tsconfig.base.json"
       - "Dockerfile.api"
       - ".dockerignore"
@@ -31,6 +33,7 @@ env:
   LIGHTWEIGHT_SERVICE_NAME: online-saler-lightweight-cutout-staging
   REMBG_SERVICE_NAME: online-saler-rembg-birefnet-staging
   MIGRATION_JOB_NAME: online-saler-db-migrate-staging
+  SMOKE_CLEANUP_JOB_NAME: online-saler-deploy-smoke-cleanup-staging
   STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
   STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
   PRODUCT_IMAGE_BUCKET: online-saler-staging-product-images
@@ -490,3 +493,35 @@ jobs:
           echo "${AI_RESPONSE}"
           echo "${AI_RESPONSE}" | grep -q '"status":"SUCCEEDED"'
           echo "${AI_RESPONSE}" | grep -q '"provider":"openai"'
+
+      - name: Configure staging smoke-test cleanup job
+        run: |
+          gcloud run jobs deploy "${SMOKE_CLEANUP_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --image "${IMAGE_URI}" \
+            --service-account "${STAGING_RUNTIME_SERVICE_ACCOUNT}" \
+            --set-cloudsql-instances "${STAGING_CLOUD_SQL_INSTANCE}" \
+            --set-secrets "DATABASE_URL=STAGING_DATABASE_URL:latest" \
+            --set-env-vars "NODE_ENV=staging,PRODUCT_IMAGE_BUCKET=${PRODUCT_IMAGE_BUCKET},STAGING_TEST_DATA_CONFIRMATION=DELETE_STAGING_TEST_DATA" \
+            --command node \
+            --args scripts/cleanup-staging-test-data.mjs \
+            --max-retries 0 \
+            --task-timeout 20m \
+            --quiet
+
+      - name: Remove staging smoke-test data
+        run: |
+          gcloud run jobs execute "${SMOKE_CLEANUP_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --wait \
+            --quiet
+
+      - name: Remove staging smoke-test cleanup job
+        if: always()
+        run: |
+          gcloud run jobs delete "${SMOKE_CLEANUP_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --quiet || true

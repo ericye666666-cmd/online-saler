@@ -16,4 +16,17 @@ describe("product factory list visibility", () => {
   it("allows an explicit admin request to include test data", () => {
     assert.deepEqual(productFactoryVisibilityWhere(true), {});
   });
+
+  it("covers every known staging smoke-test prefix", () => {
+    assert.deepEqual(PRODUCT_FACTORY_TEST_PREFIXES, [
+      "DEPLOY-",
+      "E2E-",
+      "OPENAI-",
+      "UPLOAD-",
+      "TEST-",
+      "CUTOUT-",
+      "HEADERTEST-",
+      "LOCALOPENAI-"
+    ]);
+  });
 });

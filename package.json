@@ -19,6 +19,7 @@
     "db:push:staging": "npm run db:push -w @online-saler/database -- --skip-generate --accept-data-loss",
     "db:bootstrap-staging": "npm run db:push:staging && node packages/database/prisma/seed-staging-test-employee.mjs",
     "db:migrate-staging": "node scripts/deploy-staging-migrations.mjs",
+    "db:cleanup-staging-test-data": "node scripts/cleanup-staging-test-data.mjs",
     "test": "npm run test:scripts && npm run test --workspaces --if-present",
     "test:scripts": "node --test scripts/*.test.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",

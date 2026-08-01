@@ -13,5 +13,9 @@ assert.match(buildStage, /apt-get install[^\n]*openssl/);
 assert.match(runtimeStage, /apt-get install[^\n]*openssl/);
 assert.match(runtimeStage, /COPY --from=build \/app\/scripts\/deploy-staging-migrations\.mjs/);
 assert.match(runtimeStage, /RUN test -f \/app\/scripts\/deploy-staging-migrations\.mjs/);
+assert.match(runtimeStage, /COPY --from=build \/app\/scripts\/cleanup-staging-test-data\.mjs/);
+assert.match(runtimeStage, /COPY --from=build \/app\/scripts\/staging-test-data-cleanup-lib\.mjs/);
+assert.match(runtimeStage, /test -f \/app\/scripts\/cleanup-staging-test-data\.mjs/);
+assert.match(runtimeStage, /test -f \/app\/scripts\/staging-test-data-cleanup-lib\.mjs/);
 
 console.log("API Docker image runtime checks passed");
