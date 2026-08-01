@@ -97,7 +97,21 @@ export const operationsModules: ModuleNav[] = [
     items: [
       { label: "今日工作", href: "/", icon: LayoutDashboardIcon, permission: "page.product.digitalization", badge: "Live" },
       { label: "新建批次", href: "/product/new-batch", icon: PackageCheckIcon, permission: "page.product.digitalization" },
-      { label: "进行中批次", href: "/product/batches", icon: ClipboardCheckIcon, permission: "page.product.digitalization" },
+      {
+        label: "进行中批次",
+        href: "/product/batches",
+        routePrefixes: [
+          "/product/calibration",
+          "/product/barcode",
+          "/product/review",
+          "/product/waiting-upload",
+          "/product/waiting-ai",
+          "/product/published",
+          "/product/rejected"
+        ],
+        icon: ClipboardCheckIcon,
+        permission: "page.product.digitalization"
+      },
       { label: "待处理异常", href: "/product/exceptions", icon: XCircleIcon, permission: "page.product.digitalization" },
       { label: "商品查询", href: "/product/search", icon: SearchIcon, permission: "page.product.digitalization" },
       { label: "分类与属性", href: "/product/taxonomy", icon: SettingsIcon, permission: "page.product.control" },
@@ -211,7 +225,10 @@ function moduleForPath(pathname: string): ModuleKey {
 }
 
 function sectionForPath(pathname: string): string {
-  const matchingItem = operationsModules.flatMap((module) => module.items).find((item) => item.href && item.href !== "/" && pathname.startsWith(item.href));
+  const matchingItem = operationsModules.flatMap((module) => module.items).find((item) =>
+    Boolean(item.href && item.href !== "/" && pathname.startsWith(item.href)) ||
+    Boolean(item.routePrefixes?.some((prefix) => pathname.startsWith(prefix)))
+  );
   if (matchingItem) return matchingItem.label;
   if (pathname === "/") return "今日工作";
   if (pathname.startsWith("/control")) return "商品控制";
