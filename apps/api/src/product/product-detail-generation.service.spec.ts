@@ -49,9 +49,18 @@ describe("ProductDetailGenerationService", () => {
       id: `product-${index + 1}`,
       status: ProductStatus.CALIBRATED,
       detailSourceVersion: index + 1,
+      category: "TSHIRTS",
+      subcategory: "TSHIRT",
+      gender: "UNISEX",
+      finalSizeLabel: "L",
       fitType: ProductFitType.REGULAR,
       stretchLevel: ProductStretchLevel.LOW,
-      fabricWeight: ProductFabricWeight.REGULAR
+      fabricWeight: ProductFabricWeight.REGULAR,
+      measurements: [
+        { measurementType: "CHEST_WIDTH", finalValueCm: 55 },
+        { measurementType: "LENGTH", finalValueCm: 72 },
+        { measurementType: "SLEEVE_LENGTH", finalValueCm: 62 }
+      ]
     }));
     prisma.productBatch.findUnique = (async () => ({
       id: "batch-1",
@@ -84,6 +93,9 @@ describe("ProductDetailGenerationService", () => {
     assert.equal(profileInputs.length, 10);
     assert.equal(jobInputs.length, 10);
     assert.equal(profileInputs[0]?.sourceDataVersion, 1);
+    assert.equal(profileInputs[0]?.bodyChestMaxCm, 103);
+    assert.match(String(profileInputs[0]?.sizeDisclaimer), /Height and weight are reference only/);
+    assert.match(String(profileInputs[0]?.sizeDisclaimer), /身高和体重仅供参考/);
     assert.equal(jobInputs[9]?.sourceDataVersion, 10);
     assert.ok(jobInputs.every((input) => input.status === ProductDetailStatus.PENDING));
   });

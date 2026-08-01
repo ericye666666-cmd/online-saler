@@ -27,3 +27,4 @@ export function createCommissionEligibleAt(deliveredAt: Date): Date {
 }
 
 export * from "./transaction-domain";
+export * from "./garment-fit-engine";
