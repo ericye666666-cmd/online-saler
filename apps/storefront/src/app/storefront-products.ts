@@ -69,7 +69,7 @@ export type PublicProduct = {
   images: PublicProductImage[];
   measurements: PublicMeasurement[];
   defects: PublicDefect[];
-  detail: PublicProductDetail;
+  detail?: PublicProductDetail | null;
 };
 
 export type PublicProductFilters = {
@@ -113,7 +113,13 @@ export function detailAssetSrc(asset: PublicProductDetailAsset): string {
 }
 
 export function detailAsset(product: Pick<PublicProduct, "detail">, type: string): PublicProductDetailAsset | null {
-  return product.detail.assets.find((asset) => asset.type === type) ?? null;
+  return product.detail?.assets.find((asset) => asset.type === type) ?? null;
+}
+
+export function hasApprovedPublicDetail(
+  product: PublicProduct
+): product is PublicProduct & { detail: PublicProductDetail } {
+  return Boolean(product.detail?.profileId);
 }
 
 export function moneyKsh(value: number | null): string {
