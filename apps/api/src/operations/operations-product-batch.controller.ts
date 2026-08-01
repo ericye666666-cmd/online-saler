@@ -17,6 +17,10 @@ type ReviewBody = AdminEmployeeBody & {
   reason?: string;
 };
 
+type RetakeBody = AdminEmployeeBody & {
+  reason?: string;
+};
+
 @Controller("operations/product-batches")
 export class OperationsProductBatchController {
   constructor(private readonly batches: OperationsProductBatchService) {}
@@ -95,5 +99,10 @@ export class OperationsProductBatchController {
   @Post("products/:id/review")
   reviewProduct(@Param("id") id: string, @Body() body: ReviewBody) {
     return this.batches.reviewProduct(id, body);
+  }
+
+  @Post("products/:id/retake")
+  retakeProduct(@Param("id") id: string, @Body() body: RetakeBody) {
+    return this.batches.markProductForRetake(id, body);
   }
 }

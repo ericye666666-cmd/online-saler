@@ -10,6 +10,7 @@ export type WorkspaceForm = {
   audience: string;
   kidsAgeRange: string;
   brand: string;
+  tagSize: string;
   sizeLabel: string;
   pattern: string;
   sleeveType: string;
@@ -21,6 +22,7 @@ export type WorkspaceForm = {
   conditionGrade: string;
   priceKsh: string;
   defects: string;
+  description: string;
 };
 
 export type WorkspaceReadiness = {
@@ -40,6 +42,7 @@ export const emptyWorkspaceForm = (): WorkspaceForm => ({
   audience: "UNISEX",
   kidsAgeRange: "NOT_APPLICABLE",
   brand: "",
+  tagSize: "",
   sizeLabel: "",
   pattern: "SOLID",
   sleeveType: "SHORT",
@@ -50,7 +53,8 @@ export const emptyWorkspaceForm = (): WorkspaceForm => ({
   hipCm: "",
   conditionGrade: "GOOD",
   priceKsh: "",
-  defects: ""
+  defects: "",
+  description: ""
 });
 
 function record(value: unknown): JsonRecord | null {
@@ -82,11 +86,13 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     audience: stringValue(product?.gender) || stringField(ai, "audience") || form.audience,
     kidsAgeRange: stringValue(product?.kidsAgeRange) || stringField(ai, "kidsAgeRange") || form.kidsAgeRange,
     brand: stringValue(product?.brand) || stringField(ai, "brandLabel") || form.brand,
+    tagSize: stringValue(product?.tagSize) || stringField(ai, "sizeLabel") || form.tagSize,
     sizeLabel: stringValue(product?.finalSizeLabel) || stringField(ai, "sizeLabel") || form.sizeLabel,
     pattern: stringField(ai, "pattern") || form.pattern,
     sleeveType: stringField(ai, "sleeveType") || form.sleeveType,
     conditionGrade: stringValue(product?.conditionGrade) || form.conditionGrade,
-    priceKsh: typeof product?.priceKsh === "number" ? String(product.priceKsh) : form.priceKsh
+    priceKsh: typeof product?.priceKsh === "number" ? String(product.priceKsh) : form.priceKsh,
+    description: stringValue(product?.description) || form.description
   };
 }
 
@@ -212,7 +218,9 @@ export function buildCalibrationBody(input: {
     pattern: input.form.pattern.trim(),
     sleeveType: input.form.sleeveType.trim(),
     brand: input.form.brand.trim() || undefined,
+    tagSize: input.form.tagSize.trim() || undefined,
     sizeLabel: input.form.sizeLabel.trim() || undefined,
+    description: input.form.description.trim() || undefined,
     conditionGrade: input.form.conditionGrade,
     priceKsh: Number(input.form.priceKsh),
     measurements: [

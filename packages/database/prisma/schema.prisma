@@ -279,6 +279,7 @@ model Product {
   barcode              String?              @unique
   status               ProductStatus        @default(DRAFT)
   title                String?
+  description          String?
   category             String?
   subcategory          String?
   brand                String?

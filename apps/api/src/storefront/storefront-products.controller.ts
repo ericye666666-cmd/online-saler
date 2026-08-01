@@ -192,6 +192,7 @@ function publicProduct(product: ProductWithPublicRelations) {
   return {
     id: product.id,
     title: product.title,
+    description: product.description,
     category: product.category,
     subcategory: product.subcategory,
     color: product.color,
