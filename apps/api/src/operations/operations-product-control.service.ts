@@ -9,6 +9,7 @@ import {
 } from "@online-saler/database";
 import { ProductApplicationService } from "../product/product-application.service";
 import { OperationsAccessService } from "./operations-access.service";
+import { missingPublishMeasurementTypes } from "./operations-product-publish-readiness";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
 
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -479,9 +480,11 @@ export class OperationsProductControlService {
     if (!product.conditionGrade) {
       throw new BadRequestException("Confirm the condition before publishing.");
     }
-    if (!product.measurements.some((measurement) => measurement.measurementType === "LENGTH" && measurement.finalValueCm) ||
-        !product.measurements.some((measurement) => measurement.measurementType === "CHEST_WIDTH" && measurement.finalValueCm)) {
-      throw new BadRequestException("Confirm length and chest measurements before publishing.");
+    const missingMeasurements = missingPublishMeasurementTypes(product);
+    if (missingMeasurements.length > 0) {
+      throw new BadRequestException(
+        `Confirm required measurements before publishing: ${missingMeasurements.join(", ")}.`
+      );
     }
     if (!product.priceKsh || product.priceKsh <= 0) {
       throw new BadRequestException("Set the price before publishing.");

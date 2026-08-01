@@ -148,7 +148,7 @@ function useOperationIds() {
   }), [session]);
 }
 
-export function ProductDetailGenerationPage() {
+export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = {}) {
   const ids = useOperationIds();
   const [batches, setBatches] = useState<DetailBatch[]>([]);
   const [busy, setBusy] = useState("");
@@ -157,8 +157,9 @@ export function ProductDetailGenerationPage() {
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
-    setBatches(await request<DetailBatch[]>("/operations/product-detail-generation", ids.adminUserId));
-  }, [ids.adminUserId]);
+    const query = batchId ? `?batchId=${encodeURIComponent(batchId)}` : "";
+    setBatches(await request<DetailBatch[]>(`/operations/product-detail-generation${query}`, ids.adminUserId));
+  }, [batchId, ids.adminUserId]);
 
   useEffect(() => { void load().catch((caught) => setError(errorMessage(caught))); }, [load]);
 
@@ -186,7 +187,7 @@ export function ProductDetailGenerationPage() {
         <div>
           <p className="text-sm text-muted-foreground">商品中心</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-normal">详情生成</h1>
-          <p className="mt-1 text-sm text-muted-foreground">主管检查自动生成的商品详情，不进入普通员工上传主流程。</p>
+          <p className="mt-1 text-sm text-muted-foreground">主管检查自动生成的商品详情；该任务不阻断员工生成和贴 Barcode。</p>
         </div>
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => void load()}>
           <RefreshCwIcon data-icon="inline-start" />刷新

@@ -62,6 +62,16 @@ type ProductBatch = {
   nextAction: string;
   nextActionLabel: string;
   exceptionCount: number;
+  detailGeneration: {
+    eligibleCount: number;
+    pendingCount: number;
+    generatingCount: number;
+    readyCount: number;
+    failedCount: number;
+    outdatedCount: number;
+    approvedCount: number;
+    readyForPublish: boolean;
+  };
   counts: Record<string, number>;
   products: ProductRecord[];
 };
@@ -356,6 +366,7 @@ export function ProductBatchListPage({ completed = false }: { completed?: boolea
 
 export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
   const ids = useOperationIds();
+  const { hasPermission } = useOperationsSession();
   const [batch, setBatch] = useState<ProductBatch | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -384,6 +395,8 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
 
   const nextHref = batchNextActionHref(batch.id, batch.nextAction);
   const followingStageLabel = batchFollowingStageLabel(batch.stage);
+  const detailReviewRequired = batch.nextAction === "REVIEW_PRODUCT_DETAILS";
+  const canReviewDetails = hasPermission("page.product.details");
 
   return (
     <div className="flex flex-col gap-6">
@@ -412,13 +425,46 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
                 <span className="block">完成后下一步：{followingStageLabel}</span>
               </CardDescription>
             </div>
-            <Button asChild className="w-full sm:w-auto"><Link href={nextHref}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+            {detailReviewRequired && !canReviewDetails ? (
+              <Button className="w-full sm:w-auto" disabled>等待主管批准详情</Button>
+            ) : (
+              <Button asChild className="w-full sm:w-auto"><Link href={nextHref}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
           <BatchStageStepper batch={batch} />
         </CardContent>
       </Card>
+
+      {batch.detailGeneration.eligibleCount > 0 ? (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle>后台商品详情</CardTitle>
+                <CardDescription className="mt-1">
+                  校准完成后系统创建详情任务，不影响 Barcode；发布前需由主管批准当前版本。
+                </CardDescription>
+              </div>
+              {canReviewDetails ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/product/details?batchId=${encodeURIComponent(batch.id)}`}>检查详情<ArrowRightIcon data-icon="inline-end" /></Link>
+                </Button>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+            <Metric title="待生成" value={batch.detailGeneration.pendingCount} />
+            <Metric title="生成中" value={batch.detailGeneration.generatingCount} />
+            <Metric title="待批准" value={batch.detailGeneration.readyCount} />
+            <Metric title="生成失败" value={batch.detailGeneration.failedCount} tone={batch.detailGeneration.failedCount ? "danger" : "default"} />
+            <Metric title="已过期" value={batch.detailGeneration.outdatedCount} tone={batch.detailGeneration.outdatedCount ? "danger" : "default"} />
+            <Metric title="已批准" value={batch.detailGeneration.approvedCount} suffix={`/ ${batch.targetCount}`} />
+            <Metric title="已进入详情" value={batch.detailGeneration.eligibleCount} suffix={`/ ${batch.targetCount}`} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
