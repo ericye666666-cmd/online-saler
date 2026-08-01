@@ -12,7 +12,12 @@ const modules: NavigationModule[] = [
     key: "product",
     label: "商品中心",
     items: [
-      { label: "商品工作台", href: "/", permission: "page.product.digitalization" },
+      {
+        label: "商品工作台",
+        href: "/",
+        routePrefixes: ["/product/calibration", "/product/barcode", "/product/review"],
+        permission: "page.product.digitalization"
+      },
       { label: "商品控制", href: "/control", permission: "page.product.control" }
     ]
   },
@@ -52,6 +57,9 @@ assert.deepEqual(productNavigation.map((module) => module.key), ["product"]);
 assert.deepEqual(productNavigation[0].items.map((item) => item.label), ["商品工作台"]);
 
 assert.equal(canAccessPath("/", modules, productSession), true);
+assert.equal(canAccessPath("/product/calibration", modules, productSession), true);
+assert.equal(canAccessPath("/product/barcode", modules, productSession), true);
+assert.equal(canAccessPath("/product/review", modules, productSession), true);
 assert.equal(canAccessPath("/debug/ai", modules, productSession), false);
 assert.equal(canAccessPath("/warehouse/picking", modules, productSession), false);
 assert.equal(canAccessPath("/system/accounts", modules, productSession), false);
@@ -72,3 +80,4 @@ assert.deepEqual(warehouseNavigation.map((module) => module.key), ["warehouse", 
 assert.equal(canAccessPath("/warehouse/picking", modules, warehouseSession), true);
 assert.equal(canAccessPath("/orders", modules, warehouseSession), true);
 assert.equal(canAccessPath("/system/accounts", modules, warehouseSession), false);
+assert.equal(canAccessPath("/product/calibration", modules, warehouseSession), false);

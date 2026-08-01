@@ -45,6 +45,7 @@ export type OperationsSession = {
 export type NavigationItem = {
   label: string;
   href?: string;
+  routePrefixes?: string[];
   permission?: string;
   actionPermission?: string;
   badge?: string;
@@ -76,7 +77,10 @@ export function canAccessPath(pathname: string, modules: readonly NavigationModu
   const visibleModules = filterNavigation(modules, session);
   const visibleItems = visibleModules.flatMap((module) => module.items);
   if (pathname === "/") return visibleItems.some((item) => item.href === "/");
-  return visibleItems.some((item) => item.href && item.href !== "/" && pathname.startsWith(item.href));
+  return visibleItems.some((item) =>
+    Boolean(item.href && item.href !== "/" && pathname.startsWith(item.href)) ||
+    Boolean(item.routePrefixes?.some((prefix) => pathname.startsWith(prefix)))
+  );
 }
 
 export function adminInitials(adminUser: OperationsAdminUser | null): string {
