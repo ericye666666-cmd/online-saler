@@ -19,7 +19,7 @@ ENV NODE_ENV=production
 ENV PORT=4000
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends fonts-dejavu-core \
+  && apt-get install -y --no-install-recommends fonts-dejavu-core openssl \
   && rm -rf /var/lib/apt/lists/* \
   && test -r /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
 

@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   MigrationCommandError,
+  assertOrderCenterMigrationWasRolledBack,
   buildMigrationHistoryRecoveryPlan,
   classifyMigrationFailure,
+  isKnownOrderCenterEnumFailure,
   recoverP3009
 } from "./deploy-staging-migrations.mjs";
 
@@ -143,4 +145,96 @@ test("schema drift stops P3009 recovery before any migration is resolved", async
   );
 
   assert.deepEqual(resolved, []);
+});
+
+test("recognizes only the known transactional enum failure", () => {
+  assert.equal(
+    isKnownOrderCenterEnumFailure({
+      migrationName: "20260801170000_unify_operations_order_center",
+      logs: 'Database error code: 55P04. unsafe use of new value "READY_TO_PACK"'
+    }),
+    true
+  );
+  assert.equal(
+    isKnownOrderCenterEnumFailure({
+      migrationName: "20260801170000_unify_operations_order_center",
+      logs: "permission denied"
+    }),
+    false
+  );
+});
+
+test("rolls back the known failed migration only after proving no schema artifacts remain", async () => {
+  const events = [];
+
+  const plan = await recoverP3009({
+    databaseUrl: "postgresql://staging.example/online_saler",
+    localMigrationNames: [
+      "20260801165000_add_operations_fulfillment_statuses",
+      "20260801170000_unify_operations_order_center"
+    ],
+    historyReader: async () => [
+      {
+        migrationName: "20260801170000_unify_operations_order_center",
+        startedAt: new Date("2026-08-01T15:37:00.000Z"),
+        finishedAt: null,
+        rolledBackAt: null,
+        logs: 'PostgreSQL error 55P04: unsafe use of new value "READY_TO_PACK"'
+      }
+    ],
+    rollbackStateReader: async () => {
+      events.push("inspect-rollback");
+      return {
+        hasNewFulfillmentStatuses: false,
+        hasFulfillmentItemTable: false,
+        hasDeliveryRiderTable: false,
+        hasDeliveryAssignmentTable: false,
+        hasOrderPickupCode: false,
+        hasPackingStartedByEmployeeId: false,
+        hasFulfillmentEventIdempotencyKey: false
+      };
+    },
+    rolledBackResolver: (migrationName) => events.push(`rolled-back:${migrationName}`),
+    diffRunner: () => {
+      throw new Error("target-schema diff must not run before retrying a rolled-back migration");
+    }
+  });
+
+  assert.equal(plan.recoveryStrategy, "ROLLBACK_AND_RETRY");
+  assert.deepEqual(events, [
+    "inspect-rollback",
+    "rolled-back:20260801170000_unify_operations_order_center"
+  ]);
+});
+
+test("refuses rollback resolution when a failed migration left any schema artifact", async () => {
+  assert.throws(
+    () => assertOrderCenterMigrationWasRolledBack(undefined),
+    /Could not inspect/
+  );
+  assert.throws(
+    () => assertOrderCenterMigrationWasRolledBack({ hasNewFulfillmentStatuses: true }),
+    /left schema artifacts/
+  );
+
+  await assert.rejects(
+    recoverP3009({
+      databaseUrl: "postgresql://staging.example/online_saler",
+      localMigrationNames: ["20260801170000_unify_operations_order_center"],
+      historyReader: async () => [
+        {
+          migrationName: "20260801170000_unify_operations_order_center",
+          startedAt: new Date("2026-08-01T15:37:00.000Z"),
+          finishedAt: null,
+          rolledBackAt: null,
+          logs: 'PostgreSQL error 55P04: unsafe use of new value "READY_TO_PACK"'
+        }
+      ],
+      rollbackStateReader: async () => ({ hasDeliveryRiderTable: true }),
+      rolledBackResolver: () => {
+        throw new Error("must not resolve a partial migration");
+      }
+    }),
+    /left schema artifacts/
+  );
 });

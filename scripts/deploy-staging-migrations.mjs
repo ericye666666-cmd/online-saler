@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 const schemaPath = "packages/database/prisma";
 const migrationsPath = join(schemaPath, "migrations");
 const seedScript = "packages/database/prisma/seed-staging-test-employee.mjs";
+const orderCenterMigration = "20260801170000_unify_operations_order_center";
 
 function executable(name) {
   return process.platform === "win32" ? `${name}.cmd` : name;
@@ -94,7 +95,8 @@ async function readMigrationHistory() {
         migration_name AS "migrationName",
         started_at AS "startedAt",
         finished_at AS "finishedAt",
-        rolled_back_at AS "rolledBackAt"
+        rolled_back_at AS "rolledBackAt",
+        logs
       FROM "_prisma_migrations"
       ORDER BY started_at ASC
     `);
@@ -133,7 +135,8 @@ export function buildMigrationHistoryRecoveryPlan(localMigrationNames, migration
   return {
     failedMigrations: unresolvedFailedRows.map((row) => ({
       migrationName: row.migrationName,
-      startedAt: row.startedAt
+      startedAt: row.startedAt,
+      logs: row.logs ?? ""
     })),
     migrationsToResolve: localMigrationNames.filter((name) => !appliedNames.has(name))
   };
@@ -175,12 +178,102 @@ function resolveAppliedMigration(migrationName, commandRunner = run) {
   ]);
 }
 
+function resolveRolledBackMigration(migrationName, commandRunner = run) {
+  console.log(`Resolving verified transactional rollback: ${migrationName}`);
+  commandRunner("npx", [
+    "prisma",
+    "migrate",
+    "resolve",
+    "--schema",
+    schemaPath,
+    "--rolled-back",
+    migrationName
+  ]);
+}
+
+export function isKnownOrderCenterEnumFailure(failedMigration) {
+  const logs = failedMigration.logs ?? "";
+  return (
+    failedMigration.migrationName === orderCenterMigration &&
+    (logs.includes("55P04") || logs.includes("unsafe use of new value")) &&
+    logs.includes("READY_TO_PACK")
+  );
+}
+
+async function readOrderCenterRollbackState() {
+  const { PrismaClient } = await import("@prisma/client");
+  const prisma = new PrismaClient();
+
+  try {
+    const [state] = await prisma.$queryRawUnsafe(`
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM pg_type enum_type
+          JOIN pg_enum enum_value ON enum_value.enumtypid = enum_type.oid
+          WHERE enum_type.typname = 'FulfillmentStatus'
+            AND enum_value.enumlabel IN ('READY_TO_PACK', 'READY_FOR_DISPATCH')
+        ) AS "hasNewFulfillmentStatuses",
+        EXISTS (
+          SELECT 1 FROM pg_type
+          WHERE typname IN ('FulfillmentItemStatus', 'PackagingMethod', 'PickupVerificationMethod', 'DeliveryRiderType')
+        ) AS "hasOrderCenterEnumTypes",
+        to_regclass('public."FulfillmentItem"') IS NOT NULL AS "hasFulfillmentItemTable",
+        to_regclass('public."DeliveryRider"') IS NOT NULL AS "hasDeliveryRiderTable",
+        to_regclass('public."DeliveryAssignment"') IS NOT NULL AS "hasDeliveryAssignmentTable",
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'Order' AND column_name = 'pickupCode'
+        ) AS "hasOrderPickupCode",
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'WarehouseLocation' AND column_name = 'zoneCode'
+        ) AS "hasWarehouseLocationZoneCode",
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'OrderFulfillment' AND column_name = 'packingStartedByEmployeeId'
+        ) AS "hasPackingStartedByEmployeeId",
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'FulfillmentEvent' AND column_name = 'idempotencyKey'
+        ) AS "hasFulfillmentEventIdempotencyKey",
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'CustomerServiceCase' AND column_name = 'assignedEmployeeId'
+        ) AS "hasCustomerServiceAssignee"
+    `);
+    return state;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+export function assertOrderCenterMigrationWasRolledBack(state) {
+  if (!state || Object.keys(state).length === 0) {
+    throw new MigrationCommandError(
+      "Could not inspect the database state left by the failed order-center migration. Refusing automatic rollback resolution."
+    );
+  }
+
+  const artifacts = Object.entries(state ?? {})
+    .filter(([, present]) => present === true)
+    .map(([name]) => name);
+
+  if (artifacts.length > 0) {
+    throw new MigrationCommandError(
+      `The failed order-center migration left schema artifacts (${artifacts.join(", ")}). Refusing automatic rollback resolution.`
+    );
+  }
+}
+
 export async function recoverP3009({
   databaseUrl,
   localMigrationNames,
   historyReader = readMigrationHistory,
   diffRunner = schemaDiff,
-  resolver = resolveAppliedMigration
+  resolver = resolveAppliedMigration,
+  rollbackStateReader = readOrderCenterRollbackState,
+  rolledBackResolver = resolveRolledBackMigration
 }) {
   const migrationHistory = await historyReader();
   const plan = buildMigrationHistoryRecoveryPlan(localMigrationNames, migrationHistory);
@@ -190,13 +283,31 @@ export async function recoverP3009({
     console.log(`Unresolved failed migration: ${failed.migrationName} (started ${startedAt})`);
   }
 
+  const knownOrderCenterFailures = plan.failedMigrations.filter(isKnownOrderCenterEnumFailure);
+  if (knownOrderCenterFailures.length > 0) {
+    if (knownOrderCenterFailures.length !== plan.failedMigrations.length) {
+      throw new MigrationCommandError(
+        "P3009 contains both the known order-center enum failure and another unresolved failure. Refusing automatic recovery."
+      );
+    }
+
+    const rollbackState = await rollbackStateReader();
+    assertOrderCenterMigrationWasRolledBack(rollbackState);
+
+    for (const failed of knownOrderCenterFailures) {
+      rolledBackResolver(failed.migrationName);
+    }
+
+    return { ...plan, recoveryStrategy: "ROLLBACK_AND_RETRY" };
+  }
+
   assertSchemaMatchesTarget(databaseUrl, diffRunner);
 
   for (const migrationName of plan.migrationsToResolve) {
     resolver(migrationName);
   }
 
-  return plan;
+  return { ...plan, recoveryStrategy: "SCHEMA_MATCHED_BASELINE" };
 }
 
 function baselineExistingStagingSchema() {
