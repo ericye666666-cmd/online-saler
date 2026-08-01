@@ -1,5 +1,5 @@
 import { OrderCenterPage } from "./orders-client";
 
 export default function Page() {
-  return <OrderCenterPage queue="all" />;
+  return <OrderCenterPage scope="workbench" />;
 }

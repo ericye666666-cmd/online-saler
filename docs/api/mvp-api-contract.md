@@ -557,49 +557,39 @@ Permission: refund execute.
 
 ## Fulfillment APIs
 
-### `GET /api/v1/operations/picking/tasks`
+Operations uses one order-centered API surface:
 
-Picker task queue.
+- `GET /operations/orders` — cards/list with unified filters.
+- `GET /operations/orders/summary` — counts for the 12 status tabs.
+- `GET /operations/orders/:orderId` — products, locations, assignments, cases,
+  delivery assignments, and the complete event timeline.
+- `POST /operations/orders/:orderId/assign-picker`
+- `POST /operations/orders/:orderId/claim-picking`
+- `POST /operations/orders/:orderId/items/:orderItemId/scan`
+- `POST /operations/orders/:orderId/start-packing`
+- `POST /operations/orders/:orderId/complete-packing`
+- `POST /operations/orders/:orderId/ready-for-pickup`
+- `POST /operations/orders/:orderId/ready-for-dispatch`
+- `POST /operations/orders/:orderId/assign-rider`
+- `POST /operations/orders/:orderId/dispatch`
+- `POST /operations/orders/:orderId/confirm-pickup`
+- `POST /operations/orders/:orderId/complete-delivery`
+- `POST /operations/orders/:orderId/exception`
+- `POST /operations/orders/:orderId/cancel`
+- `POST /operations/orders/:orderId/assign-after-sale`
 
-### `POST /api/v1/operations/picking/:taskCode/scan`
+Every endpoint checks the matching `orders.*` permission on the server. Employee
+actions additionally require an active employee linked to the admin account.
+Wrong barcode responses include expected barcode, actual barcode, product, and
+correct location.
 
-Scan location and product barcode.
+Warehouse location configuration is separate from daily order work:
 
-Request:
-
-```json
-{
-  "locationCode": "ON-KKY-C03-B07",
-  "barcode": "DLF-26-000001"
-}
-```
-
-Rules:
-
-- Wrong location or wrong barcode returns blocking error.
-- Correct scan updates task and inventory.
-
-### `POST /api/v1/operations/packing/:orderCode/scan`
-
-Packing scan.
-
-### `POST /api/v1/operations/pickup/:orderCode/verify`
-
-Verify pickup by pickup code or customer phone.
-
-### `POST /api/v1/operations/delivery-handoffs`
-
-Record handoff to delivery process.
-
-Request:
-
-```json
-{
-  "orderCodes": ["ORD-000001"],
-  "riderName": "John",
-  "riderPhone": "254700000001"
-}
-```
+- `GET /operations/warehouse-locations`
+- `POST /operations/warehouse-locations`
+- `POST /operations/warehouse-locations/bulk`
+- `PATCH /operations/warehouse-locations/:locationId/active`
+- `POST /operations/warehouse-locations/move-item`
 
 ### `POST /api/v1/operations/deliveries/:shipmentCode/attempts`
 

@@ -241,38 +241,48 @@ INITIATED
 
 ## Fulfillment State
 
-Fulfillment state describes parcel and handoff work.
+`OrderFulfillment.status` is the single operational order state machine used by
+Operations. `Order.status` remains the high-level payment/completion envelope;
+the Order Center must not introduce a second picking or delivery state machine.
 
 ```text
-NOT_STARTED
-  -> PICK_TASK_CREATED
+PAID
   -> PICKING
-  -> PICKED
-  -> PACKING
+  -> READY_TO_PACK
   -> PACKED
-  -> READY_FOR_PICKUP
-  -> HANDED_TO_CUSTOMER
 
-or
+Pickup:
+PACKED -> READY_FOR_PICKUP -> COMPLETED
 
-PACKED
-  -> READY_FOR_DELIVERY
-  -> HANDED_TO_RIDER
-  -> OUT_FOR_DELIVERY
-  -> DELIVERED
-  -> DELIVERY_FAILED
-  -> DELIVERY_RESCHEDULED
+Delivery:
+PACKED -> READY_FOR_DISPATCH -> OUT_FOR_DELIVERY -> COMPLETED
+
+Any non-completed active state -> EXCEPTION
 ```
 
 ### Fulfillment Rules
 
-- Picking requires correct product barcode scan.
-- Packing requires another product scan.
-- Pickup requires pickup code or customer phone verification.
-- Delivery handoff records rider or delivery batch.
-- Customer-caused second delivery costs another 50 KSh.
-- Failed delivery must record reason.
-- Fulfillment state drives commission waiting window only after delivered or handed to customer.
+- A successful payment creates exactly one `OrderFulfillment` and one
+  `FulfillmentItem` per order item.
+- Picking is claimed or assigned at order level. Every item retains its barcode
+  and warehouse location in the same order detail.
+- A wrong barcode records a rejected scan event and cannot verify the item.
+- The order reaches `READY_TO_PACK` only when every `FulfillmentItem` is
+  `VERIFIED`.
+- Packing records the start employee, completion employee, method, parcel count,
+  note, and timestamps before moving to `PACKED`.
+- Pickup and delivery paths are mutually exclusive. Pickup requires order number,
+  customer phone, or pickup-code verification.
+- Delivery requires an internal employee rider or an external rider record before
+  dispatch. Each assignment records the assigning admin, rider, assignment time,
+  estimated delivery time, and note.
+- Picker, packer, dispatch confirmer, rider, pickup confirmer, and after-sale owner
+  are separate relations.
+- Every action writes a `FulfillmentEvent` with old/new state, admin actor,
+  related employee or rider, note, and timestamp. Transition events use an
+  idempotency key so repeated clicks do not append duplicates.
+- Exceptions record warehouse facts only. Refund decisions remain an after-sale
+  responsibility.
 
 ## Return State
 

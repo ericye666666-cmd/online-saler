@@ -20,7 +20,6 @@ export type OperationsRoleBlueprint = {
 
 const MODULES = [
   "product",
-  "warehouse",
   "orders",
   "affiliate",
   "customer-service",
@@ -50,6 +49,46 @@ const modulePermissions: OperationsPermission[] = MODULES.map((module) => ({
 }));
 
 const pagePermissions: OperationsPermission[] = [
+  {
+    code: "page.orders.workbench",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-workbench",
+    action: "view",
+    description: "Open the order workbench."
+  },
+  {
+    code: "page.orders.all",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-all",
+    action: "view",
+    description: "Open all orders."
+  },
+  {
+    code: "page.orders.after-sale",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-after-sale",
+    action: "view",
+    description: "Open after-sale orders."
+  },
+  {
+    code: "page.orders.exceptions",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-exceptions",
+    action: "view",
+    description: "Open exception orders."
+  },
+  {
+    code: "page.system.warehouse-locations",
+    module: "system",
+    scope: "PAGE",
+    page: "warehouse-locations",
+    action: "view",
+    description: "Open warehouse location configuration."
+  },
   {
     code: "page.product.digitalization",
     module: "product",
@@ -111,10 +150,31 @@ const actionPermissions: OperationsPermission[] = MODULES.flatMap((module) =>
   }))
 );
 
+const orderWorkflowPermissions: OperationsPermission[] = [
+  ["orders.view", "view", "View orders and their status history."],
+  ["orders.assign-picker", "assign-picker", "Assign or reassign picking work."],
+  ["orders.pick", "pick", "Claim picking work and verify item barcodes."],
+  ["orders.pack", "pack", "Start and complete order packing."],
+  ["orders.assign-rider", "assign-rider", "Assign an internal or external delivery rider."],
+  ["orders.dispatch", "dispatch", "Confirm a parcel was handed to a rider."],
+  ["orders.complete", "complete", "Confirm delivery or customer pickup completion."],
+  ["orders.cancel", "cancel", "Cancel an eligible order."],
+  ["orders.after-sale", "after-sale", "Manage after-sale ownership and status."],
+  ["warehouse-locations.view", "view", "View warehouse locations and their products."],
+  ["warehouse-locations.manage", "manage", "Create, disable, move, and print warehouse locations."]
+].map(([code, action, description]) => ({
+  code,
+  module: code.startsWith("warehouse-locations") ? "system" : "orders",
+  scope: "ACTION" as const,
+  action,
+  description
+}));
+
 export const OPERATIONS_PERMISSIONS = [
   ...modulePermissions,
   ...pagePermissions,
-  ...actionPermissions
+  ...actionPermissions,
+  ...orderWorkflowPermissions
 ] as const satisfies readonly OperationsPermission[];
 
 const allPermissionCodes = OPERATIONS_PERMISSIONS.map((permission) => permission.code);
@@ -136,12 +196,27 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "page.product.digitalization",
       "page.product.control",
       "page.product.details",
+      "page.orders.workbench",
+      "page.orders.all",
+      "page.orders.after-sale",
+      "page.orders.exceptions",
+      "page.system.warehouse-locations",
       "action.product.edit",
       "action.product.approve",
       "action.product.publish",
-      "action.warehouse.edit",
       "action.orders.edit",
-      "action.analytics.export"
+      "action.analytics.export",
+      "orders.view",
+      "orders.assign-picker",
+      "orders.pick",
+      "orders.pack",
+      "orders.assign-rider",
+      "orders.dispatch",
+      "orders.complete",
+      "orders.cancel",
+      "orders.after-sale",
+      "warehouse-locations.view",
+      "warehouse-locations.manage"
     ])
   },
   {
@@ -161,16 +236,20 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
   },
   {
     code: "WAREHOUSE_FULFILLMENT",
-    name: "Warehouse & Fulfillment",
-    description: "Warehouse stock-in, picking, packing, and handoff work.",
+    name: "Order Fulfillment",
+    description: "Order-level picking, packing, pickup, and delivery handoff work.",
     permissions: [
-      "module.warehouse",
       "module.orders",
-      "action.warehouse.view",
-      "action.warehouse.create",
-      "action.warehouse.edit",
-      "action.warehouse.approve",
-      "action.orders.view"
+      "page.orders.workbench",
+      "page.orders.all",
+      "page.orders.exceptions",
+      "action.orders.view",
+      "orders.view",
+      "orders.pick",
+      "orders.pack",
+      "orders.dispatch",
+      "orders.complete",
+      "warehouse-locations.view"
     ]
   },
   {
@@ -179,10 +258,19 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
     description: "Order review, payment status follow-up, and order exception handling.",
     permissions: [
       "module.orders",
+      "page.orders.workbench",
+      "page.orders.all",
+      "page.orders.after-sale",
+      "page.orders.exceptions",
       "action.orders.view",
       "action.orders.edit",
       "action.orders.approve",
-      "action.orders.export"
+      "action.orders.export",
+      "orders.view",
+      "orders.assign-picker",
+      "orders.assign-rider",
+      "orders.cancel",
+      "orders.after-sale"
     ]
   },
   {
@@ -204,10 +292,14 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
     permissions: [
       "module.customer-service",
       "module.orders",
+      "page.orders.all",
+      "page.orders.after-sale",
       "action.customer-service.view",
       "action.customer-service.create",
       "action.customer-service.edit",
-      "action.orders.view"
+      "action.orders.view",
+      "orders.view",
+      "orders.after-sale"
     ]
   },
   {
@@ -219,6 +311,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "module.affiliate",
       "module.analytics",
       "action.orders.view",
+      "orders.view",
       "action.orders.export",
       "action.affiliate.view",
       "action.affiliate.approve",

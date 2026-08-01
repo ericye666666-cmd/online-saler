@@ -74,13 +74,31 @@ export function filterNavigation<T extends NavigationModule>(modules: readonly T
 }
 
 export function canAccessPath(pathname: string, modules: readonly NavigationModule[], session: OperationsSession | null): boolean {
-  const visibleModules = filterNavigation(modules, session);
-  const visibleItems = visibleModules.flatMap((module) => module.items);
-  if (pathname === "/") return visibleItems.some((item) => item.href === "/");
-  return visibleItems.some((item) =>
-    Boolean(item.href && item.href !== "/" && pathname.startsWith(item.href)) ||
-    Boolean(item.routePrefixes?.some((prefix) => pathname.startsWith(prefix)))
-  );
+  if (pathname === "/warehouse/inventory") return hasPermission(session, "warehouse-locations.view");
+  if (pathname === "/warehouse" || pathname.startsWith("/warehouse/")) return hasPermission(session, "orders.view");
+
+  const items = modules.flatMap((module) => module.items);
+  if (pathname === "/") {
+    const home = items.find((item) => item.href === "/");
+    return Boolean(home && hasPermission(session, home.permission));
+  }
+
+  const exact = items.find((item) => item.href === pathname);
+  if (exact) return hasPermission(session, exact.permission);
+
+  const prefixMatch = items
+    .flatMap((item) => (item.routePrefixes ?? []).map((prefix) => ({ item, prefix })))
+    .filter(({ prefix }) => pathname.startsWith(prefix))
+    .sort((left, right) => right.prefix.length - left.prefix.length)[0];
+  if (prefixMatch) return hasPermission(session, prefixMatch.item.permission);
+
+  const orderDetail = pathname.match(/^\/orders\/[^/]+$/);
+  if (orderDetail) return hasPermission(session, "orders.view");
+
+  const parent = items
+    .filter((item) => item.href && item.href !== "/" && pathname.startsWith(`${item.href}/`))
+    .sort((left, right) => (right.href?.length ?? 0) - (left.href?.length ?? 0))[0];
+  return Boolean(parent && hasPermission(session, parent.permission));
 }
 
 export function adminInitials(adminUser: OperationsAdminUser | null): string {

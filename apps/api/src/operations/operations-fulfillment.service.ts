@@ -1,674 +1,1108 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  CustomerServiceCaseStatus,
+  CustomerServiceIssueType,
+  DeliveryRiderType,
+  EmployeeStatus,
   FulfillmentExceptionReason,
+  FulfillmentItemStatus,
   FulfillmentMethod,
   FulfillmentStatus,
   InventoryItemStatus,
+  InventoryMovementType,
   OrderStatus,
+  PackagingMethod,
   PaymentStatus,
+  PickupVerificationMethod,
   Prisma,
   prisma
 } from "@online-saler/database";
 import { OperationsAccessService } from "./operations-access.service";
-import { barcodeMatchesOrder, canTransitionFulfillment, normalizeScannedBarcode } from "./operations-fulfillment-state";
-import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
+import {
+  canTransitionFulfillment,
+  orderCenterTab,
+  type OrderCenterTab,
+  verifyFulfillmentItemBarcode
+} from "./operations-fulfillment-state";
 
-const WAREHOUSE_VIEW = "action.warehouse.view";
-const WAREHOUSE_EDIT = "action.warehouse.edit";
-const ORDERS_VIEW = "action.orders.view";
+const ORDER_INCLUDE = {
+  customer: true,
+  affiliate: true,
+  items: {
+    include: { snapshot: true },
+    orderBy: { createdAt: "asc" }
+  },
+  payments: {
+    orderBy: { requestedAt: "desc" },
+    take: 1
+  },
+  fulfillment: {
+    include: {
+      assignedPicker: true,
+      packingStartedBy: true,
+      packedBy: true,
+      dispatchedBy: true,
+      pickupConfirmedBy: true,
+      afterSaleOwner: true,
+      deliveryRider: { include: { employee: true } },
+      items: { include: { verifiedBy: true }, orderBy: { createdAt: "asc" } },
+      deliveryAssignments: {
+        include: { deliveryRider: { include: { employee: true } }, assignedByAdminUser: true },
+        orderBy: { createdAt: "desc" }
+      },
+      events: {
+        include: {
+          actorEmployee: true,
+          actorAdminUser: true,
+          relatedEmployee: true,
+          deliveryRider: true,
+          orderItem: { include: { snapshot: true } }
+        },
+        orderBy: { createdAt: "asc" }
+      }
+    }
+  },
+  customerServiceCases: {
+    include: { assignedEmployee: true, createdByAdminUser: true },
+    orderBy: { updatedAt: "desc" }
+  }
+} as const;
 
-export type FulfillmentQueueKey =
-  | "awaiting-picking"
-  | "picking"
-  | "packing"
-  | "packed"
-  | "pickup"
-  | "delivery"
-  | "completed"
-  | "exceptions";
+type OrderDetail = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
 
-export type OrderQueueKey =
-  | "all"
-  | "pending-payment"
-  | "payment-processing"
-  | "paid"
-  | "cancelled"
-  | "expired"
-  | "refunded"
-  | "payment-exceptions";
+export type OrderCenterScope = "workbench" | "all" | "after-sales" | "exceptions";
 
-type FulfillmentListInput = {
-  queue?: FulfillmentQueueKey;
-  search?: string;
+export type OrderCenterListInput = {
   adminUserId?: string;
-};
-
-type OrderListInput = {
-  queue?: OrderQueueKey;
-  search?: string;
-  adminUserId?: string;
-};
-
-type InventorySearchInput = {
-  search?: string;
-  adminUserId?: string;
-};
-
-type EmployeeInput = {
-  employeeId?: string;
-  adminUserId?: string;
-  note?: string;
-};
-
-type ScanInput = EmployeeInput & {
+  scope?: OrderCenterScope;
+  tab?: OrderCenterTab;
+  dateFrom?: string;
+  dateTo?: string;
+  orderNumber?: string;
+  customerName?: string;
+  customerPhone?: string;
+  productName?: string;
   barcode?: string;
-  barcodes?: string[];
+  fulfillmentMethod?: FulfillmentMethod;
+  paymentStatus?: PaymentStatus;
+  orderStatus?: OrderStatus;
+  pickerEmployeeId?: string;
+  packerEmployeeId?: string;
+  rider?: string;
+  affiliate?: string;
 };
 
-type PackInput = EmployeeInput & {
-  packingStatus?: string;
+export type AdminInput = { adminUserId?: string; note?: string };
+export type EmployeeInput = AdminInput & { employeeId?: string };
+export type ScanInput = AdminInput & { barcode?: string };
+export type PackingInput = EmployeeInput & { packagingMethod?: PackagingMethod; packageCount?: number };
+export type PickupInput = AdminInput & { verificationMethod?: PickupVerificationMethod; verificationValue?: string };
+export type RiderInput = AdminInput & {
+  riderType?: DeliveryRiderType;
+  employeeId?: string;
+  name?: string;
+  phone?: string;
+  company?: string;
+  vehicle?: string;
+  estimatedDeliveryAt?: string;
+};
+export type ExceptionInput = AdminInput & { reason?: FulfillmentExceptionReason };
+export type AfterSaleInput = AdminInput & {
+  employeeId?: string;
+  caseId?: string;
+  status?: CustomerServiceCaseStatus;
+  afterSaleReason?: string;
+  customerRequest?: string;
+  requiresReturn?: boolean;
+  requiresRefund?: boolean;
+  affectsAffiliateCommission?: boolean;
 };
 
-type PickupInput = EmployeeInput & {
-  verification?: string;
+type EventInput = {
+  idempotencyKey?: string;
+  fulfillmentId: string;
+  orderId: string;
+  actorAdminUserId?: string | null;
+  actorEmployeeId?: string | null;
+  relatedEmployeeId?: string | null;
+  deliveryRiderId?: string | null;
+  orderItemId?: string | null;
+  action: string;
+  oldStatus: FulfillmentStatus | null;
+  newStatus: FulfillmentStatus;
+  note?: string | null;
+  expectedBarcode?: string | null;
+  scannedBarcode?: string | null;
+  exceptionReason?: FulfillmentExceptionReason | null;
 };
-
-type DeliveryInput = EmployeeInput & {
-  riderName?: string;
-  riderPhone?: string;
-};
-
-type ExceptionInput = EmployeeInput & {
-  reason?: FulfillmentExceptionReason;
-};
-
-type FulfillmentWithOrder = Prisma.OrderFulfillmentGetPayload<{
-  include: ReturnType<OperationsFulfillmentService["fulfillmentInclude"]>;
-}>;
 
 @Injectable()
 export class OperationsFulfillmentService {
   constructor(private readonly access: OperationsAccessService) {}
 
-  async summary(adminUserId?: string) {
-    await this.access.requirePermission(adminUserId, WAREHOUSE_VIEW);
+  async summary(input: OrderCenterListInput) {
+    await this.access.requirePermission(input.adminUserId, "orders.view");
     await this.ensurePaidFulfillments();
-    const [awaitingPicking, picking, packing, packed, pickup, delivery, completed, exceptions] = await Promise.all([
-      prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.PAID } }),
-      prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.PICKING, pickedAt: null } }),
-      prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.PICKING, pickedAt: { not: null } } }),
-      prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.PACKED } }),
-      prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.READY_FOR_PICKUP } }),
-      prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.OUT_FOR_DELIVERY } }),
-      prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.COMPLETED } }),
-      prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.EXCEPTION } })
-    ]);
-
-    return { awaitingPicking, picking, packing, packed, pickup, delivery, completed, exceptions };
-  }
-
-  async listFulfillmentTasks(input: FulfillmentListInput) {
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_VIEW);
-    await this.ensurePaidFulfillments();
-    const tasks = await prisma.orderFulfillment.findMany({
-      where: this.fulfillmentWhere(input),
-      include: this.fulfillmentInclude(),
-      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-      take: 80
+    const orders = await prisma.order.findMany({
+      where: this.orderWhere({ ...input, scope: "all", tab: "all" }),
+      select: {
+        status: true,
+        fulfillment: { select: { status: true } },
+        customerServiceCases: { select: { issueType: true, status: true } }
+      }
     });
-    return this.attachInventory(tasks);
+    const counts: Record<OrderCenterTab, number> = {
+      all: orders.length,
+      "pending-payment": 0,
+      "waiting-pick": 0,
+      picking: 0,
+      "ready-to-pack": 0,
+      packed: 0,
+      "ready-for-pickup": 0,
+      "ready-for-dispatch": 0,
+      "out-for-delivery": 0,
+      completed: 0,
+      "after-sale": 0,
+      cancelled: 0
+    };
+    for (const order of orders) {
+      const tab = orderCenterTab({
+        orderStatus: order.status,
+        fulfillmentStatus: order.fulfillment?.status,
+        hasOpenAfterSale: order.customerServiceCases.some(
+          (item) => item.issueType === CustomerServiceIssueType.AFTER_SALE && item.status !== CustomerServiceCaseStatus.CLOSED
+        )
+      });
+      if (tab !== "all") counts[tab] += 1;
+    }
+    return counts;
   }
 
-  async listOrders(input: OrderListInput) {
-    await this.access.requirePermission(input.adminUserId, ORDERS_VIEW);
-    return prisma.order.findMany({
+  async listOrders(input: OrderCenterListInput) {
+    await this.access.requirePermission(input.adminUserId, "orders.view");
+    await this.ensurePaidFulfillments();
+    const orders = await prisma.order.findMany({
       where: this.orderWhere(input),
-      include: {
-        customer: true,
-        items: {
-          include: { snapshot: true },
-          orderBy: { createdAt: "asc" }
-        },
-        payments: {
-          orderBy: { requestedAt: "desc" },
-          take: 1
-        },
-        fulfillment: true
-      },
+      include: ORDER_INCLUDE,
       orderBy: { createdAt: "desc" },
-      take: 120
+      take: 150
+    });
+    return this.attachInventory(orders);
+  }
+
+  async orderDetail(orderId: string, adminUserId?: string) {
+    await this.access.requirePermission(adminUserId, "orders.view");
+    await this.ensurePaidFulfillments(orderId);
+    const order = await this.requireOrder(orderId);
+    return (await this.attachInventory([order]))[0];
+  }
+
+  async employees(adminUserId?: string) {
+    await this.access.requirePermission(adminUserId, "orders.view");
+    return prisma.employee.findMany({
+      where: { status: EmployeeStatus.ACTIVE },
+      select: { id: true, employeeCode: true, name: true, phone: true },
+      orderBy: [{ name: "asc" }, { employeeCode: "asc" }]
     });
   }
 
-  async searchInventory(input: InventorySearchInput) {
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_VIEW);
-    const search = input.search?.trim();
-    return prisma.inventoryItem.findMany({
-      where: search
-        ? {
-            OR: [
-              { barcode: { contains: search, mode: "insensitive" } },
-              { product: { productCode: { contains: search, mode: "insensitive" } } },
-              { product: { title: { contains: search, mode: "insensitive" } } },
-              { location: { locationCode: { contains: search, mode: "insensitive" } } }
-            ]
-          }
-        : {},
-      include: {
-        location: true,
-        product: {
-          include: {
-            images: {
-              orderBy: { sortOrder: "asc" },
-              take: 1
-            }
-          }
-        }
-      },
-      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
-      take: 80
-    });
-  }
-
-  async startPicking(orderId: string, input: EmployeeInput) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_EDIT);
-    const task = await this.requireFulfillment(orderId);
-    this.assertTransition(task, FulfillmentStatus.PICKING);
-
-    await prisma.$transaction(async (transaction) => {
-      await transaction.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.FULFILLING }
-      });
-      const updated = await transaction.orderFulfillment.update({
-        where: { orderId },
-        data: {
-          status: FulfillmentStatus.PICKING,
-          assignedPickerEmployeeId: employeeId,
-          exceptionReason: null,
-          exceptionNote: null
-        }
-      });
-      await this.createEvent(transaction, {
-        fulfillmentId: updated.id,
+  async assignPicker(orderId: string, input: EmployeeInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.assign-picker");
+    const employee = await this.requireEmployee(input.employeeId);
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status !== FulfillmentStatus.PAID && fulfillment.status !== FulfillmentStatus.PICKING) {
+      throw new BadRequestException("Picker can only be assigned before picking is complete.");
+    }
+    if (fulfillment.assignedPickerEmployeeId === employee.id) return this.orderDetail(orderId, input.adminUserId);
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({ where: { id: fulfillment.id }, data: { assignedPickerEmployeeId: employee.id } });
+      await this.createEvent(tx, {
+        idempotencyKey: `assign-picker:${fulfillment.id}:${employee.id}:${fulfillment.assignedPickerEmployeeId ?? "unassigned"}`,
+        fulfillmentId: fulfillment.id,
         orderId,
-        actorEmployeeId: employeeId,
-        action: "START_PICKING",
-        oldStatus: task.status,
-        newStatus: updated.status,
+        ...actor,
+        relatedEmployeeId: employee.id,
+        action: "ASSIGN_PICKER",
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
         note: input.note
       });
     });
-
-    return this.fulfillmentDetail(orderId);
+    return this.orderDetail(orderId, input.adminUserId);
   }
 
-  async confirmPicked(orderId: string, input: ScanInput) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_EDIT);
-    const task = await this.requireFulfillment(orderId);
-    if (task.status !== FulfillmentStatus.PICKING) {
-      throw new BadRequestException("Only picking orders can be scan-confirmed.");
+  async claimPicking(orderId: string, input: AdminInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.pick");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status === FulfillmentStatus.PICKING && fulfillment.assignedPickerEmployeeId === actor.actorEmployeeId) {
+      return this.orderDetail(orderId, input.adminUserId);
     }
-
-    const inventoryByProductId = await this.inventoryByProduct(task.order.items.map((item) => item.productId));
-    const expectedBarcodes = task.order.items
-      .map((item) => item.snapshot?.barcode || inventoryByProductId.get(item.productId)?.barcode)
-      .filter((barcode): barcode is string => Boolean(barcode));
-    if (expectedBarcodes.length !== task.order.items.length) {
-      return this.moveToException(orderId, task, {
-        employeeId,
-        reason: FulfillmentExceptionReason.ITEM_NOT_FOUND,
-        note: "Order item is missing a barcode or inventory record."
-      });
+    if (fulfillment.assignedPickerEmployeeId && fulfillment.assignedPickerEmployeeId !== actor.actorEmployeeId) {
+      throw new ForbiddenException("This picking task is assigned to another employee.");
     }
-
-    const scannedBarcodes = scannedBarcodeList(input);
-    const missing = expectedBarcodes.filter((expected) => !scannedBarcodes.some((scanned) => barcodeMatchesOrder([expected], scanned)));
-    const unknown = scannedBarcodes.filter((scanned) => !barcodeMatchesOrder(expectedBarcodes, scanned));
-    if (scannedBarcodes.length === 0 || missing.length > 0 || unknown.length > 0) {
-      return this.moveToException(orderId, task, {
-        employeeId,
-        reason: FulfillmentExceptionReason.BARCODE_MISMATCH,
-        scannedBarcode: scannedBarcodes.join(", "),
-        note: `Barcode mismatch. Missing: ${missing.join(", ") || "none"}. Unknown: ${unknown.join(", ") || "none"}.`
+    this.assertTransition(order, FulfillmentStatus.PICKING);
+    await prisma.$transaction(async (tx) => {
+      await tx.order.updateMany({ where: { id: orderId, status: OrderStatus.PAID }, data: { status: OrderStatus.FULFILLING } });
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: { status: FulfillmentStatus.PICKING, assignedPickerEmployeeId: actor.actorEmployeeId }
       });
-    }
-
-    await prisma.$transaction(async (transaction) => {
-      await transaction.inventoryItem.updateMany({
-        where: { productId: { in: task.order.items.map((item) => item.productId) } },
-        data: { status: InventoryItemStatus.PICKED }
-      });
-      const updated = await transaction.orderFulfillment.update({
-        where: { orderId },
-        data: {
-          pickedAt: new Date(),
-          exceptionReason: null,
-          exceptionNote: null
-        }
-      });
-      await this.createEvent(transaction, {
-        fulfillmentId: updated.id,
+      await this.createEvent(tx, {
+        idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.PICKING}`,
+        fulfillmentId: fulfillment.id,
         orderId,
-        actorEmployeeId: employeeId,
-        action: "CONFIRM_PICKED",
-        oldStatus: task.status,
-        newStatus: updated.status,
-        note: input.note,
-        scannedBarcode: scannedBarcodes.join(", ")
+        ...actor,
+        relatedEmployeeId: actor.actorEmployeeId,
+        action: fulfillment.assignedPickerEmployeeId ? "START_PICKING" : "CLAIM_PICKING_TASK",
+        oldStatus: fulfillment.status,
+        newStatus: FulfillmentStatus.PICKING,
+        note: input.note
       });
     });
-
-    return this.fulfillmentDetail(orderId);
+    return this.orderDetail(orderId, input.adminUserId);
   }
 
-  async pack(orderId: string, input: PackInput) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_EDIT);
-    const task = await this.requireFulfillment(orderId);
-    this.assertTransition(task, FulfillmentStatus.PACKED);
-
-    await prisma.$transaction(async (transaction) => {
-      await transaction.inventoryItem.updateMany({
-        where: { productId: { in: task.order.items.map((item) => item.productId) } },
-        data: { status: InventoryItemStatus.PACKED }
+  async scanItem(orderId: string, orderItemId: string, input: ScanInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.pick");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status !== FulfillmentStatus.PICKING) throw new BadRequestException("Only an active picking task accepts barcode scans.");
+    if (fulfillment.assignedPickerEmployeeId && fulfillment.assignedPickerEmployeeId !== actor.actorEmployeeId) {
+      throw new ForbiddenException("This picking task is assigned to another employee.");
+    }
+    const fulfillmentItem = fulfillment.items.find((item) => item.orderItemId === orderItemId);
+    const orderItem = order.items.find((item) => item.id === orderItemId);
+    if (!fulfillmentItem || !orderItem) throw new NotFoundException("Order item was not found in this picking task.");
+    const inventoryItem = await prisma.inventoryItem.findUnique({
+      where: { productId: orderItem.productId },
+      include: { location: true }
+    });
+    const expectedBarcode = fulfillmentItem.expectedBarcode || orderItem.snapshot?.barcode || inventoryItem?.barcode || null;
+    const check = verifyFulfillmentItemBarcode({
+      orderItemId,
+      expectedBarcode,
+      scannedBarcode: input.barcode ?? "",
+      productName: orderItem.snapshot?.title ?? "Unnamed product",
+      locationCode: inventoryItem?.location?.locationCode ?? null
+    });
+    if (!check.ok) {
+      await prisma.$transaction((tx) => this.createEvent(tx, {
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        orderItemId,
+        action: "BARCODE_REJECTED",
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
+        note: input.note,
+        expectedBarcode: check.expectedBarcode,
+        scannedBarcode: check.actualBarcode,
+        exceptionReason: FulfillmentExceptionReason.BARCODE_MISMATCH
+      }));
+      throw new BadRequestException({
+        message: "Barcode does not match the selected order item.",
+        expectedBarcode: check.expectedBarcode,
+        actualBarcode: check.actualBarcode,
+        productName: check.productName,
+        locationCode: check.locationCode
       });
-      const updated = await transaction.orderFulfillment.update({
-        where: { orderId },
+    }
+    if (fulfillmentItem.status === FulfillmentItemStatus.VERIFIED) return this.orderDetail(orderId, input.adminUserId);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.fulfillmentItem.update({
+        where: { orderItemId },
+        data: {
+          status: FulfillmentItemStatus.VERIFIED,
+          scannedBarcode: check.normalizedBarcode,
+          verifiedByEmployeeId: actor.actorEmployeeId,
+          verifiedAt: new Date()
+        }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `scan:${fulfillment.id}:${orderItemId}`,
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        relatedEmployeeId: actor.actorEmployeeId,
+        orderItemId,
+        action: "ITEM_BARCODE_VERIFIED",
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
+        note: input.note,
+        expectedBarcode,
+        scannedBarcode: check.normalizedBarcode
+      });
+      const remaining = await tx.fulfillmentItem.count({
+        where: { fulfillmentId: fulfillment.id, status: FulfillmentItemStatus.PENDING }
+      });
+      if (remaining === 0) {
+        await tx.orderFulfillment.update({
+          where: { id: fulfillment.id },
+          data: { status: FulfillmentStatus.READY_TO_PACK, pickedAt: new Date() }
+        });
+        await tx.inventoryItem.updateMany({
+          where: { productId: { in: order.items.map((item) => item.productId) } },
+          data: { status: InventoryItemStatus.PICKED }
+        });
+        await this.createEvent(tx, {
+          idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.READY_TO_PACK}`,
+          fulfillmentId: fulfillment.id,
+          orderId,
+          ...actor,
+          relatedEmployeeId: actor.actorEmployeeId,
+          action: "COMPLETE_PICKING",
+          oldStatus: FulfillmentStatus.PICKING,
+          newStatus: FulfillmentStatus.READY_TO_PACK,
+          note: "All order item barcodes were verified."
+        });
+      }
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  async startPacking(orderId: string, input: EmployeeInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.pack");
+    const packerId = input.employeeId?.trim() || actor.actorEmployeeId!;
+    if (packerId !== actor.actorEmployeeId) await this.access.requirePermission(input.adminUserId, "orders.assign-picker");
+    await this.requireEmployee(packerId);
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status !== FulfillmentStatus.READY_TO_PACK) throw new BadRequestException("Packing can start only after every item is verified.");
+    if (fulfillment.packingStartedAt && fulfillment.packingStartedByEmployeeId === packerId) {
+      return this.orderDetail(orderId, input.adminUserId);
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: { packingStartedAt: new Date(), packingStartedByEmployeeId: packerId }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `start-packing:${fulfillment.id}:${packerId}:${fulfillment.packingStartedByEmployeeId ?? "unassigned"}`,
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        relatedEmployeeId: packerId,
+        action: "START_PACKING",
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
+        note: input.note
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  async completePacking(orderId: string, input: PackingInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.pack");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (!fulfillment.packingStartedAt) throw new BadRequestException("Start packing before completing it.");
+    this.assertTransition(order, FulfillmentStatus.PACKED);
+    const packerId = input.employeeId?.trim() || fulfillment.packingStartedByEmployeeId || actor.actorEmployeeId!;
+    if (packerId !== actor.actorEmployeeId) await this.access.requirePermission(input.adminUserId, "orders.assign-picker");
+    await this.requireEmployee(packerId);
+    const packagingMethod = input.packagingMethod && Object.values(PackagingMethod).includes(input.packagingMethod)
+      ? input.packagingMethod
+      : null;
+    const packageCount = Number(input.packageCount);
+    if (!packagingMethod) throw new BadRequestException("Packaging method must be Bag, Box, or Other.");
+    if (!Number.isInteger(packageCount) || packageCount < 1) throw new BadRequestException("Package count must be at least one.");
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
         data: {
           status: FulfillmentStatus.PACKED,
-          packedByEmployeeId: employeeId,
+          packedByEmployeeId: packerId,
           packedAt: new Date(),
-          packingStatus: input.packingStatus?.trim() || "PACKED",
+          packagingMethod,
+          packageCount,
+          packingStatus: packagingMethod,
           packingNote: input.note?.trim() || null
         }
       });
-      await this.createEvent(transaction, {
-        fulfillmentId: updated.id,
+      await tx.inventoryItem.updateMany({
+        where: { productId: { in: order.items.map((item) => item.productId) } },
+        data: { status: InventoryItemStatus.PACKED }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.PACKED}`,
+        fulfillmentId: fulfillment.id,
         orderId,
-        actorEmployeeId: employeeId,
-        action: "PACK",
-        oldStatus: task.status,
-        newStatus: updated.status,
+        ...actor,
+        relatedEmployeeId: packerId,
+        action: "COMPLETE_PACKING",
+        oldStatus: fulfillment.status,
+        newStatus: FulfillmentStatus.PACKED,
         note: input.note
       });
     });
-
-    return this.fulfillmentDetail(orderId);
+    return this.orderDetail(orderId, input.adminUserId);
   }
 
-  async readyForPickup(orderId: string, input: EmployeeInput) {
-    return this.handoff(orderId, input, FulfillmentStatus.READY_FOR_PICKUP, "READY_FOR_PICKUP", { readyForPickupAt: new Date() });
-  }
-
-  async assignDelivery(orderId: string, input: DeliveryInput) {
-    const riderName = input.riderName?.trim();
-    if (!riderName) throw new BadRequestException("Delivery rider name is required.");
-    return this.handoff(orderId, input, FulfillmentStatus.OUT_FOR_DELIVERY, "ASSIGN_DELIVERY", {
-      deliveryRiderName: riderName,
-      deliveryRiderPhone: input.riderPhone?.trim() || null,
-      outForDeliveryAt: new Date()
+  async readyForPickup(orderId: string, input: AdminInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.pack");
+    return this.moveToHandoff(orderId, input, actor, FulfillmentStatus.READY_FOR_PICKUP, "READY_FOR_PICKUP", {
+      readyForPickupAt: new Date()
     });
+  }
+
+  async readyForDispatch(orderId: string, input: AdminInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.assign-rider");
+    return this.moveToHandoff(orderId, input, actor, FulfillmentStatus.READY_FOR_DISPATCH, "READY_FOR_DISPATCH", {
+      readyForDispatchAt: new Date()
+    });
+  }
+
+  async assignRider(orderId: string, input: RiderInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.assign-rider");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (order.fulfillmentMethod !== FulfillmentMethod.KIKUYU_LOCAL_DELIVERY) {
+      throw new BadRequestException("Pickup orders cannot be assigned to a delivery rider.");
+    }
+    if (fulfillment.status !== FulfillmentStatus.READY_FOR_DISPATCH) {
+      throw new BadRequestException("The order must be ready for dispatch before rider assignment.");
+    }
+    const riderType = input.riderType && Object.values(DeliveryRiderType).includes(input.riderType) ? input.riderType : null;
+    if (!riderType) throw new BadRequestException("Rider type is required.");
+    const rider = riderType === DeliveryRiderType.INTERNAL
+      ? await this.internalRider(input.employeeId)
+      : await this.externalRider(input);
+    const estimatedDeliveryAt = input.estimatedDeliveryAt ? new Date(input.estimatedDeliveryAt) : null;
+    if (estimatedDeliveryAt && Number.isNaN(estimatedDeliveryAt.getTime())) throw new BadRequestException("Estimated delivery time is invalid.");
+    const latest = fulfillment.deliveryAssignments[0];
+    if (
+      fulfillment.deliveryRiderId === rider.id
+      && latest?.estimatedDeliveryAt?.getTime() === estimatedDeliveryAt?.getTime()
+      && (latest?.note ?? "") === (input.note?.trim() ?? "")
+    ) return this.orderDetail(orderId, input.adminUserId);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.deliveryAssignment.create({
+        data: {
+          fulfillmentId: fulfillment.id,
+          orderId,
+          deliveryRiderId: rider.id,
+          assignedByAdminUserId: actor.actorAdminUserId,
+          estimatedDeliveryAt,
+          note: input.note?.trim() || null
+        }
+      });
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: { deliveryRiderId: rider.id, deliveryRiderName: rider.name, deliveryRiderPhone: rider.phone }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `assign-rider:${fulfillment.id}:${latest?.id ?? "initial"}:${rider.id}:${estimatedDeliveryAt?.toISOString() ?? "unscheduled"}:${input.note?.trim() ?? ""}`,
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        relatedEmployeeId: rider.employeeId,
+        deliveryRiderId: rider.id,
+        action: "ASSIGN_DELIVERY_RIDER",
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
+        note: input.note
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  async dispatch(orderId: string, input: AdminInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.dispatch");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status === FulfillmentStatus.OUT_FOR_DELIVERY) return this.orderDetail(orderId, input.adminUserId);
+    this.assertTransition(order, FulfillmentStatus.OUT_FOR_DELIVERY);
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          status: FulfillmentStatus.OUT_FOR_DELIVERY,
+          dispatchedByEmployeeId: actor.actorEmployeeId,
+          dispatchedAt: new Date(),
+          outForDeliveryAt: new Date()
+        }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.OUT_FOR_DELIVERY}`,
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        relatedEmployeeId: actor.actorEmployeeId,
+        deliveryRiderId: fulfillment.deliveryRiderId,
+        action: "HAND_TO_DELIVERY_RIDER",
+        oldStatus: fulfillment.status,
+        newStatus: FulfillmentStatus.OUT_FOR_DELIVERY,
+        note: input.note
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
   }
 
   async confirmPickup(orderId: string, input: PickupInput) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_EDIT);
-    const task = await this.requireFulfillment(orderId);
-    this.assertTransition(task, FulfillmentStatus.COMPLETED);
-    const verification = input.verification?.trim();
-    if (!verification) throw new BadRequestException("Order number or customer phone is required.");
-    if (!matchesPickupVerification(task.order.orderNumber, task.order.customer.phone, verification)) {
-      throw new BadRequestException("Pickup verification does not match this order.");
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.complete");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status === FulfillmentStatus.COMPLETED) return this.orderDetail(orderId, input.adminUserId);
+    if (order.fulfillmentMethod !== FulfillmentMethod.PICKUP) throw new BadRequestException("Delivery orders cannot be completed as pickup.");
+    this.assertTransition(order, FulfillmentStatus.COMPLETED);
+    const method = input.verificationMethod && Object.values(PickupVerificationMethod).includes(input.verificationMethod)
+      ? input.verificationMethod
+      : null;
+    const value = input.verificationValue?.trim() || "";
+    if (!method || !value || !pickupVerificationMatches(order, method, value)) {
+      throw new BadRequestException("Pickup verification does not match the order number, customer phone, or pickup code.");
     }
-    await this.complete(orderId, task, employeeId, "CONFIRM_PICKUP", input.note, {
-      pickupConfirmedBy: {
-        connect: { id: employeeId }
-      },
-      completedAt: new Date()
+    await this.completeOrder(order, actor, "CONFIRM_CUSTOMER_PICKUP", input.note, {
+      pickupConfirmedByEmployeeId: actor.actorEmployeeId,
+      pickupVerificationMethod: method,
+      pickupVerificationValue: value,
+      pickupNote: input.note?.trim() || null
     });
-    return this.fulfillmentDetail(orderId);
+    return this.orderDetail(orderId, input.adminUserId);
   }
 
-  async completeDelivery(orderId: string, input: EmployeeInput) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_EDIT);
-    const task = await this.requireFulfillment(orderId);
-    this.assertTransition(task, FulfillmentStatus.COMPLETED);
-    await this.complete(orderId, task, employeeId, "COMPLETE_DELIVERY", input.note, { completedAt: new Date() });
-    return this.fulfillmentDetail(orderId);
+  async completeDelivery(orderId: string, input: AdminInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.complete");
+    const order = await this.requireOrderWithTask(orderId);
+    if (order.fulfillment?.status === FulfillmentStatus.COMPLETED) return this.orderDetail(orderId, input.adminUserId);
+    if (order.fulfillmentMethod !== FulfillmentMethod.KIKUYU_LOCAL_DELIVERY) {
+      throw new BadRequestException("Pickup orders cannot be completed as delivery.");
+    }
+    this.assertTransition(order, FulfillmentStatus.COMPLETED);
+    await this.completeOrder(order, actor, "CONFIRM_DELIVERY", input.note, {});
+    return this.orderDetail(orderId, input.adminUserId);
   }
 
   async markException(orderId: string, input: ExceptionInput) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_EDIT);
-    const task = await this.requireFulfillment(orderId);
+    const actor = await this.employeeForAnyPermission(input.adminUserId, ["orders.pick", "orders.pack", "orders.dispatch"]);
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
     const reason = input.reason && Object.values(FulfillmentExceptionReason).includes(input.reason)
       ? input.reason
       : FulfillmentExceptionReason.OTHER;
-    return this.moveToException(orderId, task, { employeeId, reason, note: input.note });
+    if (fulfillment.status === FulfillmentStatus.EXCEPTION && fulfillment.exceptionReason === reason && fulfillment.exceptionNote === input.note?.trim()) {
+      return this.orderDetail(orderId, input.adminUserId);
+    }
+    if (!canTransitionFulfillment({ from: fulfillment.status, to: FulfillmentStatus.EXCEPTION })) {
+      throw new BadRequestException("A completed order cannot be moved to fulfillment exception.");
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: { status: FulfillmentStatus.EXCEPTION, exceptionReason: reason, exceptionNote: input.note?.trim() || null }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `exception:${fulfillment.id}:${fulfillment.status}:${reason}:${input.note?.trim() ?? ""}`,
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        action: "SUBMIT_EXCEPTION_FACT",
+        oldStatus: fulfillment.status,
+        newStatus: FulfillmentStatus.EXCEPTION,
+        note: input.note,
+        exceptionReason: reason
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
   }
 
-  private async handoff(
-    orderId: string,
-    input: EmployeeInput,
-    toStatus: FulfillmentStatus,
-    action: string,
-    data: Prisma.OrderFulfillmentUpdateInput
-  ) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, WAREHOUSE_EDIT);
-    const task = await this.requireFulfillment(orderId);
-    this.assertTransition(task, toStatus);
+  async cancel(orderId: string, input: AdminInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.cancel");
+    const order = await this.requireOrder(orderId);
+    if (order.status === OrderStatus.CANCELLED) return this.orderDetail(orderId, input.adminUserId);
+    if (order.status === OrderStatus.COMPLETED || order.status === OrderStatus.REFUNDED) {
+      throw new BadRequestException("Completed or refunded orders cannot be cancelled here.");
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CANCELLED } });
+      if (order.fulfillment) {
+        await tx.orderFulfillment.update({
+          where: { id: order.fulfillment.id },
+          data: {
+            status: FulfillmentStatus.EXCEPTION,
+            exceptionReason: FulfillmentExceptionReason.CUSTOMER_CANCELLED,
+            exceptionNote: input.note?.trim() || null
+          }
+        });
+        await this.createEvent(tx, {
+          idempotencyKey: `cancel:${order.fulfillment.id}`,
+          fulfillmentId: order.fulfillment.id,
+          orderId,
+          ...actor,
+          action: "CANCEL_ORDER",
+          oldStatus: order.fulfillment.status,
+          newStatus: FulfillmentStatus.EXCEPTION,
+          note: input.note,
+          exceptionReason: FulfillmentExceptionReason.CUSTOMER_CANCELLED
+        });
+      }
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
 
-    await prisma.$transaction(async (transaction) => {
-      const updated = await transaction.orderFulfillment.update({
-        where: { orderId },
-        data: {
-          ...data,
-          status: toStatus
-        }
-      });
-      await this.createEvent(transaction, {
-        fulfillmentId: updated.id,
+  async assignAfterSale(orderId: string, input: AfterSaleInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.after-sale");
+    const employee = await this.requireEmployee(input.employeeId);
+    const order = await this.requireOrder(orderId);
+    if (!order.fulfillment) throw new BadRequestException("After-sale ownership requires an order fulfillment record.");
+    if (order.fulfillment.afterSaleOwnerEmployeeId === employee.id && !input.caseId) return this.orderDetail(orderId, input.adminUserId);
+    const status = input.status && Object.values(CustomerServiceCaseStatus).includes(input.status) ? input.status : undefined;
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({ where: { id: order.fulfillment!.id }, data: { afterSaleOwnerEmployeeId: employee.id } });
+      if (input.caseId) {
+        await tx.customerServiceCase.updateMany({
+          where: { id: input.caseId, orderId, issueType: CustomerServiceIssueType.AFTER_SALE },
+          data: {
+            assignedEmployeeId: employee.id,
+            ...(status ? { status } : {}),
+            ...(input.afterSaleReason !== undefined ? { afterSaleReason: input.afterSaleReason.trim() || null } : {}),
+            ...(input.customerRequest !== undefined ? { customerRequest: input.customerRequest.trim() || null } : {}),
+            ...(input.requiresReturn !== undefined ? { requiresReturn: input.requiresReturn } : {}),
+            ...(input.requiresRefund !== undefined ? { requiresRefund: input.requiresRefund } : {}),
+            ...(input.affectsAffiliateCommission !== undefined ? { affectsAffiliateCommission: input.affectsAffiliateCommission } : {}),
+            ...(status ? { resolvedAt: status === CustomerServiceCaseStatus.RESOLVED || status === CustomerServiceCaseStatus.CLOSED ? new Date() : null } : {})
+          }
+        });
+      }
+      await this.createEvent(tx, {
+        idempotencyKey: `after-sale:${order.fulfillment!.id}:${input.caseId ?? "order"}:${employee.id}:${status ?? "unchanged"}:${input.requiresReturn ?? "unchanged"}:${input.requiresRefund ?? "unchanged"}:${input.affectsAffiliateCommission ?? "unchanged"}:${input.afterSaleReason?.trim() ?? ""}:${input.customerRequest?.trim() ?? ""}`,
+        fulfillmentId: order.fulfillment!.id,
         orderId,
-        actorEmployeeId: employeeId,
-        action,
-        oldStatus: task.status,
-        newStatus: updated.status,
+        ...actor,
+        relatedEmployeeId: employee.id,
+        action: input.caseId ? "UPDATE_AFTER_SALE_CASE" : "ASSIGN_AFTER_SALE_OWNER",
+        oldStatus: order.fulfillment!.status,
+        newStatus: order.fulfillment!.status,
         note: input.note
       });
     });
-
-    return this.fulfillmentDetail(orderId);
+    return this.orderDetail(orderId, input.adminUserId);
   }
 
-  private async complete(
-    orderId: string,
-    task: FulfillmentWithOrder,
-    employeeId: string,
-    action: string,
-    note: string | undefined,
-    data: Prisma.OrderFulfillmentUpdateInput
-  ) {
-    await prisma.$transaction(async (transaction) => {
-      await transaction.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.COMPLETED }
-      });
-      await transaction.inventoryItem.updateMany({
-        where: { productId: { in: task.order.items.map((item) => item.productId) } },
-        data: { status: InventoryItemStatus.DELIVERED }
-      });
-      const updated = await transaction.orderFulfillment.update({
-        where: { orderId },
+  async listLocations(adminUserId?: string, search?: string) {
+    await this.access.requirePermission(adminUserId, "warehouse-locations.view");
+    const value = search?.trim();
+    return prisma.warehouseLocation.findMany({
+      where: value ? {
+        OR: [
+          { locationCode: { contains: value, mode: "insensitive" } },
+          { zoneCode: { contains: value, mode: "insensitive" } },
+          { rackCode: { contains: value, mode: "insensitive" } },
+          { inventoryItems: { some: { barcode: { contains: value, mode: "insensitive" } } } },
+          { inventoryItems: { some: { product: { title: { contains: value, mode: "insensitive" } } } } }
+        ]
+      } : {},
+      include: {
+        inventoryItems: {
+          include: { product: { include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } } } },
+          orderBy: { updatedAt: "desc" }
+        }
+      },
+      orderBy: [{ active: "desc" }, { locationCode: "asc" }],
+      take: 200
+    });
+  }
+
+  async createLocation(input: { adminUserId?: string; zoneCode?: string; rackCode?: string; binCode?: string; note?: string }) {
+    await this.access.requirePermission(input.adminUserId, "warehouse-locations.manage");
+    const parts = locationParts(input);
+    return prisma.warehouseLocation.create({
+      data: { ...parts, locationCode: parts.code, qrCode: parts.code, note: input.note?.trim() || null }
+    });
+  }
+
+  async bulkCreateLocations(input: {
+    adminUserId?: string;
+    zoneCode?: string;
+    rackCode?: string;
+    start?: number;
+    count?: number;
+    note?: string;
+  }) {
+    await this.access.requirePermission(input.adminUserId, "warehouse-locations.manage");
+    const zoneCode = requiredCode(input.zoneCode, "Zone code");
+    const rackCode = requiredCode(input.rackCode, "Rack code");
+    const start = Number(input.start ?? 1);
+    const count = Number(input.count ?? 1);
+    if (!Number.isInteger(start) || start < 1 || !Number.isInteger(count) || count < 1 || count > 200) {
+      throw new BadRequestException("Bulk location range must contain 1 to 200 positive bins.");
+    }
+    const rows = Array.from({ length: count }, (_, index) => {
+      const binCode = String(start + index).padStart(3, "0");
+      const locationCode = `${zoneCode}-${rackCode}-${binCode}`;
+      return { zoneCode, rackCode, binCode, locationCode, qrCode: locationCode, note: input.note?.trim() || null };
+    });
+    await prisma.warehouseLocation.createMany({ data: rows, skipDuplicates: true });
+    return this.listLocations(input.adminUserId, `${zoneCode}-${rackCode}`);
+  }
+
+  async setLocationActive(locationId: string, active: boolean, adminUserId?: string) {
+    await this.access.requirePermission(adminUserId, "warehouse-locations.manage");
+    return prisma.warehouseLocation.update({ where: { id: locationId }, data: { active } });
+  }
+
+  async moveInventoryItem(input: { adminUserId?: string; inventoryItemId?: string; locationId?: string; note?: string }) {
+    const actor = await this.employeeForPermission(input.adminUserId, "warehouse-locations.manage");
+    const inventoryItemId = input.inventoryItemId?.trim();
+    const locationId = input.locationId?.trim();
+    if (!inventoryItemId || !locationId) throw new BadRequestException("Inventory item and destination location are required.");
+    const [item, destination] = await Promise.all([
+      prisma.inventoryItem.findUnique({ where: { id: inventoryItemId } }),
+      prisma.warehouseLocation.findUnique({ where: { id: locationId } })
+    ]);
+    if (!item) throw new NotFoundException("Inventory item was not found.");
+    if (!destination?.active) throw new BadRequestException("Destination location is missing or inactive.");
+    if (item.locationId === locationId) return item;
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.inventoryItem.update({ where: { id: item.id }, data: { locationId } });
+      await tx.inventoryMovement.create({
         data: {
-          ...data,
-          status: FulfillmentStatus.COMPLETED
+          inventoryItemId: item.id,
+          productId: item.productId,
+          movementType: InventoryMovementType.MOVE,
+          fromLocationId: item.locationId,
+          toLocationId: locationId,
+          employeeId: actor.actorEmployeeId,
+          reason: input.note?.trim() || "Moved in warehouse location management."
         }
       });
-      await this.createEvent(transaction, {
-        fulfillmentId: updated.id,
+      return updated;
+    });
+  }
+
+  private async moveToHandoff(
+    orderId: string,
+    input: AdminInput,
+    actor: Pick<EventInput, "actorAdminUserId" | "actorEmployeeId">,
+    status: FulfillmentStatus,
+    action: string,
+    data: Prisma.OrderFulfillmentUpdateInput
+  ) {
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status === status) return this.orderDetail(orderId, input.adminUserId);
+    this.assertTransition(order, status);
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({ where: { id: fulfillment.id }, data: { ...data, status } });
+      await this.createEvent(tx, {
+        idempotencyKey: `transition:${fulfillment.id}:${status}`,
+        fulfillmentId: fulfillment.id,
         orderId,
-        actorEmployeeId: employeeId,
+        ...actor,
         action,
-        oldStatus: task.status,
-        newStatus: updated.status,
+        oldStatus: fulfillment.status,
+        newStatus: status,
+        note: input.note
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  private async completeOrder(
+    order: OrderDetail,
+    actor: Pick<EventInput, "actorAdminUserId" | "actorEmployeeId">,
+    action: string,
+    note: string | undefined,
+    fulfillmentData: Prisma.OrderFulfillmentUncheckedUpdateInput
+  ) {
+    const fulfillment = order.fulfillment!;
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: order.id }, data: { status: OrderStatus.COMPLETED } });
+      await tx.inventoryItem.updateMany({
+        where: { productId: { in: order.items.map((item) => item.productId) } },
+        data: { status: InventoryItemStatus.DELIVERED }
+      });
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: { ...fulfillmentData, status: FulfillmentStatus.COMPLETED, completedAt: new Date() }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.COMPLETED}`,
+        fulfillmentId: fulfillment.id,
+        orderId: order.id,
+        ...actor,
+        action,
+        oldStatus: fulfillment.status,
+        newStatus: FulfillmentStatus.COMPLETED,
         note
       });
     });
   }
 
-  private async moveToException(
-    orderId: string,
-    task: FulfillmentWithOrder,
-    input: {
-      employeeId: string;
-      reason: FulfillmentExceptionReason;
-      note?: string;
-      scannedBarcode?: string;
+  private orderWhere(input: OrderCenterListInput): Prisma.OrderWhereInput {
+    const and: Prisma.OrderWhereInput[] = [];
+    if (input.scope === "after-sales") and.push(afterSaleWhere());
+    if (input.scope === "exceptions") and.push({ fulfillment: { is: { status: FulfillmentStatus.EXCEPTION } } });
+    if (input.tab && input.tab !== "all") and.push(tabWhere(input.tab));
+
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (input.dateFrom) createdAt.gte = validDate(input.dateFrom, "Start date");
+    if (input.dateTo) createdAt.lt = exclusiveDateEnd(input.dateTo);
+    if (createdAt.gte || createdAt.lt) and.push({ createdAt });
+    if (input.orderNumber?.trim()) and.push({ orderNumber: { contains: input.orderNumber.trim(), mode: "insensitive" } });
+    if (input.customerName?.trim()) and.push({ customer: { displayName: { contains: input.customerName.trim(), mode: "insensitive" } } });
+    if (input.customerPhone?.trim()) and.push({ customer: { phone: { contains: input.customerPhone.trim(), mode: "insensitive" } } });
+    if (input.productName?.trim()) and.push({ items: { some: { snapshot: { is: { title: { contains: input.productName.trim(), mode: "insensitive" } } } } } });
+    if (input.barcode?.trim()) and.push({ items: { some: { snapshot: { is: { barcode: { contains: input.barcode.trim(), mode: "insensitive" } } } } } });
+    if (input.fulfillmentMethod && Object.values(FulfillmentMethod).includes(input.fulfillmentMethod)) and.push({ fulfillmentMethod: input.fulfillmentMethod });
+    if (input.paymentStatus && Object.values(PaymentStatus).includes(input.paymentStatus)) and.push({ payments: { some: { status: input.paymentStatus } } });
+    if (input.orderStatus && Object.values(OrderStatus).includes(input.orderStatus)) and.push({ status: input.orderStatus });
+    if (input.pickerEmployeeId?.trim()) and.push({ fulfillment: { is: { assignedPickerEmployeeId: input.pickerEmployeeId.trim() } } });
+    if (input.packerEmployeeId?.trim()) and.push({ fulfillment: { is: { packedByEmployeeId: input.packerEmployeeId.trim() } } });
+    if (input.rider?.trim()) {
+      const value = input.rider.trim();
+      and.push({ fulfillment: { is: { deliveryRider: { is: {
+        OR: [
+          { name: { contains: value, mode: "insensitive" } },
+          { phone: { contains: value, mode: "insensitive" } },
+          { company: { contains: value, mode: "insensitive" } },
+          { employee: { name: { contains: value, mode: "insensitive" } } }
+        ]
+      } } } } });
     }
-  ) {
-    await prisma.$transaction(async (transaction) => {
-      const updated = await transaction.orderFulfillment.update({
-        where: { orderId },
-        data: {
-          status: FulfillmentStatus.EXCEPTION,
-          exceptionReason: input.reason,
-          exceptionNote: input.note?.trim() || null
-        }
-      });
-      await this.createEvent(transaction, {
-        fulfillmentId: updated.id,
-        orderId,
-        actorEmployeeId: input.employeeId,
-        action: "MARK_EXCEPTION",
-        oldStatus: task.status,
-        newStatus: updated.status,
-        note: input.note,
-        scannedBarcode: input.scannedBarcode,
-        exceptionReason: input.reason
-      });
-    });
-    return this.fulfillmentDetail(orderId);
-  }
-
-  private async requireFulfillment(orderId: string): Promise<FulfillmentWithOrder> {
-    const existing = await this.fulfillmentDetail(orderId);
-    if (existing) return existing;
-
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true }
-    });
-    if (!order) throw new NotFoundException("Order not found.");
-    if (order.status !== OrderStatus.PAID) {
-      throw new BadRequestException("Only paid orders can enter fulfillment.");
+    if (input.affiliate?.trim()) {
+      const value = input.affiliate.trim();
+      and.push({ OR: [
+        { affiliateSource: { contains: value, mode: "insensitive" } },
+        { affiliateCampaign: { contains: value, mode: "insensitive" } },
+        { affiliate: { affiliateCode: { contains: value, mode: "insensitive" } } },
+        { affiliate: { displayName: { contains: value, mode: "insensitive" } } }
+      ] });
     }
-    await prisma.orderFulfillment.create({
-      data: {
-        orderId,
-        status: FulfillmentStatus.PAID
-      }
-    });
-    const created = await this.fulfillmentDetail(orderId);
-    if (!created) throw new NotFoundException("Fulfillment record not found.");
-    return created;
+    return and.length ? { AND: and } : {};
   }
 
-  private async fulfillmentDetail(orderId: string): Promise<FulfillmentWithOrder | null> {
-    return prisma.orderFulfillment.findUnique({
-      where: { orderId },
-      include: this.fulfillmentInclude()
-    });
+  private async requireOrder(orderId: string): Promise<OrderDetail> {
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: ORDER_INCLUDE });
+    if (!order) throw new NotFoundException("Order was not found.");
+    return order;
   }
 
-  private assertTransition(task: FulfillmentWithOrder, toStatus: FulfillmentStatus) {
-    if (!canTransitionFulfillment({
-      from: task.status,
-      to: toStatus,
-      fulfillmentMethod: task.order.fulfillmentMethod,
-      pickedAt: task.pickedAt
-    })) {
-      throw new BadRequestException(`Fulfillment cannot move from ${task.status} to ${toStatus}.`);
-    }
+  private async requireOrderWithTask(orderId: string) {
+    await this.ensurePaidFulfillments(orderId);
+    const order = await this.requireOrder(orderId);
+    if (!order.fulfillment) throw new BadRequestException("This order does not have a picking task.");
+    return order;
   }
 
-  private async ensurePaidFulfillments() {
-    const paidOrders = await prisma.order.findMany({
-      where: {
-        status: OrderStatus.PAID,
-        fulfillment: null
-      },
-      select: { id: true },
-      take: 100
+  private assertTransition(order: OrderDetail, to: FulfillmentStatus) {
+    const fulfillment = order.fulfillment;
+    if (!fulfillment || !canTransitionFulfillment({
+      from: fulfillment.status,
+      to,
+      fulfillmentMethod: order.fulfillmentMethod,
+      hasDeliveryRider: Boolean(fulfillment.deliveryRiderId)
+    })) throw new BadRequestException(`Fulfillment cannot move from ${fulfillment?.status ?? "NONE"} to ${to}.`);
+  }
+
+  private async ensurePaidFulfillments(orderId?: string) {
+    const orders = await prisma.order.findMany({
+      where: { ...(orderId ? { id: orderId } : {}), status: OrderStatus.PAID },
+      include: { items: { include: { snapshot: true } }, fulfillment: { include: { items: true } } },
+      take: orderId ? 1 : 100
     });
-    for (const order of paidOrders) {
-      await prisma.orderFulfillment.upsert({
-        where: { orderId: order.id },
-        update: {},
-        create: {
+    for (const order of orders) {
+      await prisma.$transaction(async (tx) => {
+        const fulfillment = await tx.orderFulfillment.upsert({
+          where: { orderId: order.id },
+          update: {},
+          create: { orderId: order.id, status: FulfillmentStatus.PAID }
+        });
+        await tx.fulfillmentItem.createMany({
+          data: order.items.map((item) => ({
+            fulfillmentId: fulfillment.id,
+            orderItemId: item.id,
+            expectedBarcode: item.snapshot?.barcode?.trim() || null
+          })),
+          skipDuplicates: true
+        });
+        await this.createEvent(tx, {
+          idempotencyKey: `pick-task:${order.id}`,
+          fulfillmentId: fulfillment.id,
           orderId: order.id,
-          status: FulfillmentStatus.PAID
-        }
+          action: "PAYMENT_CONFIRMED_PICK_TASK_CREATED",
+          oldStatus: null,
+          newStatus: FulfillmentStatus.PAID,
+          note: "Payment confirmed; one order-level picking task was created."
+        });
       });
     }
   }
 
-  private fulfillmentWhere(input: FulfillmentListInput): Prisma.OrderFulfillmentWhereInput {
-    const where: Prisma.OrderFulfillmentWhereInput = {};
-    const queue = input.queue;
-    if (queue === "awaiting-picking") where.status = FulfillmentStatus.PAID;
-    if (queue === "picking") {
-      where.status = FulfillmentStatus.PICKING;
-      where.pickedAt = null;
-    }
-    if (queue === "packing") {
-      where.status = FulfillmentStatus.PICKING;
-      where.pickedAt = { not: null };
-    }
-    if (queue === "packed") where.status = FulfillmentStatus.PACKED;
-    if (queue === "pickup") where.status = FulfillmentStatus.READY_FOR_PICKUP;
-    if (queue === "delivery") where.status = FulfillmentStatus.OUT_FOR_DELIVERY;
-    if (queue === "completed") where.status = FulfillmentStatus.COMPLETED;
-    if (queue === "exceptions") where.status = FulfillmentStatus.EXCEPTION;
-
-    const search = input.search?.trim();
-    if (search) where.order = this.orderSearch(search);
-    return where;
-  }
-
-  private orderWhere(input: OrderListInput): Prisma.OrderWhereInput {
-    const where: Prisma.OrderWhereInput = {};
-    const queue = input.queue ?? "all";
-    if (queue === "pending-payment") where.status = OrderStatus.PENDING_PAYMENT;
-    if (queue === "payment-processing") where.status = OrderStatus.PAYMENT_PROCESSING;
-    if (queue === "paid") where.status = OrderStatus.PAID;
-    if (queue === "cancelled") where.status = OrderStatus.CANCELLED;
-    if (queue === "expired") where.status = OrderStatus.EXPIRED;
-    if (queue === "refunded") where.status = OrderStatus.REFUNDED;
-    if (queue === "payment-exceptions") {
-      where.payments = {
-        some: {
-          status: { in: [PaymentStatus.FAILED, PaymentStatus.CANCELLED, PaymentStatus.TIMEOUT, PaymentStatus.MANUAL_REVIEW] }
-        }
-      };
-    }
-    const search = input.search?.trim();
-    if (search) Object.assign(where, this.orderSearch(search));
-    return where;
-  }
-
-  private orderSearch(search: string): Prisma.OrderWhereInput {
-    return {
-      OR: [
-        { orderNumber: { contains: search, mode: "insensitive" } },
-        { customer: { displayName: { contains: search, mode: "insensitive" } } },
-        { customer: { phone: { contains: search, mode: "insensitive" } } },
-        { items: { some: { snapshot: { is: { title: { contains: search, mode: "insensitive" } } } } } },
-        { items: { some: { snapshot: { is: { barcode: { contains: search, mode: "insensitive" } } } } } }
-      ]
-    };
-  }
-
-  private fulfillmentInclude() {
-    return {
-      order: {
-        include: {
-          customer: true,
-          items: {
-            include: { snapshot: true },
-            orderBy: { createdAt: "asc" }
-          },
-          payments: {
-            orderBy: { requestedAt: "desc" },
-            take: 1
-          }
-        }
-      },
-      assignedPicker: true,
-      packedBy: true,
-      pickupConfirmedBy: true,
-      events: {
-        include: { actorEmployee: true },
-        orderBy: { createdAt: "desc" },
-        take: 12
-      }
-    } as const;
-  }
-
-  private async attachInventory(tasks: FulfillmentWithOrder[]) {
-    const productIds = [...new Set(tasks.flatMap((task) => task.order.items.map((item) => item.productId)))];
-    const inventory = await this.inventoryByProduct(productIds);
-    return tasks.map((task) => ({
-      ...task,
-      order: {
-        ...task.order,
-        items: task.order.items.map((item) => ({
-          ...item,
-          inventoryItem: inventory.get(item.productId) ?? null
-        }))
-      }
+  private async attachInventory(orders: OrderDetail[]) {
+    const productIds = [...new Set(orders.flatMap((order) => order.items.map((item) => item.productId)))];
+    const inventory = productIds.length ? await prisma.inventoryItem.findMany({
+      where: { productId: { in: productIds } },
+      include: { location: true }
+    }) : [];
+    const byProduct = new Map(inventory.map((item) => [item.productId, item]));
+    return orders.map((order) => ({
+      ...order,
+      centerTab: orderCenterTab({
+        orderStatus: order.status,
+        fulfillmentStatus: order.fulfillment?.status,
+        hasOpenAfterSale: order.customerServiceCases.some(
+          (item) => item.issueType === CustomerServiceIssueType.AFTER_SALE && item.status !== CustomerServiceCaseStatus.CLOSED
+        )
+      }),
+      items: order.items.map((item) => ({ ...item, inventoryItem: byProduct.get(item.productId) ?? null }))
     }));
   }
 
-  private async inventoryByProduct(productIds: string[]) {
-    const items = productIds.length
-      ? await prisma.inventoryItem.findMany({
-          where: { productId: { in: productIds } },
-          include: { location: true }
-        })
-      : [];
-    return new Map(items.map((item) => [item.productId, item]));
+  private async requireEmployee(employeeId?: string) {
+    const id = employeeId?.trim();
+    if (!id) throw new BadRequestException("Employee is required.");
+    const employee = await prisma.employee.findFirst({ where: { id, status: EmployeeStatus.ACTIVE } });
+    if (!employee) throw new BadRequestException("Employee is missing or inactive.");
+    return employee;
   }
 
-  private async createEvent(
-    transaction: Prisma.TransactionClient,
-    input: {
-      fulfillmentId: string;
-      orderId: string;
-      actorEmployeeId: string;
-      action: string;
-      oldStatus: FulfillmentStatus | null;
-      newStatus: FulfillmentStatus;
-      note?: string;
-      scannedBarcode?: string;
-      exceptionReason?: FulfillmentExceptionReason;
+  private async adminForPermission(adminUserId: string | undefined, permission: string) {
+    const session = await this.access.requirePermission(adminUserId, permission);
+    return {
+      actorAdminUserId: session.adminUser!.id,
+      actorEmployeeId: session.adminUser!.linkedEmployee?.id ?? null
+    };
+  }
+
+  private async employeeForPermission(adminUserId: string | undefined, permission: string) {
+    const actor = await this.adminForPermission(adminUserId, permission);
+    if (!actor.actorEmployeeId) throw new ForbiddenException("This action requires an active employee linked to the admin account.");
+    return actor;
+  }
+
+  private async employeeForAnyPermission(adminUserId: string | undefined, permissions: string[]) {
+    const session = await this.access.session(adminUserId);
+    if (!session.adminUser || !permissions.some((permission) => session.permissions.includes(permission))) {
+      throw new ForbiddenException("This admin account does not have permission for this operation.");
     }
-  ) {
-    await transaction.fulfillmentEvent.create({
+    const actorEmployeeId = session.adminUser.linkedEmployee?.id;
+    if (!actorEmployeeId) throw new ForbiddenException("This action requires an active employee linked to the admin account.");
+    return { actorAdminUserId: session.adminUser.id, actorEmployeeId };
+  }
+
+  private async internalRider(employeeId?: string) {
+    const employee = await this.requireEmployee(employeeId);
+    return prisma.deliveryRider.upsert({
+      where: { employeeId: employee.id },
+      update: { name: employee.name, phone: employee.phone, type: DeliveryRiderType.INTERNAL },
+      create: { type: DeliveryRiderType.INTERNAL, employeeId: employee.id, name: employee.name, phone: employee.phone }
+    });
+  }
+
+  private async externalRider(input: RiderInput) {
+    const name = input.name?.trim();
+    const phone = input.phone?.trim();
+    if (!name || !phone) throw new BadRequestException("External rider name and phone are required.");
+    const existing = await prisma.deliveryRider.findFirst({
+      where: {
+        type: DeliveryRiderType.EXTERNAL,
+        name,
+        phone,
+        company: input.company?.trim() || null,
+        vehicle: input.vehicle?.trim() || null
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    if (existing) return existing;
+    return prisma.deliveryRider.create({
       data: {
-        fulfillmentId: input.fulfillmentId,
-        orderId: input.orderId,
-        actorEmployeeId: input.actorEmployeeId,
-        action: input.action,
-        oldStatus: input.oldStatus,
-        newStatus: input.newStatus,
-        note: input.note?.trim() || null,
-        scannedBarcode: input.scannedBarcode?.trim() || null,
-        exceptionReason: input.exceptionReason ?? null
+        type: DeliveryRiderType.EXTERNAL,
+        name,
+        phone,
+        company: input.company?.trim() || null,
+        vehicle: input.vehicle?.trim() || null
       }
+    });
+  }
+
+  private async createEvent(tx: Prisma.TransactionClient, input: EventInput) {
+    const data: Prisma.FulfillmentEventUncheckedCreateInput = {
+      idempotencyKey: input.idempotencyKey ?? null,
+      fulfillmentId: input.fulfillmentId,
+      orderId: input.orderId,
+      actorAdminUserId: input.actorAdminUserId ?? null,
+      actorEmployeeId: input.actorEmployeeId ?? null,
+      relatedEmployeeId: input.relatedEmployeeId ?? null,
+      deliveryRiderId: input.deliveryRiderId ?? null,
+      orderItemId: input.orderItemId ?? null,
+      action: input.action,
+      oldStatus: input.oldStatus,
+      newStatus: input.newStatus,
+      note: input.note?.trim() || null,
+      expectedBarcode: input.expectedBarcode?.trim() || null,
+      scannedBarcode: input.scannedBarcode?.trim() || null,
+      exceptionReason: input.exceptionReason ?? null
+    };
+    if (!input.idempotencyKey) return tx.fulfillmentEvent.create({ data });
+    return tx.fulfillmentEvent.upsert({
+      where: { idempotencyKey: input.idempotencyKey },
+      update: {},
+      create: data
     });
   }
 }
 
-function employeeIdOrDefault(employeeId?: string): string {
-  return employeeId?.trim() || STAGING_TEST_EMPLOYEE_ID;
+function tabWhere(tab: OrderCenterTab): Prisma.OrderWhereInput {
+  if (tab === "pending-payment") return { status: { in: [OrderStatus.DRAFT, OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] } };
+  if (tab === "waiting-pick") return { fulfillment: { is: { status: FulfillmentStatus.PAID } } };
+  if (tab === "picking") return { fulfillment: { is: { status: FulfillmentStatus.PICKING } } };
+  if (tab === "ready-to-pack") return { fulfillment: { is: { status: FulfillmentStatus.READY_TO_PACK } } };
+  if (tab === "packed") return { fulfillment: { is: { status: FulfillmentStatus.PACKED } } };
+  if (tab === "ready-for-pickup") return { fulfillment: { is: { status: FulfillmentStatus.READY_FOR_PICKUP } } };
+  if (tab === "ready-for-dispatch") return { fulfillment: { is: { status: FulfillmentStatus.READY_FOR_DISPATCH } } };
+  if (tab === "out-for-delivery") return { fulfillment: { is: { status: FulfillmentStatus.OUT_FOR_DELIVERY } } };
+  if (tab === "completed") return { OR: [{ status: OrderStatus.COMPLETED }, { fulfillment: { is: { status: FulfillmentStatus.COMPLETED } } }] };
+  if (tab === "after-sale") return afterSaleWhere();
+  if (tab === "cancelled") return { status: { in: [OrderStatus.CANCELLED, OrderStatus.EXPIRED] } };
+  return {};
 }
 
-function scannedBarcodeList(input: ScanInput): string[] {
-  const values = input.barcodes?.length ? input.barcodes : input.barcode?.split(/[,\n]+/) ?? [];
-  return values.map(normalizeScannedBarcode).filter(Boolean);
+function afterSaleWhere(): Prisma.OrderWhereInput {
+  return {
+    OR: [
+      { status: OrderStatus.REFUNDED },
+      { customerServiceCases: { some: { issueType: CustomerServiceIssueType.AFTER_SALE, status: { not: CustomerServiceCaseStatus.CLOSED } } } }
+    ]
+  };
 }
 
-function matchesPickupVerification(orderNumber: string, phone: string | null, verification: string): boolean {
-  const normalized = verification.trim().toLowerCase();
-  if (orderNumber.toLowerCase() === normalized) return true;
-  return normalizePhone(phone) === normalizePhone(verification);
+function validDate(value: string, label: string): Date {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new BadRequestException(`${label} is invalid.`);
+  return date;
 }
 
-function normalizePhone(phone: string | null | undefined): string {
-  return (phone ?? "").replace(/\D/g, "");
+function exclusiveDateEnd(value: string): Date {
+  const date = validDate(value, "End date");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) date.setUTCDate(date.getUTCDate() + 1);
+  return date;
+}
+
+function pickupVerificationMatches(order: OrderDetail, method: PickupVerificationMethod, value: string): boolean {
+  if (method === PickupVerificationMethod.ORDER_NUMBER) return order.orderNumber.toLowerCase() === value.toLowerCase();
+  if (method === PickupVerificationMethod.PHONE) return normalizePhone(order.customer.phone) === normalizePhone(value);
+  return Boolean(order.pickupCode && order.pickupCode.toLowerCase() === value.toLowerCase());
+}
+
+function normalizePhone(value: string | null | undefined) {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+function requiredCode(value: string | undefined, label: string) {
+  const code = value?.trim().toUpperCase().replace(/\s+/g, "-");
+  if (!code) throw new BadRequestException(`${label} is required.`);
+  return code;
+}
+
+function locationParts(input: { zoneCode?: string; rackCode?: string; binCode?: string }) {
+  const zoneCode = requiredCode(input.zoneCode, "Zone code");
+  const rackCode = input.rackCode?.trim() ? requiredCode(input.rackCode, "Rack code") : null;
+  const binCode = input.binCode?.trim() ? requiredCode(input.binCode, "Bin code") : null;
+  if (binCode && !rackCode) throw new BadRequestException("A bin must belong to a rack.");
+  return { zoneCode, rackCode, binCode, code: [zoneCode, rackCode, binCode].filter(Boolean).join("-") };
 }

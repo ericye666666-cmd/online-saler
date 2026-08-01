@@ -9,7 +9,7 @@ import { OperationsAnalyticsController } from "./operations-analytics.controller
 import { OperationsAnalyticsService } from "./operations-analytics.service";
 import { OperationsCustomerServiceController } from "./operations-customer-service.controller";
 import { OperationsCustomerServiceService } from "./operations-customer-service.service";
-import { OperationsFulfillmentController } from "./operations-fulfillment.controller";
+import { OperationsFulfillmentController, OperationsWarehouseLocationsController } from "./operations-fulfillment.controller";
 import { OperationsFulfillmentService } from "./operations-fulfillment.service";
 import { OperationsProductBatchController } from "./operations-product-batch.controller";
 import { OperationsProductBatchService } from "./operations-product-batch.service";
@@ -29,6 +29,7 @@ import { OperationsWorkspaceService } from "./operations-workspace.service";
     OperationsProductControlController,
     OperationsProductFactoryAdminController,
     OperationsFulfillmentController,
+    OperationsWarehouseLocationsController,
     OperationsAffiliateController,
     OperationsAnalyticsController,
     OperationsCustomerServiceController

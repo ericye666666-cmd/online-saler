@@ -1,5 +1,5 @@
-import { OrderCenterPage } from "../orders-client";
+import { LegacyOrderRedirect } from "../legacy-order-redirect";
 
 export default function Page() {
-  return <OrderCenterPage queue="paid" />;
+  return <LegacyOrderRedirect pathname="/orders/paid" />;
 }

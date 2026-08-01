@@ -1,5 +1,5 @@
-import { InventoryQueryPage } from "../fulfillment-client";
+import { LegacyWarehouseRedirect } from "../legacy-warehouse-redirect";
 
 export default function Page() {
-  return <InventoryQueryPage />;
+  return <LegacyWarehouseRedirect pathname="/warehouse/inventory" />;
 }

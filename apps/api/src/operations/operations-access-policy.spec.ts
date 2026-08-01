@@ -28,6 +28,25 @@ test("product detail generation is limited to project managers and super admins"
   assert.equal(hasOperationsPermission(rolePermissionCodes(["SUPER_ADMIN"]), "page.product.details"), true);
 });
 
+test("order fulfillment permissions are action-specific", () => {
+  const permissions = rolePermissionCodes(["WAREHOUSE_FULFILLMENT"]);
+  assert.equal(hasOperationsPermission(permissions, "orders.view"), true);
+  assert.equal(hasOperationsPermission(permissions, "orders.pick"), true);
+  assert.equal(hasOperationsPermission(permissions, "orders.pack"), true);
+  assert.equal(hasOperationsPermission(permissions, "orders.dispatch"), true);
+  assert.equal(hasOperationsPermission(permissions, "orders.assign-rider"), false);
+  assert.equal(hasOperationsPermission(permissions, "orders.cancel"), false);
+  assert.equal(hasOperationsPermission(permissions, "warehouse-locations.manage"), false);
+});
+
+test("an employee without an order action permission cannot modify fulfillment state", () => {
+  const productPermissions = rolePermissionCodes(["PRODUCT_DIGITIZATION"]);
+  assert.equal(hasOperationsPermission(productPermissions, "orders.view"), false);
+  assert.equal(hasOperationsPermission(productPermissions, "orders.pick"), false);
+  assert.equal(hasOperationsPermission(productPermissions, "orders.pack"), false);
+  assert.equal(hasOperationsPermission(productPermissions, "orders.complete"), false);
+});
+
 test("permission helper returns sorted unique permission codes", () => {
   assert.deepEqual(uniquePermissionCodes(["b", "a", "b"]), ["a", "b"]);
 });
