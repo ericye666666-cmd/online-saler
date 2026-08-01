@@ -1,0 +1,109 @@
+name: Cleanup Staging Test Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Run a read-only inventory or delete the confirmed staging test data
+        required: true
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - delete
+      batch_codes:
+        description: Exact semicolon-separated BATCH codes to include; wildcards are rejected
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  CLEANUP_JOB_NAME: online-saler-test-data-cleanup-staging
+  STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
+  STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
+  PRODUCT_IMAGE_BUCKET: online-saler-staging-product-images
+
+jobs:
+  cleanup:
+    name: Inventory and clean authorized staging test data
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve deployed API image
+        run: |
+          IMAGE_URI="$(gcloud run services describe "${{ vars.GCP_SERVICE_NAME }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --format 'value(spec.template.spec.containers[0].image)')"
+
+          if [ -z "${IMAGE_URI}" ]; then
+            echo "Could not resolve the deployed staging API image."
+            exit 1
+          fi
+
+          echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
+
+      - name: Configure cleanup job
+        env:
+          CLEANUP_MODE: ${{ inputs.mode }}
+          BATCH_CODES: ${{ inputs.batch_codes }}
+        run: |
+          if [ "${CLEANUP_MODE}" = "delete" ]; then
+            CONFIRMATION="DELETE_STAGING_TEST_DATA"
+          else
+            CONFIRMATION="DRY_RUN"
+          fi
+
+          gcloud run jobs deploy "${CLEANUP_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --image "${IMAGE_URI}" \
+            --service-account "${STAGING_RUNTIME_SERVICE_ACCOUNT}" \
+            --set-cloudsql-instances "${STAGING_CLOUD_SQL_INSTANCE}" \
+            --set-secrets "DATABASE_URL=STAGING_DATABASE_URL:latest" \
+            --set-env-vars "NODE_ENV=staging,PRODUCT_IMAGE_BUCKET=${PRODUCT_IMAGE_BUCKET},STAGING_TEST_DATA_CONFIRMATION=${CONFIRMATION},STAGING_TEST_BATCH_CODES=${BATCH_CODES}" \
+            --command node \
+            --args scripts/cleanup-staging-test-data.mjs \
+            --max-retries 0 \
+            --task-timeout 20m \
+            --quiet
+
+      - name: Run cleanup job
+        run: |
+          gcloud run jobs execute "${CLEANUP_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --wait \
+            --quiet
+
+      - name: Print cleanup report
+        if: always()
+        run: |
+          SINCE="$(date -u -d '25 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+          gcloud logging read \
+            "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${CLEANUP_JOB_NAME}\" AND timestamp>=\"${SINCE}\"" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --limit 200 \
+            --format "value(textPayload,jsonPayload.message)" || true
+
+      - name: Remove one-time cleanup job
+        if: always()
+        run: |
+          gcloud run jobs delete "${CLEANUP_JOB_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --quiet || true
