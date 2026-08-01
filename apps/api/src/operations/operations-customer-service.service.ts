@@ -291,11 +291,11 @@ function serviceOrderWhere(input: SearchInput): Prisma.OrderWhereInput {
   }
   if (queue === "pickup") {
     where.fulfillmentMethod = FulfillmentMethod.PICKUP;
-    where.fulfillment = { is: { status: { in: [FulfillmentStatus.PAID, FulfillmentStatus.PICKING, FulfillmentStatus.PACKED, FulfillmentStatus.READY_FOR_PICKUP] } } };
+    where.fulfillment = { is: { status: { in: [FulfillmentStatus.PAID, FulfillmentStatus.PICKING, FulfillmentStatus.READY_TO_PACK, FulfillmentStatus.PACKED, FulfillmentStatus.READY_FOR_PICKUP] } } };
   }
   if (queue === "delivery") {
     where.fulfillmentMethod = FulfillmentMethod.KIKUYU_LOCAL_DELIVERY;
-    where.fulfillment = { is: { status: { in: [FulfillmentStatus.PAID, FulfillmentStatus.PICKING, FulfillmentStatus.PACKED, FulfillmentStatus.OUT_FOR_DELIVERY, FulfillmentStatus.EXCEPTION] } } };
+    where.fulfillment = { is: { status: { in: [FulfillmentStatus.PAID, FulfillmentStatus.PICKING, FulfillmentStatus.READY_TO_PACK, FulfillmentStatus.PACKED, FulfillmentStatus.READY_FOR_DISPATCH, FulfillmentStatus.OUT_FOR_DELIVERY, FulfillmentStatus.EXCEPTION] } } };
   }
   if (queue === "after-sales") {
     where.status = { in: [OrderStatus.COMPLETED, OrderStatus.REFUNDED] };

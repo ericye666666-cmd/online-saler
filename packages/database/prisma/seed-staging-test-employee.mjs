@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const modules = ["product", "warehouse", "orders", "affiliate", "customer-service", "analytics", "system"];
+const modules = ["product", "orders", "affiliate", "customer-service", "analytics", "system"];
 const actions = ["view", "create", "edit", "approve", "publish", "delete", "export", "manage-users", "manage-roles"];
 
 const permissions = [
@@ -13,6 +13,46 @@ const permissions = [
     scope: "MODULE",
     description: `Access ${module} module.`
   })),
+  {
+    code: "page.orders.workbench",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-workbench",
+    action: "view",
+    description: "Open the order workbench."
+  },
+  {
+    code: "page.orders.all",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-all",
+    action: "view",
+    description: "Open all orders."
+  },
+  {
+    code: "page.orders.after-sale",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-after-sale",
+    action: "view",
+    description: "Open after-sale orders."
+  },
+  {
+    code: "page.orders.exceptions",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-exceptions",
+    action: "view",
+    description: "Open exception orders."
+  },
+  {
+    code: "page.system.warehouse-locations",
+    module: "system",
+    scope: "PAGE",
+    page: "warehouse-locations",
+    action: "view",
+    description: "Open warehouse location configuration."
+  },
   {
     code: "page.product.digitalization",
     module: "product",
@@ -61,7 +101,20 @@ const permissions = [
       action,
       description: `Allow ${action} operation in ${module}.`
     }))
-  )
+  ),
+  ...[
+    ["orders.view", "orders", "view", "View orders and their status history."],
+    ["orders.assign-picker", "orders", "assign-picker", "Assign or reassign picking work."],
+    ["orders.pick", "orders", "pick", "Claim picking work and verify item barcodes."],
+    ["orders.pack", "orders", "pack", "Start and complete order packing."],
+    ["orders.assign-rider", "orders", "assign-rider", "Assign an internal or external delivery rider."],
+    ["orders.dispatch", "orders", "dispatch", "Confirm a parcel was handed to a rider."],
+    ["orders.complete", "orders", "complete", "Confirm delivery or customer pickup completion."],
+    ["orders.cancel", "orders", "cancel", "Cancel an eligible order."],
+    ["orders.after-sale", "orders", "after-sale", "Manage after-sale ownership and status."],
+    ["warehouse-locations.view", "system", "view", "View warehouse locations and their products."],
+    ["warehouse-locations.manage", "system", "manage", "Create, disable, move, and print warehouse locations."]
+  ].map(([code, module, action, description]) => ({ code, module, scope: "ACTION", action, description }))
 ];
 
 const allPermissionCodes = permissions.map((permission) => permission.code);
@@ -86,12 +139,27 @@ const roles = [
       ...readAllModules,
       "page.product.digitalization",
       "page.product.control",
+      "page.orders.workbench",
+      "page.orders.all",
+      "page.orders.after-sale",
+      "page.orders.exceptions",
+      "page.system.warehouse-locations",
       "action.product.edit",
       "action.product.approve",
       "action.product.publish",
-      "action.warehouse.edit",
       "action.orders.edit",
-      "action.analytics.export"
+      "action.analytics.export",
+      "orders.view",
+      "orders.assign-picker",
+      "orders.pick",
+      "orders.pack",
+      "orders.assign-rider",
+      "orders.dispatch",
+      "orders.complete",
+      "orders.cancel",
+      "orders.after-sale",
+      "warehouse-locations.view",
+      "warehouse-locations.manage"
     ])
   },
   {
@@ -111,15 +179,15 @@ const roles = [
   },
   {
     code: "WAREHOUSE_FULFILLMENT",
-    name: "Warehouse & Fulfillment",
-    description: "Warehouse stock-in, picking, packing, and handoff work.",
-    permissions: ["module.warehouse", "module.orders", "action.warehouse.view", "action.warehouse.create", "action.warehouse.edit", "action.warehouse.approve", "action.orders.view"]
+    name: "Order Fulfillment",
+    description: "Order-level picking, packing, pickup, and delivery handoff work.",
+    permissions: ["module.orders", "page.orders.workbench", "page.orders.all", "page.orders.exceptions", "action.orders.view", "orders.view", "orders.pick", "orders.pack", "orders.dispatch", "orders.complete", "warehouse-locations.view"]
   },
   {
     code: "ORDER_OPERATIONS",
     name: "Order Operations",
     description: "Order review, payment status follow-up, and order exception handling.",
-    permissions: ["module.orders", "action.orders.view", "action.orders.edit", "action.orders.approve", "action.orders.export"]
+    permissions: ["module.orders", "page.orders.workbench", "page.orders.all", "page.orders.after-sale", "page.orders.exceptions", "action.orders.view", "action.orders.edit", "action.orders.approve", "action.orders.export", "orders.view", "orders.assign-picker", "orders.assign-rider", "orders.cancel", "orders.after-sale"]
   },
   {
     code: "AFFILIATE_OPERATIONS",
@@ -131,7 +199,7 @@ const roles = [
     code: "CUSTOMER_SERVICE",
     name: "Customer Service",
     description: "Customer support, return intake, and delivery exception handling.",
-    permissions: ["module.customer-service", "module.orders", "action.customer-service.view", "action.customer-service.create", "action.customer-service.edit", "action.orders.view"]
+    permissions: ["module.customer-service", "module.orders", "page.orders.all", "page.orders.after-sale", "action.customer-service.view", "action.customer-service.create", "action.customer-service.edit", "action.orders.view", "orders.view", "orders.after-sale"]
   },
   {
     code: "FINANCE",

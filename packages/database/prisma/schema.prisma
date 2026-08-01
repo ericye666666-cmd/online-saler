@@ -744,7 +744,7 @@ model Order {
   customerId           String
   status               OrderStatus           @default(DRAFT)
   fulfillmentMethod    FulfillmentMethod
-  pickupCode           String?             @unique
+  pickupCode           String?               @unique
   deliveryAddress      String?
   deliveryNote         String?
   itemSubtotalKsh      Int
@@ -953,6 +953,7 @@ model DeliveryAssignment {
 
 model FulfillmentEvent {
   id                String                      @id @default(uuid())
+  idempotencyKey    String?                     @unique
   fulfillmentId     String
   orderId           String
   actorEmployeeId   String?

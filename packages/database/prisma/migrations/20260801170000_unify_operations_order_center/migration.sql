@@ -34,6 +34,7 @@ ALTER TABLE "OrderFulfillment"
   ADD COLUMN "pickupNote" TEXT;
 
 ALTER TABLE "FulfillmentEvent"
+  ADD COLUMN "idempotencyKey" TEXT,
   ADD COLUMN "actorAdminUserId" TEXT,
   ADD COLUMN "relatedEmployeeId" TEXT,
   ADD COLUMN "deliveryRiderId" TEXT,
@@ -102,6 +103,7 @@ CREATE INDEX "DeliveryAssignment_fulfillmentId_createdAt_idx" ON "DeliveryAssign
 CREATE INDEX "DeliveryAssignment_orderId_createdAt_idx" ON "DeliveryAssignment"("orderId", "createdAt");
 CREATE INDEX "DeliveryAssignment_deliveryRiderId_createdAt_idx" ON "DeliveryAssignment"("deliveryRiderId", "createdAt");
 CREATE INDEX "FulfillmentEvent_actorAdminUserId_createdAt_idx" ON "FulfillmentEvent"("actorAdminUserId", "createdAt");
+CREATE UNIQUE INDEX "FulfillmentEvent_idempotencyKey_key" ON "FulfillmentEvent"("idempotencyKey");
 CREATE INDEX "FulfillmentEvent_relatedEmployeeId_createdAt_idx" ON "FulfillmentEvent"("relatedEmployeeId", "createdAt");
 CREATE INDEX "FulfillmentEvent_deliveryRiderId_createdAt_idx" ON "FulfillmentEvent"("deliveryRiderId", "createdAt");
 CREATE INDEX "FulfillmentEvent_orderItemId_createdAt_idx" ON "FulfillmentEvent"("orderItemId", "createdAt");
@@ -137,8 +139,8 @@ FROM "Order" o
 LEFT JOIN "OrderFulfillment" f ON f."orderId" = o."id"
 WHERE o."status" = 'PAID' AND f."id" IS NULL;
 
-INSERT INTO "FulfillmentEvent" ("id", "fulfillmentId", "orderId", "action", "oldStatus", "newStatus", "note", "createdAt")
-SELECT CONCAT('paid-order-task-event-', f."id"), f."id", f."orderId", 'PAYMENT_CONFIRMED_PICK_TASK_CREATED', NULL, 'PAID', 'Backfilled from an existing paid order.', f."createdAt"
+INSERT INTO "FulfillmentEvent" ("id", "idempotencyKey", "fulfillmentId", "orderId", "action", "oldStatus", "newStatus", "note", "createdAt")
+SELECT CONCAT('paid-order-task-event-', f."id"), CONCAT('pick-task:', f."orderId"), f."id", f."orderId", 'PAYMENT_CONFIRMED_PICK_TASK_CREATED', NULL, 'PAID', 'Backfilled from an existing paid order.', f."createdAt"
 FROM "OrderFulfillment" f
 JOIN "Order" o ON o."id" = f."orderId"
 WHERE o."status" = 'PAID'
@@ -148,8 +150,20 @@ WHERE o."status" = 'PAID'
   );
 
 -- Create item scan rows without replacing the immutable order snapshots.
-INSERT INTO "FulfillmentItem" ("id", "fulfillmentId", "orderItemId", "expectedBarcode", "status", "createdAt", "updatedAt")
-SELECT CONCAT('fulfillment-item-', oi."id"), f."id", oi."id", COALESCE(os."barcode", ii."barcode", p."barcode"), 'PENDING', f."createdAt", CURRENT_TIMESTAMP
+INSERT INTO "FulfillmentItem" ("id", "fulfillmentId", "orderItemId", "expectedBarcode", "status", "verifiedByEmployeeId", "verifiedAt", "createdAt", "updatedAt")
+SELECT CONCAT('fulfillment-item-', oi."id"),
+       f."id",
+       oi."id",
+       COALESCE(os."barcode", ii."barcode", p."barcode"),
+       CASE
+         WHEN f."pickedAt" IS NOT NULL OR f."status" IN ('READY_TO_PACK', 'PACKED', 'READY_FOR_PICKUP', 'READY_FOR_DISPATCH', 'OUT_FOR_DELIVERY', 'COMPLETED')
+           THEN 'VERIFIED'::"FulfillmentItemStatus"
+         ELSE 'PENDING'::"FulfillmentItemStatus"
+       END,
+       CASE WHEN f."pickedAt" IS NOT NULL THEN f."assignedPickerEmployeeId" ELSE NULL END,
+       f."pickedAt",
+       f."createdAt",
+       CURRENT_TIMESTAMP
 FROM "OrderFulfillment" f
 JOIN "OrderItem" oi ON oi."orderId" = f."orderId"
 LEFT JOIN "OrderSnapshot" os ON os."orderItemId" = oi."id"
@@ -187,3 +201,21 @@ FROM "OrderFulfillment" f
 WHERE f."id" = e."fulfillmentId"
   AND e."deliveryRiderId" IS NULL
   AND f."deliveryRiderId" IS NOT NULL;
+
+-- Preserve the employee and time recorded by the former one-step delivery action.
+UPDATE "OrderFulfillment" f
+SET "dispatchedByEmployeeId" = event."actorEmployeeId",
+    "dispatchedAt" = event."createdAt"
+FROM (
+  SELECT DISTINCT ON ("fulfillmentId") "fulfillmentId", "actorEmployeeId", "createdAt"
+  FROM "FulfillmentEvent"
+  WHERE "action" = 'ASSIGN_DELIVERY'
+  ORDER BY "fulfillmentId", "createdAt" DESC
+) event
+WHERE event."fulfillmentId" = f."id"
+  AND f."dispatchedByEmployeeId" IS NULL;
+
+UPDATE "CustomerServiceCase"
+SET "afterSaleReason" = COALESCE("afterSaleReason", "title"),
+    "customerRequest" = COALESCE("customerRequest", "description")
+WHERE "issueType" = 'AFTER_SALE';

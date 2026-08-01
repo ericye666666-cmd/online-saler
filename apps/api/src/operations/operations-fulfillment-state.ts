@@ -80,6 +80,7 @@ export function orderCenterTab(input: {
   if (input.hasOpenAfterSale || input.orderStatus === OrderStatus.REFUNDED) return "after-sale";
   if (input.orderStatus === OrderStatus.CANCELLED || input.orderStatus === OrderStatus.EXPIRED) return "cancelled";
   if (input.orderStatus === OrderStatus.COMPLETED || input.fulfillmentStatus === FulfillmentStatus.COMPLETED) return "completed";
+  if (input.fulfillmentStatus === FulfillmentStatus.EXCEPTION) return "all";
 
   const fulfillmentTabs: Partial<Record<FulfillmentStatus, OrderCenterTab>> = {
     [FulfillmentStatus.PAID]: "waiting-pick",

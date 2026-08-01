@@ -16,6 +16,7 @@ export function buildPaidOrderPickingTask(orderId: string, items: readonly PaidO
       expectedBarcode: item.snapshot?.barcode?.trim() || null
     })),
     event: {
+      idempotencyKey: `pick-task:${orderId}`,
       orderId,
       action: "PAYMENT_CONFIRMED_PICK_TASK_CREATED",
       oldStatus: null,
