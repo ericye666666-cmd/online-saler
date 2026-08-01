@@ -347,12 +347,11 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
   }, [load]);
 
   async function runCurrentAction() {
-    if (!batch || !["START_AI_IMAGE", "GENERATE_BARCODES"].includes(batch.nextAction)) return;
-    const action = batch.nextAction === "START_AI_IMAGE" ? "run-ai" : "generate-barcodes";
+    if (!batch || batch.nextAction !== "GENERATE_BARCODES") return;
     setBusy(true);
     setError("");
     try {
-      await request(`/operations/product-batches/${batch.id}/${action}`, {
+      await request(`/operations/product-batches/${batch.id}/generate-barcodes`, {
         method: "POST",
         body: JSON.stringify(ids)
       });
@@ -368,7 +367,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
     return <div className="flex flex-col gap-4">{error ? <StatusMessage tone="danger">{error}</StatusMessage> : <StatusMessage tone="neutral">正在读取批次...</StatusMessage>}</div>;
   }
 
-  const directAction = ["START_AI_IMAGE", "GENERATE_BARCODES"].includes(batch.nextAction);
+  const directAction = batch.nextAction === "GENERATE_BARCODES";
   const nextHref = batchNextActionHref(batch.id, batch.nextAction);
 
   return (

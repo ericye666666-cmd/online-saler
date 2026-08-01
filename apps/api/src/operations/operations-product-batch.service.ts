@@ -464,7 +464,7 @@ export class OperationsProductBatchService {
   private productInclude() {
     return {
       batch: true,
-      images: { orderBy: { createdAt: "desc" }, take: 1 },
+      images: { orderBy: { createdAt: "desc" } },
       measurements: { orderBy: { measurementType: "asc" } },
       defects: { orderBy: { createdAt: "asc" } },
       reviews: { orderBy: { createdAt: "desc" }, take: 1 },
