@@ -147,6 +147,7 @@ export function normalizeOpenAIVisionOutput(
     sleeveType: enumField<AISleeveType>(record, ["sleeveType", "sleeve"], SLEEVE_SET, "OTHER", evidenceImageIds),
     brandLabel: stringField(record, ["brandLabel", "brand"], evidenceImageIds),
     sizeLabel: stringField(record, ["sizeLabel", "size"], evidenceImageIds),
+    ukSizeLabel: stringField(record, ["ukSizeLabel", "ukSize", "uk_size"], evidenceImageIds),
     title: stringField(record, ["title"], evidenceImageIds),
     lengthCm: numberField(record, ["lengthCm", "length_cm", "bodyLengthCm"], evidenceImageIds),
     chestWidthCm: numberField(record, ["chestWidthCm", "chest_width_cm", "pitToPitCm"], evidenceImageIds),

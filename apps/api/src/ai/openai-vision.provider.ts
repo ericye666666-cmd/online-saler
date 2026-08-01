@@ -84,7 +84,7 @@ export class OpenAIVisionProvider implements AIProvider {
                 type: "input_text",
                 text: [
                   "Return one JSON object with these fields:",
-                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, brandLabel, sizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm.",
+                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, brandLabel, sizeLabel, ukSizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm.",
                   `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
                   `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
                   `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
@@ -94,6 +94,7 @@ export class OpenAIVisionProvider implements AIProvider {
                   `sleeveType enum: ${AI_SLEEVE_TYPES.join(", ")}`,
                   "Use kidsAgeRange=NOT_APPLICABLE unless audience=KIDS.",
                   "Each field must be an object: { value, confidence }.",
+                  "ukSizeLabel is the best UK size notation supported by the visible tag and measured garment fit, for example UK 12, UK W32, or UK M. Use null when the evidence is insufficient; do not convert from sizeLabel alone.",
                   "All centimeter values are flat-lay garment measurements, not body circumference.",
                   "lengthCm: shoulder high point to hem for tops/dresses; top waistband to hem for bottoms.",
                   "chestWidthCm: pit to pit. shoulderWidthCm: shoulder seam to shoulder seam. sleeveLengthCm: shoulder seam to cuff.",

@@ -14,6 +14,7 @@ export type WorkspaceForm = {
   brand: string;
   tagSize: string;
   sizeLabel: string;
+  ukSizeLabel: string;
   pattern: string;
   sleeveType: string;
   fitType: string;
@@ -59,6 +60,7 @@ export const emptyWorkspaceForm = (): WorkspaceForm => ({
   brand: "",
   tagSize: "",
   sizeLabel: "",
+  ukSizeLabel: "",
   pattern: "SOLID",
   sleeveType: "SHORT",
   fitType: "UNKNOWN",
@@ -110,6 +112,7 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     brand: stringValue(product?.brand) || stringField(ai, "brandLabel") || form.brand,
     tagSize: stringValue(product?.tagSize) || stringField(ai, "sizeLabel") || form.tagSize,
     sizeLabel: stringValue(product?.finalSizeLabel) || stringField(ai, "sizeLabel") || form.sizeLabel,
+    ukSizeLabel: stringValue(product?.ukSizeLabel) || stringField(ai, "ukSizeLabel") || form.ukSizeLabel,
     pattern: stringValue(product?.pattern) || stringField(ai, "pattern") || form.pattern,
     sleeveType: stringValue(product?.sleeveType) || stringField(ai, "sleeveType") || form.sleeveType,
     fitType: stringValue(product?.fitType) || form.fitType,
@@ -331,6 +334,7 @@ export function buildCalibrationBody(input: {
     brand: input.form.brand.trim() || undefined,
     tagSize: input.form.tagSize.trim() || undefined,
     sizeLabel: input.form.sizeLabel.trim() || undefined,
+    ukSizeLabel: input.form.ukSizeLabel.trim() || undefined,
     description: input.form.description.trim() || undefined,
     conditionGrade: input.form.conditionGrade,
     priceKsh: Number(input.form.priceKsh),
