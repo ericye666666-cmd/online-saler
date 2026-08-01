@@ -4,7 +4,7 @@ import { join } from "node:path";
 import satori from "satori";
 import sharp from "sharp";
 
-export const PRODUCT_DETAIL_TEMPLATE_VERSION = "product-detail-cards-v1";
+export const PRODUCT_DETAIL_TEMPLATE_VERSION = "product-detail-cards-v2";
 
 type CardRow = { label: string; value: string };
 
@@ -153,11 +153,11 @@ function measurementTemplateSvg(
   const outline = pants ? pantsOutline() : dress ? dressOutline() : topOutline(template === "JACKET_TEMPLATE");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
     <rect width="1200" height="1200" fill="#fff"/>
-    <text x="72" y="88" font-family="Arial, sans-serif" font-size="24" fill="#1f6f5f">MEASUREMENT GUIDE</text>
-    <text x="72" y="150" font-family="Arial, sans-serif" font-size="42" fill="#171717">${escapeXml(title)}</text>
+    <text x="72" y="88" font-family="DejaVu Sans, sans-serif" font-size="24" fill="#1f6f5f">MEASUREMENT GUIDE</text>
+    <text x="72" y="150" font-family="DejaVu Sans, sans-serif" font-size="42" fill="#171717">${escapeXml(title)}</text>
     <g transform="translate(80 240)" stroke="#737373" stroke-width="5" fill="#f3f3f3" stroke-linejoin="round">${outline}</g>
-    <g font-family="Arial, sans-serif">${rows || '<text x="700" y="330" font-size="29" fill="#737373">Use the product measurements table.</text>'}</g>
-    <text x="700" y="1030" font-family="Arial, sans-serif" font-size="22" fill="#737373">All values are flat garment measurements.</text>
+    <g font-family="DejaVu Sans, sans-serif">${rows || '<text x="700" y="330" font-size="29" fill="#737373">Use the product measurements table.</text>'}</g>
+    <text x="700" y="1030" font-family="DejaVu Sans, sans-serif" font-size="22" fill="#737373">All values are flat garment measurements.</text>
   </svg>`;
 }
 
@@ -165,25 +165,25 @@ function topOutline(jacket: boolean): string {
   return `<path d="M180 80 L290 35 L380 80 L505 155 L450 290 L390 245 L390 720 L80 720 L80 245 L20 290 L-35 155 Z"/>
     ${jacket ? '<path d="M235 65 L235 720" fill="none"/><path d="M180 80 L235 160 L290 80" fill="none"/>' : '<path d="M180 80 Q235 155 290 80" fill="none"/>'}
     <path d="M80 325 L390 325" fill="none" stroke-dasharray="12 10"/>
-    <text x="220" y="315" font-family="Arial" font-size="28" fill="#555" stroke="none">B</text>
-    <path d="M80 52 L390 52" fill="none" stroke-dasharray="12 10"/><text x="220" y="42" font-family="Arial" font-size="28" fill="#555" stroke="none">C</text>
-    <path d="M410 100 L510 280" fill="none" stroke-dasharray="12 10"/><text x="490" y="175" font-family="Arial" font-size="28" fill="#555" stroke="none">D</text>
-    <path d="M50 80 L50 720" fill="none" stroke-dasharray="12 10"/><text x="20" y="420" font-family="Arial" font-size="28" fill="#555" stroke="none">A</text>`;
+    <text x="220" y="315" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">B</text>
+    <path d="M80 52 L390 52" fill="none" stroke-dasharray="12 10"/><text x="220" y="42" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">C</text>
+    <path d="M410 100 L510 280" fill="none" stroke-dasharray="12 10"/><text x="490" y="175" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">D</text>
+    <path d="M50 80 L50 720" fill="none" stroke-dasharray="12 10"/><text x="20" y="420" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">A</text>`;
 }
 
 function dressOutline(): string {
   return `<path d="M155 55 L270 55 L350 145 L305 270 L270 235 L300 430 L430 800 L-5 800 L125 430 L155 235 L110 270 L65 145 Z"/>
     <path d="M110 330 L310 330 M125 430 L300 430 M75 570 L355 570" fill="none" stroke-dasharray="12 10"/>
-    <text x="205" y="320" font-family="Arial" font-size="28" fill="#555" stroke="none">B</text><text x="205" y="420" font-family="Arial" font-size="28" fill="#555" stroke="none">C</text><text x="205" y="560" font-family="Arial" font-size="28" fill="#555" stroke="none">D</text>
-    <path d="M35 55 L35 800" fill="none" stroke-dasharray="12 10"/><text x="5" y="430" font-family="Arial" font-size="28" fill="#555" stroke="none">A</text>`;
+    <text x="205" y="320" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">B</text><text x="205" y="420" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">C</text><text x="205" y="560" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">D</text>
+    <path d="M35 55 L35 800" fill="none" stroke-dasharray="12 10"/><text x="5" y="430" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">A</text>`;
 }
 
 function pantsOutline(): string {
   return `<path d="M65 40 L395 40 L365 780 L245 780 L225 340 L205 780 L85 780 Z"/>
     <path d="M65 80 L395 80 M85 230 L375 230 M85 310 L220 310 M85 750 L200 750 M245 750 L365 750" fill="none" stroke-dasharray="12 10"/>
-    <text x="220" y="70" font-family="Arial" font-size="28" fill="#555" stroke="none">B</text><text x="220" y="220" font-family="Arial" font-size="28" fill="#555" stroke="none">C</text><text x="145" y="300" font-family="Arial" font-size="28" fill="#555" stroke="none">D</text><text x="135" y="740" font-family="Arial" font-size="28" fill="#555" stroke="none">E</text>
-    <path d="M35 40 L35 780" fill="none" stroke-dasharray="12 10"/><text x="5" y="420" font-family="Arial" font-size="28" fill="#555" stroke="none">A</text>
-    <path d="M235 340 L235 780" fill="none" stroke-dasharray="12 10"/><text x="245" y="560" font-family="Arial" font-size="28" fill="#555" stroke="none">F</text>`;
+    <text x="220" y="70" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">B</text><text x="220" y="220" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">C</text><text x="145" y="300" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">D</text><text x="135" y="740" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">E</text>
+    <path d="M35 40 L35 780" fill="none" stroke-dasharray="12 10"/><text x="5" y="420" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">A</text>
+    <path d="M235 340 L235 780" fill="none" stroke-dasharray="12 10"/><text x="245" y="560" font-family="DejaVu Sans" font-size="28" fill="#555" stroke="none">F</text>`;
 }
 
 function label(key: string): string {

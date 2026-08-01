@@ -101,7 +101,7 @@ export class ProductDetailAssetService {
           eyebrow: "Fit guide",
           title: stringValue(finalCopy.fitSummary) ?? "Fit and size guidance",
           rows: fitRows(profile),
-          note: profile.sizeDisclaimer,
+          note: englishCardText(profile.sizeDisclaimer),
           accent: "#1f6f5f"
         })
       )
@@ -361,6 +361,13 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function englishCardText(value: string | null): string | null {
+  if (!value) return null;
+  const firstHanCharacter = value.search(/[\u3400-\u9fff]/u);
+  const english = (firstHanCharacter === -1 ? value : value.slice(0, firstHanCharacter)).trim();
+  return english || null;
 }
 
 function mimeFromUrl(url: string): string {
