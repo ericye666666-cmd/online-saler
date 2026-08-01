@@ -38,7 +38,7 @@ type ProductRecord = JsonRecord & {
   title?: string | null;
   category?: string | null;
   subcategory?: string | null;
-  audience?: string | null;
+  gender?: string | null;
   color?: string | null;
   pattern?: string | null;
   sleeveType?: string | null;
@@ -54,6 +54,7 @@ type ProductRecord = JsonRecord & {
   reviews?: Array<{ result?: string; reason?: string | null; createdAt?: string }>;
   aiExtractions?: JsonRecord[];
   inventoryItem?: InventoryItem | null;
+  labelAppliedAt?: string | null;
 };
 type ProductBatch = { id: string; batchCode: string; targetCount: number; stage: string; stageLabel: string; products: ProductRecord[] };
 type ImageTab = { key: string; label: string; url: string; transparent?: boolean; selected?: boolean };
@@ -216,7 +217,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <h2 className="font-semibold">第 {product.batchItemNumber}/10 件</h2>
-                <p className="text-xs text-muted-foreground">{product.productCode} · {productStatusLabel(product.status)}</p>
+                <p className="text-xs text-muted-foreground">{product.productCode} · {product.labelAppliedAt && product.status === "BARCODE_ASSIGNED" ? "待审核" : productStatusLabel(product.status)}</p>
               </div>
               <div className="flex gap-2">
                 <Button size="icon" variant="outline" title="上一件" disabled={currentIndex === 0 || Boolean(busy)} onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}><ArrowLeftIcon /></Button>
@@ -238,7 +239,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
                 <Fact label="标题" value={product.title} wide />
                 <Fact label="分类" value={labelValue(product.category)} />
                 <Fact label="子分类" value={labelValue(product.subcategory)} />
-                <Fact label="适用人群" value={labelValue(product.audience)} />
+                <Fact label="适用人群" value={labelValue(product.gender)} />
                 <Fact label="品牌" value={product.brand} />
                 <Fact label="颜色" value={labelValue(product.color)} />
                 <Fact label="图案" value={labelValue(product.pattern)} />
@@ -258,8 +259,8 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
                 <Fact label="AI 标题" value={aiValue(aiOutput, "title")} wide />
                 <Fact label="AI 分类" value={labelValue(aiValue(aiOutput, "category"))} />
                 <Fact label="AI 人群" value={labelValue(aiValue(aiOutput, "audience"))} />
-                <Fact label="AI 颜色" value={labelValue(aiValue(aiOutput, "color"))} />
-                <Fact label="AI 尺码" value={aiValue(aiOutput, "platformSize") || aiValue(aiOutput, "finalSizeLabel")} />
+                <Fact label="AI 颜色" value={labelValue(aiValue(aiOutput, "primaryColor"))} />
+                <Fact label="AI 尺码" value={aiValue(aiOutput, "sizeLabel")} />
                 {(product.measurements ?? []).map((measurement) => <Fact key={measurement.measurementType} label={measurementLabel(measurement.measurementType)} value={measurement.finalValueCm == null ? "" : `${measurement.finalValueCm} cm`} />)}
               </div>
             </section>

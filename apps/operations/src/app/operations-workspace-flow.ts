@@ -88,8 +88,8 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     brand: stringValue(product?.brand) || stringField(ai, "brandLabel") || form.brand,
     tagSize: stringValue(product?.tagSize) || stringField(ai, "sizeLabel") || form.tagSize,
     sizeLabel: stringValue(product?.finalSizeLabel) || stringField(ai, "sizeLabel") || form.sizeLabel,
-    pattern: stringField(ai, "pattern") || form.pattern,
-    sleeveType: stringField(ai, "sleeveType") || form.sleeveType,
+    pattern: stringValue(product?.pattern) || stringField(ai, "pattern") || form.pattern,
+    sleeveType: stringValue(product?.sleeveType) || stringField(ai, "sleeveType") || form.sleeveType,
     conditionGrade: stringValue(product?.conditionGrade) || form.conditionGrade,
     priceKsh: typeof product?.priceKsh === "number" ? String(product.priceKsh) : form.priceKsh,
     description: stringValue(product?.description) || form.description
@@ -159,8 +159,11 @@ export function calibrationValidationReasons(
   if (form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE") {
     reasons.push("儿童商品必须填写年龄段。");
   }
-  if (!positiveNumber(form.lengthCm)) reasons.push("衣长必须填写大于 0 的厘米数。");
-  if (!positiveNumber(form.chestWidthCm)) reasons.push("胸宽必须填写大于 0 的厘米数。");
+  for (const requirement of measurementRequirements(form)) {
+    if (!positiveNumber(form[requirement.key])) {
+      reasons.push(`${requirement.label}必须填写大于 0 的厘米数。`);
+    }
+  }
   if (!positiveInteger(form.priceKsh)) reasons.push("价格必须填写大于 0 的整数 KSh。");
   if (!form.defects.trim()) reasons.push("瑕疵必须确认；没有瑕疵请填写 None。");
   return reasons;
@@ -184,24 +187,58 @@ function positiveInteger(value: string): boolean {
   return Number.isInteger(parsed) && parsed > 0;
 }
 
+export type MeasurementRequirement = {
+  key: "lengthCm" | "chestWidthCm" | "waistCm" | "hipCm";
+  type: "LENGTH" | "OUTSEAM" | "CHEST_WIDTH" | "WAIST" | "HIP";
+  label: string;
+};
+
+export function measurementRequirements(form: Pick<WorkspaceForm, "category" | "subcategory">): MeasurementRequirement[] {
+  const isPants = form.category === "PANTS" || form.category === "SHORT" ||
+    (form.category === "KIDS" && form.subcategory === "KIDS_PANTS");
+  if (isPants) {
+    return [
+      { key: "lengthCm", type: "OUTSEAM", label: "裤长" },
+      { key: "waistCm", type: "WAIST", label: "腰宽" },
+      { key: "hipCm", type: "HIP", label: "臀宽" }
+    ];
+  }
+
+  if (["SHOES", "BAG", "OTHERS", "TEXTILE", "OTHER"].includes(form.category)) return [];
+
+  return [
+    { key: "lengthCm", type: "LENGTH", label: "衣长" },
+    { key: "chestWidthCm", type: "CHEST_WIDTH", label: "胸宽" }
+  ];
+}
+
 export function buildCalibrationBody(input: {
   employeeId: string;
   extractionId: string;
   form: WorkspaceForm;
 }) {
-  const length = Number(input.form.lengthCm);
-  const chest = Number(input.form.chestWidthCm);
-  const optionalMeasurements = [
-    { type: "SHOULDER_WIDTH", value: input.form.shoulderWidthCm },
-    { type: "WAIST", value: input.form.waistCm },
-    { type: "HIP", value: input.form.hipCm }
-  ]
-    .filter((item) => positiveNumber(item.value))
-    .map((item) => ({ type: item.type, valueCm: Number(item.value) }));
+  const requiredMeasurements = measurementRequirements(input.form);
+  const missingMeasurement = requiredMeasurements.find((item) => !positiveNumber(input.form[item.key]));
+  if (missingMeasurement) throw new Error(`${missingMeasurement.label} is required.`);
 
-  if (!positiveNumber(input.form.lengthCm) || !positiveNumber(input.form.chestWidthCm)) {
-    throw new Error("Length and chest width are required.");
-  }
+  const requiredKeys = new Set<keyof WorkspaceForm>(requiredMeasurements.map((item) => item.key));
+  const measurementCandidates = [
+    ...requiredMeasurements.map((item) => ({ type: item.type, key: item.key })),
+    { type: "LENGTH", key: "lengthCm" as const },
+    { type: "CHEST_WIDTH", key: "chestWidthCm" as const },
+    { type: "SHOULDER_WIDTH", key: "shoulderWidthCm" as const },
+    { type: "WAIST", key: "waistCm" as const },
+    { type: "HIP", key: "hipCm" as const }
+  ].filter((item, index) => index < requiredMeasurements.length || !requiredKeys.has(item.key));
+  const seenTypes = new Set<string>();
+  const measurements = measurementCandidates
+    .filter((item) => requiredKeys.has(item.key) || positiveNumber(input.form[item.key]))
+    .filter((item) => {
+      if (seenTypes.has(item.type)) return false;
+      seenTypes.add(item.type);
+      return true;
+    })
+    .map((item) => ({ type: item.type, valueCm: Number(input.form[item.key]) }));
 
   const defectText = input.form.defects.trim();
   const hasNoDefects = /^none$/i.test(defectText);
@@ -223,11 +260,7 @@ export function buildCalibrationBody(input: {
     description: input.form.description.trim() || undefined,
     conditionGrade: input.form.conditionGrade,
     priceKsh: Number(input.form.priceKsh),
-    measurements: [
-      { type: "LENGTH", valueCm: length },
-      { type: "CHEST_WIDTH", valueCm: chest },
-      ...optionalMeasurements
-    ],
+    measurements,
     defects: defectText && !hasNoDefects
       ? [
           {

@@ -42,6 +42,7 @@ import {
   buildCalibrationBody,
   calibrationValidationReasons,
   formFromProductAndAi,
+  measurementRequirements,
   normalizedAiOutput,
   stringValue,
   type JsonRecord,
@@ -261,6 +262,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   const readOnly = product?.status === "CALIBRATED";
   const taxonomyLabels = useMemo(() => taxonomyLabelMap(taxonomy), [taxonomy]);
   const categoryOptions = activeValues(taxonomy, "CATEGORY", PRODUCT_CATEGORY_OPTIONS, form.category);
+  const requiredMeasurementKeys = new Set(measurementRequirements(form).map((item) => item.key));
   const colorOptions = activeValues(taxonomy, "COLOR", AI_COLORS, form.color);
   const sizeOptions = activeValues(taxonomy, "SIZE", ["XS", "S", "M", "L", "XL", "XXL"], form.sizeLabel);
   const conditionOptions = activeValues(taxonomy, "CONDITION", ["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"], form.conditionGrade);
@@ -482,11 +484,11 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           <div className="border-t pt-4">
             <h3 className="mb-3 text-sm font-semibold">尺寸（cm）</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <FormInput label="衣长" value={form.lengthCm} required inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("lengthCm", value)} />
-              <FormInput label="胸宽" value={form.chestWidthCm} required inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("chestWidthCm", value)} />
+              <FormInput label={requiredMeasurementKeys.has("waistCm") ? "裤长" : "衣长"} value={form.lengthCm} required={requiredMeasurementKeys.has("lengthCm")} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("lengthCm", value)} />
+              <FormInput label="胸宽" value={form.chestWidthCm} required={requiredMeasurementKeys.has("chestWidthCm")} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("chestWidthCm", value)} />
               <FormInput label="肩宽" value={form.shoulderWidthCm} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("shoulderWidthCm", value)} />
-              <FormInput label="腰围" value={form.waistCm} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("waistCm", value)} />
-              <FormInput label="臀围" value={form.hipCm} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("hipCm", value)} />
+              <FormInput label="腰宽" value={form.waistCm} required={requiredMeasurementKeys.has("waistCm")} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("waistCm", value)} />
+              <FormInput label="臀宽" value={form.hipCm} required={requiredMeasurementKeys.has("hipCm")} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("hipCm", value)} />
             </div>
           </div>
 
