@@ -390,6 +390,57 @@ export class OperationsProductBatchService {
     return { batchId, stocked };
   }
 
+  async prepareBatchStorage(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
+    await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
+    const batch = await this.requireBatch(batchId);
+    const products = await prisma.product.findMany({ where: { batchId }, orderBy: { batchItemNumber: "asc" } });
+    if (products.length !== batch.targetCount || products.some((product) =>
+      product.status !== ProductStatus.APPROVED && product.status !== ProductStatus.READY_FOR_STORAGE
+    )) {
+      throw new BadRequestException(`All ${batch.targetCount} products must be approved before preparing storage.`);
+    }
+    const prepared = [];
+    for (const product of products) prepared.push(await this.productControl.prepareForStorage(product.id, input));
+    return { batchId, prepared };
+  }
+
+  async confirmBatchStorage(
+    batchId: string,
+    input: { adminUserId?: string; employeeId?: string; barcode?: string; locationCode?: string }
+  ) {
+    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    await this.requireBatch(batchId);
+    const barcode = input.barcode?.trim().toUpperCase();
+    if (!barcode) throw new BadRequestException("Barcode is required.");
+    const product = await prisma.product.findFirst({ where: { batchId, barcode } });
+    if (!product) {
+      const existsElsewhere = await prisma.product.findUnique({ where: { barcode } });
+      throw new BadRequestException(existsElsewhere ? "Barcode belongs to another batch." : "Barcode does not match this batch.");
+    }
+    return this.productControl.confirmPlacedAtLocation(product.id, input);
+  }
+
+  async publishBatch(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
+    await this.access.requirePermission(input.adminUserId, "action.product.publish");
+    const batch = await this.requireBatch(batchId);
+    const products = await prisma.product.findMany({
+      where: { batchId },
+      include: this.productInclude(),
+      orderBy: { batchItemNumber: "asc" }
+    });
+    if (products.length !== batch.targetCount || products.some((product) =>
+      (product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED) ||
+      product.inventoryItem?.status !== "AVAILABLE" ||
+      !product.inventoryItem.locationId
+    )) {
+      throw new BadRequestException(`All ${batch.targetCount} products must be scanned into storage before publishing.`);
+    }
+    const published = [];
+    for (const product of products) published.push(await this.productControl.publish(product.id, input));
+    await this.completeBatchIfDone(batch.id);
+    return { batchId, published };
+  }
+
   async reviewProduct(productId: string, input: ReviewInput) {
     const employeeId = employeeIdOrDefault(input.employeeId);
     await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
@@ -403,6 +454,9 @@ export class OperationsProductBatchService {
 
     let product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new NotFoundException("Product not found.");
+    if ((product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING) && !product.labelAppliedAt) {
+      throw new BadRequestException("Confirm the applied label before reviewing the product.");
+    }
 
     const actor = { actorType: ActorType.EMPLOYEE, actorId: employeeId, sourceApp: SourceApp.OPERATIONS };
     if (product.status === ProductStatus.BARCODE_ASSIGNED) {

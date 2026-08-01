@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AI_AUDIENCES,
@@ -1014,7 +1015,12 @@ function ProductControlActions(props: {
   const id = stringValue(props.product.id);
   const status = stringValue(props.product.status);
   const price = typeof props.product.priceKsh === "number" ? props.product.priceKsh : 0;
-  const canPrepareStorage = ["BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED"].includes(status);
+  const batchId = stringValue(objectRecord(props.product.batch)?.id);
+  const canPrepareStorage = status === "APPROVED";
+
+  if (batchId) {
+    return <Button size="sm" variant="outline" asChild><Link href={`/product/review?batchId=${encodeURIComponent(batchId)}`}>打开批次流程</Link></Button>;
+  }
 
   return (
     <>

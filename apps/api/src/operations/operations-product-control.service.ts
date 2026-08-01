@@ -152,19 +152,8 @@ export class OperationsProductControlService {
       sourceApp: SourceApp.OPERATIONS
     };
 
-    if (product.status === ProductStatus.BARCODE_ASSIGNED) {
-      product = await this.products.transitionProduct({
-        productId,
-        toStatus: ProductStatus.REVIEW_PENDING,
-        actor
-      });
-    }
-    if (product.status === ProductStatus.REVIEW_PENDING) {
-      product = await this.products.transitionProduct({
-        productId,
-        toStatus: ProductStatus.APPROVED,
-        actor
-      });
+    if (product.status !== ProductStatus.APPROVED && product.status !== ProductStatus.READY_FOR_STORAGE) {
+      throw new BadRequestException("Approve the product before preparing storage.");
     }
     if (product.status === ProductStatus.APPROVED) {
       product = await this.products.transitionProduct({
@@ -306,6 +295,87 @@ export class OperationsProductControlService {
           toLocationId: updated.locationId,
           employeeId,
           reason: "Employee confirmed item placed"
+        }
+      });
+    });
+
+    return this.productDetail(productId);
+  }
+
+  async confirmPlacedAtLocation(
+    productId: string,
+    input: { employeeId?: string; adminUserId?: string; locationCode?: string }
+  ) {
+    const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    const locationCode = input.locationCode?.trim().toUpperCase();
+    if (!locationCode) throw new BadRequestException("Warehouse location code is required.");
+
+    const product = await this.requireProduct(productId);
+    if (!product.barcode) throw new BadRequestException("Generate barcode before stock-in.");
+    if (product.status !== ProductStatus.READY_FOR_STORAGE) {
+      throw new BadRequestException("Only storage-ready products can be scanned into inventory.");
+    }
+
+    await this.ensureDefaultLocations();
+    const location = await prisma.warehouseLocation.findUnique({ where: { locationCode } });
+    if (!location?.active) throw new BadRequestException("Warehouse location is not active or does not exist.");
+
+    const existing = await prisma.inventoryItem.findUnique({ where: { productId } });
+    if (existing?.status === InventoryItemStatus.AVAILABLE) {
+      throw new BadRequestException("Product was already confirmed in storage.");
+    }
+
+    const checkedInAt = new Date();
+    await prisma.$transaction(async (transaction) => {
+      let item;
+      if (existing) {
+        const updated = await transaction.inventoryItem.updateMany({
+            where: { id: existing.id, status: { not: InventoryItemStatus.AVAILABLE } },
+            data: {
+              barcode: product.barcode!,
+              locationId: location.id,
+              status: InventoryItemStatus.AVAILABLE,
+              checkedInAt,
+              createdByEmployeeId: existing.createdByEmployeeId ?? employeeId
+            }
+          });
+        if (updated.count !== 1) throw new BadRequestException("Product was already confirmed in storage.");
+        item = await transaction.inventoryItem.findUniqueOrThrow({ where: { id: existing.id } });
+      } else {
+        item = await transaction.inventoryItem.create({
+            data: {
+              productId,
+              barcode: product.barcode!,
+              locationId: location.id,
+              status: InventoryItemStatus.AVAILABLE,
+              checkedInAt,
+              createdByEmployeeId: employeeId
+            }
+          });
+      }
+
+      if (existing?.locationId !== location.id) {
+        await transaction.inventoryMovement.create({
+          data: {
+            inventoryItemId: item.id,
+            productId,
+            movementType: InventoryMovementType.LOCATION_ASSIGNED,
+            fromLocationId: existing?.locationId ?? null,
+            toLocationId: location.id,
+            employeeId,
+            reason: "Employee scanned warehouse location"
+          }
+        });
+      }
+      await transaction.inventoryMovement.create({
+        data: {
+          inventoryItemId: item.id,
+          productId,
+          movementType: InventoryMovementType.STOCK_IN,
+          toLocationId: location.id,
+          employeeId,
+          reason: "Employee scanned product and location"
         }
       });
     });
