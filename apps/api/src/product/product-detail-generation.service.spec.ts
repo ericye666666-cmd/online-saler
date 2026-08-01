@@ -10,7 +10,8 @@ import {
 } from "@online-saler/database";
 import {
   isBatchReadyForDetailGeneration,
-  ProductDetailGenerationService
+  ProductDetailGenerationService,
+  summarizeDetailBatch
 } from "./product-detail-generation.service";
 
 const originals = {
@@ -24,6 +25,28 @@ afterEach(() => {
 });
 
 describe("ProductDetailGenerationService", () => {
+  it("summarizes the latest detail state for a calibrated batch", () => {
+    const summary = summarizeDetailBatch({
+      id: "batch-1",
+      batchCode: "BATCH-1",
+      targetCount: 4,
+      createdAt: new Date("2026-08-01T00:00:00Z"),
+      products: [
+        detailSummaryProduct(1, ProductDetailStatus.PENDING),
+        detailSummaryProduct(2, ProductDetailStatus.READY),
+        detailSummaryProduct(3, ProductDetailStatus.FAILED),
+        detailSummaryProduct(4, ProductDetailStatus.APPROVED)
+      ]
+    });
+
+    assert.equal(summary.calibrated, 4);
+    assert.equal(summary.pending, 1);
+    assert.equal(summary.succeeded, 1);
+    assert.equal(summary.failed, 1);
+    assert.equal(summary.approved, 1);
+    assert.equal(summary.products[1]?.profileId, "profile-2");
+  });
+
   it("requires every item in the complete batch to be calibrated", () => {
     assert.equal(
       isBatchReadyForDetailGeneration(
@@ -142,3 +165,18 @@ describe("ProductDetailGenerationService", () => {
     }
   });
 });
+
+function detailSummaryProduct(index: number, status: ProductDetailStatus) {
+  return {
+    id: `product-${index}`,
+    productCode: `P-${index}`,
+    batchItemNumber: index,
+    status: ProductStatus.CALIBRATED,
+    detailProfiles: [{
+      id: `profile-${index}`,
+      status,
+      sourceDataVersion: 1,
+      updatedAt: new Date("2026-08-01T00:00:00Z")
+    }]
+  };
+}

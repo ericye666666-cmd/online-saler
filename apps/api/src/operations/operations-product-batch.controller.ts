@@ -130,6 +130,11 @@ export class OperationsProductBatchController {
     return this.batches.reviewProduct(id, body);
   }
 
+  @Post("products/:id/recalibration")
+  recalibration(@Param("id") id: string, @Body() body: RetakeBody) {
+    return this.batches.markProductForRecalibration(id, body);
+  }
+
   @Post("products/:id/retake")
   retakeProduct(@Param("id") id: string, @Body() body: RetakeBody) {
     return this.batches.markProductForRetake(id, body);
