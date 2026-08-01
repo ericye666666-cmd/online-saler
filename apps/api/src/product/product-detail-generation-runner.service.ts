@@ -6,6 +6,7 @@ import {
   prisma
 } from "@online-saler/database";
 import { ProductDetailOpenAIProvider } from "./product-detail-openai.provider";
+import { ProductDetailAssetService } from "./product-detail-asset.service";
 import type { ProductDetailFacts } from "./product-detail-copy";
 
 const DETAIL_IMAGE_TYPES = new Set<ProductImageType>([
@@ -18,7 +19,10 @@ const DETAIL_IMAGE_TYPES = new Set<ProductImageType>([
 
 @Injectable()
 export class ProductDetailGenerationRunnerService {
-  constructor(private readonly provider: ProductDetailOpenAIProvider) {}
+  constructor(
+    private readonly provider: ProductDetailOpenAIProvider,
+    private readonly assets: ProductDetailAssetService
+  ) {}
 
   async run(jobId: string) {
     const claimed = await prisma.productDetailGenerationJob.updateMany({
@@ -72,7 +76,7 @@ export class ProductDetailGenerationRunnerService {
       const originalImages = job.product.images.filter((image) => DETAIL_IMAGE_TYPES.has(image.type));
       const result = await this.provider.generate(facts, originalImages);
 
-      return prisma.$transaction(async (transaction) => {
+      const generated = await prisma.$transaction(async (transaction) => {
         const current = await transaction.product.findUnique({
           where: { id: job.productId },
           select: { detailSourceVersion: true }
@@ -103,7 +107,7 @@ export class ProductDetailGenerationRunnerService {
         const profile = await transaction.productDetailProfile.update({
           where: { id: job.detailProfileId },
           data: {
-            status: ProductDetailStatus.READY,
+            status: ProductDetailStatus.GENERATING,
             sellingPointsJson: copy.sellingPoints,
             customerDescription: copy.shortDescription,
             fitSummary: copy.fitSummary,
@@ -121,10 +125,10 @@ export class ProductDetailGenerationRunnerService {
             outdatedAt: null
           }
         });
-        const completedJob = await transaction.productDetailGenerationJob.update({
+        const generatingJob = await transaction.productDetailGenerationJob.update({
           where: { id: job.id },
           data: {
-            status: ProductDetailStatus.READY,
+            status: ProductDetailStatus.GENERATING,
             provider: result.provider,
             model: result.model,
             promptVersion: result.promptVersion,
@@ -132,12 +136,24 @@ export class ProductDetailGenerationRunnerService {
             rawOutputJson: result.rawOutput as Prisma.InputJsonValue,
             inputTokens: result.inputTokens,
             outputTokens: result.outputTokens,
-            estimatedCostUsd: result.estimatedCostUsd,
-            completedAt: new Date()
+            estimatedCostUsd: result.estimatedCostUsd
           }
         });
-        return { job: completedJob, profile, copy, latencyMs: result.latencyMs };
+        return { job: generatingJob, profile, copy, latencyMs: result.latencyMs };
       });
+      const detailAssets = await this.assets.generateForProfile(job.detailProfileId);
+      const completed = await prisma.$transaction(async (transaction) => {
+        const profile = await transaction.productDetailProfile.update({
+          where: { id: job.detailProfileId },
+          data: { status: ProductDetailStatus.READY }
+        });
+        const completedJob = await transaction.productDetailGenerationJob.update({
+          where: { id: job.id },
+          data: { status: ProductDetailStatus.READY, completedAt: new Date() }
+        });
+        return { profile, job: completedJob };
+      });
+      return { ...generated, ...completed, assets: detailAssets };
     } catch (error) {
       const existing = await prisma.productDetailGenerationJob.findUnique({
         where: { id: jobId },

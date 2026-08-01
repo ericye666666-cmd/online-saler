@@ -9,6 +9,8 @@ import { ProductDetailGenerationController } from "./product-detail-generation.c
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
 import { ProductDetailGenerationRunnerService } from "./product-detail-generation-runner.service";
 import { ProductDetailOpenAIProvider } from "./product-detail-openai.provider";
+import { ProductDetailAssetService } from "./product-detail-asset.service";
+import { ProductDetailCardRendererService } from "./product-detail-card-renderer.service";
 import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
 import { ProductImageProcessingController } from "./product-image-processing.controller";
 import { ProductImageProcessingService } from "./product-image-processing.service";
@@ -36,6 +38,8 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductDetailGenerationService,
     ProductDetailGenerationRunnerService,
     ProductDetailOpenAIProvider,
+    ProductDetailAssetService,
+    ProductDetailCardRendererService,
     ProductBarcodeService,
     ProductImageStorageService,
     ProductImageTransformerService,
