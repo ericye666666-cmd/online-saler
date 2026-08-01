@@ -1,0 +1,129 @@
+enum ProductDetailStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+  OUTDATED
+  APPROVED
+}
+
+enum ProductDetailAssetType {
+  FRONT_MAIN
+  BACK_MAIN
+  MEASUREMENT_GUIDE
+  FIT_GUIDE
+  CONDITION_GUIDE
+  SHARE_CARD
+}
+
+model ProductDetailProfile {
+  id                       String              @id @default(uuid())
+  productId                String
+  status                   ProductDetailStatus @default(PENDING)
+  fitType                  ProductFitType?
+  stretchLevel             ProductStretchLevel?
+  fabricWeight             ProductFabricWeight?
+  bodyChestMinCm           Decimal?            @db.Decimal(6, 2)
+  bodyChestMaxCm           Decimal?            @db.Decimal(6, 2)
+  bodyWaistMinCm           Decimal?            @db.Decimal(6, 2)
+  bodyWaistMaxCm           Decimal?            @db.Decimal(6, 2)
+  bodyHipMinCm             Decimal?            @db.Decimal(6, 2)
+  bodyHipMaxCm             Decimal?            @db.Decimal(6, 2)
+  heightMinCm              Decimal?            @db.Decimal(6, 2)
+  heightMaxCm              Decimal?            @db.Decimal(6, 2)
+  weightMinKg              Decimal?            @db.Decimal(6, 2)
+  weightMaxKg              Decimal?            @db.Decimal(6, 2)
+  expectedFit              String?
+  recommendationConfidence Decimal?            @db.Decimal(4, 3)
+  recommendationBasis      Json?
+  recommendationWarnings   Json?
+  sellingPointsJson        Json?
+  customerDescription      String?
+  fitSummary               String?
+  measurementSummary       String?
+  conditionSummary         String?
+  sizeDisclaimer           String?
+  styleTagsJson            Json?
+  missingInformationJson   Json?
+  warningsJson             Json?
+  generatedByModel         String?
+  promptVersion            String?
+  rawOutputJson            Json?
+  finalOutputJson          Json?
+  sourceDataVersion        Int
+  contentVersion           Int                 @default(0)
+  approvedAt               DateTime?
+  approvedByEmployeeId     String?
+  outdatedReason           String?
+  outdatedAt               DateTime?
+  product                  Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  assets                   ProductDetailAsset[]
+  generationJobs           ProductDetailGenerationJob[]
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([sourceDataVersion])
+  @@unique([productId, sourceDataVersion])
+}
+
+model ProductDetailAsset {
+  id                String                 @id @default(uuid())
+  productId         String
+  detailProfileId   String
+  type              ProductDetailAssetType
+  status            ProductDetailStatus    @default(PENDING)
+  storageUrl        String?
+  publicUrl         String?
+  mimeType          String?
+  widthPx           Int?
+  heightPx          Int?
+  locale            String                 @default("en")
+  templateVersion   String?
+  sourceDataVersion Int
+  failureCode       String?
+  errorMessage      String?
+  outdatedReason    String?
+  outdatedAt        DateTime?
+  product           Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  detailProfile     ProductDetailProfile   @relation(fields: [detailProfileId], references: [id], onDelete: Cascade)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([detailProfileId, type, locale])
+  @@index([productId, status, updatedAt])
+  @@index([sourceDataVersion])
+}
+
+model ProductDetailGenerationJob {
+  id                String              @id @default(uuid())
+  productId         String
+  batchId           String?
+  detailProfileId   String
+  status            ProductDetailStatus @default(PENDING)
+  sourceDataVersion Int
+  provider          String?
+  model             String?
+  promptVersion     String?
+  requestJson       Json?
+  rawOutputJson     Json?
+  retryCount        Int                 @default(0)
+  failureCode       String?
+  errorMessage      String?
+  outdatedReason    String?
+  outdatedAt        DateTime?
+  inputTokens       Int?
+  outputTokens      Int?
+  estimatedCostUsd  Decimal?            @db.Decimal(10, 6)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  product           Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch             ProductBatch?       @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  detailProfile     ProductDetailProfile @relation(fields: [detailProfileId], references: [id], onDelete: Cascade)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([productId, sourceDataVersion])
+  @@index([batchId, status, createdAt])
+  @@index([status, createdAt])
+}

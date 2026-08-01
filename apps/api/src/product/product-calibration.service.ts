@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import {
   AIFieldDecisionSource,
   ConditionGrade,
@@ -13,6 +13,7 @@ import {
   prisma
 } from "@online-saler/database";
 import { ProductStateMachine } from "./product-state-machine";
+import { ProductDetailGenerationService } from "./product-detail-generation.service";
 
 export interface CalibrationMeasurementInput {
   type: string;
@@ -53,7 +54,12 @@ export interface CalibrateProductInput {
 
 @Injectable()
 export class ProductCalibrationService {
-  constructor(private readonly stateMachine: ProductStateMachine) {}
+  private readonly logger = new Logger(ProductCalibrationService.name);
+
+  constructor(
+    private readonly stateMachine: ProductStateMachine,
+    private readonly details?: ProductDetailGenerationService
+  ) {}
 
   async calibrate(productId: string, input: CalibrateProductInput) {
     this.validate(input);
@@ -103,6 +109,7 @@ export class ProductCalibrationService {
           fitType: input.fitType,
           stretchLevel: input.stretchLevel,
           fabricWeight: input.fabricWeight,
+          detailSourceVersion: { increment: 1 },
           gender: input.gender ?? null,
           kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
           brand: input.brand ?? null,
@@ -177,6 +184,14 @@ export class ProductCalibrationService {
     }
 
     await prisma.$transaction(operations);
+    try {
+      await this.details?.afterCalibration(productId, product.batchId);
+    } catch (error) {
+      this.logger.error(
+        `Detail job reconciliation failed after calibrating ${productId}`,
+        error instanceof Error ? error.stack : String(error)
+      );
+    }
 
     return prisma.product.findUnique({
       where: { id: productId },

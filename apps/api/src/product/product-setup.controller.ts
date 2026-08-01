@@ -14,6 +14,7 @@ import { ProductImageType, ProductStatus, prisma } from "@online-saler/database"
 import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
 import { ProductApplicationService } from "./product-application.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
+import { ProductDetailGenerationService } from "./product-detail-generation.service";
 
 interface CreateProductBody {
   productCode: string;
@@ -32,7 +33,8 @@ interface AddImageBody {
 export class ProductSetupController {
   constructor(
     private readonly products: ProductApplicationService,
-    private readonly imageStorage: ProductImageStorageService
+    private readonly imageStorage: ProductImageStorageService,
+    private readonly details: ProductDetailGenerationService
   ) {}
 
   @Post()
@@ -95,6 +97,7 @@ export class ProductSetupController {
     if (product.status === ProductStatus.DRAFT) {
       await prisma.product.update({ where: { id }, data: { status: ProductStatus.PHOTOGRAPHED } });
     }
+    await this.details.recordSourceChange(id, `${imageType}_IMAGE_CHANGED`);
 
     return image;
   }
@@ -134,6 +137,7 @@ export class ProductSetupController {
     if (product.status === ProductStatus.DRAFT) {
       await prisma.product.update({ where: { id }, data: { status: ProductStatus.PHOTOGRAPHED } });
     }
+    await this.details.recordSourceChange(id, `${body.type}_IMAGE_CHANGED`);
 
     return image;
   }
