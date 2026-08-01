@@ -13,6 +13,7 @@ import { ProductBarcodeService } from "../product/product-barcode.service";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsProductControlService } from "./operations-product-control.service";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
+import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -39,6 +40,7 @@ type ListInput = {
   employeeId?: string;
   dateFrom?: string;
   dateTo?: string;
+  includeTestData?: boolean;
 };
 
 type ReviewInput = {
@@ -69,7 +71,7 @@ export class OperationsProductBatchService {
   async summary(adminUserId?: string, employeeId?: string) {
     await this.access.requirePermission(adminUserId, PRODUCT_DIGITALIZE_PAGE);
     const operatorId = employeeIdOrDefault(employeeId);
-    const whereOperator = { createdByEmployeeId: operatorId };
+    const whereOperator = { createdByEmployeeId: operatorId, ...productFactoryVisibilityWhere() };
     const [activeBatches, waitingUpload, waitingAi, waitingCalibration, waitingReview, published, rejected, barcodeReady] =
       await Promise.all([
         prisma.productBatch.findMany({
@@ -158,7 +160,7 @@ export class OperationsProductBatchService {
 
   async listProducts(input: ListInput) {
     await this.access.requirePermission(input.adminUserId, PRODUCT_DIGITALIZE_PAGE);
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { ...productFactoryVisibilityWhere(input.includeTestData) };
     if (input.queue) Object.assign(where, this.queueWhere(input.queue));
     if (input.status) where.status = input.status;
     if (input.batchId?.trim()) where.batchId = input.batchId.trim();

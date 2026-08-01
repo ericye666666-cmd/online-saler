@@ -41,9 +41,21 @@ export class OperationsProductBatchController {
     @Query("category") category?: string,
     @Query("employeeId") employeeId?: string,
     @Query("dateFrom") dateFrom?: string,
-    @Query("dateTo") dateTo?: string
+    @Query("dateTo") dateTo?: string,
+    @Query("includeTestData") includeTestData?: string
   ) {
-    return this.batches.listProducts({ adminUserId, queue, status, search, batchId, category, employeeId, dateFrom, dateTo });
+    return this.batches.listProducts({
+      adminUserId,
+      queue,
+      status,
+      search,
+      batchId,
+      category,
+      employeeId,
+      dateFrom,
+      dateTo,
+      includeTestData: includeTestData === "true"
+    });
   }
 
   @Get(":id")

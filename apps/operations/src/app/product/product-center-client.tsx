@@ -36,6 +36,7 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,7 @@ import {
   canPublishProduct,
   canUnpublishProduct
 } from "../product-control-flow";
+import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
 const BATCH_SIZE = 10;
@@ -358,6 +360,7 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [includeTestData, setIncludeTestData] = useState(false);
   const [editingProduct, setEditingProduct] = useState<JsonRecord | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -375,13 +378,14 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
       if (employeeFilter.trim()) query.set("employeeId", employeeFilter.trim());
       if (dateFrom) query.set("dateFrom", dateFrom);
       if (dateTo) query.set("dateTo", dateTo);
+      if (includeTestData) query.set("includeTestData", "true");
       setProducts(await request<JsonRecord[]>(`/operations/product-batches/products?${query.toString()}`));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法读取商品列表。");
     } finally {
       setBusy("");
     }
-  }, [batchFilter, categoryFilter, dateFrom, dateTo, employeeFilter, ids.adminUserId, ids.employeeId, queue, search, statusFilter]);
+  }, [batchFilter, categoryFilter, dateFrom, dateTo, employeeFilter, ids.adminUserId, ids.employeeId, includeTestData, queue, search, statusFilter]);
 
   useEffect(() => {
     void load();
@@ -440,12 +444,12 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
           <CardTitle>筛选</CardTitle>
           <CardDescription>支持搜索、批次、状态、分类、员工和日期筛选。</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-7">
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Input placeholder="搜索商品/Barcode/标题" value={search} onChange={(event) => setSearch(event.target.value)} />
           <Input placeholder="批次 ID" value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} />
           <NativeSelect value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             <NativeSelectOption value="">全部状态</NativeSelectOption>
-            {PRODUCT_STATUS_OPTIONS.map((status) => <NativeSelectOption key={status} value={status}>{status}</NativeSelectOption>)}
+            {PRODUCT_STATUS_OPTIONS.map((status) => <NativeSelectOption key={status} value={status}>{productStatusLabel(status)}</NativeSelectOption>)}
           </NativeSelect>
           <NativeSelect value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
             <NativeSelectOption value="">全部分类</NativeSelectOption>
@@ -454,6 +458,10 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
           <Input placeholder="员工 ID" value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)} />
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          <label className="flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm">
+            <Checkbox checked={includeTestData} onCheckedChange={(checked) => setIncludeTestData(checked === true)} />
+            显示部署与 E2E 测试数据
+          </label>
         </CardContent>
       </Card>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
@@ -620,7 +628,7 @@ function BatchTable(props: { batches: ProductBatch[]; ids: ReturnType<typeof use
               <TableCell>{batch.completedCount}/{batch.targetCount}</TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">
-                  {Object.entries(batch.counts).map(([status, count]) => <Badge key={status} variant="secondary">{status}: {count}</Badge>)}
+                  {Object.entries(batch.counts).map(([status, count]) => <Badge key={status} variant="secondary">{productStatusLabel(status)}: {count}</Badge>)}
                 </div>
               </TableCell>
               <TableCell className="text-right">
@@ -875,17 +883,17 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ImageVariantTile label="Original" asset={comparison?.original ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="Transparent Cutout" asset={comparison?.cutoutTransparent ?? null} transparent busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="White Background" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="Optimized Main" asset={comparison?.optimizedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="原图" asset={comparison?.original ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="透明抠图" asset={comparison?.cutoutTransparent ?? null} transparent busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="白底图" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="优化主图" asset={comparison?.optimizedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
             </div>
             {latestRemovalJob ? (
               <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-muted/30 p-3 text-xs">
-                <span>Provider: <strong>{latestRemovalJob.provider ?? "-"}</strong></span>
-                <span>Quality: <strong>{latestRemovalJob.qualityScore?.toFixed(3) ?? "-"}</strong></span>
-                {latestRemovalJob.fallbackFrom ? <span>Fallback: <strong>{latestRemovalJob.fallbackFrom}</strong></span> : null}
-                {latestRemovalJob.qualityIssues.map((issue) => <Badge key={issue} variant="secondary">{issue}</Badge>)}
+                <span>处理引擎：<strong>{latestRemovalJob.provider ?? "-"}</strong></span>
+                <span>质量分：<strong>{latestRemovalJob.qualityScore?.toFixed(3) ?? "-"}</strong></span>
+                {latestRemovalJob.fallbackFrom ? <span>回退来源：<strong>{latestRemovalJob.fallbackFrom}</strong></span> : null}
+                {latestRemovalJob.qualityIssues.map((issue) => <Badge key={issue} variant="secondary">{imageIssueLabel(issue)}</Badge>)}
               </div>
             ) : null}
             {latestExtraction ? <AiPreview job={latestExtraction} /> : <StatusMessage tone="neutral">等待 AI 识别。</StatusMessage>}
@@ -950,7 +958,7 @@ function ImageVariantTile(props: {
         {props.asset?.selectedAsMain ? <Badge>商城主图</Badge> : null}
       </div>
       <div className={`flex aspect-square items-center justify-center overflow-hidden ${props.transparent ? "bg-muted" : "bg-white"}`}>
-        {url ? <img src={url} alt={props.label} className="size-full object-contain" /> : <ImageIcon className="size-8 text-muted-foreground" />}
+        <SafeProductImage src={url} alt={props.label} className="size-full object-contain" />
       </div>
       {props.selectable && props.asset ? (
         <div className="border-t p-2">
@@ -1178,7 +1186,7 @@ function Metric(props: { title: string; value: number }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={status === "PUBLISHED" ? "default" : "secondary"}>{status || "UNKNOWN"}</Badge>;
+  return <Badge variant={status === "PUBLISHED" ? "default" : "secondary"}>{productStatusLabel(status)}</Badge>;
 }
 
 function StatusMessage(props: { tone: "danger" | "neutral"; children: ReactNode }) {
@@ -1194,21 +1202,48 @@ function Thumb({ product }: { product: JsonRecord }) {
   const url = image ? imageUrlFromImage(image) : "";
   return (
     <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
-      {url ? <img src={url} alt="" className="size-full object-cover" /> : <UploadIcon className="text-muted-foreground" />}
+      <SafeProductImage src={url} alt={stringValue(product.title) || stringValue(product.productCode)} className="size-full object-cover" compact />
     </div>
   );
 }
 
+function SafeProductImage(props: { src: string; alt: string; className: string; compact?: boolean }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [props.src]);
+
+  if (!props.src || failed) {
+    return (
+      <div className="flex size-full flex-col items-center justify-center gap-1 bg-muted text-muted-foreground">
+        <ImageIcon className={props.compact ? "size-4" : "size-7"} />
+        {!props.compact ? <span className="text-xs">图片缺失</span> : null}
+      </div>
+    );
+  }
+
+  return <img src={props.src} alt={props.alt} className={props.className} onError={() => setFailed(true)} />;
+}
+
 function AiPreview({ job }: { job: JsonRecord }) {
   const output = normalizedAiOutput(job);
-  const fields = ["title", "category", "primaryColor", "pattern", "sleeveType", "brandLabel", "sizeLabel"];
+  const fields = [
+    ["title", "标题"],
+    ["category", "分类"],
+    ["primaryColor", "颜色"],
+    ["pattern", "图案"],
+    ["sleeveType", "袖型"],
+    ["brandLabel", "品牌"],
+    ["sizeLabel", "标签尺码"]
+  ] as const;
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
-      {fields.map((field) => {
+      {fields.map(([field, label]) => {
         const value = objectRecord(output?.[field]);
         return (
           <div key={field} className="flex justify-between gap-3">
-            <span className="text-muted-foreground">{field}</span>
+            <span className="text-muted-foreground">{label}</span>
             <span className="text-right">{stringValue(value?.value) || "-"}</span>
           </div>
         );
