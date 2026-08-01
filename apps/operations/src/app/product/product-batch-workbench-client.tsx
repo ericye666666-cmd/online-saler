@@ -26,6 +26,11 @@ import {
   batchFollowingStageLabel,
   batchNextActionHref
 } from "./product-factory-batch-display";
+import {
+  PRODUCTION_PRODUCT_BATCH_SIZE,
+  STAGING_PILOT_PRODUCT_BATCH_SIZE,
+  productBatchSizeOptions
+} from "./product-factory-batch-size";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -148,7 +153,7 @@ export function ProductWorkbenchPage() {
       <PageHeader
         eyebrow="商品工厂"
         title="今日工作"
-        description="按批次完成 10 件商品的上传、AI、校准、贴码、审核、入仓和发布。"
+        description="按批次完成商品上传、AI、校准、贴码、审核、入仓和发布。"
         action={
           <Button asChild disabled={!hasPermission("action.product.create")}>
             <Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />新建批次</Link>
@@ -187,7 +192,7 @@ export function ProductWorkbenchPage() {
                 </Button>
               </div>
             ) : (
-              <EmptyState title="没有进行中的批次" description="新建一个 10 件批次后，下一步会出现在这里。" action={<Button asChild><Link href="/product/new-batch">新建批次</Link></Button>} />
+              <EmptyState title="没有进行中的批次" description="新建批次后，下一步会出现在这里。" action={<Button asChild><Link href="/product/new-batch">新建批次</Link></Button>} />
             )}
           </CardContent>
         </Card>
@@ -225,11 +230,14 @@ export function ProductWorkbenchPage() {
   );
 }
 
-export function NewBatchPage() {
+export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean }) {
   const ids = useOperationIds();
   const router = useRouter();
   const { hasPermission } = useOperationsSession();
   const [note, setNote] = useState("");
+  const [targetCount, setTargetCount] = useState(
+    pilotEnabled ? STAGING_PILOT_PRODUCT_BATCH_SIZE : PRODUCTION_PRODUCT_BATCH_SIZE
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -239,7 +247,7 @@ export function NewBatchPage() {
     try {
       const batch = await request<ProductBatch>("/operations/product-batches", {
         method: "POST",
-        body: JSON.stringify({ ...ids, targetCount: 10, note: note.trim() || undefined })
+        body: JSON.stringify({ ...ids, targetCount, note: note.trim() || undefined })
       });
       router.push(`/product/batches/${batch.id}`);
     } catch (caught) {
@@ -251,14 +259,37 @@ export function NewBatchPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <PageHeader eyebrow="商品工厂" title="新建批次" description="每批固定 10 件。创建后直接进入连续上传。" />
+      <PageHeader
+        eyebrow="商品工厂"
+        title="新建批次"
+        description={pilotEnabled ? "先用 3 件测试完整流程；正式生产仍使用 10 件批次。" : "每批固定 10 件。创建后直接进入连续上传。"}
+      />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       <Card>
         <CardHeader>
-          <CardTitle>10 件商品批次</CardTitle>
-          <CardDescription>系统会生成 10 个有顺序的商品位置，正式 Barcode 在全部校准完成后生成。</CardDescription>
+          <CardTitle>{targetCount} 件商品{targetCount === STAGING_PILOT_PRODUCT_BATCH_SIZE ? "测试" : ""}批次</CardTitle>
+          <CardDescription>系统会生成 {targetCount} 个有顺序的商品位置，正式 Barcode 在全部校准完成后生成。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
+          {pilotEnabled ? (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">批次数量</div>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="批次数量">
+                {productBatchSizeOptions(pilotEnabled).map((size) => (
+                  <Button
+                    key={size}
+                    type="button"
+                    variant={targetCount === size ? "default" : "outline"}
+                    aria-checked={targetCount === size}
+                    role="radio"
+                    onClick={() => setTargetCount(size)}
+                  >
+                    {size === STAGING_PILOT_PRODUCT_BATCH_SIZE ? "3 件测试" : "10 件正式"}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <label className="block space-y-2 text-sm font-medium">
             批次备注（可选）
             <textarea
@@ -310,7 +341,7 @@ export function ProductBatchListPage({ completed = false }: { completed?: boolea
       <PageHeader
         eyebrow="商品工厂"
         title={completed ? "已完成" : "进行中批次"}
-        description={completed ? "查询已完成的 10 件商品批次。" : "从批次进入当前合法步骤，不在列表页暴露跨阶段操作。"}
+        description={completed ? "查询已完成的商品批次。" : "从批次进入当前合法步骤，不在列表页暴露跨阶段操作。"}
         action={completed ? undefined : <Button asChild><Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />新建批次</Link></Button>}
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
@@ -391,7 +422,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>10 件商品</CardTitle>
+          <CardTitle>{batch.targetCount} 件商品</CardTitle>
           <CardDescription>紧凑查看每件商品的编号、当前状态和缺失项。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">

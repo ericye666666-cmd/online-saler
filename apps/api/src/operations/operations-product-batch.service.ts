@@ -16,6 +16,11 @@ import { OperationsAccessService } from "./operations-access.service";
 import { OperationsProductControlService } from "./operations-product-control.service";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
 import { deriveProductFactoryBatchFlow, startOfDayAtUtcOffset } from "./product-factory-batch-flow";
+import {
+  PRODUCTION_PRODUCT_BATCH_SIZE,
+  isAllowedProductBatchSize,
+  stagingPilotBatchEnabled
+} from "./product-factory-batch-size";
 import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
@@ -193,9 +198,14 @@ export class OperationsProductBatchService {
   async createBatch(input: { adminUserId?: string; employeeId?: string; targetCount?: number; note?: string }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
     await this.access.requirePermission(input.adminUserId, PRODUCT_CREATE_ACTION);
-    const targetCount = input.targetCount ?? 10;
-    if (!Number.isInteger(targetCount) || targetCount !== 10) {
-      throw new BadRequestException("The first batch workflow creates exactly 10 products.");
+    const targetCount = input.targetCount ?? PRODUCTION_PRODUCT_BATCH_SIZE;
+    const pilotEnabled = stagingPilotBatchEnabled();
+    if (!isAllowedProductBatchSize(targetCount, pilotEnabled)) {
+      throw new BadRequestException(
+        pilotEnabled
+          ? "Staging batches must contain exactly 3 or 10 products."
+          : "The production batch workflow creates exactly 10 products."
+      );
     }
 
     const code = batchCode();

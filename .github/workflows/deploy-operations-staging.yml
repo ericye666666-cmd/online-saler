@@ -92,6 +92,7 @@ jobs:
             --max-instances=2
           env_vars: |
             NODE_ENV=staging
+            STAGING_PILOT_BATCH_ENABLED=true
             API_URL=${{ env.API_URL }}
 
       - name: Verify Operations page

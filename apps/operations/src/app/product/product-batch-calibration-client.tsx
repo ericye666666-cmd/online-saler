@@ -347,7 +347,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
       if (next >= 0) setCurrentIndex(next);
       else if (firstPending >= 0) setCurrentIndex(firstPending);
       else setCurrentIndex(Math.min(currentIndex, updated.products.length - 1));
-      setNotice(firstPending >= 0 || next >= 0 ? "已保存，进入下一件。" : "本批 10 件已全部校准。");
+      setNotice(firstPending >= 0 || next >= 0 ? "已保存，进入下一件。" : `本批 ${updated.targetCount} 件已全部校准。`);
     } catch (caught) {
       setError(errorMessage(caught, "无法保存校准。"));
     } finally {
@@ -427,7 +427,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
             <ArrowLeftIcon className="size-3" />返回批次
           </Link>
           <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 人工校准</h1>
-          <p className="mt-1 text-sm text-muted-foreground">第 {currentIndex + 1}/10 件 · 已完成 {completedCount}/10 · {productStatusLabel(product.status)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">第 {currentIndex + 1}/{batch.targetCount} 件 · 已完成 {completedCount}/{batch.targetCount} · {productStatusLabel(product.status)}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="icon" title="上一件" disabled={currentIndex === 0 || Boolean(busy)} onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}><ArrowLeftIcon /></Button>
@@ -435,13 +435,13 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
         </div>
       </header>
 
-      <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${completedCount * 10}%` }} /></div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${batch.targetCount ? (completedCount / batch.targetCount) * 100 : 0}%` }} /></div>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
 
       {allComplete ? (
         <div className="flex flex-col gap-3 rounded-md border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 10 件已完成人工校准</span>
+          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 {batch.targetCount} 件已完成人工校准</span>
           <Button asChild><Link href={`/product/batches/${encodeURIComponent(batch.id)}`}>完成本批校准<ArrowRightIcon data-icon="inline-end" /></Link></Button>
         </div>
       ) : null}

@@ -393,7 +393,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <FlowHeader
         title={`${batch.batchCode} · 连续上传`}
-        description={`第 ${currentIndex + 1}/10 件 · 已完成正面图 ${frontCount}/10`}
+        description={`第 ${currentIndex + 1}/${batch.targetCount} 件 · 已完成正面图 ${frontCount}/${batch.targetCount}`}
         batchId={batch.id}
       />
       <ProgressBar value={frontCount} max={batch.targetCount} />
@@ -405,7 +405,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
           <span className="font-medium">{product.productCode}</span>
           <span className="ml-2 text-muted-foreground">{productStatusLabel(product.status)}</span>
           <p className="mt-1 text-xs text-muted-foreground">
-            批量入口只接收正面图，并按商品 1 到 10 的顺序分配。
+            批量入口只接收正面图，并按商品 1 到 {batch.targetCount} 的顺序分配。
             {pendingBatchFrontCount ? ` 已分配 ${pendingBatchFrontCount} 件。` : ""}
           </p>
         </div>
@@ -468,7 +468,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
             ? `正在上传${PRODUCT_FACTORY_IMAGE_LABELS[uploadingType]}`
             : pendingBatchFrontCount
               ? `上传已分配的 ${pendingBatchFrontCount} 件正面图`
-              : currentIndex === 9 ? "保存并开始处理" : "保存并下一件")}
+              : currentIndex === batch.targetCount - 1 ? "保存并开始处理" : "保存并下一件")}
           {!busy ? <ArrowRightIcon data-icon="inline-end" /> : null}
         </Button>
       </div>
@@ -555,7 +555,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <FlowHeader
         title={`${batch.batchCode} · AI 与图片处理`}
-        description={`已完成 ${completed}/10${failed ? ` · 失败 ${failed}` : ""}`}
+        description={`已完成 ${completed}/${batch.targetCount}${failed ? ` · 失败 ${failed}` : ""}`}
         batchId={batch.id}
       />
       <ProgressBar value={completed} max={batch.targetCount} />
@@ -565,7 +565,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>批量处理 10 件商品</CardTitle>
+              <CardTitle>批量处理 {batch.targetCount} 件商品</CardTitle>
               <CardDescription>先运行 lightweight OpenCV；质量不足时自动回退 rembg + BiRefNet。随后用本件全部原图运行 OpenAI。</CardDescription>
             </div>
             {completed < batch.targetCount ? (
