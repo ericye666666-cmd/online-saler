@@ -1,5 +1,5 @@
-import { BadRequestException, Controller, Get, Headers, Param, Post, Res } from "@nestjs/common";
-import { prisma } from "@online-saler/database";
+import { BadRequestException, Body, Controller, Get, Headers, Param, Patch, Post, Res } from "@nestjs/common";
+import { ProductDetailStatus, prisma } from "@online-saler/database";
 import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
 import { ProductDetailGenerationRunnerService } from "./product-detail-generation-runner.service";
@@ -14,6 +14,21 @@ export class ProductDetailGenerationController {
     private readonly assets: ProductDetailAssetService,
     private readonly storage: ProductImageStorageService
   ) {}
+
+  @Get("operations/product-detail-generation")
+  async generationBatches(@Headers(ADMIN_USER_HEADER) adminUserId?: string) {
+    await requireAdminPermission(adminUserId, "page.product.details");
+    return this.details.listDetailGenerationBatches();
+  }
+
+  @Get("product-detail-profiles/:profileId")
+  async profileDetail(
+    @Param("profileId") profileId: string,
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "page.product.details");
+    return this.details.getProfileDetail(profileId);
+  }
 
   @Get("products/:productId/detail-profile")
   async productDetail(
@@ -68,6 +83,79 @@ export class ProductDetailGenerationController {
     await requireAdminPermission(adminUserId, "action.product.edit");
     await this.details.ensureBatchGenerationJobs(batchId);
     return this.runner.runBatch(batchId);
+  }
+
+  @Post("operations/product-batches/:batchId/detail-generation/retry-failed")
+  async retryFailedBatch(
+    @Param("batchId") batchId: string,
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    await this.details.resetBatchJobs(batchId, [ProductDetailStatus.FAILED]);
+    return this.runner.runBatch(batchId);
+  }
+
+  @Post("operations/product-batches/:batchId/detail-generation/regenerate-outdated")
+  async regenerateOutdatedBatch(
+    @Param("batchId") batchId: string,
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    await this.details.resetBatchJobs(batchId, [ProductDetailStatus.OUTDATED]);
+    return this.runner.runBatch(batchId);
+  }
+
+  @Post("operations/product-batches/:batchId/detail-generation/approve")
+  async approveBatch(
+    @Param("batchId") batchId: string,
+    @Body() body: { employeeId?: string },
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.approve");
+    return this.details.approveBatch(batchId, body.employeeId);
+  }
+
+  @Patch("product-detail-profiles/:profileId/copy")
+  async updateCopy(
+    @Param("profileId") profileId: string,
+    @Body() body: unknown,
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    const profile = await this.details.updateCopy(profileId, body);
+    const generatedAssets = await this.assets.generateForProfile(profileId);
+    return { profile, assets: generatedAssets };
+  }
+
+  @Post("product-detail-profiles/:profileId/recalculate-fit")
+  async recalculateFit(
+    @Param("profileId") profileId: string,
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    const profile = await this.details.recalculateFit(profileId);
+    const generatedAssets = await this.assets.generateForProfile(profileId);
+    return { profile, assets: generatedAssets };
+  }
+
+  @Post("product-detail-profiles/:profileId/regenerate-openai")
+  async regenerateOpenAi(
+    @Param("profileId") profileId: string,
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    const jobId = await this.details.resetOpenAiGeneration(profileId);
+    return this.runner.run(jobId);
+  }
+
+  @Post("product-detail-profiles/:profileId/approve")
+  async approveProfile(
+    @Param("profileId") profileId: string,
+    @Body() body: { employeeId?: string },
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.approve");
+    return this.details.approveProfile(profileId, body.employeeId);
   }
 
   @Post("product-detail-profiles/:profileId/assets/generate")

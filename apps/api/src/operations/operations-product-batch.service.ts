@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import {
   ActorType,
+  ProductDetailStatus,
   ProductBatchStatus,
   ProductStatus,
   ReviewResult,
@@ -428,7 +429,13 @@ export class OperationsProductBatchService {
     const batch = await this.requireBatch(batchId);
     const products = await prisma.product.findMany({
       where: { batchId },
-      include: this.productInclude(),
+      include: {
+        ...this.productInclude(),
+        detailProfiles: {
+          where: { status: ProductDetailStatus.APPROVED },
+          select: { sourceDataVersion: true }
+        }
+      },
       orderBy: { batchItemNumber: "asc" }
     });
     if (products.length !== batch.targetCount || products.some((product) =>
@@ -437,6 +444,11 @@ export class OperationsProductBatchService {
       !product.inventoryItem.locationId
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must be scanned into storage before publishing.`);
+    }
+    if (products.some((product) => !product.detailProfiles.some(
+      (profile) => profile.sourceDataVersion === product.detailSourceVersion
+    ))) {
+      throw new BadRequestException(`All ${batch.targetCount} products must have approved current detail pages before publishing.`);
     }
     const published = [];
     for (const product of products) published.push(await this.productControl.publish(product.id, input));
@@ -497,6 +509,56 @@ export class OperationsProductBatchService {
       where: { id: productId },
       include: this.productInclude()
     });
+  }
+
+  async markProductForRecalibration(productId: string, input: { adminUserId?: string; employeeId?: string; reason?: string }) {
+    await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
+    const reason = input.reason?.trim();
+    if (!reason) throw new BadRequestException("Recalibration reason is required.");
+    let product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new NotFoundException("Product not found.");
+    const actor = {
+      actorType: ActorType.EMPLOYEE,
+      actorId: employeeIdOrDefault(input.employeeId),
+      sourceApp: SourceApp.OPERATIONS
+    };
+    if (product.status === ProductStatus.BARCODE_ASSIGNED) {
+      product = await this.products.transitionProduct({ productId, toStatus: ProductStatus.REVIEW_PENDING, actor });
+    }
+    if (product.status === ProductStatus.REVIEW_PENDING) {
+      product = await this.products.transitionProduct({
+        productId,
+        toStatus: ProductStatus.REWORK_REQUIRED,
+        reason,
+        actor
+      });
+    }
+    if (product.status === ProductStatus.REWORK_REQUIRED) {
+      product = await this.products.transitionProduct({
+        productId,
+        toStatus: ProductStatus.CALIBRATION_PENDING,
+        reason,
+        actor
+      });
+    } else if (product.status === ProductStatus.CALIBRATED) {
+      product = await this.products.transitionProduct({
+        productId,
+        toStatus: ProductStatus.CALIBRATION_PENDING,
+        reason,
+        actor
+      });
+    } else if (product.status !== ProductStatus.CALIBRATION_PENDING) {
+      throw new BadRequestException("This product cannot be returned to calibration from its current status.");
+    }
+    await prisma.productReview.create({
+      data: {
+        productId,
+        reviewerEmployeeId: actor.actorId,
+        result: ReviewResult.REWORK_REQUIRED,
+        reason
+      }
+    });
+    return prisma.product.findUnique({ where: { id: productId }, include: this.productInclude() });
   }
 
   async markProductForRetake(productId: string, input: { adminUserId?: string; employeeId?: string; reason?: string }) {

@@ -45,6 +45,12 @@ const DIRECT_RULES: ProductTransitionRule[] = [
     action: "PRODUCT_MARK_CALIBRATED"
   },
   {
+    fromStatus: ProductStatus.CALIBRATED,
+    toStatus: ProductStatus.CALIBRATION_PENDING,
+    action: "PRODUCT_REOPEN_CALIBRATION",
+    reasonRequired: true
+  },
+  {
     fromStatus: ProductStatus.CALIBRATION_PENDING,
     toStatus: ProductStatus.PHOTOGRAPHED,
     action: "PRODUCT_RETAKE_PHOTOS",

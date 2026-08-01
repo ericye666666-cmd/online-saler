@@ -11,6 +11,7 @@ import {
   ChevronRightIcon,
   CircleDollarSignIcon,
   ClipboardCheckIcon,
+  FileTextIcon,
   HeadphonesIcon,
   LayoutDashboardIcon,
   LogOutIcon,
@@ -114,6 +115,7 @@ export const operationsModules: ModuleNav[] = [
       },
       { label: "待处理异常", href: "/product/exceptions", icon: XCircleIcon, permission: "page.product.digitalization" },
       { label: "商品查询", href: "/product/search", icon: SearchIcon, permission: "page.product.digitalization" },
+      { label: "详情生成", href: "/product/details", icon: FileTextIcon, permission: "page.product.details" },
       { label: "分类与属性", href: "/product/taxonomy", icon: SettingsIcon, permission: "page.product.control" },
       { label: "已完成", href: "/product/completed", icon: PackageCheckIcon, permission: "page.product.digitalization" }
     ]

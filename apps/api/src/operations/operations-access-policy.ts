@@ -67,6 +67,14 @@ const pagePermissions: OperationsPermission[] = [
     description: "Open product review, pricing, warehouse placement, and publish controls."
   },
   {
+    code: "page.product.details",
+    module: "product",
+    scope: "PAGE",
+    page: "product-details",
+    action: "view",
+    description: "Open generated product detail review and approval controls."
+  },
+  {
     code: "page.system.accounts",
     module: "system",
     scope: "PAGE",
@@ -127,6 +135,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       ...readAllModules,
       "page.product.digitalization",
       "page.product.control",
+      "page.product.details",
       "action.product.edit",
       "action.product.approve",
       "action.product.publish",

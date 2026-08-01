@@ -174,6 +174,19 @@ describe("Product domain service", () => {
     assert.equal(repository.auditLogs[0].reason, "Front image is blurred.");
   });
 
+  it("allows a calibrated product to be reopened for factual calibration", async () => {
+    const repository = new InMemoryProductRepository();
+    const service = new ProductApplicationService(repository, new ProductStateMachine());
+    const product = await repository.createWithStatus("P-DETAIL-REWORK", ProductStatus.CALIBRATED);
+
+    const pending = await transition(service, product.id, ProductStatus.CALIBRATION_PENDING, {
+      reason: "Fit type must be confirmed again."
+    });
+
+    assert.equal(pending.status, ProductStatus.CALIBRATION_PENDING);
+    assert.equal(repository.auditLogs[0].action, "PRODUCT_REOPEN_CALIBRATION");
+  });
+
   it("requires a reason for manual rework and archive exceptions", async () => {
     const repository = new InMemoryProductRepository();
     const service = new ProductApplicationService(repository, new ProductStateMachine());
