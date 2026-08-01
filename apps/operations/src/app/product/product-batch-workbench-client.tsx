@@ -346,28 +346,10 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
     void load();
   }, [load]);
 
-  async function runCurrentAction() {
-    if (!batch || batch.nextAction !== "GENERATE_BARCODES") return;
-    setBusy(true);
-    setError("");
-    try {
-      await request(`/operations/product-batches/${batch.id}/generate-barcodes`, {
-        method: "POST",
-        body: JSON.stringify(ids)
-      });
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "批次操作失败。 ");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (!batch) {
     return <div className="flex flex-col gap-4">{error ? <StatusMessage tone="danger">{error}</StatusMessage> : <StatusMessage tone="neutral">正在读取批次...</StatusMessage>}</div>;
   }
 
-  const directAction = batch.nextAction === "GENERATE_BARCODES";
   const nextHref = batchNextActionHref(batch.id, batch.nextAction);
 
   return (
@@ -394,11 +376,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
               <CardTitle>当前阶段：{batch.stageLabel}</CardTitle>
               <CardDescription>按顺序完成，系统不会显示不合法的跨阶段动作。</CardDescription>
             </div>
-            {directAction ? (
-              <Button className="w-full sm:w-auto" disabled={busy} onClick={() => void runCurrentAction()}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Button>
-            ) : (
-              <Button asChild className="w-full sm:w-auto"><Link href={nextHref}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
-            )}
+            <Button asChild className="w-full sm:w-auto"><Link href={nextHref}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
           </div>
         </CardHeader>
         <CardContent>

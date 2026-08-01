@@ -28,6 +28,7 @@ export function batchNextActionHref(batchId: string, nextAction: string): string
     CONTINUE_UPLOAD: `/product/batches/${encodedBatchId}/upload`,
     START_AI_IMAGE: `/product/batches/${encodedBatchId}/processing`,
     CONTINUE_CALIBRATION: `/product/calibration?batchId=${encodedBatchId}`,
+    GENERATE_BARCODES: `/product/barcode?batchId=${encodedBatchId}`,
     PRINT_AND_APPLY_LABELS: `/product/barcode?batchId=${encodedBatchId}`,
     CONTINUE_REVIEW: `/product/review?batchId=${encodedBatchId}`,
     SCAN_INTO_STORAGE: `/product/review?batchId=${encodedBatchId}`,

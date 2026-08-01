@@ -21,6 +21,10 @@ type RetakeBody = AdminEmployeeBody & {
   reason?: string;
 };
 
+type ConfirmLabelBody = AdminEmployeeBody & {
+  barcode?: string;
+};
+
 @Controller("operations/product-batches")
 export class OperationsProductBatchController {
   constructor(private readonly batches: OperationsProductBatchService) {}
@@ -89,6 +93,11 @@ export class OperationsProductBatchController {
   @Post(":id/mark-labels-printed")
   markLabelsPrinted(@Param("id") id: string, @Body() body: AdminEmployeeBody) {
     return this.batches.markBatchPrinted(id, body);
+  }
+
+  @Post(":id/confirm-label")
+  confirmLabel(@Param("id") id: string, @Body() body: ConfirmLabelBody) {
+    return this.batches.confirmAppliedLabel(id, body);
   }
 
   @Post(":id/stock-in")

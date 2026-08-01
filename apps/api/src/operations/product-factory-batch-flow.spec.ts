@@ -18,7 +18,8 @@ test("derives the eight legal stages in order", () => {
     [products("AI_PROCESSED"), "CALIBRATION", "CONTINUE_CALIBRATION"],
     [products("CALIBRATED"), "BARCODE", "GENERATE_BARCODES"],
     [products("BARCODE_ASSIGNED"), "LABEL_APPLY", "PRINT_AND_APPLY_LABELS"],
-    [products("BARCODE_ASSIGNED", 10, { labelPrintedAt: new Date() }), "REVIEW", "CONTINUE_REVIEW"],
+    [products("BARCODE_ASSIGNED", 10, { labelPrintedAt: new Date() }), "LABEL_APPLY", "PRINT_AND_APPLY_LABELS"],
+    [products("BARCODE_ASSIGNED", 10, { labelPrintedAt: new Date(), labelAppliedAt: new Date() }), "REVIEW", "CONTINUE_REVIEW"],
     [products("READY_FOR_STORAGE"), "STORAGE", "SCAN_INTO_STORAGE"],
     [products("READY_FOR_STORAGE", 10, { inventoryItem: { locationId: "loc", checkedInAt: new Date() } }), "PUBLISH", "PUBLISH_PRODUCTS"]
   ];

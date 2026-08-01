@@ -1,6 +1,9 @@
 import { ProductQueuePage } from "../product-center-client";
+import { ProductBatchBarcodePage } from "../product-batch-barcode-client";
 
-export default function BarcodePage() {
+export default async function BarcodePage({ searchParams }: { searchParams: Promise<{ batchId?: string }> }) {
+  const { batchId } = await searchParams;
+  if (batchId) return <ProductBatchBarcodePage batchId={batchId} />;
   return (
     <ProductQueuePage
       queue="barcode"

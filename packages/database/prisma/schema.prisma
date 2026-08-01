@@ -291,6 +291,7 @@ model Product {
   conditionGrade       ConditionGrade?
   priceKsh             Int?
   labelPrintedAt       DateTime?
+  labelAppliedAt       DateTime?
   createdByEmployeeId  String?
   approvedByEmployeeId String?
   createdBy            Employee?            @relation("ProductCreatedBy", fields: [createdByEmployeeId], references: [id])
