@@ -89,6 +89,8 @@ export class ProductCalibrationService {
           category: input.category,
           subcategory: input.subcategory ?? null,
           color: input.color,
+          pattern: input.pattern,
+          sleeveType: input.sleeveType,
           gender: input.gender ?? null,
           kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
           brand: input.brand ?? null,

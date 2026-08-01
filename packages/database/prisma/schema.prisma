@@ -284,6 +284,8 @@ model Product {
   subcategory          String?
   brand                String?
   color                String?
+  pattern              String?
+  sleeveType           String?
   gender               ProductGender?
   kidsAgeRange         String?
   tagSize              String?
