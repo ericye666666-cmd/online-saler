@@ -1,6 +1,5 @@
--- Extend the existing fulfillment state machine. Existing enum values and records are preserved.
-ALTER TYPE "FulfillmentStatus" ADD VALUE IF NOT EXISTS 'READY_TO_PACK' AFTER 'PICKING';
-ALTER TYPE "FulfillmentStatus" ADD VALUE IF NOT EXISTS 'READY_FOR_DISPATCH' AFTER 'READY_FOR_PICKUP';
+-- The new FulfillmentStatus values are committed by the immediately preceding
+-- migration before this migration uses them in backfills.
 
 CREATE TYPE "FulfillmentItemStatus" AS ENUM ('PENDING', 'VERIFIED');
 CREATE TYPE "PackagingMethod" AS ENUM ('BAG', 'BOX', 'OTHER');
