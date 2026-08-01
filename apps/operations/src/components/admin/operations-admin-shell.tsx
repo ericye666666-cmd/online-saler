@@ -191,6 +191,7 @@ export const operationsModules: ModuleNav[] = [
     icon: SettingsIcon,
     permission: "module.system",
     items: [
+      { label: "商品工厂配置", href: "/system/product-factory", icon: SettingsIcon, permission: "page.product.control" },
       { label: "账号管理", href: "/system/accounts", icon: UsersIcon, permission: "page.system.accounts" },
       { label: "角色管理", href: "/system/roles", icon: UserCogIcon, permission: "page.system.roles" },
       { label: "权限管理", href: "/system/permissions", icon: ShieldCheckIcon, permission: "page.system.permissions" }

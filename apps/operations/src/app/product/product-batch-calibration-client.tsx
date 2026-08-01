@@ -88,6 +88,9 @@ type ImageTab = {
   transparent?: boolean;
 };
 
+type TaxonomyOption = { code: string; displayName: string; parentCode?: string | null; active: boolean };
+type ProductTaxonomy = { groups: Record<"CATEGORY" | "SUBCATEGORY" | "COLOR" | "SIZE" | "CONDITION" | "DEFECT", TaxonomyOption[]> };
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_PROXY_URL}${path}`, {
     ...options,
@@ -178,6 +181,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [form, setForm] = useState<WorkspaceForm>(() => formFromProductAndAi(null, null));
   const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
+  const [taxonomy, setTaxonomy] = useState<ProductTaxonomy | null>(null);
   const [activeImage, setActiveImage] = useState("optimized");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -198,6 +202,14 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   useEffect(() => {
     void load().catch((caught) => setError(errorMessage(caught, "无法读取批次。")));
   }, [load]);
+
+  useEffect(() => {
+    if (!ids.adminUserId) return;
+    const query = new URLSearchParams({ adminUserId: ids.adminUserId });
+    void request<ProductTaxonomy>(`/operations/product-factory-admin/taxonomy?${query.toString()}`)
+      .then(setTaxonomy)
+      .catch(() => setTaxonomy(null));
+  }, [ids.adminUserId]);
 
   const product = batch?.products[currentIndex] ?? null;
   const latestExtraction = product?.aiExtractions?.[0] ?? null;
@@ -247,12 +259,20 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   });
   const completedCount = batch?.products.filter((item) => item.status === "CALIBRATED").length ?? 0;
   const readOnly = product?.status === "CALIBRATED";
+  const taxonomyLabels = useMemo(() => taxonomyLabelMap(taxonomy), [taxonomy]);
+  const categoryOptions = activeValues(taxonomy, "CATEGORY", PRODUCT_CATEGORY_OPTIONS, form.category);
+  const colorOptions = activeValues(taxonomy, "COLOR", AI_COLORS, form.color);
+  const sizeOptions = activeValues(taxonomy, "SIZE", ["XS", "S", "M", "L", "XL", "XXL"], form.sizeLabel);
+  const conditionOptions = activeValues(taxonomy, "CONDITION", ["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"], form.conditionGrade);
+  const subcategoryOptions = taxonomy
+    ? activeSubcategories(taxonomy, form.category, form.subcategory)
+    : subcategoriesFor(form.category, form.subcategory);
 
   function updateForm(key: keyof WorkspaceForm, value: string) {
     setForm((current) => {
       const next = { ...current, [key]: value };
       if (key === "category") {
-        const options = subcategoriesFor(value);
+        const options = taxonomy ? activeSubcategories(taxonomy, value) : subcategoriesFor(value);
         next.subcategory = options.includes(next.subcategory) ? next.subcategory : options[0] ?? "OTHER";
       }
       if (key === "audience" && value !== "KIDS") next.kidsAgeRange = "NOT_APPLICABLE";
@@ -450,13 +470,13 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
 
           <FormInput label="标题" value={form.title} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "title")} onChange={(value) => updateForm("title", value)} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormSelect label="分类" value={form.category} values={PRODUCT_CATEGORY_OPTIONS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "category")} onChange={(value) => updateForm("category", value)} />
-            <FormSelect label="子分类" value={form.subcategory} values={subcategoriesFor(form.category, form.subcategory)} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
+            <FormSelect label="分类" value={form.category} values={categoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "category")} onChange={(value) => updateForm("category", value)} />
+            <FormSelect label="子分类" value={form.subcategory} values={subcategoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
             <FormSelect label="适用人群" value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
-            <FormSelect label="颜色" value={form.color} values={AI_COLORS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
+            <FormSelect label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
             {form.audience === "KIDS" ? <FormSelect label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
             <FormInput label="标签尺码" value={form.tagSize} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("tagSize", value)} />
-            <FormInput label="平台推荐尺码" value={form.sizeLabel} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("sizeLabel", value)} />
+            <FormSelect label="平台推荐尺码" value={form.sizeLabel} values={sizeOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("sizeLabel", value)} />
           </div>
 
           <div className="border-t pt-4">
@@ -471,7 +491,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormSelect label="成色" value={form.conditionGrade} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} required disabled={readOnly} onChange={(value) => updateForm("conditionGrade", value)} />
+            <FormSelect label="成色" value={form.conditionGrade} values={conditionOptions} labels={taxonomyLabels} required disabled={readOnly} onChange={(value) => updateForm("conditionGrade", value)} />
             <FormInput label="品牌" value={form.brand} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "brandLabel")} onChange={(value) => updateForm("brand", value)} />
             <FormInput label="价格（KSh）" value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
             <FormSelect label="图案" value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
@@ -536,13 +556,14 @@ function FormSelect(props: {
   required?: boolean;
   disabled?: boolean;
   suggestion?: string;
+  labels?: Record<string, string>;
   onChange: (value: string) => void;
 }) {
   return (
     <label className="block min-w-0 text-sm font-medium">
       <span>{props.label}{props.required ? " *" : ""}</span>
       <NativeSelect className="mt-2 w-full" value={props.value} disabled={props.disabled} onChange={(event) => props.onChange(event.target.value)}>
-        {props.values.map((value) => <NativeSelectOption key={value} value={value}>{enumLabel(value, props.label)}</NativeSelectOption>)}
+        {props.values.map((value) => <NativeSelectOption key={value} value={value}>{props.labels?.[value] ?? enumLabel(value, props.label)}</NativeSelectOption>)}
       </NativeSelect>
       {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">AI 建议：{enumLabel(props.suggestion, props.label)}</span> : null}
     </label>
@@ -626,6 +647,30 @@ function subcategoriesFor(category: string, current = "") {
   const lookup = PRODUCT_SUBCATEGORIES_BY_CATEGORY as Record<string, readonly string[]>;
   const values = [...(lookup[category] ?? ["OTHER"])];
   return current && !values.includes(current) ? [current, ...values] : values;
+}
+
+function activeValues(
+  taxonomy: ProductTaxonomy | null,
+  group: keyof ProductTaxonomy["groups"],
+  fallback: readonly string[],
+  current = ""
+) {
+  const configured = taxonomy?.groups[group].filter((option) => option.active).map((option) => option.code);
+  const values = configured?.length ? configured : [...fallback];
+  return current && !values.includes(current) ? [current, ...values] : values;
+}
+
+function activeSubcategories(taxonomy: ProductTaxonomy, category: string, current = "") {
+  const values = taxonomy.groups.SUBCATEGORY
+    .filter((option) => option.active && (!option.parentCode || option.parentCode === category))
+    .map((option) => option.code);
+  if (!values.length) values.push("OTHER");
+  return current && !values.includes(current) ? [current, ...values] : values;
+}
+
+function taxonomyLabelMap(taxonomy: ProductTaxonomy | null) {
+  if (!taxonomy) return {};
+  return Object.fromEntries(Object.values(taxonomy.groups).flat().map((option) => [option.code, option.displayName]));
 }
 
 function aiSuggestion(output: JsonRecord | null, key: string) {

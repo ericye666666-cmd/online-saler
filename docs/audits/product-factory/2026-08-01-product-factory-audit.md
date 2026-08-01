@@ -71,19 +71,19 @@ Legend: **Yes** means current `develop` contains the capability. **Partial** mea
 | 67 | Real image-processing staging E2E | Yes | N/A | Yes | N/A | N/A | Yes | API-level real image | Yes | No | Staging test image |
 | 68 | Unified image and product calibration | Yes | N/A | Yes | Yes | `/product/calibration` | Yes | Yes | No | Modal UX needs batch redesign | None |
 | 69 | Append-only image reruns | Yes | Yes | Yes | Yes | Calibration rerun | Yes | Yes | No | No | None |
+| 70 | Test-data isolation and display safety | Yes | N/A | Yes | Yes | Product workbench | Yes | Yes | No | No | None |
+| 71 | Batch-first navigation and workbench | Yes | N/A | Yes | Yes | `/product/batches/:id` | Yes | Yes | No | Legacy state routes retained only for compatibility | None |
+| 72 | Sequential multi-image upload and processing | Yes | N/A | Yes | Yes | Batch upload/processing | Yes | Yes | No | No | Camera and file access |
+| 73 | Full-page unified calibration | Yes | N/A | Yes | Yes | `/product/calibration?batchId=...` | Yes | Yes | No | Legacy modal retained outside core batch path | None |
+| 74 | Batch Barcode print and label confirmation | Yes | Yes | Yes | Yes | `/product/barcode?batchId=...` | Yes | Yes | No | No | Local print agent |
+| 75 | Review, scan-first storage, and publish | Yes | N/A | Yes | Yes | `/product/review?batchId=...` | Yes | Yes | No | Legacy random stock-in not used by batch path | Warehouse locations |
+| 76 | Taxonomy management and configuration checker | Yes | N/A | Pending merge | Yes | `/product/taxonomy`, `/system/product-factory` | Yes | Pending | No | Static taxonomy page superseded | Admin configuration |
 
 ## Capability verdict
 
 The repository already contains the main technical primitives. The remaining product work is integration and workflow design:
 
-1. Replace state-first navigation with batch-first task navigation.
-2. Add a dedicated batch detail route and derive exactly one legal next action.
-3. Make upload sequential and multi-image-aware while preserving originals.
-4. Represent AI extraction and image processing as one employee-visible batch stage.
-5. Turn calibration into a full-page, mobile-first batch task.
-6. Add label scan confirmation and product-plus-location scan stock-in.
-7. Add editable taxonomy/configuration surfaces and a non-secret configuration checker.
-8. Re-run the complete ten-item workflow in the browser on desktop and `390x844`.
+PR70-76 implement the employee workflow and administration surfaces. The remaining acceptance task is to deploy PR76 and rerun the complete ten-item workflow in a real browser on desktop and `390x844`, fixing any staging-only findings before sign-off.
 
 ## Data safety
 
