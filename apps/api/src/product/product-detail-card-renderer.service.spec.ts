@@ -6,6 +6,7 @@ import {
   selectMeasurementTemplate,
   type MeasurementTemplate
 } from "./product-detail-card-renderer.service";
+import { englishCardText } from "./product-detail-asset.service";
 
 describe("ProductDetailCardRendererService", () => {
   it("selects every fixed garment template and keeps a generic top fallback", () => {
@@ -46,5 +47,14 @@ describe("ProductDetailCardRendererService", () => {
     assert.equal(metadata.format, "webp");
     assert.equal(metadata.width, 1200);
     assert.equal(metadata.height, 1200);
+  });
+
+  it("keeps storefront card notes in the supported English locale", () => {
+    assert.equal(
+      englishCardText("Height and weight are reference only. 身高和体重仅供参考。"),
+      "Height and weight are reference only."
+    );
+    assert.equal(englishCardText("English only."), "English only.");
+    assert.equal(englishCardText(null), null);
   });
 });
