@@ -147,7 +147,16 @@ export function normalizeOpenAIVisionOutput(
     sleeveType: enumField<AISleeveType>(record, ["sleeveType", "sleeve"], SLEEVE_SET, "OTHER", evidenceImageIds),
     brandLabel: stringField(record, ["brandLabel", "brand"], evidenceImageIds),
     sizeLabel: stringField(record, ["sizeLabel", "size"], evidenceImageIds),
-    title: stringField(record, ["title"], evidenceImageIds)
+    title: stringField(record, ["title"], evidenceImageIds),
+    lengthCm: numberField(record, ["lengthCm", "length_cm", "bodyLengthCm"], evidenceImageIds),
+    chestWidthCm: numberField(record, ["chestWidthCm", "chest_width_cm", "pitToPitCm"], evidenceImageIds),
+    shoulderWidthCm: numberField(record, ["shoulderWidthCm", "shoulder_width_cm"], evidenceImageIds),
+    sleeveLengthCm: numberField(record, ["sleeveLengthCm", "sleeve_length_cm"], evidenceImageIds),
+    waistCm: numberField(record, ["waistCm", "waist_cm", "waistWidthCm"], evidenceImageIds),
+    hipCm: numberField(record, ["hipCm", "hip_cm", "hipWidthCm"], evidenceImageIds),
+    thighWidthCm: numberField(record, ["thighWidthCm", "thigh_width_cm"], evidenceImageIds),
+    legOpeningCm: numberField(record, ["legOpeningCm", "leg_opening_cm"], evidenceImageIds),
+    inseamCm: numberField(record, ["inseamCm", "inseam_cm"], evidenceImageIds)
   };
 }
 
@@ -174,6 +183,15 @@ function stringField(record: RawExtraction, keys: string[], evidenceImageIds: st
   const field = firstField(record, keys);
   const value = typeof field.value === "string" ? field.value.trim() : "";
   return { value: value || null, confidence: confidence(field.confidence), evidenceImageIds };
+}
+
+function numberField(record: RawExtraction, keys: string[], evidenceImageIds: string[]): AIFieldValue<number> {
+  const field = firstField(record, keys);
+  const numeric = typeof field.value === "number" ? field.value : Number(field.value);
+  const value = Number.isFinite(numeric) && numeric > 0 && numeric <= 250
+    ? Math.round(numeric * 10) / 10
+    : null;
+  return { value, confidence: confidence(field.confidence), evidenceImageIds };
 }
 
 function firstField(record: RawExtraction, keys: string[]): FieldLike {

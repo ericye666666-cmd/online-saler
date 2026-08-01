@@ -18,7 +18,16 @@ export class MockAIProvider implements AIProvider {
       sleeveType: { value: "SHORT" as const, confidence: 0.82, evidenceImageIds },
       brandLabel: { value: "Mock Brand", confidence: 0.61, evidenceImageIds },
       sizeLabel: { value: "M", confidence: 0.74, evidenceImageIds },
-      title: { value: "Coral Orange Graphic T-Shirt", confidence: 0.9, evidenceImageIds }
+      title: { value: "Coral Orange Graphic T-Shirt", confidence: 0.9, evidenceImageIds },
+      lengthCm: { value: 68, confidence: 0.82, evidenceImageIds },
+      chestWidthCm: { value: 51, confidence: 0.8, evidenceImageIds },
+      shoulderWidthCm: { value: 43, confidence: 0.78, evidenceImageIds },
+      sleeveLengthCm: { value: 21, confidence: 0.77, evidenceImageIds },
+      waistCm: { value: null, confidence: 0.4, evidenceImageIds },
+      hipCm: { value: null, confidence: 0.4, evidenceImageIds },
+      thighWidthCm: { value: null, confidence: 0.4, evidenceImageIds },
+      legOpeningCm: { value: null, confidence: 0.4, evidenceImageIds },
+      inseamCm: { value: null, confidence: 0.4, evidenceImageIds }
     };
 
     return {

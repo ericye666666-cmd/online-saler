@@ -43,6 +43,12 @@ export type WorkspaceReadiness = {
   reasons: string[];
 };
 
+export type CalibrationValidationIssue = {
+  field: keyof WorkspaceForm | "photo" | "ai";
+  label: string;
+  message: string;
+};
+
 export const emptyWorkspaceForm = (): WorkspaceForm => ({
   title: "",
   category: "TSHIRTS",
@@ -159,9 +165,16 @@ export function calibrationValidationReasons(
   form: WorkspaceForm,
   input: { hasPhoto?: boolean; hasAi?: boolean } = {}
 ): string[] {
-  const reasons: string[] = [];
-  if (input.hasPhoto === false) reasons.push("先上传商品照片。");
-  if (input.hasAi === false) reasons.push("先完成 AI 识别。");
+  return calibrationValidationIssues(form, input).map((issue) => issue.message);
+}
+
+export function calibrationValidationIssues(
+  form: WorkspaceForm,
+  input: { hasPhoto?: boolean; hasAi?: boolean } = {}
+): CalibrationValidationIssue[] {
+  const issues: CalibrationValidationIssue[] = [];
+  if (input.hasPhoto === false) issues.push({ field: "photo", label: "商品照片", message: "先上传商品照片。" });
+  if (input.hasAi === false) issues.push({ field: "ai", label: "AI 识别", message: "先完成 AI 识别。" });
   const requiredFields: Array<[keyof WorkspaceForm, string]> = [
     ["title", "标题"],
     ["category", "分类"],
@@ -176,19 +189,27 @@ export function calibrationValidationReasons(
     ["priceKsh", "价格"]
   ];
   for (const [field, label] of requiredFields) {
-    if (!form[field].trim()) reasons.push(`${label}为必填项。`);
+    if (!form[field].trim()) issues.push({ field, label, message: `${label}为必填项。` });
   }
   if (form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE") {
-    reasons.push("儿童商品必须填写年龄段。");
+    issues.push({ field: "kidsAgeRange", label: "儿童年龄段", message: "儿童商品必须填写年龄段。" });
   }
   for (const requirement of measurementRequirements(form)) {
     if (!positiveNumber(form[requirement.key])) {
-      reasons.push(`${requirement.label}必须填写大于 0 的厘米数。`);
+      issues.push({
+        field: requirement.key,
+        label: requirement.label,
+        message: `${requirement.label}必须填写大于 0 的厘米数。`
+      });
     }
   }
-  if (!positiveInteger(form.priceKsh)) reasons.push("价格必须填写大于 0 的整数 KSh。");
-  if (!form.defects.trim()) reasons.push("瑕疵必须确认；没有瑕疵请填写 None。");
-  return reasons;
+  if (form.priceKsh.trim() && !positiveInteger(form.priceKsh)) {
+    issues.push({ field: "priceKsh", label: "价格", message: "价格必须填写大于 0 的整数 KSh。" });
+  }
+  if (!form.defects.trim()) {
+    issues.push({ field: "defects", label: "瑕疵", message: "瑕疵必须确认；没有瑕疵请填写 None。" });
+  }
+  return issues;
 }
 
 function labelFor(input: { status: string; hasPhoto: boolean; hasAi: boolean; reasons: string[] }): string {

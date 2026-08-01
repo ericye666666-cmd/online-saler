@@ -134,7 +134,7 @@ export default function OperationsHome() {
       body: JSON.stringify({
         productId: flow.ids.productId,
         imageIds: [flow.ids.imageId],
-        promptVersion: "product-v1"
+        promptVersion: "product-measurements-v1"
       })
     }));
   }

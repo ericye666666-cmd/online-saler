@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 import { AIExtractionStatus, ProductStatus, Prisma, prisma } from "@online-saler/database";
 import {
   AI_EXTRACTED_FIELDS,
+  AI_MEASUREMENT_FIELDS,
   requiresHumanConfirmation,
   type AIExtractionRequest,
   type AIExtractionResult,
@@ -61,12 +62,38 @@ export class AIJobService {
             data: {
               extractionId: extraction.id,
               fieldName: field,
-              aiValueJson: value.value as unknown as Prisma.InputJsonValue,
+              aiValueJson: value.value === null
+                ? Prisma.JsonNull
+                : value.value as unknown as Prisma.InputJsonValue,
               confidence: value.confidence,
               evidenceImageIds: value.evidenceImageIds ?? [],
               requiresHumanConfirmation: requiresHumanConfirmation(field as AIExtractedField, value.confidence)
             }
           });
+        }),
+        ...AI_MEASUREMENT_FIELDS.flatMap(({ field, measurementType }) => {
+          const measurement = output.normalizedOutput[field];
+          if (measurement.value === null) return [];
+          return [
+            prisma.productMeasurement.upsert({
+              where: {
+                productId_measurementType: {
+                  productId: request.productId,
+                  measurementType
+                }
+              },
+              create: {
+                productId: request.productId,
+                measurementType,
+                aiValueCm: measurement.value,
+                aiConfidence: measurement.confidence
+              },
+              update: {
+                aiValueCm: measurement.value,
+                aiConfidence: measurement.confidence
+              }
+            })
+          ];
         }),
         prisma.product.update({
           where: { id: request.productId },

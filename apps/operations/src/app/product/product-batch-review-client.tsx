@@ -351,7 +351,8 @@ function buildImageTabs(product: ProductRecord, comparison: ProductImageComparis
     variantTab("original", "原图", comparison?.original ?? null),
     variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, true),
     variantTab("white", "白底图", comparison?.cutoutWhite ?? null),
-    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null)
+    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null),
+    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null)
   ].filter((tab) => tab.url);
   for (const [type, label] of [["BACK", "背面"], ["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
     const image = product.images?.find((candidate) => candidate.type === type);

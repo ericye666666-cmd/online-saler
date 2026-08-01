@@ -2,7 +2,8 @@ export const PRODUCT_IMAGE_VARIANTS = [
   "ORIGINAL",
   "CUTOUT_TRANSPARENT",
   "CUTOUT_WHITE",
-  "OPTIMIZED_MAIN"
+  "OPTIMIZED_MAIN",
+  "OPTIMIZED_BALANCED_MAIN"
 ] as const;
 
 export type ProductImageVariant = (typeof PRODUCT_IMAGE_VARIANTS)[number];
@@ -10,7 +11,8 @@ export type ProductImageVariant = (typeof PRODUCT_IMAGE_VARIANTS)[number];
 export const IMAGE_PROCESSING_OPERATIONS = [
   "REMOVE_BACKGROUND",
   "COMPOSE_WHITE_BACKGROUND",
-  "OPTIMIZE_MAIN_IMAGE"
+  "OPTIMIZE_MAIN_IMAGE",
+  "OPTIMIZE_BALANCED_MAIN_IMAGE"
 ] as const;
 
 export type ImageProcessingOperation = (typeof IMAGE_PROCESSING_OPERATIONS)[number];
@@ -92,6 +94,7 @@ export interface ProductImageComparisonResponse {
   cutoutTransparent: ProductImageVariantRecord | null;
   cutoutWhite: ProductImageVariantRecord | null;
   optimizedMain: ProductImageVariantRecord | null;
+  optimizedBalancedMain: ProductImageVariantRecord | null;
   selectedMainImageId: string | null;
   jobs: ImageProcessingJobRecord[];
 }

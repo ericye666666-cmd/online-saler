@@ -16,11 +16,12 @@ import {
   UploadIcon,
   XCircleIcon
 } from "lucide-react";
-import type {
-  BackgroundRemovalMode,
-  ImageProcessingJobRecord,
-  ImageProcessingOperation,
-  ProductImageComparisonResponse
+import {
+  PRODUCT_AI_PROMPT_VERSION,
+  type BackgroundRemovalMode,
+  type ImageProcessingJobRecord,
+  type ImageProcessingOperation,
+  type ProductImageComparisonResponse
 } from "@online-saler/shared-types";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
@@ -56,7 +57,7 @@ type ProductRecord = {
   batchItemNumber?: number | null;
   status: string;
   images?: ProductImage[];
-  aiExtractions?: Array<{ status?: string | null; errorMessage?: string | null; inputImageIds?: unknown }>;
+  aiExtractions?: Array<{ status?: string | null; errorMessage?: string | null; inputImageIds?: unknown; promptVersion?: string | null }>;
 };
 
 type ProductBatch = {
@@ -224,7 +225,18 @@ async function runProductImagePipeline(
       adminUserId
     )).outputImageId!;
   }
-  comparison = await selectMainImage(product.id, optimizedId, adminUserId);
+  let balancedId = comparison.optimizedBalancedMain?.sourceImageId === transparentId
+    ? comparison.optimizedBalancedMain.imageId
+    : "";
+  if (!balancedId || mode !== "auto") {
+    balancedId = (await runImageOperation(
+      product.id,
+      transparentId,
+      "OPTIMIZE_BALANCED_MAIN_IMAGE",
+      adminUserId
+    )).outputImageId!;
+  }
+  comparison = await selectMainImage(product.id, balancedId || optimizedId, adminUserId);
   return comparison;
 }
 
@@ -240,7 +252,7 @@ async function runProductAi(product: ProductRecord, ids: ReturnType<typeof useOp
       adminUserId: ids.adminUserId,
       productId: product.id,
       imageIds,
-      promptVersion: "product-v1"
+      promptVersion: PRODUCT_AI_PROMPT_VERSION
     })
   });
 }
@@ -742,11 +754,12 @@ function hasSucceededAi(product: ProductRecord) {
   const extraction = product.aiExtractions?.find((candidate) => candidate.status === "SUCCEEDED");
   const latestFrontId = newestImageOfType(product, "FRONT")?.id;
   if (!extraction || !latestFrontId) return false;
-  return Array.isArray(extraction.inputImageIds) && extraction.inputImageIds.includes(latestFrontId);
+  return extraction.promptVersion === PRODUCT_AI_PROMPT_VERSION &&
+    Array.isArray(extraction.inputImageIds) && extraction.inputImageIds.includes(latestFrontId);
 }
 
 function stateFromProduct(product: ProductRecord, comparison: ProductImageComparisonResponse): ProcessingState {
-  const imageReady = Boolean(comparison.optimizedMain && comparison.selectedMainImageId);
+  const imageReady = Boolean((comparison.optimizedBalancedMain || comparison.optimizedMain) && comparison.selectedMainImageId);
   const aiReady = hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status);
   if (imageReady && aiReady) return { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成" };
   const failed = comparison.jobs.find((job) => job.status === "FAILED");
