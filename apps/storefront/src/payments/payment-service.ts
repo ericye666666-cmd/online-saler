@@ -21,6 +21,7 @@ import {
   resolveMpesaCharge
 } from "./mpesa-production-guard";
 import { createPendingCommissionForPaidOrder } from "../affiliate/affiliate-service";
+import { buildPaidOrderPickingTask } from "./payment-fulfillment";
 
 export class PaymentValidationError extends Error {}
 export class PaymentConflictError extends Error {}
@@ -212,7 +213,7 @@ export async function handleMpesaCallback(body: unknown) {
       order: {
         include: {
           sourceDraft: true,
-          items: true
+          items: { include: { snapshot: true } }
         }
       }
     }
@@ -308,6 +309,20 @@ export async function handleMpesaCallback(body: unknown) {
       where: { id: payment.orderId },
       data: { status: OrderStatus.PAID }
     });
+    const existingPickingTask = await tx.orderFulfillment.findUnique({ where: { orderId: payment.orderId } });
+    if (!existingPickingTask) {
+      const pickingTask = buildPaidOrderPickingTask(payment.orderId, order.items);
+      const fulfillment = await tx.orderFulfillment.create({ data: pickingTask.fulfillment });
+      if (pickingTask.items.length > 0) {
+        await tx.fulfillmentItem.createMany({
+          data: pickingTask.items.map((item) => ({ ...item, fulfillmentId: fulfillment.id })),
+          skipDuplicates: true
+        });
+      }
+      await tx.fulfillmentEvent.create({
+        data: { ...pickingTask.event, fulfillmentId: fulfillment.id }
+      });
+    }
     await createPendingCommissionForPaidOrder(tx, payment.orderId);
     await tx.checkoutDraft.updateMany({
       where: { convertedOrderId: payment.orderId, status: CheckoutDraftStatus.ACTIVE },

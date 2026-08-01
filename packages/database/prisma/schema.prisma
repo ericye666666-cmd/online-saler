@@ -160,51 +160,60 @@ enum InventoryMovementType {
 }
 
 model Employee {
-  id                         String               @id @default(uuid())
-  employeeCode               String               @unique
-  name                       String
-  phone                      String?              @unique
-  status                     EmployeeStatus       @default(ACTIVE)
-  roles                      EmployeeRole[]
-  auditLogs                  AuditLog[]
-  createdProducts            Product[]            @relation("ProductCreatedBy")
-  approvedProducts           Product[]            @relation("ProductApprovedBy")
-  uploadedProductImages      ProductImage[]       @relation("ProductImageUploadedBy")
-  reviewedMeasurements       ProductMeasurement[] @relation("ProductMeasurementReviewedBy")
-  reviewedAIFieldDecisions   AIFieldDecision[]    @relation("AIFieldDecisionReviewedBy")
-  productReviews             ProductReview[]      @relation("ProductReviewReviewer")
-  createdProductBatches      ProductBatch[]        @relation("ProductBatchCreatedBy")
-  inventoryItemsCreated      InventoryItem[]      @relation("InventoryItemCreatedBy")
-  inventoryMovements         InventoryMovement[]  @relation("InventoryMovementEmployee")
-  assignedFulfillments        OrderFulfillment[]   @relation("FulfillmentAssignedPicker")
-  packedFulfillments          OrderFulfillment[]   @relation("FulfillmentPackedBy")
-  pickupConfirmedFulfillments OrderFulfillment[]   @relation("FulfillmentPickupConfirmedBy")
-  fulfillmentEvents           FulfillmentEvent[]   @relation("FulfillmentEventActor")
-  adminUser                  AdminUser?           @relation("AdminUserLinkedEmployee")
-  createdAt                  DateTime             @default(now())
-  updatedAt                  DateTime             @updatedAt
+  id                          String                @id @default(uuid())
+  employeeCode                String                @unique
+  name                        String
+  phone                       String?               @unique
+  status                      EmployeeStatus        @default(ACTIVE)
+  roles                       EmployeeRole[]
+  auditLogs                   AuditLog[]
+  createdProducts             Product[]             @relation("ProductCreatedBy")
+  approvedProducts            Product[]             @relation("ProductApprovedBy")
+  uploadedProductImages       ProductImage[]        @relation("ProductImageUploadedBy")
+  reviewedMeasurements        ProductMeasurement[]  @relation("ProductMeasurementReviewedBy")
+  reviewedAIFieldDecisions    AIFieldDecision[]     @relation("AIFieldDecisionReviewedBy")
+  productReviews              ProductReview[]       @relation("ProductReviewReviewer")
+  createdProductBatches       ProductBatch[]        @relation("ProductBatchCreatedBy")
+  inventoryItemsCreated       InventoryItem[]       @relation("InventoryItemCreatedBy")
+  inventoryMovements          InventoryMovement[]   @relation("InventoryMovementEmployee")
+  assignedFulfillments        OrderFulfillment[]    @relation("FulfillmentAssignedPicker")
+  packingStartedFulfillments  OrderFulfillment[]    @relation("FulfillmentPackingStartedBy")
+  packedFulfillments          OrderFulfillment[]    @relation("FulfillmentPackedBy")
+  dispatchedFulfillments      OrderFulfillment[]    @relation("FulfillmentDispatchedBy")
+  pickupConfirmedFulfillments OrderFulfillment[]    @relation("FulfillmentPickupConfirmedBy")
+  afterSaleFulfillments       OrderFulfillment[]    @relation("FulfillmentAfterSaleOwner")
+  verifiedFulfillmentItems    FulfillmentItem[]     @relation("FulfillmentItemVerifiedBy")
+  fulfillmentEvents           FulfillmentEvent[]    @relation("FulfillmentEventActor")
+  relatedFulfillmentEvents    FulfillmentEvent[]    @relation("FulfillmentEventRelatedEmployee")
+  deliveryRider               DeliveryRider?        @relation("DeliveryRiderEmployee")
+  afterSaleCases              CustomerServiceCase[] @relation("CustomerServiceCaseOwner")
+  adminUser                   AdminUser?            @relation("AdminUserLinkedEmployee")
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
 }
 
 model AdminUser {
-  id                 String          @id @default(uuid())
-  name               String
-  email              String?         @unique
-  loginAccount       String          @unique
-  phone              String?         @unique
-  passwordHash       String?
-  inviteTokenHash    String?
-  inviteExpiresAt    DateTime?
-  status             AdminUserStatus @default(ACTIVE)
-  linkedEmployeeId   String?         @unique
-  linkedEmployee     Employee?       @relation("AdminUserLinkedEmployee", fields: [linkedEmployeeId], references: [id], onDelete: SetNull)
-  roles              UserRole[]
+  id                   String                @id @default(uuid())
+  name                 String
+  email                String?               @unique
+  loginAccount         String                @unique
+  phone                String?               @unique
+  passwordHash         String?
+  inviteTokenHash      String?
+  inviteExpiresAt      DateTime?
+  status               AdminUserStatus       @default(ACTIVE)
+  linkedEmployeeId     String?               @unique
+  linkedEmployee       Employee?             @relation("AdminUserLinkedEmployee", fields: [linkedEmployeeId], references: [id], onDelete: SetNull)
+  roles                UserRole[]
   customerServiceCases CustomerServiceCase[] @relation("CustomerServiceCaseCreatedBy")
   customerServiceNotes CustomerServiceNote[] @relation("CustomerServiceNoteAuthor")
-  lastLoginAt        DateTime?
-  lockedAt           DateTime?
-  disabledAt         DateTime?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  fulfillmentEvents    FulfillmentEvent[]    @relation("FulfillmentEventAdminActor")
+  deliveryAssignments  DeliveryAssignment[]  @relation("DeliveryAssignmentAssignedBy")
+  lastLoginAt          DateTime?
+  lockedAt             DateTime?
+  disabledAt           DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@index([status, createdAt])
   @@index([linkedEmployeeId])
@@ -343,13 +352,13 @@ model Product {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
+  @@unique([batchId, batchItemNumber])
   @@index([status, publishedAt])
   @@index([batchId, batchItemNumber])
   @@index([category, finalSizeLabel, priceKsh])
   @@index([category, subcategory])
   @@index([gender, kidsAgeRange])
   @@index([conditionGrade])
-  @@unique([batchId, batchItemNumber])
 }
 
 model ProductBatch {
@@ -372,6 +381,10 @@ model ProductBatch {
 model WarehouseLocation {
   id             String              @id @default(uuid())
   locationCode   String              @unique
+  zoneCode       String?
+  rackCode       String?
+  binCode        String?
+  qrCode         String?             @unique
   active         Boolean             @default(true)
   note           String?
   inventoryItems InventoryItem[]
@@ -381,6 +394,7 @@ model WarehouseLocation {
   updatedAt      DateTime            @updatedAt
 
   @@index([active, locationCode])
+  @@index([zoneCode, rackCode, binCode])
 }
 
 model InventoryItem {
@@ -595,11 +609,35 @@ enum PaymentStatus {
 enum FulfillmentStatus {
   PAID
   PICKING
+  READY_TO_PACK
   PACKED
   READY_FOR_PICKUP
+  READY_FOR_DISPATCH
   OUT_FOR_DELIVERY
   COMPLETED
   EXCEPTION
+}
+
+enum FulfillmentItemStatus {
+  PENDING
+  VERIFIED
+}
+
+enum PackagingMethod {
+  BAG
+  BOX
+  OTHER
+}
+
+enum PickupVerificationMethod {
+  ORDER_NUMBER
+  PHONE
+  PICKUP_CODE
+}
+
+enum DeliveryRiderType {
+  INTERNAL
+  EXTERNAL
 }
 
 enum FulfillmentExceptionReason {
@@ -652,17 +690,17 @@ enum CustomerServiceIssueType {
 }
 
 model Customer {
-  id                         String             @id @default(uuid())
-  googleSubjectId            String             @unique
+  id                         String                 @id @default(uuid())
+  googleSubjectId            String                 @unique
   email                      String
-  normalizedEmail            String             @unique
-  emailVerified              Boolean            @default(false)
+  normalizedEmail            String                 @unique
+  emailVerified              Boolean                @default(false)
   displayName                String?
   avatarUrl                  String?
   phone                      String?
   defaultAddress             String?
   preferredFulfillmentMethod FulfillmentMethod?
-  status                     CustomerStatus     @default(ACTIVE)
+  status                     CustomerStatus         @default(ACTIVE)
   lastLoginAt                DateTime?
   checkoutDrafts             CheckoutDraft[]
   orders                     Order[]
@@ -671,8 +709,8 @@ model Customer {
   affiliateAttributions      AffiliateAttribution[]
   customerServiceCases       CustomerServiceCase[]
   customerServiceNotes       CustomerServiceNote[]
-  createdAt                  DateTime           @default(now())
-  updatedAt                  DateTime           @updatedAt
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
 
   @@index([status, createdAt])
   @@index([phone])
@@ -682,7 +720,7 @@ model CheckoutDraft {
   id                String              @id @default(uuid())
   customerId        String
   status            CheckoutDraftStatus @default(ACTIVE)
-  fulfillmentMethod FulfillmentMethod    @default(PICKUP)
+  fulfillmentMethod FulfillmentMethod   @default(PICKUP)
   deliveryAddress   String?
   deliveryNote      String?
   itemSubtotalKsh   Int                 @default(0)
@@ -701,33 +739,35 @@ model CheckoutDraft {
 }
 
 model Order {
-  id                String              @id @default(uuid())
-  orderNumber       String              @unique
-  customerId        String
-  status            OrderStatus         @default(DRAFT)
-  fulfillmentMethod FulfillmentMethod
-  deliveryAddress   String?
-  deliveryNote      String?
-  itemSubtotalKsh   Int
-  deliveryFeeKsh    Int                 @default(0)
-  totalKsh          Int
-  currency          OrderCurrency       @default(KES)
-  affiliateId       String?
-  affiliateSource   String?
-  affiliateCampaign String?
-  customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  affiliate         Affiliate?          @relation("OrderAffiliate", fields: [affiliateId], references: [id], onDelete: SetNull)
-  items             OrderItem[]
-  payments          Payment[]
-  fulfillment       OrderFulfillment?
-  fulfillmentEvents FulfillmentEvent[]
+  id                   String                @id @default(uuid())
+  orderNumber          String                @unique
+  customerId           String
+  status               OrderStatus           @default(DRAFT)
+  fulfillmentMethod    FulfillmentMethod
+  pickupCode           String?             @unique
+  deliveryAddress      String?
+  deliveryNote         String?
+  itemSubtotalKsh      Int
+  deliveryFeeKsh       Int                   @default(0)
+  totalKsh             Int
+  currency             OrderCurrency         @default(KES)
+  affiliateId          String?
+  affiliateSource      String?
+  affiliateCampaign    String?
+  customer             Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  affiliate            Affiliate?            @relation("OrderAffiliate", fields: [affiliateId], references: [id], onDelete: SetNull)
+  items                OrderItem[]
+  payments             Payment[]
+  fulfillment          OrderFulfillment?
+  fulfillmentEvents    FulfillmentEvent[]
+  deliveryAssignments  DeliveryAssignment[]
   affiliateAttribution AffiliateAttribution?
-  commission        Commission?
+  commission           Commission?
   customerServiceCases CustomerServiceCase[]
   customerServiceNotes CustomerServiceNote[]
-  sourceDraft       CheckoutDraft?      @relation("CheckoutDraftConvertedOrder")
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  sourceDraft          CheckoutDraft?        @relation("CheckoutDraftConvertedOrder")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@index([customerId, createdAt])
   @@index([status, createdAt])
@@ -735,23 +775,25 @@ model Order {
 }
 
 model OrderItem {
-  id           String        @id @default(uuid())
-  orderId      String
-  productId    String
-  unitPriceKsh Int
-  quantity     Int           @default(1)
-  lineTotalKsh Int
-  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  snapshot     OrderSnapshot?
-  createdAt    DateTime      @default(now())
+  id                String             @id @default(uuid())
+  orderId           String
+  productId         String
+  unitPriceKsh      Int
+  quantity          Int                @default(1)
+  lineTotalKsh      Int
+  order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  snapshot          OrderSnapshot?
+  fulfillmentItem   FulfillmentItem?
+  fulfillmentEvents FulfillmentEvent[]
+  createdAt         DateTime           @default(now())
 
   @@unique([orderId, productId])
   @@index([productId])
 }
 
 model OrderSnapshot {
-  id             String         @id @default(uuid())
-  orderItemId    String         @unique
+  id             String          @id @default(uuid())
+  orderItemId    String          @unique
   productCode    String
   barcode        String?
   title          String
@@ -765,8 +807,8 @@ model OrderSnapshot {
   measurements   Json?
   defects        Json?
   unitPriceKsh   Int
-  orderItem      OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  createdAt      DateTime       @default(now())
+  orderItem      OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
 
   @@index([productCode])
   @@index([barcode])
@@ -806,23 +848,41 @@ model OrderFulfillment {
   orderId                     String                      @unique
   status                      FulfillmentStatus           @default(PAID)
   assignedPickerEmployeeId    String?
+  packingStartedByEmployeeId  String?
   packedByEmployeeId          String?
+  dispatchedByEmployeeId      String?
   pickupConfirmedByEmployeeId String?
+  afterSaleOwnerEmployeeId    String?
+  deliveryRiderId             String?
   deliveryRiderName           String?
   deliveryRiderPhone          String?
   exceptionReason             FulfillmentExceptionReason?
   exceptionNote               String?
   packingStatus               String?
   packingNote                 String?
+  packagingMethod             PackagingMethod?
+  packageCount                Int?
   pickedAt                    DateTime?
+  packingStartedAt            DateTime?
   packedAt                    DateTime?
   readyForPickupAt            DateTime?
+  readyForDispatchAt          DateTime?
+  dispatchedAt                DateTime?
   outForDeliveryAt            DateTime?
+  pickupVerificationMethod    PickupVerificationMethod?
+  pickupVerificationValue     String?
+  pickupNote                  String?
   completedAt                 DateTime?
   order                       Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   assignedPicker              Employee?                   @relation("FulfillmentAssignedPicker", fields: [assignedPickerEmployeeId], references: [id], onDelete: SetNull)
+  packingStartedBy            Employee?                   @relation("FulfillmentPackingStartedBy", fields: [packingStartedByEmployeeId], references: [id], onDelete: SetNull)
   packedBy                    Employee?                   @relation("FulfillmentPackedBy", fields: [packedByEmployeeId], references: [id], onDelete: SetNull)
+  dispatchedBy                Employee?                   @relation("FulfillmentDispatchedBy", fields: [dispatchedByEmployeeId], references: [id], onDelete: SetNull)
   pickupConfirmedBy           Employee?                   @relation("FulfillmentPickupConfirmedBy", fields: [pickupConfirmedByEmployeeId], references: [id], onDelete: SetNull)
+  afterSaleOwner              Employee?                   @relation("FulfillmentAfterSaleOwner", fields: [afterSaleOwnerEmployeeId], references: [id], onDelete: SetNull)
+  deliveryRider               DeliveryRider?              @relation(fields: [deliveryRiderId], references: [id], onDelete: SetNull)
+  items                       FulfillmentItem[]
+  deliveryAssignments         DeliveryAssignment[]
   events                      FulfillmentEvent[]
   createdAt                   DateTime                    @default(now())
   updatedAt                   DateTime                    @updatedAt
@@ -830,35 +890,107 @@ model OrderFulfillment {
   @@index([status, updatedAt])
   @@index([assignedPickerEmployeeId])
   @@index([packedByEmployeeId])
+  @@index([dispatchedByEmployeeId])
+  @@index([deliveryRiderId])
+}
+
+model FulfillmentItem {
+  id                   String                @id @default(uuid())
+  fulfillmentId        String
+  orderItemId          String                @unique
+  expectedBarcode      String?
+  status               FulfillmentItemStatus @default(PENDING)
+  scannedBarcode       String?
+  verifiedByEmployeeId String?
+  verifiedAt           DateTime?
+  fulfillment          OrderFulfillment      @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  orderItem            OrderItem             @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  verifiedBy           Employee?             @relation("FulfillmentItemVerifiedBy", fields: [verifiedByEmployeeId], references: [id], onDelete: SetNull)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([fulfillmentId, status])
+  @@index([verifiedByEmployeeId, verifiedAt])
+}
+
+model DeliveryRider {
+  id           String               @id @default(uuid())
+  type         DeliveryRiderType
+  employeeId   String?              @unique
+  name         String
+  phone        String?
+  company      String?
+  vehicle      String?
+  employee     Employee?            @relation("DeliveryRiderEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  fulfillments OrderFulfillment[]
+  assignments  DeliveryAssignment[]
+  events       FulfillmentEvent[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([type, name])
+  @@index([phone])
+}
+
+model DeliveryAssignment {
+  id                    String           @id @default(uuid())
+  fulfillmentId         String
+  orderId               String
+  deliveryRiderId       String
+  assignedByAdminUserId String?
+  estimatedDeliveryAt   DateTime?
+  note                  String?
+  fulfillment           OrderFulfillment @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  order                 Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  deliveryRider         DeliveryRider    @relation(fields: [deliveryRiderId], references: [id], onDelete: Restrict)
+  assignedByAdminUser   AdminUser?       @relation("DeliveryAssignmentAssignedBy", fields: [assignedByAdminUserId], references: [id], onDelete: SetNull)
+  createdAt             DateTime         @default(now())
+
+  @@index([fulfillmentId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([deliveryRiderId, createdAt])
 }
 
 model FulfillmentEvent {
-  id              String                      @id @default(uuid())
-  fulfillmentId   String
-  orderId         String
-  actorEmployeeId String?
-  action          String
-  oldStatus       FulfillmentStatus?
-  newStatus       FulfillmentStatus
-  note            String?
-  scannedBarcode  String?
-  exceptionReason FulfillmentExceptionReason?
-  fulfillment     OrderFulfillment            @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
-  order           Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  actorEmployee   Employee?                   @relation("FulfillmentEventActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)
-  createdAt       DateTime                    @default(now())
+  id                String                      @id @default(uuid())
+  fulfillmentId     String
+  orderId           String
+  actorEmployeeId   String?
+  actorAdminUserId  String?
+  relatedEmployeeId String?
+  deliveryRiderId   String?
+  orderItemId       String?
+  action            String
+  oldStatus         FulfillmentStatus?
+  newStatus         FulfillmentStatus
+  note              String?
+  expectedBarcode   String?
+  scannedBarcode    String?
+  exceptionReason   FulfillmentExceptionReason?
+  fulfillment       OrderFulfillment            @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  order             Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actorEmployee     Employee?                   @relation("FulfillmentEventActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)
+  actorAdminUser    AdminUser?                  @relation("FulfillmentEventAdminActor", fields: [actorAdminUserId], references: [id], onDelete: SetNull)
+  relatedEmployee   Employee?                   @relation("FulfillmentEventRelatedEmployee", fields: [relatedEmployeeId], references: [id], onDelete: SetNull)
+  deliveryRider     DeliveryRider?              @relation(fields: [deliveryRiderId], references: [id], onDelete: SetNull)
+  orderItem         OrderItem?                  @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                    @default(now())
 
   @@index([fulfillmentId, createdAt])
   @@index([orderId, createdAt])
   @@index([actorEmployeeId, createdAt])
+  @@index([actorAdminUserId, createdAt])
+  @@index([relatedEmployeeId, createdAt])
+  @@index([deliveryRiderId, createdAt])
+  @@index([orderItemId, createdAt])
 }
 
 model MpesaCallback {
-  id                        String                         @id @default(uuid())
+  id                        String                        @id @default(uuid())
   paymentId                 String?
   orderId                   String?
   providerMerchantRequestId String?
-  providerCheckoutRequestId String                         @unique
+  providerCheckoutRequestId String                        @unique
   resultCode                Int
   resultDescription         String?
   amountKsh                 Int?
@@ -867,8 +999,8 @@ model MpesaCallback {
   transactionDate           DateTime?
   processingStatus          MpesaCallbackProcessingStatus
   rawJson                   Json
-  payment                   Payment?                       @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  createdAt                 DateTime                       @default(now())
+  payment                   Payment?                      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt                 DateTime                      @default(now())
 
   @@index([paymentId, createdAt])
   @@index([orderId, createdAt])
@@ -993,27 +1125,35 @@ model Commission {
 }
 
 model CustomerServiceCase {
-  id                   String                    @id @default(uuid())
-  customerId           String?
-  orderId              String?
-  issueType            CustomerServiceIssueType  @default(OTHER)
-  status               CustomerServiceCaseStatus @default(OPEN)
-  title                String
-  description          String?
-  tags                 Json?
-  createdByAdminUserId String?
-  resolvedAt           DateTime?
-  customer             Customer?                 @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  order                Order?                    @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  createdByAdminUser   AdminUser?                @relation("CustomerServiceCaseCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
-  notes                CustomerServiceNote[]
-  createdAt            DateTime                  @default(now())
-  updatedAt            DateTime                  @updatedAt
+  id                         String                    @id @default(uuid())
+  customerId                 String?
+  orderId                    String?
+  issueType                  CustomerServiceIssueType  @default(OTHER)
+  status                     CustomerServiceCaseStatus @default(OPEN)
+  title                      String
+  description                String?
+  tags                       Json?
+  createdByAdminUserId       String?
+  assignedEmployeeId         String?
+  afterSaleReason            String?
+  customerRequest            String?
+  requiresReturn             Boolean                   @default(false)
+  requiresRefund             Boolean                   @default(false)
+  affectsAffiliateCommission Boolean                   @default(false)
+  resolvedAt                 DateTime?
+  customer                   Customer?                 @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order                      Order?                    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdByAdminUser         AdminUser?                @relation("CustomerServiceCaseCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
+  assignedEmployee           Employee?                 @relation("CustomerServiceCaseOwner", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  notes                      CustomerServiceNote[]
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
 
   @@index([status, issueType, updatedAt])
   @@index([customerId, createdAt])
   @@index([orderId, createdAt])
   @@index([createdByAdminUserId, createdAt])
+  @@index([assignedEmployeeId, status, updatedAt])
 }
 
 model CustomerServiceNote {
