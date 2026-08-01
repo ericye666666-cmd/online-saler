@@ -24,6 +24,12 @@ type FieldLike = {
 
 type RawExtraction = Record<string, unknown>;
 
+export type RuntimeProductTaxonomy = {
+  categories?: string[];
+  subcategories?: string[];
+  colors?: string[];
+};
+
 const CATEGORY_SET = new Set<string>(AI_PRODUCT_CATEGORIES);
 const SUBCATEGORY_SET = new Set<string>(PRODUCT_SUBCATEGORY_OPTIONS);
 const COLOR_SET = new Set<string>(AI_COLORS);
@@ -103,21 +109,25 @@ const AUDIENCE_ALIASES: Record<string, AIAudience> = {
 
 export function normalizeOpenAIVisionOutput(
   raw: unknown,
-  evidenceImageIds: string[]
+  evidenceImageIds: string[],
+  runtimeTaxonomy: RuntimeProductTaxonomy = {}
 ): AIExtractionNormalizedOutput {
   const record = asRecord(raw);
+  const categorySet = runtimeSet(runtimeTaxonomy.categories, CATEGORY_SET);
+  const subcategorySet = runtimeSet(runtimeTaxonomy.subcategories, SUBCATEGORY_SET);
+  const colorSet = runtimeSet(runtimeTaxonomy.colors, COLOR_SET);
 
   return {
-    category: enumField<AIProductCategory>(record, ["category"], CATEGORY_SET, "OTHER", evidenceImageIds, CATEGORY_ALIASES),
+    category: enumField<AIProductCategory>(record, ["category"], categorySet, "OTHER", evidenceImageIds, CATEGORY_ALIASES),
     subcategory: enumField<ProductSubcategoryOption>(
       record,
       ["subcategory", "subCategory", "itemType", "item_type"],
-      SUBCATEGORY_SET,
+      subcategorySet,
       "OTHER",
       evidenceImageIds,
       SUBCATEGORY_ALIASES
     ),
-    primaryColor: enumField<AIColor>(record, ["primaryColor", "color"], COLOR_SET, "OTHER", evidenceImageIds),
+    primaryColor: enumField<AIColor>(record, ["primaryColor", "color"], colorSet, "OTHER", evidenceImageIds),
     audience: enumField<AIAudience>(
       record,
       ["audience", "gender", "customerGender", "customer_gender"],
@@ -139,6 +149,10 @@ export function normalizeOpenAIVisionOutput(
     sizeLabel: stringField(record, ["sizeLabel", "size"], evidenceImageIds),
     title: stringField(record, ["title"], evidenceImageIds)
   };
+}
+
+function runtimeSet(values: string[] | undefined, fallback: Set<string>): Set<string> {
+  return values?.length ? new Set(values) : fallback;
 }
 
 function enumField<T extends string>(

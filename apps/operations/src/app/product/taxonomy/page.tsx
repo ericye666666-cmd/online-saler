@@ -1,3 +1,5 @@
-import { TaxonomyPage } from "../product-center-client";
+import { ProductTaxonomyClient } from "../product-taxonomy-client";
 
-export default TaxonomyPage;
+export default function ProductTaxonomyPage() {
+  return <ProductTaxonomyClient />;
+}

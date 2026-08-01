@@ -57,3 +57,30 @@ test("falls back to OTHER and clamps confidence for unusable model values", () =
   assert.equal(output.pattern.confidence, 0.5);
   assert.equal(output.sleeveType.value, "OTHER");
 });
+
+test("accepts active runtime taxonomy values and rejects inactive values", () => {
+  const output = normalizeOpenAIVisionOutput(
+    {
+      category: { value: "VINTAGE_COATS", confidence: 0.9 },
+      subcategory: { value: "WOOL_COAT", confidence: 0.8 },
+      primaryColor: { value: "MOSS_GREEN", confidence: 0.7 }
+    },
+    ["image-3"],
+    {
+      categories: ["VINTAGE_COATS", "OTHER"],
+      subcategories: ["WOOL_COAT", "OTHER"],
+      colors: ["MOSS_GREEN", "OTHER"]
+    }
+  );
+
+  assert.equal(output.category.value, "VINTAGE_COATS");
+  assert.equal(output.subcategory.value, "WOOL_COAT");
+  assert.equal(output.primaryColor.value, "MOSS_GREEN");
+
+  const inactive = normalizeOpenAIVisionOutput(
+    { category: { value: "SHIRTS", confidence: 0.9 } },
+    ["image-4"],
+    { categories: ["OTHER"] }
+  );
+  assert.equal(inactive.category.value, "OTHER");
+});

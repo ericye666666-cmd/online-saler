@@ -204,7 +204,7 @@ Verification: Product Factory pages load without `403`, and audit records use th
 
 ### Product taxonomy
 
-Go to **商品工厂 > 分类与属性**.
+Go to **商品中心 > 分类与属性**.
 
 Before the first real batch, confirm:
 
@@ -213,6 +213,28 @@ Before the first real batch, confirm:
 - Storefront filters use the same active taxonomy
 
 Do not delete an option already used by a product. Disable it for new work instead.
+
+To add an option:
+
+1. Select its tab: 分类、子分类、颜色、尺码、成色 or 瑕疵.
+2. Enter a stable uppercase code and the Chinese display name.
+3. For a subcategory, select its parent category or 通用.
+4. Enter its sort order and click **新增**.
+5. Verify it appears in the batch calibration selector and that OpenAI no longer returns a disabled option.
+
+To rename or disable an option, edit the row and click **保存**. The code and historical product values stay unchanged. There is intentionally no delete action.
+
+### Product Factory configuration checker
+
+Go to **系统管理 > 商品工厂配置**.
+
+- Click **重新检查** after every staging deployment.
+- Every server item should show **已配置**.
+- The page only reports secret presence; it never displays secret values.
+- **Deli 打印代理** is checked from the current employee computer. Start the local agent, then rerun the check.
+- The signed-in admin must show **已关联员工** before creating, calibrating, reviewing, storing, or publishing products.
+
+If a server item is missing, use its displayed guidance and rerun the matching deployment workflow. If only the printer item is missing, do not redeploy Cloud Run; fix the employee workstation.
 
 ### Barcode settings
 

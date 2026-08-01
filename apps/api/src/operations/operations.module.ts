@@ -15,6 +15,8 @@ import { OperationsProductBatchController } from "./operations-product-batch.con
 import { OperationsProductBatchService } from "./operations-product-batch.service";
 import { OperationsProductControlController } from "./operations-product-control.controller";
 import { OperationsProductControlService } from "./operations-product-control.service";
+import { OperationsProductFactoryAdminController } from "./operations-product-factory-admin.controller";
+import { OperationsProductFactoryAdminService } from "./operations-product-factory-admin.service";
 import { OperationsWorkspaceController } from "./operations-workspace.controller";
 import { OperationsWorkspaceService } from "./operations-workspace.service";
 
@@ -25,6 +27,7 @@ import { OperationsWorkspaceService } from "./operations-workspace.service";
     OperationsWorkspaceController,
     OperationsProductBatchController,
     OperationsProductControlController,
+    OperationsProductFactoryAdminController,
     OperationsFulfillmentController,
     OperationsAffiliateController,
     OperationsAnalyticsController,
@@ -35,6 +38,7 @@ import { OperationsWorkspaceService } from "./operations-workspace.service";
     OperationsWorkspaceService,
     OperationsProductBatchService,
     OperationsProductControlService,
+    OperationsProductFactoryAdminService,
     OperationsFulfillmentService,
     OperationsAffiliateService,
     OperationsAnalyticsService,

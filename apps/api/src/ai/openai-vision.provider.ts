@@ -2,15 +2,13 @@ import { BadRequestException, Injectable, InternalServerErrorException } from "@
 import { prisma } from "@online-saler/database";
 import {
   AI_AUDIENCES,
-  AI_COLORS,
   AI_KIDS_AGE_RANGES,
   AI_PATTERNS,
-  AI_PRODUCT_CATEGORIES,
   AI_SLEEVE_TYPES,
-  PRODUCT_SUBCATEGORY_OPTIONS,
   type AIExtractionRequest
 } from "@online-saler/shared-types";
 import { ProductImageStorageService } from "../product/product-image-storage.service";
+import { activeTaxonomyCodes, loadProductTaxonomy } from "../product/product-taxonomy";
 import type { AIProvider, AIProviderResult } from "./ai-provider";
 import { normalizeOpenAIVisionOutput } from "./openai-vision-normalizer";
 
@@ -34,6 +32,12 @@ export class OpenAIVisionProvider implements AIProvider {
     }
 
     const startedAt = Date.now();
+    const taxonomy = await loadProductTaxonomy();
+    const runtimeTaxonomy = {
+      categories: activeTaxonomyCodes(taxonomy, "CATEGORY"),
+      subcategories: activeTaxonomyCodes(taxonomy, "SUBCATEGORY"),
+      colors: activeTaxonomyCodes(taxonomy, "COLOR")
+    };
     const images = await prisma.productImage.findMany({
       where: { id: { in: request.imageIds }, productId: request.productId },
       orderBy: { createdAt: "asc" }
@@ -81,9 +85,9 @@ export class OpenAIVisionProvider implements AIProvider {
                 text: [
                   "Return one JSON object with these fields:",
                   "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, brandLabel, sizeLabel, title.",
-                  `category enum: ${AI_PRODUCT_CATEGORIES.join(", ")}`,
-                  `subcategory enum: ${PRODUCT_SUBCATEGORY_OPTIONS.join(", ")}`,
-                  `primaryColor enum: ${AI_COLORS.join(", ")}`,
+                  `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
+                  `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
+                  `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
                   `audience enum: ${AI_AUDIENCES.join(", ")}`,
                   `kidsAgeRange enum: ${AI_KIDS_AGE_RANGES.join(", ")}`,
                   `pattern enum: ${AI_PATTERNS.join(", ")}`,
@@ -113,7 +117,7 @@ export class OpenAIVisionProvider implements AIProvider {
       provider: "openai",
       model: this.model(),
       rawOutput: payload,
-      normalizedOutput: normalizeOpenAIVisionOutput(rawOutput, request.imageIds),
+      normalizedOutput: normalizeOpenAIVisionOutput(rawOutput, request.imageIds, runtimeTaxonomy),
       latencyMs: Date.now() - startedAt,
       inputTokens: numberOrUndefined(payload.usage?.input_tokens),
       outputTokens: numberOrUndefined(payload.usage?.output_tokens)
