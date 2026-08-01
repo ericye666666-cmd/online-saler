@@ -39,6 +39,12 @@ test("keeps a mixed batch at its earliest incomplete stage", () => {
   ]);
   assert.equal(flow.stage, "CALIBRATION");
   assert.equal(flow.stageCompletedCount, 9);
+  assert.equal(flow.nextActionLabel, "继续人工校准（已完成 9/10）");
+});
+
+test("uses an explicit start action before the first product is calibrated", () => {
+  const flow = deriveProductFactoryBatchFlow(products("AI_PROCESSED"));
+  assert.equal(flow.nextActionLabel, "开始人工校准");
 });
 
 test("prioritizes open exceptions and recognizes terminal batches", () => {

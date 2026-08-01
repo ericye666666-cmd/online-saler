@@ -106,7 +106,13 @@ export function deriveProductFactoryBatchFlow(products: BatchFlowProduct[]): Pro
   const stage = earliestIncompleteStage(products);
   const stageIndex = PRODUCT_FACTORY_BATCH_STAGES.indexOf(stage);
   const stageCompletedCount = products.filter((product) => productStageRank(product) > stageIndex).length;
-  return result(stage, nextActionFor(stage), stageCompletedCount, 0);
+  const flow = result(stage, nextActionFor(stage), stageCompletedCount, 0);
+  if (stage === "CALIBRATION") {
+    flow.nextActionLabel = stageCompletedCount === 0
+      ? "开始人工校准"
+      : `继续人工校准（已完成 ${stageCompletedCount}/${products.length}）`;
+  }
+  return flow;
 }
 
 export function startOfDayAtUtcOffset(now: Date, utcOffsetMinutes: number): Date {

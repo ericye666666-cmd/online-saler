@@ -161,6 +161,35 @@ export const AI_SLEEVE_TYPES = [
 
 export type AISleeveType = (typeof AI_SLEEVE_TYPES)[number];
 
+export const PRODUCT_FIT_TYPES = [
+  "SLIM",
+  "REGULAR",
+  "RELAXED",
+  "OVERSIZED",
+  "UNKNOWN"
+] as const;
+
+export type ProductFitTypeValue = (typeof PRODUCT_FIT_TYPES)[number];
+
+export const PRODUCT_STRETCH_LEVELS = [
+  "NONE",
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "UNKNOWN"
+] as const;
+
+export type ProductStretchLevelValue = (typeof PRODUCT_STRETCH_LEVELS)[number];
+
+export const PRODUCT_FABRIC_WEIGHTS = [
+  "LIGHT",
+  "REGULAR",
+  "HEAVY",
+  "UNKNOWN"
+] as const;
+
+export type ProductFabricWeightValue = (typeof PRODUCT_FABRIC_WEIGHTS)[number];
+
 export const AI_AUDIENCES = [
   "WOMEN",
   "MEN",

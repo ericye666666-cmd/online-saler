@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { ConditionGrade, ProductGender, ProductStatus, prisma } from "@online-saler/database";
+import {
+  ConditionGrade,
+  ProductFabricWeight,
+  ProductFitType,
+  ProductGender,
+  ProductStatus,
+  ProductStretchLevel,
+  prisma
+} from "@online-saler/database";
 import { ProductCalibrationService } from "./product-calibration.service";
 
 const originals = {
@@ -66,6 +74,9 @@ describe("ProductCalibrationService", () => {
       gender: ProductGender.UNISEX,
       pattern: "STRIPED",
       sleeveType: "LONG",
+      fitType: ProductFitType.REGULAR,
+      stretchLevel: ProductStretchLevel.LOW,
+      fabricWeight: ProductFabricWeight.HEAVY,
       sizeLabel: "M",
       conditionGrade: ConditionGrade.GOOD,
       priceKsh: 850,
@@ -75,8 +86,14 @@ describe("ProductCalibrationService", () => {
 
     assert.equal(productUpdate?.pattern, "STRIPED");
     assert.equal(productUpdate?.sleeveType, "LONG");
+    assert.equal(productUpdate?.fitType, "REGULAR");
+    assert.equal(productUpdate?.stretchLevel, "LOW");
+    assert.equal(productUpdate?.fabricWeight, "HEAVY");
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "STRIPED"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "LONG"));
+    assert.ok(decisionUpdates.some((update) => update.finalValueJson === "REGULAR"));
+    assert.ok(decisionUpdates.some((update) => update.finalValueJson === "LOW"));
+    assert.ok(decisionUpdates.some((update) => update.finalValueJson === "HEAVY"));
     assert.ok(decisionUpdates.every((update) => !("aiValueJson" in update)));
   });
 });

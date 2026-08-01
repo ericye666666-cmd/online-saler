@@ -10,6 +10,9 @@ import {
   AI_PATTERNS,
   AI_SLEEVE_TYPES,
   PRODUCT_CATEGORY_OPTIONS,
+  PRODUCT_FABRIC_WEIGHTS,
+  PRODUCT_FIT_TYPES,
+  PRODUCT_STRETCH_LEVELS,
   PRODUCT_SUBCATEGORIES_BY_CATEGORY,
   type BackgroundRemovalMode,
   type ImageProcessingJobRecord,
@@ -42,6 +45,7 @@ import {
   buildCalibrationBody,
   calibrationValidationReasons,
   formFromProductAndAi,
+  measurementFields,
   measurementRequirements,
   normalizedAiOutput,
   stringValue,
@@ -51,6 +55,29 @@ import {
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
+const CALIBRATION_COMPLETE_STATUSES = new Set([
+  "CALIBRATED",
+  "BARCODE_ASSIGNED",
+  "REVIEW_PENDING",
+  "APPROVED",
+  "READY_FOR_STORAGE",
+  "PUBLISHED",
+  "UNPUBLISHED",
+  "ARCHIVED"
+]);
+const FACT_LABELS: Record<string, string> = {
+  SLIM: "修身",
+  REGULAR: "常规",
+  RELAXED: "宽松",
+  OVERSIZED: "超宽松",
+  NONE: "无弹",
+  LOW: "微弹",
+  MEDIUM: "中等弹性",
+  HIGH: "高弹",
+  LIGHT: "轻薄",
+  HEAVY: "厚实",
+  UNKNOWN: "未知"
+};
 
 type ProductImage = {
   id: string;
@@ -258,10 +285,11 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     hasPhoto: Boolean(product?.images?.length),
     hasAi: Boolean(latestExtraction && (latestExtraction.status === "SUCCEEDED" || aiOutput))
   });
-  const completedCount = batch?.products.filter((item) => item.status === "CALIBRATED").length ?? 0;
-  const readOnly = product?.status === "CALIBRATED";
+  const completedCount = batch?.products.filter((item) => isCalibrationComplete(item.status)).length ?? 0;
+  const readOnly = Boolean(product && isCalibrationComplete(product.status));
   const taxonomyLabels = useMemo(() => taxonomyLabelMap(taxonomy), [taxonomy]);
   const categoryOptions = activeValues(taxonomy, "CATEGORY", PRODUCT_CATEGORY_OPTIONS, form.category);
+  const visibleMeasurementFields = measurementFields(form);
   const requiredMeasurementKeys = new Set(measurementRequirements(form).map((item) => item.key));
   const colorOptions = activeValues(taxonomy, "COLOR", AI_COLORS, form.color);
   const sizeOptions = activeValues(taxonomy, "SIZE", ["XS", "S", "M", "L", "XL", "XXL"], form.sizeLabel);
@@ -413,8 +441,8 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
 
       {allComplete ? (
         <div className="flex flex-col gap-3 rounded-md border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 10 件已全部校准</span>
-          <Button asChild><Link href={`/product/batches/${encodeURIComponent(batch.id)}`}>返回批次生成 Barcode<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 10 件已完成人工校准</span>
+          <Button asChild><Link href={`/product/batches/${encodeURIComponent(batch.id)}`}>完成本批校准<ArrowRightIcon data-icon="inline-end" /></Link></Button>
         </div>
       ) : null}
 
@@ -448,7 +476,6 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
             {currentImage?.selectable ? <Button size="sm" disabled={Boolean(busy) || currentImage.selected} onClick={() => void chooseMain(currentImage)}>{currentImage.selected ? "已是商城主图" : "设为商城主图"}</Button> : null}
             <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />全屏</Button>
             {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
-            <Button size="sm" variant="outline" disabled={Boolean(busy) || readOnly} onClick={() => void markRetake()}><RotateCcwIcon data-icon="inline-start" />标记重拍</Button>
           </div>
 
           {latestRemovalJob ? <ProcessingSummary job={latestRemovalJob} /> : <StatusMessage tone="neutral">还没有图片处理记录。</StatusMessage>}
@@ -484,11 +511,17 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           <div className="border-t pt-4">
             <h3 className="mb-3 text-sm font-semibold">尺寸（cm）</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <FormInput label={requiredMeasurementKeys.has("waistCm") ? "裤长" : "衣长"} value={form.lengthCm} required={requiredMeasurementKeys.has("lengthCm")} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("lengthCm", value)} />
-              <FormInput label="胸宽" value={form.chestWidthCm} required={requiredMeasurementKeys.has("chestWidthCm")} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("chestWidthCm", value)} />
-              <FormInput label="肩宽" value={form.shoulderWidthCm} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("shoulderWidthCm", value)} />
-              <FormInput label="腰宽" value={form.waistCm} required={requiredMeasurementKeys.has("waistCm")} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("waistCm", value)} />
-              <FormInput label="臀宽" value={form.hipCm} required={requiredMeasurementKeys.has("hipCm")} inputMode="decimal" disabled={readOnly} onChange={(value) => updateForm("hipCm", value)} />
+              {visibleMeasurementFields.map((field) => (
+                <FormInput
+                  key={field.key}
+                  label={field.label}
+                  value={form[field.key]}
+                  required={requiredMeasurementKeys.has(field.key)}
+                  inputMode="decimal"
+                  disabled={readOnly}
+                  onChange={(value) => updateForm(field.key, value)}
+                />
+              ))}
             </div>
           </div>
 
@@ -498,6 +531,9 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
             <FormInput label="价格（KSh）" value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
             <FormSelect label="图案" value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
             <FormSelect label="袖型" value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
+            <FormSelect label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fitType", value)} />
+            <FormSelect label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("stretchLevel", value)} />
+            <FormSelect label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fabricWeight", value)} />
           </div>
 
           <FormTextarea label="瑕疵" value={form.defects} required disabled={readOnly} hint="没有瑕疵请填写 None。" onChange={(value) => updateForm("defects", value)} />
@@ -507,12 +543,13 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 backdrop-blur lg:sticky lg:inset-auto lg:flex lg:justify-end lg:gap-2 lg:px-0">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-2 lg:mx-0 lg:flex">
+        <div className="mx-auto grid max-w-6xl grid-cols-3 gap-2 lg:mx-0 lg:flex">
           <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />保存草稿</Button>
           <Button disabled={Boolean(busy) || readOnly || reasons.length > 0 || !comparison?.selectedMainImageId} onClick={() => void saveAndNext()}>
             {busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
-            {readOnly ? "本件已校准" : currentIndex === 9 ? "保存并完成本批" : "保存并下一件"}
+            {readOnly ? "本件已校准" : "保存并下一件"}
           </Button>
+          <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={() => void markRetake()}><RotateCcwIcon data-icon="inline-start" />标记重拍</Button>
         </div>
       </div>
     </div>
@@ -631,8 +668,12 @@ function formForProduct(product: ProductRecord, extraction: JsonRecord | null): 
     lengthCm: value("LENGTH"),
     chestWidthCm: value("CHEST_WIDTH"),
     shoulderWidthCm: value("SHOULDER_WIDTH"),
+    sleeveLengthCm: value("SLEEVE_LENGTH"),
     waistCm: value("WAIST"),
     hipCm: value("HIP"),
+    thighWidthCm: value("THIGH_WIDTH"),
+    legOpeningCm: value("LEG_OPENING"),
+    inseamCm: value("INSEAM"),
     defects: product.defects?.length ? product.defects.map((defect) => defect.description).filter(Boolean).join("; ") : "None"
   };
 }
@@ -643,6 +684,10 @@ function newestImage(product: ProductRecord | null, type: string) {
 
 function isCalibratable(product: ProductRecord) {
   return ["AI_PROCESSED", "CALIBRATION_PENDING"].includes(product.status);
+}
+
+function isCalibrationComplete(status: string) {
+  return CALIBRATION_COMPLETE_STATUSES.has(status);
 }
 
 function subcategoriesFor(category: string, current = "") {

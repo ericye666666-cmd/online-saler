@@ -79,6 +79,29 @@ enum ProductGender {
   UNISEX
 }
 
+enum ProductFitType {
+  SLIM
+  REGULAR
+  RELAXED
+  OVERSIZED
+  UNKNOWN
+}
+
+enum ProductStretchLevel {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  UNKNOWN
+}
+
+enum ProductFabricWeight {
+  LIGHT
+  REGULAR
+  HEAVY
+  UNKNOWN
+}
+
 enum ConditionGrade {
   LIKE_NEW
   EXCELLENT
@@ -286,6 +309,9 @@ model Product {
   color                String?
   pattern              String?
   sleeveType           String?
+  fitType              ProductFitType?
+  stretchLevel         ProductStretchLevel?
+  fabricWeight         ProductFabricWeight?
   gender               ProductGender?
   kidsAgeRange         String?
   tagSize              String?

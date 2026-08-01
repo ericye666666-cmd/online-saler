@@ -4,8 +4,11 @@ import {
   ConditionGrade,
   DefectSeverity,
   MeasurementSource,
+  ProductFabricWeight,
+  ProductFitType,
   ProductGender,
   ProductStatus,
+  ProductStretchLevel,
   Prisma,
   prisma
 } from "@online-saler/database";
@@ -35,6 +38,9 @@ export interface CalibrateProductInput {
   kidsAgeRange?: string;
   pattern: string;
   sleeveType: string;
+  fitType: ProductFitType;
+  stretchLevel: ProductStretchLevel;
+  fabricWeight: ProductFabricWeight;
   brand?: string;
   tagSize?: string;
   sizeLabel?: string;
@@ -76,6 +82,9 @@ export class ProductCalibrationService {
       kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
       pattern: input.pattern,
       sleeveType: input.sleeveType,
+      fitType: input.fitType,
+      stretchLevel: input.stretchLevel,
+      fabricWeight: input.fabricWeight,
       brandLabel: input.brand ?? null,
       tagSize: input.tagSize ?? null,
       sizeLabel: input.sizeLabel ?? null
@@ -91,6 +100,9 @@ export class ProductCalibrationService {
           color: input.color,
           pattern: input.pattern,
           sleeveType: input.sleeveType,
+          fitType: input.fitType,
+          stretchLevel: input.stretchLevel,
+          fabricWeight: input.fabricWeight,
           gender: input.gender ?? null,
           kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
           brand: input.brand ?? null,
@@ -187,6 +199,15 @@ export class ProductCalibrationService {
     }
     if (!input.conditionGrade) {
       throw new BadRequestException("conditionGrade must be confirmed by an employee");
+    }
+    if (!Object.values(ProductFitType).includes(input.fitType)) {
+      throw new BadRequestException("fitType must be confirmed by an employee");
+    }
+    if (!Object.values(ProductStretchLevel).includes(input.stretchLevel)) {
+      throw new BadRequestException("stretchLevel must be confirmed by an employee");
+    }
+    if (!Object.values(ProductFabricWeight).includes(input.fabricWeight)) {
+      throw new BadRequestException("fabricWeight must be confirmed by an employee");
     }
     if (input.priceKsh !== undefined && (!Number.isInteger(input.priceKsh) || input.priceKsh <= 0)) {
       throw new BadRequestException("priceKsh must be a positive integer");
