@@ -50,7 +50,18 @@ const missingMeasurements = workspaceReadiness({ product, image, job, form: from
 assert.equal(missingMeasurements.hasAi, true);
 assert.equal(missingMeasurements.canSaveAndNext, false);
 
-const completeForm = { ...fromAi, lengthCm: "92", chestWidthCm: "48", conditionGrade: "GOOD", priceKsh: "850", defects: "None" };
+const completeForm = {
+  ...fromAi,
+  lengthCm: "92",
+  chestWidthCm: "48",
+  shoulderWidthCm: "39",
+  sleeveLengthCm: "22",
+  waistCm: "42",
+  hipCm: "51",
+  conditionGrade: "GOOD",
+  priceKsh: "850",
+  defects: "None"
+};
 const ready = workspaceReadiness({ product, image, job, form: completeForm });
 assert.equal(ready.canSaveAndNext, true);
 assert.equal(ready.label, "Ready to save");
@@ -69,7 +80,6 @@ const body = buildCalibrationBody({
   extractionId: "ai-1",
   form: {
     ...completeForm,
-    shoulderWidthCm: "39",
     tagSize: "UK 12",
     description: "Black short sleeve dress.",
     defects: "small stain on cuff"
@@ -78,13 +88,19 @@ const body = buildCalibrationBody({
 assert.deepEqual(body.measurements, [
   { type: "LENGTH", valueCm: 92 },
   { type: "CHEST_WIDTH", valueCm: 48 },
-  { type: "SHOULDER_WIDTH", valueCm: 39 }
+  { type: "SHOULDER_WIDTH", valueCm: 39 },
+  { type: "SLEEVE_LENGTH", valueCm: 22 },
+  { type: "WAIST", valueCm: 42 },
+  { type: "HIP", valueCm: 51 }
 ]);
 assert.equal(body.subcategory, "SHORT_DRESSES_SKIRTS");
 assert.equal(body.gender, "WOMEN");
 assert.equal(body.priceKsh, 850);
 assert.equal(body.tagSize, "UK 12");
 assert.equal(body.description, "Black short sleeve dress.");
+assert.equal(body.fitType, "UNKNOWN");
+assert.equal(body.stretchLevel, "UNKNOWN");
+assert.equal(body.fabricWeight, "UNKNOWN");
 assert.equal(body.defects[0].description, "small stain on cuff");
 
 const pantsForm = {
@@ -94,7 +110,10 @@ const pantsForm = {
   lengthCm: "101",
   chestWidthCm: "",
   waistCm: "42",
-  hipCm: "52"
+  hipCm: "52",
+  thighWidthCm: "31",
+  legOpeningCm: "22",
+  inseamCm: "72"
 };
 const pantsReady = workspaceReadiness({ product, image, job, form: pantsForm });
 assert.equal(pantsReady.canSaveAndNext, true);
@@ -102,11 +121,34 @@ const pantsBody = buildCalibrationBody({ employeeId: "employee-1", extractionId:
 assert.deepEqual(pantsBody.measurements, [
   { type: "OUTSEAM", valueCm: 101 },
   { type: "WAIST", valueCm: 42 },
-  { type: "HIP", valueCm: 52 }
+  { type: "HIP", valueCm: 52 },
+  { type: "THIGH_WIDTH", valueCm: 31 },
+  { type: "LEG_OPENING", valueCm: 22 },
+  { type: "INSEAM", valueCm: 72 }
 ]);
 
 const pantsWithoutHip = workspaceReadiness({ product, image, job, form: { ...pantsForm, hipCm: "" } });
 assert.equal(pantsWithoutHip.canSaveAndNext, false);
+
+const sleevelessForm = { ...completeForm, sleeveType: "SLEEVELESS", sleeveLengthCm: "" };
+assert.equal(workspaceReadiness({ product, image, job, form: sleevelessForm }).canSaveAndNext, true);
+
+const nonApparelForm = {
+  ...completeForm,
+  category: "BAG",
+  subcategory: "LADIES_BAGS",
+  lengthCm: "",
+  chestWidthCm: "",
+  shoulderWidthCm: "",
+  sleeveLengthCm: "",
+  waistCm: "",
+  hipCm: ""
+};
+assert.equal(workspaceReadiness({ product, image, job, form: nonApparelForm }).canSaveAndNext, true);
+assert.deepEqual(
+  buildCalibrationBody({ employeeId: "employee-1", extractionId: "ai-1", form: nonApparelForm }).measurements,
+  []
+);
 
 const kidsForm = {
   ...completeForm,

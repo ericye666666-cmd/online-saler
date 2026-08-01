@@ -38,3 +38,10 @@ export function batchNextActionHref(batchId: string, nextAction: string): string
   };
   return routes[nextAction] ?? `/product/batches/${encodedBatchId}`;
 }
+
+export function batchFollowingStageLabel(stage: string): string {
+  const index = PRODUCT_FACTORY_STAGE_ORDER.indexOf(stage as (typeof PRODUCT_FACTORY_STAGE_ORDER)[number]);
+  if (index < 0) return stage === "COMPLETE" ? "已完成" : "处理异常";
+  const followingStage = PRODUCT_FACTORY_STAGE_ORDER[index + 1];
+  return followingStage ? PRODUCT_FACTORY_STAGE_LABELS[followingStage] : "完成批次";
+}

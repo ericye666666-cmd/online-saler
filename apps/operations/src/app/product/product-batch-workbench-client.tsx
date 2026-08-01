@@ -23,6 +23,7 @@ import { productStatusLabel } from "./product-factory-display";
 import {
   PRODUCT_FACTORY_STAGE_LABELS,
   PRODUCT_FACTORY_STAGE_ORDER,
+  batchFollowingStageLabel,
   batchNextActionHref
 } from "./product-factory-batch-display";
 
@@ -351,6 +352,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
   }
 
   const nextHref = batchNextActionHref(batch.id, batch.nextAction);
+  const followingStageLabel = batchFollowingStageLabel(batch.stage);
 
   return (
     <div className="flex flex-col gap-6">
@@ -374,7 +376,10 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>当前阶段：{batch.stageLabel}</CardTitle>
-              <CardDescription>按顺序完成，系统不会显示不合法的跨阶段动作。</CardDescription>
+              <CardDescription className="mt-1 space-y-1">
+                <span className="block">当前步骤：{batch.stageLabel}</span>
+                <span className="block">完成后下一步：{followingStageLabel}</span>
+              </CardDescription>
             </div>
             <Button asChild className="w-full sm:w-auto"><Link href={nextHref}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
           </div>
