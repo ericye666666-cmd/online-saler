@@ -8,6 +8,7 @@ import {
   SourceApp,
   prisma
 } from "@online-saler/database";
+import { PRODUCT_AI_PROMPT_VERSION } from "@online-saler/shared-types";
 import { AIJobService } from "../ai/ai-job.service";
 import { ProductApplicationService } from "../product/product-application.service";
 import { ProductBarcodeService } from "../product/product-barcode.service";
@@ -290,26 +291,28 @@ export class OperationsProductBatchService {
         batchId: batch.id,
         status: { in: [ProductStatus.PHOTOGRAPHED, ProductStatus.AI_PROCESSED, ProductStatus.CALIBRATION_PENDING] }
       },
-      include: { images: { orderBy: { createdAt: "desc" }, take: 1 }, aiExtractions: { orderBy: { createdAt: "desc" }, take: 1 } },
+      include: { images: { orderBy: { createdAt: "desc" } }, aiExtractions: { orderBy: { createdAt: "desc" }, take: 1 } },
       orderBy: { batchItemNumber: "asc" }
     });
 
     const results: Array<Record<string, unknown>> = [];
     for (const product of products) {
-      const latestImage = product.images[0];
-      if (!latestImage) {
+      if (!product.images.length) {
         results.push({ productId: product.id, status: "SKIPPED", reason: "Missing photo" });
         continue;
       }
-      if (product.aiExtractions[0]?.status === "SUCCEEDED") {
+      if (
+        product.aiExtractions[0]?.status === "SUCCEEDED" &&
+        product.aiExtractions[0]?.promptVersion === PRODUCT_AI_PROMPT_VERSION
+      ) {
         results.push({ productId: product.id, status: "SKIPPED", reason: "AI already succeeded" });
         continue;
       }
       try {
         const job = await this.aiJobs.submit({
           productId: product.id,
-          imageIds: [latestImage.id],
-          promptVersion: "product-v1"
+          imageIds: product.images.map((image) => image.id),
+          promptVersion: PRODUCT_AI_PROMPT_VERSION
         });
         results.push({ productId: product.id, status: job.status, extractionId: job.extractionId });
       } catch (error) {

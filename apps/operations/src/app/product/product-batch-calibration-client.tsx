@@ -9,6 +9,7 @@ import {
   AI_KIDS_AGE_RANGES,
   AI_PATTERNS,
   AI_SLEEVE_TYPES,
+  PRODUCT_AI_PROMPT_VERSION,
   PRODUCT_CATEGORY_OPTIONS,
   PRODUCT_FABRIC_WEIGHTS,
   PRODUCT_FIT_TYPES,
@@ -43,6 +44,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   buildCalibrationBody,
+  calibrationValidationIssues,
   calibrationValidationReasons,
   formFromProductAndAi,
   measurementFields,
@@ -52,6 +54,7 @@ import {
   type JsonRecord,
   type WorkspaceForm
 } from "../operations-workspace-flow";
+import { GarmentMeasurementGuide } from "./garment-measurement-guide";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
@@ -92,7 +95,12 @@ type ProductRecord = JsonRecord & {
   batchItemNumber?: number | null;
   status: string;
   images?: ProductImage[];
-  measurements?: Array<{ measurementType?: string; finalValueCm?: unknown }>;
+  measurements?: Array<{
+    measurementType?: string;
+    aiValueCm?: unknown;
+    aiConfidence?: unknown;
+    finalValueCm?: unknown;
+  }>;
   defects?: Array<{ description?: string }>;
   aiExtractions?: JsonRecord[];
 };
@@ -263,7 +271,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     void loadComparison(product.id, ids.adminUserId)
       .then((value) => {
         setComparison(value);
-        setActiveImage(value.optimizedMain ? "optimized" : "original");
+        setActiveImage(value.optimizedBalancedMain ? "balanced" : value.optimizedMain ? "optimized" : "original");
       })
       .catch((caught) => setError(errorMessage(caught, "无法读取图片版本。")));
   }, [ids.adminUserId, latestExtraction, product]);
@@ -285,11 +293,20 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     hasPhoto: Boolean(product?.images?.length),
     hasAi: Boolean(latestExtraction && (latestExtraction.status === "SUCCEEDED" || aiOutput))
   });
+  const validationIssues = calibrationValidationIssues(form, {
+    hasPhoto: Boolean(product?.images?.length),
+    hasAi: Boolean(latestExtraction && (latestExtraction.status === "SUCCEEDED" || aiOutput))
+  });
   const completedCount = batch?.products.filter((item) => isCalibrationComplete(item.status)).length ?? 0;
   const readOnly = Boolean(product && isCalibrationComplete(product.status));
   const taxonomyLabels = useMemo(() => taxonomyLabelMap(taxonomy), [taxonomy]);
   const categoryOptions = activeValues(taxonomy, "CATEGORY", PRODUCT_CATEGORY_OPTIONS, form.category);
   const visibleMeasurementFields = measurementFields(form);
+  const measurementSuggestions = visibleMeasurementFields.map((field) => ({
+    ...field,
+    ...aiMeasurementSuggestion(product, aiOutput, field.type, field.key)
+  }));
+  const hasAiMeasurements = measurementSuggestions.some((item) => Boolean(item.aiValue));
   const requiredMeasurementKeys = new Set(measurementRequirements(form).map((item) => item.key));
   const colorOptions = activeValues(taxonomy, "COLOR", AI_COLORS, form.color);
   const sizeOptions = activeValues(taxonomy, "SIZE", ["XS", "S", "M", "L", "XL", "XXL"], form.sizeLabel);
@@ -321,10 +338,12 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     if (!product || readOnly) return;
     if (reasons.length) {
       setError(reasons.join(" "));
+      focusValidationIssue(validationIssues[0], imagePanelRef.current);
       return;
     }
     if (!comparison?.selectedMainImageId) {
-      setError("请选择原图、白底图或优化主图作为商城主图。");
+      setError("请选择原图、白底图、优化主图或优化主图 2 作为商城主图。");
+      imagePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     const extractionId = stringValue(latestExtraction?.extractionId) || stringValue(latestExtraction?.id);
@@ -367,13 +386,43 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     try {
       const cutout = await runImageOperation(product.id, sourceId, "REMOVE_BACKGROUND", ids.adminUserId, mode);
       const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-      const optimized = await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-      const updated = await selectMainImage(product.id, optimized.outputImageId!, ids.adminUserId);
+      await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
+      const balanced = await runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId);
+      const updated = await selectMainImage(product.id, balanced.outputImageId!, ids.adminUserId);
       setComparison(updated);
-      setActiveImage("optimized");
+      setActiveImage("balanced");
       setNotice(mode === "rembg_birefnet" ? "已使用 BiRefNet 重新处理。" : "已使用 lightweight OpenCV 重新处理。");
     } catch (caught) {
       setError(errorMessage(caught, "图片处理失败。"));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function rerunAiMeasurements() {
+    if (!product) return;
+    const imageIds = (product.images ?? []).map((image) => image.id).filter(Boolean);
+    if (!imageIds.length) {
+      setError("请先上传商品照片。");
+      return;
+    }
+    setBusy("ai-measurements");
+    setError("");
+    setNotice("");
+    try {
+      await request("/ai-jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          adminUserId: ids.adminUserId,
+          productId: product.id,
+          imageIds,
+          promptVersion: PRODUCT_AI_PROMPT_VERSION
+        })
+      });
+      await load();
+      setNotice("AI 商品识别与测量已更新，请对照尺寸示意确认。 ");
+    } catch (caught) {
+      setError(errorMessage(caught, "AI 测量失败。"));
     } finally {
       setBusy("");
     }
@@ -451,7 +500,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">原图永久保留；透明抠图、白底图和优化主图都是独立版本。</p>
+              <p className="text-xs text-muted-foreground">原图永久保留；优化主图 2 只做透明边界裁切、白底、缩放与视觉重心校正，不重绘或移动袖子、帽子。</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
@@ -492,33 +541,60 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
         </section>
 
         <section className="min-w-0 space-y-5" aria-label="商品信息校准">
-          <div>
-            <h2 className="font-semibold">商品信息</h2>
-            <p className="text-xs text-muted-foreground">字段中的内容是最终值；下方灰字保留 AI 建议，人工修改不会覆盖 AI 原始记录。</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-semibold">商品信息</h2>
+              <p className="text-xs text-muted-foreground">字段中的内容是最终值；下方灰字保留 AI 建议，人工修改不会覆盖 AI 原始记录。</p>
+            </div>
+            {!readOnly ? (
+              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void rerunAiMeasurements()}>
+                {busy === "ai-measurements" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <WandSparklesIcon data-icon="inline-start" />}
+                重新 AI 识别与测量
+              </Button>
+            ) : null}
           </div>
 
-          <FormInput label="标题" value={form.title} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "title")} onChange={(value) => updateForm("title", value)} />
+          <FormInput fieldKey="title" label="标题" value={form.title} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "title")} onChange={(value) => updateForm("title", value)} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormSelect label="分类" value={form.category} values={categoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "category")} onChange={(value) => updateForm("category", value)} />
-            <FormSelect label="子分类" value={form.subcategory} values={subcategoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
-            <FormSelect label="适用人群" value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
-            <FormSelect label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
-            {form.audience === "KIDS" ? <FormSelect label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
-            <FormInput label="标签尺码" value={form.tagSize} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("tagSize", value)} />
-            <FormSelect label="平台推荐尺码" value={form.sizeLabel} values={sizeOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("sizeLabel", value)} />
+            <FormSelect fieldKey="category" label="分类" value={form.category} values={categoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "category")} onChange={(value) => updateForm("category", value)} />
+            <FormSelect fieldKey="subcategory" label="子分类" value={form.subcategory} values={subcategoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
+            <FormSelect fieldKey="audience" label="适用人群" value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
+            <FormSelect fieldKey="color" label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
+            {form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
+            <FormInput fieldKey="tagSize" label="标签尺码" value={form.tagSize} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("tagSize", value)} />
+            <FormSelect fieldKey="sizeLabel" label="平台推荐尺码" value={form.sizeLabel} values={sizeOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("sizeLabel", value)} />
           </div>
 
           <div className="border-t pt-4">
             <h3 className="mb-3 text-sm font-semibold">尺寸（cm）</h3>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {visibleMeasurementFields.map((field) => (
+            <GarmentMeasurementGuide
+              category={form.category}
+              subcategory={form.subcategory}
+              imageUrl={measurementGuideImage(imageTabs)}
+              measurements={measurementSuggestions.map((item) => ({
+                key: item.key,
+                label: item.label,
+                value: form[item.key],
+                aiValue: item.aiValue
+              }))}
+            />
+            {!hasAiMeasurements && !readOnly ? (
+              <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                这件商品的旧 AI 结果没有测量值。请点击“重新 AI 识别与测量”，再由员工对照测量板确认。
+              </div>
+            ) : null}
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {measurementSuggestions.map((field) => (
                 <FormInput
                   key={field.key}
+                  fieldKey={field.key}
                   label={field.label}
                   value={form[field.key]}
                   required={requiredMeasurementKeys.has(field.key)}
                   inputMode="decimal"
                   disabled={readOnly}
+                  suggestion={field.suggestion}
+                  suggestionLabel="AI 测量"
                   onChange={(value) => updateForm(field.key, value)}
                 />
               ))}
@@ -526,30 +602,41 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormSelect label="成色" value={form.conditionGrade} values={conditionOptions} labels={taxonomyLabels} required disabled={readOnly} onChange={(value) => updateForm("conditionGrade", value)} />
-            <FormInput label="品牌" value={form.brand} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "brandLabel")} onChange={(value) => updateForm("brand", value)} />
-            <FormInput label="价格（KSh）" value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
-            <FormSelect label="图案" value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
-            <FormSelect label="袖型" value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
-            <FormSelect label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fitType", value)} />
-            <FormSelect label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("stretchLevel", value)} />
-            <FormSelect label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fabricWeight", value)} />
+            <FormSelect fieldKey="conditionGrade" label="成色" value={form.conditionGrade} values={conditionOptions} labels={taxonomyLabels} required disabled={readOnly} onChange={(value) => updateForm("conditionGrade", value)} />
+            <FormInput fieldKey="brand" label="品牌" value={form.brand} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "brandLabel")} onChange={(value) => updateForm("brand", value)} />
+            <FormInput fieldKey="priceKsh" label="价格（KSh）" value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
+            <FormSelect fieldKey="pattern" label="图案" value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
+            <FormSelect fieldKey="sleeveType" label="袖型" value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
+            <FormSelect fieldKey="fitType" label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fitType", value)} />
+            <FormSelect fieldKey="stretchLevel" label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("stretchLevel", value)} />
+            <FormSelect fieldKey="fabricWeight" label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fabricWeight", value)} />
           </div>
 
-          <FormTextarea label="瑕疵" value={form.defects} required disabled={readOnly} hint="没有瑕疵请填写 None。" onChange={(value) => updateForm("defects", value)} />
-          <FormTextarea label="商品描述" value={form.description} disabled={readOnly} onChange={(value) => updateForm("description", value)} />
+          <FormTextarea fieldKey="defects" label="瑕疵" value={form.defects} required disabled={readOnly} hint="没有瑕疵请填写 None。" onChange={(value) => updateForm("defects", value)} />
+          <FormTextarea fieldKey="description" label="商品描述" value={form.description} disabled={readOnly} onChange={(value) => updateForm("description", value)} />
           {reasons.length && !readOnly ? <StatusMessage tone="danger">{reasons.join(" ")}</StatusMessage> : null}
         </section>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 backdrop-blur lg:sticky lg:inset-auto lg:flex lg:justify-end lg:gap-2 lg:px-0">
-        <div className="mx-auto grid max-w-6xl grid-cols-3 gap-2 lg:mx-0 lg:flex">
-          <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />保存草稿</Button>
-          <Button disabled={Boolean(busy) || readOnly || reasons.length > 0 || !comparison?.selectedMainImageId} onClick={() => void saveAndNext()}>
-            {busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
-            {readOnly ? "本件已校准" : "保存并下一件"}
-          </Button>
-          <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={() => void markRetake()}><RotateCcwIcon data-icon="inline-start" />标记重拍</Button>
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 backdrop-blur lg:sticky lg:inset-auto lg:px-0">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          {!readOnly ? (
+            <p className={cn("text-xs", validationIssues.length || !comparison?.selectedMainImageId ? "font-medium text-destructive" : "text-emerald-700")}>
+              {validationIssues.length
+                ? `还差：${[...new Set(validationIssues.map((issue) => issue.label))].join("、")}`
+                : !comparison?.selectedMainImageId
+                  ? "还差：选择商城主图"
+                  : "必填信息已完整，可以保存并进入下一件。"}
+            </p>
+          ) : <span />}
+          <div className="grid grid-cols-3 gap-2 lg:flex">
+            <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />保存草稿</Button>
+            <Button disabled={Boolean(busy) || readOnly} onClick={() => void saveAndNext()}>
+              {busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
+              {readOnly ? "本件已校准" : "保存并下一件"}
+            </Button>
+            <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={() => void markRetake()}><RotateCcwIcon data-icon="inline-start" />标记重拍</Button>
+          </div>
         </div>
       </div>
     </div>
@@ -571,24 +658,27 @@ function ProcessingSummary({ job }: { job: ImageProcessingJobRecord }) {
 }
 
 function FormInput(props: {
+  fieldKey?: keyof WorkspaceForm;
   label: string;
   value: string;
   required?: boolean;
   disabled?: boolean;
   inputMode?: "text" | "numeric" | "decimal";
   suggestion?: string;
+  suggestionLabel?: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block min-w-0 text-sm font-medium">
+    <label className="block min-w-0 text-sm font-medium" data-field-key={props.fieldKey}>
       <span>{props.label}{props.required ? " *" : ""}</span>
       <Input className="mt-2" value={props.value} disabled={props.disabled} inputMode={props.inputMode} onChange={(event) => props.onChange(event.target.value)} />
-      {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">AI 建议：{props.suggestion}</span> : null}
+      {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{props.suggestionLabel ?? "AI 建议"}：{props.suggestion}</span> : null}
     </label>
   );
 }
 
 function FormSelect(props: {
+  fieldKey?: keyof WorkspaceForm;
   label: string;
   value: string;
   values: readonly string[];
@@ -599,7 +689,7 @@ function FormSelect(props: {
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block min-w-0 text-sm font-medium">
+    <label className="block min-w-0 text-sm font-medium" data-field-key={props.fieldKey}>
       <span>{props.label}{props.required ? " *" : ""}</span>
       <NativeSelect className="mt-2 w-full" value={props.value} disabled={props.disabled} onChange={(event) => props.onChange(event.target.value)}>
         {props.values.map((value) => <NativeSelectOption key={value} value={value}>{props.labels?.[value] ?? enumLabel(value, props.label)}</NativeSelectOption>)}
@@ -609,9 +699,9 @@ function FormSelect(props: {
   );
 }
 
-function FormTextarea(props: { label: string; value: string; required?: boolean; disabled?: boolean; hint?: string; onChange: (value: string) => void }) {
+function FormTextarea(props: { fieldKey?: keyof WorkspaceForm; label: string; value: string; required?: boolean; disabled?: boolean; hint?: string; onChange: (value: string) => void }) {
   return (
-    <label className="block text-sm font-medium">
+    <label className="block text-sm font-medium" data-field-key={props.fieldKey}>
       <span>{props.label}{props.required ? " *" : ""}</span>
       <Textarea className="mt-2" rows={3} value={props.value} disabled={props.disabled} onChange={(event) => props.onChange(event.target.value)} />
       {props.hint ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{props.hint}</span> : null}
@@ -635,7 +725,8 @@ function buildImageTabs(product: ProductRecord | null, comparison: ProductImageC
     variantTab("original", "原图", comparison?.original ?? null, true),
     variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, false, true),
     variantTab("white", "白底图", comparison?.cutoutWhite ?? null, true),
-    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null, true)
+    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null, true),
+    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null, true)
   ];
   for (const [type, label] of [["BACK", "背面"], ["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
     const image = newestImage(product, type);
@@ -659,21 +750,27 @@ function variantTab(key: string, label: string, asset: ProductImageVariantRecord
 function formForProduct(product: ProductRecord, extraction: JsonRecord | null): WorkspaceForm {
   const base = formFromProductAndAi(product, extraction);
   const measurements = product.measurements ?? [];
-  const value = (type: string) => {
-    const raw = measurements.find((item) => item.measurementType === type)?.finalValueCm;
+  const ai = normalizedAiOutput(extraction);
+  const value = (type: string, fieldKey: string) => {
+    const measurement = measurements.find((item) => item.measurementType === type);
+    const aiField = ai?.[fieldKey];
+    const aiFieldValue = aiField && typeof aiField === "object" && !Array.isArray(aiField)
+      ? (aiField as JsonRecord).value
+      : null;
+    const raw = measurement?.finalValueCm ?? measurement?.aiValueCm ?? aiFieldValue;
     return raw == null ? "" : String(raw);
   };
   return {
     ...base,
-    lengthCm: value("LENGTH"),
-    chestWidthCm: value("CHEST_WIDTH"),
-    shoulderWidthCm: value("SHOULDER_WIDTH"),
-    sleeveLengthCm: value("SLEEVE_LENGTH"),
-    waistCm: value("WAIST"),
-    hipCm: value("HIP"),
-    thighWidthCm: value("THIGH_WIDTH"),
-    legOpeningCm: value("LEG_OPENING"),
-    inseamCm: value("INSEAM"),
+    lengthCm: value("LENGTH", "lengthCm"),
+    chestWidthCm: value("CHEST_WIDTH", "chestWidthCm"),
+    shoulderWidthCm: value("SHOULDER_WIDTH", "shoulderWidthCm"),
+    sleeveLengthCm: value("SLEEVE_LENGTH", "sleeveLengthCm"),
+    waistCm: value("WAIST", "waistCm"),
+    hipCm: value("HIP", "hipCm"),
+    thighWidthCm: value("THIGH_WIDTH", "thighWidthCm"),
+    legOpeningCm: value("LEG_OPENING", "legOpeningCm"),
+    inseamCm: value("INSEAM", "inseamCm"),
     defects: product.defects?.length ? product.defects.map((defect) => defect.description).filter(Boolean).join("; ") : "None"
   };
 }
@@ -727,6 +824,46 @@ function aiSuggestion(output: JsonRecord | null, key: string) {
   return typeof value === "string" ? value : "";
 }
 
+function aiMeasurementSuggestion(
+  product: ProductRecord | null,
+  output: JsonRecord | null,
+  measurementType: string,
+  fieldKey: string
+) {
+  const persisted = product?.measurements?.find((item) => item.measurementType === measurementType);
+  const aiField = output?.[fieldKey];
+  const fieldRecord = aiField && typeof aiField === "object" && !Array.isArray(aiField) ? aiField as JsonRecord : null;
+  const rawValue = persisted?.aiValueCm ?? fieldRecord?.value;
+  const rawConfidence = persisted?.aiConfidence ?? fieldRecord?.confidence;
+  const value = Number(rawValue);
+  const confidence = Number(rawConfidence);
+  if (!Number.isFinite(value) || value <= 0) return { aiValue: "", suggestion: "" };
+  const aiValue = String(Math.round(value * 10) / 10);
+  const confidenceText = Number.isFinite(confidence) ? ` · 置信度 ${Math.round(confidence * 100)}%` : "";
+  return { aiValue, suggestion: `${aiValue} cm${confidenceText}` };
+}
+
+function measurementGuideImage(tabs: ImageTab[]) {
+  return tabs.find((tab) => tab.key === "balanced" && tab.url)?.url ??
+    tabs.find((tab) => tab.key === "optimized" && tab.url)?.url ??
+    tabs.find((tab) => tab.key === "white" && tab.url)?.url ??
+    tabs.find((tab) => tab.key === "original" && tab.url)?.url ?? "";
+}
+
+function focusValidationIssue(
+  issue: ReturnType<typeof calibrationValidationIssues>[number] | undefined,
+  imagePanel: HTMLDivElement | null
+) {
+  if (!issue) return;
+  if (issue.field === "photo") {
+    imagePanel?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  const wrapper = document.querySelector<HTMLElement>(`[data-field-key="${issue.field}"]`);
+  wrapper?.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => wrapper?.querySelector<HTMLElement>("input, select, textarea")?.focus(), 250);
+}
+
 function providerLabel(provider: string | null) {
   if (!provider) return "-";
   if (provider.includes("rembg") || provider.includes("birefnet")) return "rembg + BiRefNet";
@@ -735,7 +872,7 @@ function providerLabel(provider: string | null) {
 }
 
 function operationLabel(value: string) {
-  return ({ REMOVE_BACKGROUND: "去除背景", COMPOSE_WHITE_BACKGROUND: "生成白底图", OPTIMIZE_MAIN_IMAGE: "优化主图" } as Record<string, string>)[value] ?? value;
+  return ({ REMOVE_BACKGROUND: "去除背景", COMPOSE_WHITE_BACKGROUND: "生成白底图", OPTIMIZE_MAIN_IMAGE: "优化主图", OPTIMIZE_BALANCED_MAIN_IMAGE: "优化主图 2（均整版）" } as Record<string, string>)[value] ?? value;
 }
 
 function statusLabel(value: string) {

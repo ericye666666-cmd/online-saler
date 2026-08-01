@@ -5,6 +5,8 @@ export const AI_JOB_STATUSES = [
   "FAILED"
 ] as const;
 
+export const PRODUCT_AI_PROMPT_VERSION = "product-measurements-v1";
+
 export type AIJobStatus = (typeof AI_JOB_STATUSES)[number];
 
 export const PRODUCT_CATEGORY_OPTIONS = [
@@ -222,7 +224,16 @@ export const AI_EXTRACTED_FIELDS = [
   "sleeveType",
   "brandLabel",
   "sizeLabel",
-  "title"
+  "title",
+  "lengthCm",
+  "chestWidthCm",
+  "shoulderWidthCm",
+  "sleeveLengthCm",
+  "waistCm",
+  "hipCm",
+  "thighWidthCm",
+  "legOpeningCm",
+  "inseamCm"
 ] as const;
 
 export type AIExtractedField = (typeof AI_EXTRACTED_FIELDS)[number];
@@ -244,6 +255,15 @@ export interface AIExtractionNormalizedOutput {
   brandLabel: AIFieldValue<string>;
   sizeLabel: AIFieldValue<string>;
   title: AIFieldValue<string>;
+  lengthCm: AIFieldValue<number>;
+  chestWidthCm: AIFieldValue<number>;
+  shoulderWidthCm: AIFieldValue<number>;
+  sleeveLengthCm: AIFieldValue<number>;
+  waistCm: AIFieldValue<number>;
+  hipCm: AIFieldValue<number>;
+  thighWidthCm: AIFieldValue<number>;
+  legOpeningCm: AIFieldValue<number>;
+  inseamCm: AIFieldValue<number>;
 }
 
 export interface AIExtractionRequest {
@@ -282,6 +302,30 @@ export const confidenceBand = (confidence: number): "LOW" | "MEDIUM" | "HIGH" =>
 };
 
 export const requiresHumanConfirmation = (field: AIExtractedField, confidence: number): boolean => {
-  const alwaysConfirm: AIExtractedField[] = ["brandLabel", "sizeLabel"];
+  const alwaysConfirm: AIExtractedField[] = [
+    "brandLabel",
+    "sizeLabel",
+    "lengthCm",
+    "chestWidthCm",
+    "shoulderWidthCm",
+    "sleeveLengthCm",
+    "waistCm",
+    "hipCm",
+    "thighWidthCm",
+    "legOpeningCm",
+    "inseamCm"
+  ];
   return alwaysConfirm.includes(field) || confidence < 0.85;
 };
+
+export const AI_MEASUREMENT_FIELDS = [
+  { field: "lengthCm", measurementType: "LENGTH" },
+  { field: "chestWidthCm", measurementType: "CHEST_WIDTH" },
+  { field: "shoulderWidthCm", measurementType: "SHOULDER_WIDTH" },
+  { field: "sleeveLengthCm", measurementType: "SLEEVE_LENGTH" },
+  { field: "waistCm", measurementType: "WAIST" },
+  { field: "hipCm", measurementType: "HIP" },
+  { field: "thighWidthCm", measurementType: "THIGH_WIDTH" },
+  { field: "legOpeningCm", measurementType: "LEG_OPENING" },
+  { field: "inseamCm", measurementType: "INSEAM" }
+] as const satisfies ReadonlyArray<{ field: AIExtractedField; measurementType: string }>;

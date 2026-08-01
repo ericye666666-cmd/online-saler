@@ -14,7 +14,11 @@ test("normalizes OpenAI clothing recognition values into the shared AI contract"
       sleeve: { value: "short", confidence: 0.81 },
       brand: { value: "Remon Soda Candy", confidence: 0.62 },
       size: { value: "M", confidence: 0.71 },
-      title: { value: "Red Graphic Short Sleeve Shirt", confidence: 0.86 }
+      title: { value: "Red Graphic Short Sleeve Shirt", confidence: 0.86 },
+      lengthCm: { value: 68.04, confidence: 0.81 },
+      chest_width_cm: { value: "51.2", confidence: 0.78 },
+      shoulderWidthCm: { value: 43, confidence: 0.76 },
+      sleeveLengthCm: { value: 21, confidence: 0.75 }
     },
     ["image-1"]
   );
@@ -29,6 +33,11 @@ test("normalizes OpenAI clothing recognition values into the shared AI contract"
   assert.equal(output.brandLabel.value, "Remon Soda Candy");
   assert.equal(output.sizeLabel.value, "M");
   assert.equal(output.title.value, "Red Graphic Short Sleeve Shirt");
+  assert.equal(output.lengthCm.value, 68);
+  assert.equal(output.chestWidthCm.value, 51.2);
+  assert.equal(output.shoulderWidthCm.value, 43);
+  assert.equal(output.sleeveLengthCm.value, 21);
+  assert.equal(output.waistCm.value, null);
   assert.deepEqual(output.category.evidenceImageIds, ["image-1"]);
 });
 
@@ -41,7 +50,9 @@ test("falls back to OTHER and clamps confidence for unusable model values", () =
       audience: { value: "robot", confidence: 0.4 },
       kidsAgeRange: { value: "age 100", confidence: 0.6 },
       pattern: { value: null, confidence: "bad" },
-      sleeveType: { value: "none", confidence: 0.3 }
+      sleeveType: { value: "none", confidence: 0.3 },
+      lengthCm: { value: -4, confidence: 0.9 },
+      chestWidthCm: { value: 999, confidence: 0.9 }
     },
     ["image-2"]
   );
@@ -56,6 +67,8 @@ test("falls back to OTHER and clamps confidence for unusable model values", () =
   assert.equal(output.pattern.value, "OTHER");
   assert.equal(output.pattern.confidence, 0.5);
   assert.equal(output.sleeveType.value, "OTHER");
+  assert.equal(output.lengthCm.value, null);
+  assert.equal(output.chestWidthCm.value, null);
 });
 
 test("accepts active runtime taxonomy values and rejects inactive values", () => {

@@ -16,8 +16,8 @@ const originals = {
   productUpdate: prisma.product.update,
   extractionFindFirst: prisma.aIExtraction.findFirst,
   decisionUpsert: prisma.aIFieldDecision.upsert,
-  measurementDeleteMany: prisma.productMeasurement.deleteMany,
-  measurementCreate: prisma.productMeasurement.create,
+  measurementUpdateMany: prisma.productMeasurement.updateMany,
+  measurementUpsert: prisma.productMeasurement.upsert,
   defectDeleteMany: prisma.productDefect.deleteMany,
   defectCreate: prisma.productDefect.create,
   transaction: prisma.$transaction
@@ -28,8 +28,8 @@ afterEach(() => {
   prisma.product.update = originals.productUpdate;
   prisma.aIExtraction.findFirst = originals.extractionFindFirst;
   prisma.aIFieldDecision.upsert = originals.decisionUpsert;
-  prisma.productMeasurement.deleteMany = originals.measurementDeleteMany;
-  prisma.productMeasurement.create = originals.measurementCreate;
+  prisma.productMeasurement.updateMany = originals.measurementUpdateMany;
+  prisma.productMeasurement.upsert = originals.measurementUpsert;
   prisma.productDefect.deleteMany = originals.defectDeleteMany;
   prisma.productDefect.create = originals.defectCreate;
   prisma.$transaction = originals.transaction;
@@ -39,6 +39,7 @@ describe("ProductCalibrationService", () => {
   it("persists final display attributes without overwriting AI source values", async () => {
     let productUpdate: Record<string, unknown> | undefined;
     const decisionUpdates: Array<Record<string, unknown>> = [];
+    const measurementUpdates: Array<Record<string, unknown>> = [];
 
     prisma.product.findUnique = (async () => ({ id: "product-1", status: ProductStatus.CALIBRATION_PENDING })) as never;
     prisma.aIExtraction.findFirst = (async () => ({
@@ -57,8 +58,11 @@ describe("ProductCalibrationService", () => {
       decisionUpdates.push(update);
       return Promise.resolve(update);
     }) as never;
-    prisma.productMeasurement.deleteMany = (async () => ({ count: 0 })) as never;
-    prisma.productMeasurement.create = (async ({ data }: { data: unknown }) => data) as never;
+    prisma.productMeasurement.updateMany = (async () => ({ count: 0 })) as never;
+    prisma.productMeasurement.upsert = (async ({ create, update }: { create: unknown; update: Record<string, unknown> }) => {
+      measurementUpdates.push(update);
+      return create;
+    }) as never;
     prisma.productDefect.deleteMany = (async () => ({ count: 0 })) as never;
     prisma.productDefect.create = (async ({ data }: { data: unknown }) => data) as never;
     prisma.$transaction = (async (operations: Promise<unknown>[]) => Promise.all(operations)) as never;
@@ -95,5 +99,6 @@ describe("ProductCalibrationService", () => {
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "LOW"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "HEAVY"));
     assert.ok(decisionUpdates.every((update) => !("aiValueJson" in update)));
+    assert.ok(measurementUpdates.every((update) => !("aiValueCm" in update) && !("aiConfidence" in update)));
   });
 });

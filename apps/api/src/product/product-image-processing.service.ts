@@ -219,6 +219,7 @@ export class ProductImageProcessingService {
       cutoutTransparent: mapAsset("CUTOUT_TRANSPARENT"),
       cutoutWhite: mapAsset("CUTOUT_WHITE"),
       optimizedMain: mapAsset("OPTIMIZED_MAIN"),
+      optimizedBalancedMain: mapAsset("OPTIMIZED_BALANCED_MAIN"),
       selectedMainImageId: selection?.selectedImageId ?? null,
       jobs: jobs.map((job) => this.toJobRecord(job))
     };

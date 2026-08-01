@@ -8,6 +8,7 @@ import {
   AI_KIDS_AGE_RANGES,
   AI_PATTERNS,
   AI_SLEEVE_TYPES,
+  PRODUCT_AI_PROMPT_VERSION,
   PRODUCT_CATEGORY_OPTIONS,
   PRODUCT_SUBCATEGORIES_BY_CATEGORY,
   type BackgroundRemovalMode,
@@ -155,8 +156,9 @@ async function uploadProductImage(productId: string, employeeId: string, adminUs
   if (imageId) {
     const cutout = await runImageOperation(productId, imageId, "REMOVE_BACKGROUND", adminUserId, "auto");
     const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", adminUserId);
-    const optimized = await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", adminUserId);
-    await selectProductMainImage(productId, optimized.outputImageId!, adminUserId);
+    await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", adminUserId);
+    const balanced = await runImageOperation(productId, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", adminUserId);
+    await selectProductMainImage(productId, balanced.outputImageId!, adminUserId);
   }
   return body;
 }
@@ -811,8 +813,9 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     try {
       const cutout = await runImageOperation(productId, sourceId, "REMOVE_BACKGROUND", props.ids.adminUserId, mode);
       const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", props.ids.adminUserId);
-      const optimized = await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", props.ids.adminUserId);
-      setComparison(await selectProductMainImage(productId, optimized.outputImageId!, props.ids.adminUserId));
+      await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", props.ids.adminUserId);
+      const balanced = await runImageOperation(productId, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", props.ids.adminUserId);
+      setComparison(await selectProductMainImage(productId, balanced.outputImageId!, props.ids.adminUserId));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "图片处理失败。");
     } finally {
@@ -893,6 +896,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               <ImageVariantTile label="透明抠图" asset={comparison?.cutoutTransparent ?? null} transparent busy={Boolean(imageBusy)} />
               <ImageVariantTile label="白底图" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
               <ImageVariantTile label="优化主图" asset={comparison?.optimizedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="优化主图 2（均整版）" asset={comparison?.optimizedBalancedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
             </div>
             {latestRemovalJob ? (
               <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-muted/30 p-3 text-xs">
@@ -1110,15 +1114,16 @@ async function printBatchLabels(batch: ProductBatch, ids: ReturnType<typeof useO
 }
 
 async function runSingleAi(product: JsonRecord, ids: ReturnType<typeof useOperationIds>) {
-  const image = latestImage(product);
-  if (!image) throw new Error("先上传照片。");
+  const images = Array.isArray(product.images) ? product.images.filter((image): image is JsonRecord => Boolean(image && typeof image === "object")) : [];
+  const imageIds = images.map((image) => stringValue(image.id)).filter(Boolean);
+  if (!imageIds.length) throw new Error("先上传照片。");
   await request("/ai-jobs", {
     method: "POST",
     body: JSON.stringify({
       adminUserId: ids.adminUserId,
       productId: product.id,
-      imageIds: [image.id],
-      promptVersion: "product-v1"
+      imageIds,
+      promptVersion: PRODUCT_AI_PROMPT_VERSION
     })
   });
 }

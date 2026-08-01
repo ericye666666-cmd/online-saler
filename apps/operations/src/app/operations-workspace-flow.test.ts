@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildCalibrationBody,
+  calibrationValidationIssues,
   emptyWorkspaceForm,
   formFromProductAndAi,
   workspaceReadiness,
@@ -49,6 +50,21 @@ assert.equal(missingPhoto.canSaveAndNext, false);
 const missingMeasurements = workspaceReadiness({ product, image, job, form: fromAi });
 assert.equal(missingMeasurements.hasAi, true);
 assert.equal(missingMeasurements.canSaveAndNext, false);
+
+const selectedSizeButMissingPrice = calibrationValidationIssues(
+  {
+    ...fromAi,
+    sizeLabel: "XS",
+    lengthCm: "60",
+    chestWidthCm: "60",
+    shoulderWidthCm: "40",
+    sleeveLengthCm: "20",
+    defects: "None"
+  },
+  { hasPhoto: true, hasAi: true }
+);
+assert.ok(selectedSizeButMissingPrice.some((issue) => issue.field === "priceKsh"));
+assert.ok(!selectedSizeButMissingPrice.some((issue) => issue.field === "sizeLabel"));
 
 const completeForm = {
   ...fromAi,

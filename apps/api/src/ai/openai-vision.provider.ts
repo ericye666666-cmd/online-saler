@@ -58,7 +58,7 @@ export class OpenAIVisionProvider implements AIProvider {
         return {
           type: "input_image",
           image_url: `data:${stored.contentType};base64,${base64}`,
-          detail: "low"
+          detail: image.type === "FRONT" ? "high" : "low"
         };
       })
     );
@@ -75,7 +75,7 @@ export class OpenAIVisionProvider implements AIProvider {
           {
             role: "system",
             content:
-              "You identify second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, choose OTHER for enum fields and null for text fields. Use measurement-board cues when visible to infer adult men, adult women, kids, unisex, and child age range. Confidence must be a number from 0 to 1."
+              "You identify and measure second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, choose OTHER for enum fields and null for text or measurement fields. Use the 120 cm by 160 cm measurement board, edge rulers, and perspective cues when visible. Never infer a centimeter measurement from the tag size alone. Confidence must be a number from 0 to 1."
           },
           {
             role: "user",
@@ -84,7 +84,7 @@ export class OpenAIVisionProvider implements AIProvider {
                 type: "input_text",
                 text: [
                   "Return one JSON object with these fields:",
-                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, brandLabel, sizeLabel, title.",
+                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, brandLabel, sizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm.",
                   `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
                   `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
                   `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
@@ -94,7 +94,12 @@ export class OpenAIVisionProvider implements AIProvider {
                   `sleeveType enum: ${AI_SLEEVE_TYPES.join(", ")}`,
                   "Use kidsAgeRange=NOT_APPLICABLE unless audience=KIDS.",
                   "Each field must be an object: { value, confidence }.",
-                  "Base the answer only on the attached image."
+                  "All centimeter values are flat-lay garment measurements, not body circumference.",
+                  "lengthCm: shoulder high point to hem for tops/dresses; top waistband to hem for bottoms.",
+                  "chestWidthCm: pit to pit. shoulderWidthCm: shoulder seam to shoulder seam. sleeveLengthCm: shoulder seam to cuff.",
+                  "waistCm and hipCm are flat widths. thighWidthCm is one leg flat width. legOpeningCm is one opening flat width. inseamCm is crotch to hem.",
+                  "Use null when the ruler, garment endpoint, or full board is not clear enough. Do not guess a missing measurement.",
+                  "Base the answer only on the attached images."
                 ].join("\n")
               },
               ...imageInputs
@@ -102,7 +107,7 @@ export class OpenAIVisionProvider implements AIProvider {
           }
         ],
         text: { format: { type: "json_object" } },
-        max_output_tokens: 900
+        max_output_tokens: 1400
       })
     });
 

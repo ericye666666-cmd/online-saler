@@ -121,7 +121,18 @@ export class ProductCalibrationService {
           status: ProductStatus.CALIBRATED
         }
       }),
-      prisma.productMeasurement.deleteMany({ where: { productId } }),
+      prisma.productMeasurement.updateMany({
+        where: {
+          productId,
+          measurementType: { notIn: input.measurements.map((measurement) => measurement.type) }
+        },
+        data: {
+          finalValueCm: null,
+          finalSource: null,
+          reviewedByEmployeeId: null,
+          reviewedAt: null
+        }
+      }),
       prisma.productDefect.deleteMany({ where: { productId } })
     ];
 
@@ -155,10 +166,22 @@ export class ProductCalibrationService {
 
     for (const measurement of input.measurements) {
       operations.push(
-        prisma.productMeasurement.create({
-          data: {
+        prisma.productMeasurement.upsert({
+          where: {
+            productId_measurementType: {
+              productId,
+              measurementType: measurement.type
+            }
+          },
+          create: {
             productId,
             measurementType: measurement.type,
+            finalValueCm: measurement.valueCm,
+            finalSource: MeasurementSource.HUMAN_ENTERED,
+            reviewedByEmployeeId: input.employeeId,
+            reviewedAt
+          },
+          update: {
             finalValueCm: measurement.valueCm,
             finalSource: MeasurementSource.HUMAN_ENTERED,
             reviewedByEmployeeId: input.employeeId,

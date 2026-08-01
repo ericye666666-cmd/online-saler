@@ -139,6 +139,9 @@ export class ProductImageJobRunnerService {
     if (operation === ImageProcessingOperation.OPTIMIZE_MAIN_IMAGE) {
       return this.transformer.optimizeMainImage(source.body);
     }
+    if (operation === ImageProcessingOperation.OPTIMIZE_BALANCED_MAIN_IMAGE) {
+      return this.transformer.optimizeBalancedMainImage(source.body);
+    }
     throw new BadRequestException(`Unsupported image processing operation: ${operation}`);
   }
 

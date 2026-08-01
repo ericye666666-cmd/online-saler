@@ -175,7 +175,10 @@ export class ProductDetailAssetService {
       if (selected) return { storageUrl: selected.storageUrl, publicUrl: selected.publicUrl, mimeType: selected.mimeType };
     }
     const optimized = await prisma.productImageVariantAsset.findFirst({
-      where: { productId, variant: ProductImageVariant.OPTIMIZED_MAIN },
+      where: {
+        productId,
+        variant: { in: [ProductImageVariant.OPTIMIZED_BALANCED_MAIN, ProductImageVariant.OPTIMIZED_MAIN] }
+      },
       orderBy: { createdAt: "desc" }
     });
     if (optimized) return { storageUrl: optimized.storageUrl, publicUrl: optimized.publicUrl, mimeType: optimized.mimeType };
