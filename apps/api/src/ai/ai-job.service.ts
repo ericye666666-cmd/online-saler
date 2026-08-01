@@ -104,15 +104,21 @@ export class AIJobService {
       return this.get(extraction.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown AI provider error";
-      await prisma.aIExtraction.update({
-        where: { id: extraction.id },
-        data: {
-          status: AIExtractionStatus.FAILED,
-          errorMessage: message,
-          failureCode: "PROVIDER_ERROR",
-          completedAt: new Date()
-        }
-      });
+      await prisma.$transaction([
+        prisma.aIExtraction.update({
+          where: { id: extraction.id },
+          data: {
+            status: AIExtractionStatus.FAILED,
+            errorMessage: message,
+            failureCode: "PROVIDER_ERROR",
+            completedAt: new Date()
+          }
+        }),
+        prisma.product.updateMany({
+          where: { id: request.productId, status: ProductStatus.AI_PROCESSING },
+          data: { status: product.status }
+        })
+      ]);
       throw new BadRequestException(message);
     }
   }
