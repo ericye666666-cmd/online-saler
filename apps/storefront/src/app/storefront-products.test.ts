@@ -3,6 +3,7 @@ import {
   activeFilterCount,
   detailAsset,
   detailAssetSrc,
+  hasApprovedPublicDetail,
   moneyKsh,
   productImageSrc,
   productMeta,
@@ -42,6 +43,8 @@ assert.equal(
 );
 assert.equal(productMeta(product), "TSHIRTS / TSHIRT / ORANGE / M");
 assert.equal(detailAsset(product, "FRONT_MAIN")?.id, "detail-front");
+assert.equal(hasApprovedPublicDetail(product), true);
+assert.equal(hasApprovedPublicDetail({ ...product, detail: undefined }), false);
 assert.equal(detailAssetSrc(testPublicDetail.assets[0]!), "/api-proxy/product-detail-assets/detail-front/content");
 assert.equal(moneyKsh(450), "KSh 450");
 assert.equal(moneyKsh(null), "Price pending");

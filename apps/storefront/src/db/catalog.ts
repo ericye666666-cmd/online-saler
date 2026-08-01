@@ -3,6 +3,7 @@ import {
   detailAssetSrc,
   fetchPublicProduct,
   fetchPublicProducts,
+  hasApprovedPublicDetail,
   productImageSrc,
   publicProductImageSrc,
   type PublicProduct
@@ -33,15 +34,15 @@ const conditionMap: Record<string, string> = {
 
 export async function listPublishedProducts(): Promise<Product[]> {
   const products = await fetchPublicProducts();
-  return products.map(toCatalogProduct);
+  return products.filter(hasApprovedPublicDetail).map(toCatalogProduct);
 }
 
 export async function getPublishedProduct(code: string): Promise<Product | null> {
   const product = await fetchPublicProduct(code);
-  return product ? toCatalogProduct(product) : null;
+  return product && hasApprovedPublicDetail(product) ? toCatalogProduct(product) : null;
 }
 
-function toCatalogProduct(product: PublicProduct): Product {
+function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicProduct["detail"]> }): Product {
   const category = mapValue(categoryMap, product.category, "Tops");
   const brand = product.brand?.trim() || "Unbranded";
   const frontAsset = detailAsset(product, "FRONT_MAIN");
