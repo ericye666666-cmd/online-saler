@@ -692,6 +692,7 @@ function FormSelect(props: {
     <label className="block min-w-0 text-sm font-medium" data-field-key={props.fieldKey}>
       <span>{props.label}{props.required ? " *" : ""}</span>
       <NativeSelect className="mt-2 w-full" value={props.value} disabled={props.disabled} onChange={(event) => props.onChange(event.target.value)}>
+        {props.required ? <NativeSelectOption value="" disabled>请选择{props.label}</NativeSelectOption> : null}
         {props.values.map((value) => <NativeSelectOption key={value} value={value}>{props.labels?.[value] ?? enumLabel(value, props.label)}</NativeSelectOption>)}
       </NativeSelect>
       {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">AI 建议：{enumLabel(props.suggestion, props.label)}</span> : null}
