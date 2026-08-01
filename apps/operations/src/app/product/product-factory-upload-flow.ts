@@ -33,3 +33,13 @@ export function firstProductMissingFront(products: Array<{ images?: Array<{ type
 export function uploadedFrontCount(products: Array<{ images?: Array<{ type?: unknown }> }>): number {
   return products.filter((product) => product.images?.some((image) => image.type === "FRONT")).length;
 }
+
+export function assignBatchFrontFiles<TFile>(
+  products: Array<{ id: string; images?: Array<{ type?: unknown }> }>,
+  files: TFile[]
+): Array<{ productId: string; file: TFile }> {
+  return products
+    .filter((product) => !product.images?.some((image) => image.type === "FRONT"))
+    .slice(0, files.length)
+    .map((product, index) => ({ productId: product.id, file: files[index]! }));
+}
