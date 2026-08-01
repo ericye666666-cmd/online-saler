@@ -312,6 +312,7 @@ model Product {
   fitType              ProductFitType?
   stretchLevel         ProductStretchLevel?
   fabricWeight         ProductFabricWeight?
+  detailSourceVersion  Int                  @default(0)
   gender               ProductGender?
   kidsAgeRange         String?
   tagSize              String?
@@ -330,6 +331,9 @@ model Product {
   aiExtractions        AIExtraction[]
   defects              ProductDefect[]
   reviews              ProductReview[]
+  detailProfiles       ProductDetailProfile[]
+  detailAssets         ProductDetailAsset[]
+  detailGenerationJobs ProductDetailGenerationJob[]
   inventoryItem        InventoryItem?
   inventoryMovements   InventoryMovement[]
   affiliateLinks       AffiliateLink[]
@@ -356,6 +360,7 @@ model ProductBatch {
   createdByEmployeeId String?
   createdBy           Employee?          @relation("ProductBatchCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   products            Product[]
+  detailGenerationJobs ProductDetailGenerationJob[]
   note                String?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt

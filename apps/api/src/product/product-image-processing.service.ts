@@ -21,9 +21,12 @@ import {
   sourceVariantForOperation,
   targetVariantForOperation
 } from "./product-image-processing.rules";
+import { ProductDetailGenerationService } from "./product-detail-generation.service";
 
 @Injectable()
 export class ProductImageProcessingService {
+  constructor(private readonly details: ProductDetailGenerationService) {}
+
   async start(input: {
     productId: string;
     sourceImageId: string;
@@ -109,6 +112,10 @@ export class ProductImageProcessingService {
     productId: string;
     imageId: string;
   }): Promise<ProductImageComparisonResponse> {
+    const currentSelection = await prisma.productMainImageSelection.findUnique({
+      where: { productId: input.productId },
+      select: { selectedImageId: true }
+    });
     const original = await prisma.productImage.findFirst({
       where: {
         id: input.imageId,
@@ -148,6 +155,9 @@ export class ProductImageProcessingService {
         selectedAt: new Date()
       }
     });
+    if (currentSelection?.selectedImageId !== input.imageId) {
+      await this.details.recordSourceChange(input.productId, "MAIN_IMAGE_CHANGED");
+    }
 
     return this.getComparison(input.productId);
   }

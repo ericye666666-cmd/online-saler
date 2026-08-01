@@ -5,6 +5,8 @@ import { ProductBarcodeController } from "./product-barcode.controller";
 import { ProductBarcodeService } from "./product-barcode.service";
 import { ProductCalibrationController } from "./product-calibration.controller";
 import { ProductCalibrationService } from "./product-calibration.service";
+import { ProductDetailGenerationController } from "./product-detail-generation.controller";
+import { ProductDetailGenerationService } from "./product-detail-generation.service";
 import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
 import { ProductImageProcessingController } from "./product-image-processing.controller";
 import { ProductImageProcessingService } from "./product-image-processing.service";
@@ -23,11 +25,13 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductSetupController,
     ProductCalibrationController,
     ProductBarcodeController,
-    ProductImageProcessingController
+    ProductImageProcessingController,
+    ProductDetailGenerationController
   ],
   providers: [
     ProductApplicationService,
     ProductCalibrationService,
+    ProductDetailGenerationService,
     ProductBarcodeService,
     ProductImageStorageService,
     ProductImageTransformerService,
@@ -48,7 +52,8 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductBarcodeService,
     ProductImageStorageService,
     ProductImageProcessingService,
-    ProductImageJobRunnerService
+    ProductImageJobRunnerService,
+    ProductDetailGenerationService
   ]
 })
 export class ProductModule {}

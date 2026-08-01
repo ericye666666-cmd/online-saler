@@ -10,6 +10,7 @@ import {
 import { AIJobService } from "../ai/ai-job.service";
 import { ProductApplicationService } from "../product/product-application.service";
 import { ProductBarcodeService } from "../product/product-barcode.service";
+import { ProductDetailGenerationService } from "../product/product-detail-generation.service";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsProductControlService } from "./operations-product-control.service";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
@@ -68,7 +69,8 @@ export class OperationsProductBatchService {
     private readonly aiJobs: AIJobService,
     private readonly barcodes: ProductBarcodeService,
     private readonly products: ProductApplicationService,
-    private readonly productControl: OperationsProductControlService
+    private readonly productControl: OperationsProductControlService,
+    private readonly details: ProductDetailGenerationService
   ) {}
 
   async summary(adminUserId?: string, employeeId?: string) {
@@ -223,6 +225,7 @@ export class OperationsProductBatchService {
 
   async batchDetail(batchId: string, adminUserId?: string) {
     await this.access.requirePermission(adminUserId, PRODUCT_DIGITALIZE_PAGE);
+    await this.details.ensureBatchGenerationJobs(batchId);
     const batch = await prisma.productBatch.findUnique({
       where: { id: batchId },
       include: {
