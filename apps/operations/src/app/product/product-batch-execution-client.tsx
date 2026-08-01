@@ -32,6 +32,7 @@ import { productStatusLabel } from "./product-factory-display";
 import {
   PRODUCT_FACTORY_IMAGE_LABELS,
   PRODUCT_FACTORY_IMAGE_TYPES,
+  assignBatchFrontFiles,
   firstProductMissingFront,
   imageUploadIssue,
   uploadedFrontCount,
@@ -249,9 +250,12 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
   const [batch, setBatch] = useState<ProductBatch | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [files, setFiles] = useState<Partial<Record<ProductFactoryImageType, File>>>({});
+  const [batchFrontFiles, setBatchFrontFiles] = useState<Record<string, File>>({});
   const [busy, setBusy] = useState(false);
   const [uploadingType, setUploadingType] = useState<ProductFactoryImageType | "">("");
+  const [bulkUploadingProgress, setBulkUploadingProgress] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
@@ -270,6 +274,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
 
   const product = batch?.products[currentIndex] ?? null;
   const frontCount = batch ? uploadedFrontCount(batch.products) : 0;
+  const pendingBatchFrontCount = Object.keys(batchFrontFiles).length;
 
   function chooseFile(type: ProductFactoryImageType, file: File | null) {
     if (!file) return;
@@ -279,30 +284,47 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       return;
     }
     setError("");
+    setNotice("");
+    if (type === "FRONT" && product) {
+      setBatchFrontFiles((current) => {
+        const next = { ...current };
+        delete next[product.id];
+        return next;
+      });
+    }
     setFiles((current) => ({ ...current, [type]: file }));
   }
 
   function chooseMultiple(selected: FileList | null) {
-    if (!selected?.length) return;
-    const next: Partial<Record<ProductFactoryImageType, File>> = {};
-    const availableTypes = PRODUCT_FACTORY_IMAGE_TYPES.filter((type) => !newestImageOfType(product, type));
-    for (const [index, file] of Array.from(selected).entries()) {
-      const type = availableTypes[index];
-      if (!type) break;
+    if (!selected?.length || !batch) return;
+    const selectedFiles = Array.from(selected);
+    const remainingProducts = batch.products.filter((item) => !newestImageOfType(item, "FRONT"));
+    if (selectedFiles.length > remainingProducts.length) {
+      setNotice("");
+      setError(`本批只剩 ${remainingProducts.length} 件需要正面图，请按商品顺序重新选择。`);
+      return;
+    }
+    for (const file of selectedFiles) {
       const issue = imageUploadIssue(file);
       if (issue) {
+        setNotice("");
         setError(`${file.name}：${issue}`);
         return;
       }
-      next[type] = file;
     }
-    setError(selected.length > availableTypes.length ? `本件最多再选择 ${availableTypes.length} 张图片。` : "");
-    setFiles((current) => ({ ...current, ...next }));
+    const assignments = assignBatchFrontFiles(batch.products, selectedFiles);
+    setBatchFrontFiles(Object.fromEntries(assignments.map(({ productId, file }) => [productId, file])));
+    setFiles((current) => ({ ...current, FRONT: undefined }));
+    setCurrentIndex(batch.products.findIndex((item) => item.id === assignments[0]?.productId));
+    setError("");
+    setNotice(selectedFiles.length === remainingProducts.length
+      ? `已按顺序分配本批剩余 ${selectedFiles.length} 件正面图。`
+      : `已按顺序分配 ${selectedFiles.length} 件正面图；本批仍有 ${remainingProducts.length - selectedFiles.length} 件待选择。`);
   }
 
   async function saveAndContinue() {
     if (!batch || !product) return;
-    const hasFront = Boolean(newestImageOfType(product, "FRONT") || files.FRONT);
+    const hasFront = Boolean(newestImageOfType(product, "FRONT") || batchFrontFiles[product.id] || files.FRONT);
     if (!hasFront) {
       setError("正面图为必填，请先拍摄或选择正面图。");
       return;
@@ -315,13 +337,29 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
 
     setBusy(true);
     setError("");
+    setNotice("");
     try {
+      const bulkAssignments = batch.products.flatMap((item) => {
+        const file = batchFrontFiles[item.id];
+        return file ? [{ productId: item.id, file }] : [];
+      });
+      for (const [index, assignment] of bulkAssignments.entries()) {
+        setBulkUploadingProgress(`正在上传正面图 ${index + 1}/${bulkAssignments.length}`);
+        await uploadOriginalImage(assignment.productId, "FRONT", assignment.file, ids);
+        setBatchFrontFiles((current) => {
+          const next = { ...current };
+          delete next[assignment.productId];
+          return next;
+        });
+      }
       for (const type of selected) {
         setUploadingType(type);
         await uploadOriginalImage(product.id, type, files[type]!, ids);
       }
       setFiles({});
+      setBatchFrontFiles({});
       setUploadingType("");
+      setBulkUploadingProgress("");
       const updated = await loadBatch(batchId, ids.adminUserId);
       setBatch(updated);
       const updatedFrontCount = uploadedFrontCount(updated.products);
@@ -332,8 +370,11 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       }
     } catch (caught) {
       setError(errorMessage(caught, "图片上传失败，请重试。"));
+      const refreshed = await loadBatch(batchId, ids.adminUserId).catch(() => null);
+      if (refreshed) setBatch(refreshed);
     } finally {
       setUploadingType("");
+      setBulkUploadingProgress("");
       setBusy(false);
     }
   }
@@ -351,21 +392,29 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       />
       <ProgressBar value={frontCount} max={batch.targetCount} />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+      {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2">
         <div className="text-sm">
           <span className="font-medium">{product.productCode}</span>
           <span className="ml-2 text-muted-foreground">{productStatusLabel(product.status)}</span>
+          <p className="mt-1 text-xs text-muted-foreground">
+            批量入口只接收正面图，并按商品 1 到 10 的顺序分配。
+            {pendingBatchFrontCount ? ` 已分配 ${pendingBatchFrontCount} 件。` : ""}
+          </p>
         </div>
         <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium">
-          <UploadIcon className="size-4" />批量选择
+          <UploadIcon className="size-4" />批量选择正面图
           <input
             className="sr-only"
             type="file"
             multiple
             accept="image/jpeg,image/png,image/webp"
             disabled={busy}
-            onChange={(event) => chooseMultiple(event.target.files)}
+            onChange={(event) => {
+              chooseMultiple(event.target.files);
+              event.currentTarget.value = "";
+            }}
           />
         </label>
       </div>
@@ -377,10 +426,20 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
             type={type}
             required={type === "FRONT"}
             existing={newestImageOfType(product, type)}
-            file={files[type]}
+            file={type === "FRONT" ? batchFrontFiles[product.id] ?? files.FRONT : files[type]}
             busy={busy}
             onChoose={(file) => chooseFile(type, file)}
-            onClear={() => setFiles((current) => ({ ...current, [type]: undefined }))}
+            onClear={() => {
+              if (type === "FRONT" && batchFrontFiles[product.id]) {
+                setBatchFrontFiles((current) => {
+                  const next = { ...current };
+                  delete next[product.id];
+                  return next;
+                });
+                return;
+              }
+              setFiles((current) => ({ ...current, [type]: undefined }));
+            }}
           />
         ))}
       </section>
@@ -399,7 +458,11 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         </Button>
         <Button disabled={busy} onClick={() => void saveAndContinue()}>
           {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
-          {uploadingType ? `正在上传${PRODUCT_FACTORY_IMAGE_LABELS[uploadingType]}` : currentIndex === 9 ? "保存并开始处理" : "保存并下一件"}
+          {bulkUploadingProgress || (uploadingType
+            ? `正在上传${PRODUCT_FACTORY_IMAGE_LABELS[uploadingType]}`
+            : pendingBatchFrontCount
+              ? `上传已分配的 ${pendingBatchFrontCount} 件正面图`
+              : currentIndex === 9 ? "保存并开始处理" : "保存并下一件")}
           {!busy ? <ArrowRightIcon data-icon="inline-end" /> : null}
         </Button>
       </div>
