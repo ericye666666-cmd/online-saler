@@ -99,9 +99,18 @@ export class ProductImageJobRunnerService {
   }): Promise<{ id: string; body: Buffer; contentType: string }> {
     if (job.operation === ImageProcessingOperation.REMOVE_BACKGROUND) {
       const source = await prisma.productImage.findFirst({
-        where: { id: job.sourceImageId, productId: job.productId, type: ProductImageType.FRONT }
+        where: {
+          id: job.sourceImageId,
+          productId: job.productId,
+          type: { in: [ProductImageType.FRONT, ProductImageType.BACK] }
+        }
       });
-      if (!source) throw new BackgroundRemovalProviderError("PROCESSOR_REJECTED_IMAGE", "FRONT source image no longer exists");
+      if (!source) {
+        throw new BackgroundRemovalProviderError(
+          "PROCESSOR_REJECTED_IMAGE",
+          "FRONT or BACK source image no longer exists"
+        );
+      }
       return this.downloadStoredSource(source.id, source.originalUrl);
     }
 

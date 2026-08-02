@@ -26,6 +26,7 @@ import {
   sourceVariantForOperation,
   targetVariantForOperation
 } from "./product-image-processing.rules";
+import { findDerivedImageForSource } from "./product-image-comparison";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
 
@@ -317,6 +318,7 @@ export class ProductImageProcessingService {
       throw new BadRequestException("Transparent cutout cannot be selected as the storefront main image");
     }
     if (derivedSourceImageId) {
+      await this.requireFrontImageAncestry(input.productId, input.imageId);
       await this.requireStorefrontQuality(input.productId, derivedSourceImageId);
     }
 
@@ -338,6 +340,30 @@ export class ProductImageProcessingService {
     }
 
     return this.getComparison(input.productId);
+  }
+
+  private async requireFrontImageAncestry(productId: string, imageId: string): Promise<void> {
+    let currentImageId = imageId;
+
+    for (let depth = 0; depth < 8; depth += 1) {
+      const asset = await prisma.productImageVariantAsset.findFirst({
+        where: { id: currentImageId, productId },
+        select: { sourceImageId: true }
+      });
+      if (asset) {
+        currentImageId = asset.sourceImageId;
+        continue;
+      }
+
+      const original = await prisma.productImage.findFirst({
+        where: { id: currentImageId, productId, type: ProductImageType.FRONT },
+        select: { id: true }
+      });
+      if (original) return;
+      break;
+    }
+
+    throw new BadRequestException("Only a FRONT image or its processed variants can be selected as the storefront main image");
   }
 
   private async requireStorefrontQuality(productId: string, initialSourceImageId: string): Promise<void> {
@@ -384,11 +410,11 @@ export class ProductImageProcessingService {
     });
     if (!product) throw new BadRequestException("Product not found");
 
-    const [original, assets, jobs, selection] = await Promise.all([
-      prisma.productImage.findFirst({
+    const [originals, assets, jobs, selection] = await Promise.all([
+      prisma.productImage.findMany({
         where: {
           productId,
-          type: ProductImageType.FRONT
+          type: { in: [ProductImageType.FRONT, ProductImageType.BACK] }
         },
         orderBy: { createdAt: "desc" }
       }),
@@ -403,38 +429,35 @@ export class ProductImageProcessingService {
       prisma.productMainImageSelection.findUnique({ where: { productId } })
     ]);
 
-    const byVariant = new Map<ProductImageVariant, (typeof assets)[number]>();
-    for (const asset of assets) {
-      const variant = asset.variant as ProductImageVariant;
-      if (!byVariant.has(variant)) byVariant.set(variant, asset);
-    }
-
-    const mapAsset = (variant: Exclude<ProductImageVariant, "ORIGINAL">) => {
-      const asset = byVariant.get(variant);
+    const frontOriginal = originals.find((image) => image.type === ProductImageType.FRONT) ?? null;
+    const backOriginal = originals.find((image) => image.type === ProductImageType.BACK) ?? null;
+    const mapAsset = (
+      variant: Exclude<ProductImageVariant, "ORIGINAL">,
+      sourceImageId: string | null
+    ) => {
+      if (!sourceImageId) return null;
+      const asset = findDerivedImageForSource(
+        assets,
+        variant,
+        sourceImageId,
+        selection?.selectedImageId ?? null
+      );
       return asset ? this.toAssetRecord(asset, selection?.selectedImageId ?? null) : null;
     };
+    const frontTransparent = mapAsset("CUTOUT_TRANSPARENT", frontOriginal?.id ?? null);
+    const frontWhite = mapAsset("CUTOUT_WHITE", frontTransparent?.imageId ?? null);
+    const backTransparent = mapAsset("CUTOUT_TRANSPARENT", backOriginal?.id ?? null);
 
     return {
       productId,
-      original: original
-        ? {
-            imageId: original.id,
-            productId: original.productId,
-            sourceImageId: null,
-            variant: "ORIGINAL",
-            originalUrl: original.originalUrl,
-            publicUrl: original.publicUrl,
-            widthPx: null,
-            heightPx: null,
-            mimeType: null,
-            selectedAsMain: original.id === selection?.selectedImageId,
-            createdAt: original.createdAt.toISOString()
-          }
-        : null,
-      cutoutTransparent: mapAsset("CUTOUT_TRANSPARENT"),
-      cutoutWhite: mapAsset("CUTOUT_WHITE"),
-      optimizedMain: mapAsset("OPTIMIZED_MAIN"),
-      optimizedBalancedMain: mapAsset("OPTIMIZED_BALANCED_MAIN"),
+      original: frontOriginal ? this.toOriginalRecord(frontOriginal, selection?.selectedImageId ?? null) : null,
+      cutoutTransparent: frontTransparent,
+      cutoutWhite: frontWhite,
+      optimizedMain: mapAsset("OPTIMIZED_MAIN", frontWhite?.imageId ?? null),
+      optimizedBalancedMain: mapAsset("OPTIMIZED_BALANCED_MAIN", frontTransparent?.imageId ?? null),
+      backOriginal: backOriginal ? this.toOriginalRecord(backOriginal, selection?.selectedImageId ?? null) : null,
+      backCutoutTransparent: backTransparent,
+      backCutoutWhite: mapAsset("CUTOUT_WHITE", backTransparent?.imageId ?? null),
       selectedMainImageId: selection?.selectedImageId ?? null,
       jobs: jobs.map((job) => this.toJobRecord(job))
     };
@@ -450,12 +473,12 @@ export class ProductImageProcessingService {
         where: {
           id: input.sourceImageId,
           productId: input.productId,
-          type: ProductImageType.FRONT
+          type: { in: [ProductImageType.FRONT, ProductImageType.BACK] }
         },
         select: { id: true }
       });
       if (!original) {
-        throw new BadRequestException("A FRONT original image is required for background removal");
+        throw new BadRequestException("A FRONT or BACK original image is required for background removal");
       }
       return;
     }
@@ -471,6 +494,31 @@ export class ProductImageProcessingService {
     if (!asset) {
       throw new BadRequestException(`${input.variant} source image not found for this product`);
     }
+  }
+
+  private toOriginalRecord(
+    original: {
+      id: string;
+      productId: string;
+      originalUrl: string;
+      publicUrl: string | null;
+      createdAt: Date;
+    },
+    selectedMainImageId: string | null
+  ): ProductImageVariantRecord {
+    return {
+      imageId: original.id,
+      productId: original.productId,
+      sourceImageId: null,
+      variant: "ORIGINAL",
+      originalUrl: original.originalUrl,
+      publicUrl: original.publicUrl,
+      widthPx: null,
+      heightPx: null,
+      mimeType: null,
+      selectedAsMain: original.id === selectedMainImageId,
+      createdAt: original.createdAt.toISOString()
+    };
   }
 
   private toAssetRecord(

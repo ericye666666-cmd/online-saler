@@ -330,7 +330,9 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  const latestRemovalJob = comparison?.jobs.find((job) => job.operation === "REMOVE_BACKGROUND") ?? null;
+  const latestRemovalJob = comparison?.jobs.find((job) =>
+    job.operation === "REMOVE_BACKGROUND" && job.sourceImageId === comparison.original?.imageId
+  ) ?? null;
   const cutoutWarning = latestRemovalJob ? cutoutQualityWarning(latestRemovalJob) : null;
   const imageTabs = useMemo(
     () => buildImageTabs(product, comparison, !cutoutWarning),
@@ -460,13 +462,17 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
         setActiveImage("transparent");
         throw new Error(warning);
       }
-      const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-      await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-      const balanced = await runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId);
-      const updated = await selectMainImage(product.id, balanced.outputImageId!, ids.adminUserId);
+      await Promise.all([
+        (async () => {
+          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
+          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
+        })(),
+        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
+      ]);
+      const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
       setActiveImage("balanced");
-      setNotice(mode === "rembg_birefnet" ? "已使用 BiRefNet 重新处理。" : "已使用 lightweight OpenCV 重新处理。");
+      setNotice(`${mode === "rembg_birefnet" ? "已使用 BiRefNet" : "已使用 lightweight OpenCV"} 重新处理。请手动选择白底图、优化主图或均整版作为商城主图。`);
     } catch (caught) {
       setError(errorMessage(caught, "图片处理失败。"));
     } finally {
@@ -486,14 +492,18 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
         image,
         ids.adminUserId
       );
-      const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-      await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-      const balanced = await runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId);
-      const updated = await selectMainImage(product.id, balanced.outputImageId!, ids.adminUserId);
+      await Promise.all([
+        (async () => {
+          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
+          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
+        })(),
+        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
+      ]);
+      const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
       setActiveImage("balanced");
       setManualEditorOpen(false);
-      setNotice("修正版已保存，并重新生成白底图与两版优化主图。请再次检查后继续。");
+      setNotice("修正版已保存，并重新生成白底图与两版优化主图。请检查后手动选择商城主图。");
     } catch (caught) {
       throw new Error(errorMessage(caught, "无法保存修正版抠图。"));
     } finally {
@@ -516,14 +526,18 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
       if (cutout.status !== "SUCCEEDED" || !cutout.outputImageId) {
         throw new Error(cutout.errorMessage || "按轮廓自动抠图失败。");
       }
-      const white = await runImageOperation(product.id, cutout.outputImageId, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-      await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-      const balanced = await runImageOperation(product.id, cutout.outputImageId, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId);
-      const updated = await selectMainImage(product.id, balanced.outputImageId!, ids.adminUserId);
+      await Promise.all([
+        (async () => {
+          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
+          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
+        })(),
+        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
+      ]);
+      const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
       setActiveImage("balanced");
       setManualEditorOpen(false);
-      setNotice("已按员工点选轮廓重新抠图，并生成白底图与两版优化主图。请再次检查边缘。");
+      setNotice("已按员工点选轮廓重新抠图，并生成白底图与两版优化主图。请检查边缘并手动选择商城主图。");
     } catch (caught) {
       throw new Error(errorMessage(caught, "按轮廓自动抠图失败，请调整轮廓后重试。"));
     } finally {
@@ -935,9 +949,12 @@ function buildImageTabs(
     variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, false, true),
     variantTab("white", "白底图", comparison?.cutoutWhite ?? null, derivedImagesUsable),
     variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null, derivedImagesUsable),
-    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null, derivedImagesUsable)
+    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null, derivedImagesUsable),
+    variantTab("back-original", "背面原图", comparison?.backOriginal ?? null, false),
+    variantTab("back-transparent", "背面透明抠图", comparison?.backCutoutTransparent ?? null, false, true),
+    variantTab("back-white", "背面白底", comparison?.backCutoutWhite ?? null, false)
   ];
-  for (const [type, label] of [["BACK", "背面"], ["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
+  for (const [type, label] of [["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
     const image = newestImage(product, type);
     if (image) tabs.push({ key: type.toLowerCase(), label, url: image.publicUrl ? `${API_PROXY_URL}${image.publicUrl}` : "", imageId: image.id, selectable: false, selected: false });
   }

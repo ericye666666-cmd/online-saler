@@ -95,6 +95,9 @@ export interface ProductImageComparisonResponse {
   cutoutWhite: ProductImageVariantRecord | null;
   optimizedMain: ProductImageVariantRecord | null;
   optimizedBalancedMain: ProductImageVariantRecord | null;
+  backOriginal: ProductImageVariantRecord | null;
+  backCutoutTransparent: ProductImageVariantRecord | null;
+  backCutoutWhite: ProductImageVariantRecord | null;
   selectedMainImageId: string | null;
   jobs: ImageProcessingJobRecord[];
 }
