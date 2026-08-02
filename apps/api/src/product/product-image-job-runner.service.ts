@@ -18,6 +18,7 @@ import {
   ProductImageTransformerService,
   type ProductImageTransformResult
 } from "./product-image-transformer.service";
+import { LightweightGarmentBalanceProvider } from "./lightweight-garment-balance.provider";
 import { SelectedBackgroundRemovalProvider } from "./selected-background-removal.provider";
 
 type ProcessingResult = BackgroundRemovalResult | ProductImageTransformResult;
@@ -27,7 +28,8 @@ export class ProductImageJobRunnerService {
   constructor(
     private readonly storage: ProductImageStorageService,
     private readonly backgroundRemoval: SelectedBackgroundRemovalProvider,
-    private readonly transformer: ProductImageTransformerService
+    private readonly transformer: ProductImageTransformerService,
+    private readonly garmentBalance: LightweightGarmentBalanceProvider
   ) {}
 
   async run(
@@ -140,7 +142,11 @@ export class ProductImageJobRunnerService {
       return this.transformer.optimizeMainImage(source.body);
     }
     if (operation === ImageProcessingOperation.OPTIMIZE_BALANCED_MAIN_IMAGE) {
-      return this.transformer.optimizeBalancedMainImage(source.body);
+      return this.garmentBalance.balance({
+        body: source.body,
+        contentType: source.contentType,
+        filename: `${source.id}.png`
+      });
     }
     throw new BadRequestException(`Unsupported image processing operation: ${operation}`);
   }

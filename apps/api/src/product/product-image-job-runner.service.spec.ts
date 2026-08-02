@@ -43,7 +43,7 @@ describe("ProductImageJobRunnerService", () => {
     (prisma as unknown as { $transaction: (callback: (tx: typeof transactionClient) => unknown) => unknown }).$transaction =
       async (callback) => callback(transactionClient);
 
-    const runner = new ProductImageJobRunnerService(storage as never, {} as never, {} as never);
+    const runner = new ProductImageJobRunnerService(storage as never, {} as never, {} as never, {} as never);
     const saveResult = (
       runner as unknown as {
         saveResult: (

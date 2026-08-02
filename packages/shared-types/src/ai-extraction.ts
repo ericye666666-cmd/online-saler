@@ -5,7 +5,7 @@ export const AI_JOB_STATUSES = [
   "FAILED"
 ] as const;
 
-export const PRODUCT_AI_PROMPT_VERSION = "product-measurements-uk-size-v2";
+export const PRODUCT_AI_PROMPT_VERSION = "product-hood-aware-measurements-v3";
 
 export type AIJobStatus = (typeof AI_JOB_STATUSES)[number];
 

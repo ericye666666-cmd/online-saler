@@ -16,6 +16,10 @@ type ResponsesApiPayload = Record<string, any>;
 
 const RESPONSES_API_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-5.6-sol";
+export const HOODED_GARMENT_MEASUREMENT_RULES = [
+  "For hoodies and hooded jackets, the hood, collar and drawstrings are never part of shoulderWidthCm or lengthCm. Find the seam where the hood joins the body, place both shoulder endpoints below the hood, and start body length at the shoulder high point beside that neck seam.",
+  "If a dropped shoulder, raglan sleeve or hidden seam makes the shoulder endpoints uncertain, return null instead of measuring across the hood or neckline."
+] as const;
 
 @Injectable()
 export class OpenAIVisionProvider implements AIProvider {
@@ -96,8 +100,9 @@ export class OpenAIVisionProvider implements AIProvider {
                   "Each field must be an object: { value, confidence }.",
                   "ukSizeLabel is the best UK size notation supported by the visible tag and measured garment fit, for example UK 12, UK W32, or UK M. Use null when the evidence is insufficient; do not convert from sizeLabel alone.",
                   "All centimeter values are flat-lay garment measurements, not body circumference.",
-                  "lengthCm: shoulder high point to hem for tops/dresses; top waistband to hem for bottoms.",
+                  "lengthCm: shoulder high point at the neck/shoulder seam to hem for tops/dresses; top waistband to hem for bottoms.",
                   "chestWidthCm: pit to pit. shoulderWidthCm: shoulder seam to shoulder seam. sleeveLengthCm: shoulder seam to cuff.",
+                  ...HOODED_GARMENT_MEASUREMENT_RULES,
                   "waistCm and hipCm are flat widths. thighWidthCm is one leg flat width. legOpeningCm is one opening flat width. inseamCm is crotch to hem.",
                   "Use null when the ruler, garment endpoint, or full board is not clear enough. Do not guess a missing measurement.",
                   "Base the answer only on the attached images."

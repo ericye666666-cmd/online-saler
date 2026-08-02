@@ -1,3 +1,12 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  deriveMeasurementGuideLines,
+  imageDataForegroundMask,
+  type MeasurementGuideLine
+} from "./garment-measurement-geometry";
+
 type GuideMeasurement = {
   key: string;
   label: string;
@@ -5,33 +14,7 @@ type GuideMeasurement = {
   aiValue?: string;
 };
 
-type GuideLine = {
-  key: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  labelX: number;
-  labelY: number;
-};
-
-const UPPER_BODY_LINES: GuideLine[] = [
-  { key: "shoulderWidthCm", x1: 34, y1: 24, x2: 66, y2: 24, labelX: 50, labelY: 20 },
-  { key: "chestWidthCm", x1: 27, y1: 39, x2: 73, y2: 39, labelX: 50, labelY: 35 },
-  { key: "lengthCm", x1: 51, y1: 19, x2: 51, y2: 88, labelX: 55, labelY: 57 },
-  { key: "sleeveLengthCm", x1: 66, y1: 25, x2: 87, y2: 58, labelX: 80, labelY: 39 },
-  { key: "waistCm", x1: 34, y1: 57, x2: 66, y2: 57, labelX: 50, labelY: 53 },
-  { key: "hipCm", x1: 30, y1: 68, x2: 70, y2: 68, labelX: 50, labelY: 64 }
-];
-
-const PANTS_LINES: GuideLine[] = [
-  { key: "waistCm", x1: 32, y1: 18, x2: 68, y2: 18, labelX: 50, labelY: 14 },
-  { key: "hipCm", x1: 27, y1: 34, x2: 73, y2: 34, labelX: 50, labelY: 30 },
-  { key: "lengthCm", x1: 76, y1: 18, x2: 76, y2: 90, labelX: 81, labelY: 56 },
-  { key: "thighWidthCm", x1: 29, y1: 47, x2: 51, y2: 47, labelX: 40, labelY: 43 },
-  { key: "legOpeningCm", x1: 34, y1: 89, x2: 50, y2: 89, labelX: 42, labelY: 85 },
-  { key: "inseamCm", x1: 52, y1: 43, x2: 52, y2: 89, labelX: 57, labelY: 68 }
-];
+const GUIDE_CANVAS_SIZE = 256;
 
 export function GarmentMeasurementGuide(props: {
   category: string;
@@ -39,10 +22,57 @@ export function GarmentMeasurementGuide(props: {
   imageUrl: string;
   measurements: GuideMeasurement[];
 }) {
-  const isPants = props.category === "PANTS" || props.category === "SHORT" || props.subcategory === "KIDS_PANTS";
-  const lines = (isPants ? PANTS_LINES : UPPER_BODY_LINES).filter((line) =>
-    props.measurements.some((measurement) => measurement.key === line.key)
+  const [detectedLines, setDetectedLines] = useState<MeasurementGuideLine[] | null>(null);
+  const fallbackLines = useMemo(
+    () => deriveMeasurementGuideLines({
+      mask: new Uint8Array(GUIDE_CANVAS_SIZE * GUIDE_CANVAS_SIZE),
+      width: GUIDE_CANVAS_SIZE,
+      height: GUIDE_CANVAS_SIZE,
+      category: props.category,
+      subcategory: props.subcategory
+    }),
+    [props.category, props.subcategory]
   );
+
+  useEffect(() => {
+    let active = true;
+    setDetectedLines(null);
+    if (!props.imageUrl) return () => { active = false; };
+
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = GUIDE_CANVAS_SIZE;
+        canvas.height = GUIDE_CANVAS_SIZE;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) return;
+        context.clearRect(0, 0, GUIDE_CANVAS_SIZE, GUIDE_CANVAS_SIZE);
+        const scale = Math.min(GUIDE_CANVAS_SIZE / image.naturalWidth, GUIDE_CANVAS_SIZE / image.naturalHeight);
+        const width = image.naturalWidth * scale;
+        const height = image.naturalHeight * scale;
+        context.drawImage(image, (GUIDE_CANVAS_SIZE - width) / 2, (GUIDE_CANVAS_SIZE - height) / 2, width, height);
+        const pixels = context.getImageData(0, 0, GUIDE_CANVAS_SIZE, GUIDE_CANVAS_SIZE);
+        const lines = deriveMeasurementGuideLines({
+          mask: imageDataForegroundMask(pixels.data),
+          width: GUIDE_CANVAS_SIZE,
+          height: GUIDE_CANVAS_SIZE,
+          category: props.category,
+          subcategory: props.subcategory
+        });
+        if (active) setDetectedLines(lines);
+      } catch {
+        if (active) setDetectedLines(null);
+      }
+    };
+    image.onerror = () => { if (active) setDetectedLines(null); };
+    image.src = props.imageUrl;
+    return () => { active = false; };
+  }, [props.category, props.imageUrl, props.subcategory]);
+
+  const visibleKeys = new Set(props.measurements.map((measurement) => measurement.key));
+  const lines = (detectedLines ?? fallbackLines).filter((line) => visibleKeys.has(line.key));
   const values = new Map(props.measurements.map((measurement) => [measurement.key, measurement]));
 
   return (
@@ -50,12 +80,12 @@ export function GarmentMeasurementGuide(props: {
       <div className="mb-2 flex items-start justify-between gap-3">
         <div>
           <h4 className="text-sm font-semibold">尺寸位置示意</h4>
-          <p className="text-xs text-muted-foreground">虚线表示平铺测量位置；请对照原图和刻度确认 AI 数值。</p>
+          <p className="text-xs text-muted-foreground">虚线根据当前服装轮廓定位。连帽上衣从帽子下方的肩缝开始测量，请对照原图和刻度确认 AI 数值。</p>
         </div>
         <span className="shrink-0 text-[11px] font-medium text-blue-700">虚线 = 测量线</span>
       </div>
       <div className="relative mx-auto aspect-square w-full max-w-[320px] overflow-hidden rounded border bg-white">
-        {props.imageUrl ? <img src={props.imageUrl} alt="尺寸位置参考商品图" className="absolute inset-0 size-full object-contain opacity-55" /> : null}
+        {props.imageUrl ? <img src={props.imageUrl} alt="尺寸位置参考商品图" className="absolute inset-0 size-full object-contain opacity-65" /> : null}
         <svg viewBox="0 0 100 100" className="absolute inset-0 size-full" role="img" aria-label="服装平铺尺寸测量位置示意">
           {lines.map((line) => {
             const measurement = values.get(line.key);

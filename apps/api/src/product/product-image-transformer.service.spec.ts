@@ -34,24 +34,4 @@ describe("ProductImageTransformerService", () => {
     assert.equal(result.provider, "deterministic-sharp");
   });
 
-  it("creates a balanced white-background image without generating garment pixels", async () => {
-    const garment = await sharp({
-      create: { width: 500, height: 800, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } }
-    })
-      .composite([
-        { input: { create: { width: 180, height: 600, channels: 4, background: { r: 35, g: 45, b: 55, alpha: 1 } } }, left: 210, top: 100 },
-        { input: { create: { width: 120, height: 80, channels: 4, background: { r: 35, g: 45, b: 55, alpha: 1 } } }, left: 90, top: 180 }
-      ])
-      .png()
-      .toBuffer();
-
-    const result = await new ProductImageTransformerService().optimizeBalancedMainImage(garment);
-    const metadata = await sharp(result.body).metadata();
-
-    assert.equal(result.contentType, "image/jpeg");
-    assert.equal(result.processorVersion, "sharp-balanced-v1");
-    assert.equal(metadata.width, 1200);
-    assert.equal(metadata.height, 1200);
-    assert.equal(metadata.hasAlpha, false);
-  });
 });

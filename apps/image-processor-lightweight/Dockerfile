@@ -10,6 +10,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY tests ./tests
+RUN python -m unittest discover -s tests -p "test_*.py"
 
 ENV PORT=8080
 EXPOSE 8080
