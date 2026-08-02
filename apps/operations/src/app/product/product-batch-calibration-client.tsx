@@ -23,7 +23,7 @@ import {
   type ProductImageComparisonResponse,
   type ProductImageVariantRecord
 } from "@online-saler/shared-types";
-import { recommendPlatformSize } from "@online-saler/business-rules";
+import { recommendPlatformSize, recommendUkSize } from "@online-saler/business-rules";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -284,6 +284,7 @@ export function ProductBatchCalibrationPage({
   const [manualMeasurementLines, setManualMeasurementLines] = useState<ManualMeasurementLine[]>([]);
   const [formProductId, setFormProductId] = useState("");
   const [platformSizeManuallyEdited, setPlatformSizeManuallyEdited] = useState(false);
+  const [ukSizeManuallyEdited, setUkSizeManuallyEdited] = useState(false);
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
@@ -325,11 +326,13 @@ export function ProductBatchCalibrationPage({
     const saved = localStorage.getItem(`operations.product.calibration.draft.${product.id}`);
     let nextForm = baseForm;
     let savedSizeLabel = "";
+    let savedUkSizeLabel = "";
     if (saved) {
       try {
         const savedForm = JSON.parse(saved) as Partial<WorkspaceForm>;
         nextForm = { ...baseForm, ...savedForm };
         savedSizeLabel = typeof savedForm.sizeLabel === "string" ? savedForm.sizeLabel : "";
+        savedUkSizeLabel = typeof savedForm.ukSizeLabel === "string" ? savedForm.ukSizeLabel : "";
       } catch {
         localStorage.removeItem(`operations.product.calibration.draft.${product.id}`);
       }
@@ -337,6 +340,7 @@ export function ProductBatchCalibrationPage({
     setForm(nextForm);
     setFormProductId(product.id);
     setPlatformSizeManuallyEdited(Boolean(stringValue(product.finalSizeLabel) || savedSizeLabel));
+    setUkSizeManuallyEdited(Boolean(stringValue(product.ukSizeLabel) || savedUkSizeLabel));
     const persistedLines = manualLinesFromProduct(product, measurementFields(baseForm));
     const savedLines = localStorage.getItem(`operations.product.calibration.measurement-lines.${product.id}`);
     setManualMeasurementLines(savedLines ? parseManualMeasurementLines(savedLines, persistedLines) : persistedLines);
@@ -410,6 +414,22 @@ export function ProductBatchCalibrationPage({
   const platformSizeBasis = platformSizeRecommendation
     ? platformSizeRecommendation.measurementsUsed.map(platformSizeMeasurementText).join("、")
     : "";
+  const ukSizeRecommendation = useMemo(() => recommendUkSize({
+    platformSize: form.sizeLabel || platformSizeRecommendation?.size,
+    category: form.category,
+    subcategory: form.subcategory,
+    audience: form.audience,
+    kidsAgeRange: form.kidsAgeRange,
+    measurements: { waistCm: form.waistCm }
+  }), [
+    form.audience,
+    form.category,
+    form.kidsAgeRange,
+    form.sizeLabel,
+    form.subcategory,
+    form.waistCm,
+    platformSizeRecommendation?.size
+  ]);
   const measurementAction = manualMeasurementAction(
     product?.status ?? "",
     Boolean(comparison?.original?.publicUrl)
@@ -449,6 +469,19 @@ export function ProductBatchCalibrationPage({
       : { ...current, sizeLabel: platformSizeRecommendation.size });
   }, [formProductId, platformSizeManuallyEdited, platformSizeRecommendation, product, readOnly]);
 
+  useEffect(() => {
+    if (
+      !product ||
+      formProductId !== product.id ||
+      readOnly ||
+      ukSizeManuallyEdited ||
+      !ukSizeRecommendation
+    ) return;
+    setForm((current) => current.ukSizeLabel === ukSizeRecommendation.size
+      ? current
+      : { ...current, ukSizeLabel: ukSizeRecommendation.size });
+  }, [formProductId, product, readOnly, ukSizeManuallyEdited, ukSizeRecommendation]);
+
   function updateForm(key: Exclude<keyof WorkspaceForm, "tags">, value: string) {
     setForm((current) => {
       const next = { ...current, [key]: value };
@@ -476,6 +509,12 @@ export function ProductBatchCalibrationPage({
     if (!platformSizeRecommendation) return;
     setPlatformSizeManuallyEdited(false);
     updateForm("sizeLabel", platformSizeRecommendation.size);
+  }
+
+  function useRecommendedUkSize() {
+    if (!ukSizeRecommendation) return;
+    setUkSizeManuallyEdited(false);
+    updateForm("ukSizeLabel", ukSizeRecommendation.size);
   }
 
   function saveDraft() {
@@ -962,7 +1001,32 @@ export function ProductBatchCalibrationPage({
                 </p>
               )}
             </div>
-            <FormInput fieldKey="ukSizeLabel" label="英码" value={form.ukSizeLabel} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "ukSizeLabel")} hint="例如 UK 12、UK W32 或 UK M。" onChange={(value) => updateForm("ukSizeLabel", value)} />
+            <div className="min-w-0">
+              <FormInput
+                fieldKey="ukSizeLabel"
+                label="英码"
+                value={form.ukSizeLabel}
+                disabled={readOnly}
+                suggestion={aiSuggestion(aiOutput, "ukSizeLabel")}
+                hint="例如 UK 12、UK W32 或 UK M。"
+                onChange={(value) => {
+                  setUkSizeManuallyEdited(true);
+                  updateForm("ukSizeLabel", value);
+                }}
+              />
+              {ukSizeRecommendation ? (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
+                  <span className="text-emerald-700">英码推荐：{ukSizeRecommendation.size}</span>
+                  {!ukSizeManuallyEdited && form.ukSizeLabel === ukSizeRecommendation.size ? (
+                    <span className="text-muted-foreground">已自动填入，可人工修改</span>
+                  ) : !readOnly && form.ukSizeLabel !== ukSizeRecommendation.size ? (
+                    <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useRecommendedUkSize}>
+                      采用英码推荐
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="border-t pt-4">
