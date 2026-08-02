@@ -19,6 +19,7 @@ import {
   type ProductImageTransformResult
 } from "./product-image-transformer.service";
 import { LightweightGarmentBalanceProvider } from "./lightweight-garment-balance.provider";
+import { OpenAIProductDisplayImageProvider } from "./openai-product-display-image.provider";
 import { SelectedBackgroundRemovalProvider } from "./selected-background-removal.provider";
 
 type ProcessingResult = BackgroundRemovalResult | ProductImageTransformResult;
@@ -29,7 +30,8 @@ export class ProductImageJobRunnerService {
     private readonly storage: ProductImageStorageService,
     private readonly backgroundRemoval: SelectedBackgroundRemovalProvider,
     private readonly transformer: ProductImageTransformerService,
-    private readonly garmentBalance: LightweightGarmentBalanceProvider
+    private readonly garmentBalance: LightweightGarmentBalanceProvider,
+    private readonly displayImage: OpenAIProductDisplayImageProvider
   ) {}
 
   async run(
@@ -152,6 +154,13 @@ export class ProductImageJobRunnerService {
     }
     if (operation === ImageProcessingOperation.OPTIMIZE_BALANCED_MAIN_IMAGE) {
       return this.garmentBalance.balance({
+        body: source.body,
+        contentType: source.contentType,
+        filename: `${source.id}.png`
+      });
+    }
+    if (operation === ImageProcessingOperation.GENERATE_AI_DISPLAY_MAIN_IMAGE) {
+      return this.displayImage.generate({
         body: source.body,
         contentType: source.contentType,
         filename: `${source.id}.png`

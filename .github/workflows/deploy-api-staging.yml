@@ -39,6 +39,7 @@ env:
   STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
   PRODUCT_IMAGE_BUCKET: online-saler-staging-product-images
   OPENAI_VISION_MODEL: gpt-5.6-sol
+  OPENAI_IMAGE_EDIT_MODEL: gpt-image-2
 
 jobs:
   deploy:
@@ -283,6 +284,8 @@ jobs:
             BACKGROUND_REMOVAL_MIN_QUALITY_SCORE=0.75
             AI_PROVIDER_MODE=openai
             OPENAI_VISION_MODEL=${{ env.OPENAI_VISION_MODEL }}
+            OPENAI_IMAGE_EDIT_MODEL=${{ env.OPENAI_IMAGE_EDIT_MODEL }}
+            OPENAI_IMAGE_EDIT_QUALITY=medium
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY_STAGING }}
           secrets: |
             DATABASE_URL=STAGING_DATABASE_URL:latest

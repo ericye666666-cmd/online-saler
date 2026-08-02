@@ -2,12 +2,13 @@
 
 ## Goal
 
-Keep every real product photo unchanged while generating two employee-reviewable derivatives:
+Keep every real product photo unchanged while generating employee-reviewable derivatives:
 
 1. Pixel-preserving cutout on transparent and white backgrounds.
-2. Deterministic Storefront main image.
+2. Deterministic Storefront main images.
+3. An optional generated catalog-display candidate that is visibly labeled and never auto-selected.
 
-This pipeline must never redraw the garment or alter pockets, buttons, logos, fabric, defects, proportions, or silhouette.
+Originals and pixel-preserving derivatives must never redraw the garment. The generated display candidate is a separate, auditable version and must be compared with the original before an employee can select it.
 
 ## Image variants
 
@@ -15,6 +16,8 @@ This pipeline must never redraw the garment or alter pockets, buttons, logos, fa
 - `CUTOUT_TRANSPARENT`: original garment pixels with transparent background.
 - `CUTOUT_WHITE`: the transparent cutout composited onto `#FFFFFF`.
 - `OPTIMIZED_MAIN`: deterministic crop, centering, padding, exposure and white-balance adjustment based on the cutout.
+- `OPTIMIZED_BALANCED_MAIN`: deterministic positioning of the original cutout pixels on a white Storefront canvas.
+- `AI_DISPLAY_MAIN`: optional generated catalog-display candidate based on `CUTOUT_WHITE`.
 
 Derived files are persisted as `ProductImageVariantAsset` records. The original upload remains in the existing product-image storage path and is never overwritten.
 
@@ -23,6 +26,8 @@ Derived files are persisted as `ProductImageVariantAsset` records. The original 
 - `REMOVE_BACKGROUND`: requires an original FRONT image and targets `CUTOUT_TRANSPARENT`.
 - `COMPOSE_WHITE_BACKGROUND`: requires `CUTOUT_TRANSPARENT` and targets `CUTOUT_WHITE`.
 - `OPTIMIZE_MAIN_IMAGE`: requires `CUTOUT_WHITE` and targets `OPTIMIZED_MAIN`.
+- `OPTIMIZE_BALANCED_MAIN_IMAGE`: requires `CUTOUT_TRANSPARENT` and targets `OPTIMIZED_BALANCED_MAIN`.
+- `GENERATE_AI_DISPLAY_MAIN_IMAGE`: requires `CUTOUT_WHITE` and targets `AI_DISPLAY_MAIN`.
 
 Each operation has its own `ProductImageProcessingJob` and independent status:
 
@@ -73,6 +78,8 @@ Allowed main-image variants:
 - `ORIGINAL`
 - `CUTOUT_WHITE`
 - `OPTIMIZED_MAIN`
+- `OPTIMIZED_BALANCED_MAIN`
+- `AI_DISPLAY_MAIN`
 
 `CUTOUT_TRANSPARENT` cannot be selected directly as a customer-facing main image.
 
@@ -84,6 +91,8 @@ The existing calibration page will eventually display:
 - Transparent cutout
 - White-background cutout
 - Optimized main image
+- Deterministic balanced main image
+- AI display image, clearly marked as generated
 
 The employee selects the final Storefront main image and confirms that the garment has not changed before approving the product.
 
@@ -98,7 +107,7 @@ Allowed:
 - Small exposure and white-balance adjustments
 - Format conversion and resizing
 
-Not allowed:
+Not allowed for originals and pixel-preserving derivatives:
 
 - Generative redraw
 - Generative wrinkle removal
@@ -106,6 +115,8 @@ Not allowed:
 - Hiding real defects
 - Changing color, texture, logo, shape, or proportions
 - Automatically publishing an unreviewed derivative
+
+The optional `AI_DISPLAY_MAIN` operation may arrange sleeves, hoods, legs and hems and reduce large accidental bunching, but its prompt must preserve all factual garment details and defects. It remains unselected after generation. Employees must compare logos, prints, pockets, fasteners, drawstrings, texture, wear and defects with the original before choosing it as the Storefront main image.
 
 ## API foundation
 

@@ -831,7 +831,31 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     }
   }
 
+  async function generateAiDisplayMain() {
+    const sourceId = comparison?.cutoutWhite?.imageId;
+    if (!sourceId) {
+      setError("请先生成白底图。");
+      return;
+    }
+    setImageBusy("ai-display");
+    setError("");
+    try {
+      await runImageOperation(
+        productId,
+        sourceId,
+        "GENERATE_AI_DISPLAY_MAIN_IMAGE",
+        props.ids.adminUserId
+      );
+      await loadComparison();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "AI 陈列图生成失败。");
+    } finally {
+      setImageBusy("");
+    }
+  }
+
   async function selectMain(imageId: string) {
+    if (imageId === comparison?.aiDisplayMain?.imageId && !window.confirm("这是生成式 AI 陈列图。你是否已经对照原图确认所有商品细节和瑕疵完全一致？")) return;
     setImageBusy(`select-${imageId}`);
     setError("");
     try {
@@ -899,6 +923,10 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
                   <WandSparklesIcon data-icon="inline-start" />
                   {imageBusy === "rembg_birefnet" ? "处理中" : "强制 BiRefNet"}
                 </Button>
+                <Button size="sm" variant="outline" disabled={Boolean(imageBusy) || !comparison?.cutoutWhite?.imageId} onClick={() => void generateAiDisplayMain()}>
+                  <WandSparklesIcon data-icon="inline-start" />
+                  {imageBusy === "ai-display" ? "生成中" : "生成 AI 陈列图"}
+                </Button>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -907,6 +935,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               <ImageVariantTile label="白底图" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
               <ImageVariantTile label="优化主图" asset={comparison?.optimizedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
               <ImageVariantTile label="优化主图 2（均整版）" asset={comparison?.optimizedBalancedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="AI 陈列图（生成式，需核对）" asset={comparison?.aiDisplayMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
               <ImageVariantTile label="背面原图" asset={comparison?.backOriginal ?? null} busy={Boolean(imageBusy)} />
               <ImageVariantTile label="背面透明抠图" asset={comparison?.backCutoutTransparent ?? null} transparent busy={Boolean(imageBusy)} />
               <ImageVariantTile label="背面白底" asset={comparison?.backCutoutWhite ?? null} busy={Boolean(imageBusy)} />

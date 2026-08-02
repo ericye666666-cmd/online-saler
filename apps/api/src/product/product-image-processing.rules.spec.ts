@@ -23,6 +23,9 @@ describe("Product image processing rules", () => {
 
     assert.equal(sourceVariantForOperation("OPTIMIZE_BALANCED_MAIN_IMAGE"), "CUTOUT_TRANSPARENT");
     assert.equal(targetVariantForOperation("OPTIMIZE_BALANCED_MAIN_IMAGE"), "OPTIMIZED_BALANCED_MAIN");
+
+    assert.equal(sourceVariantForOperation("GENERATE_AI_DISPLAY_MAIN_IMAGE"), "CUTOUT_WHITE");
+    assert.equal(targetVariantForOperation("GENERATE_AI_DISPLAY_MAIN_IMAGE"), "AI_DISPLAY_MAIN");
   });
 
   it("allows only customer-displayable variants to be selected as main", () => {
@@ -30,6 +33,7 @@ describe("Product image processing rules", () => {
     assert.equal(isSelectableMainVariant("CUTOUT_WHITE"), true);
     assert.equal(isSelectableMainVariant("OPTIMIZED_MAIN"), true);
     assert.equal(isSelectableMainVariant("OPTIMIZED_BALANCED_MAIN"), true);
+    assert.equal(isSelectableMainVariant("AI_DISPLAY_MAIN"), true);
     assert.equal(isSelectableMainVariant("CUTOUT_TRANSPARENT"), false);
   });
 

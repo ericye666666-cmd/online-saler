@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { LightweightBackgroundRemovalProvider } from "./lightweight-background-removal.provider";
 import { LightweightGarmentBalanceProvider } from "./lightweight-garment-balance.provider";
+import { OpenAIProductDisplayImageProvider } from "./openai-product-display-image.provider";
 import { ProductApplicationService } from "./product-application.service";
 import { ProductBarcodeController } from "./product-barcode.controller";
 import { ProductBarcodeService } from "./product-barcode.service";
@@ -48,6 +49,7 @@ import { ProductStateMachine } from "./product-state-machine";
     ProductImageJobRunnerService,
     LightweightBackgroundRemovalProvider,
     LightweightGarmentBalanceProvider,
+    OpenAIProductDisplayImageProvider,
     RembgBirefnetBackgroundRemovalProvider,
     RemoveBgProvider,
     SelectedBackgroundRemovalProvider,
