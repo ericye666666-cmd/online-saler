@@ -14,6 +14,11 @@ import { ProductImageType, ProductStatus, prisma } from "@online-saler/database"
 import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
 import { ProductApplicationService } from "./product-application.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
+import { ProductImageTransformerService } from "./product-image-transformer.service";
+import {
+  parseProductImageUploadRotation,
+  type ProductImageUploadRotation
+} from "./product-image-upload-orientation";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
 
 interface CreateProductBody {
@@ -34,6 +39,7 @@ export class ProductSetupController {
   constructor(
     private readonly products: ProductApplicationService,
     private readonly imageStorage: ProductImageStorageService,
+    private readonly imageTransformer: ProductImageTransformerService,
     private readonly details: ProductDetailGenerationService
   ) {}
 
@@ -55,6 +61,7 @@ export class ProductSetupController {
     @Param("id") id: string,
     @Headers("content-type") contentType: string | undefined,
     @Headers("x-image-type") imageType: ProductImageType | undefined,
+    @Headers("x-image-rotation") imageRotation: string | undefined,
     @Headers("x-employee-id") employeeId: string | undefined,
     @Headers(ADMIN_USER_HEADER) adminUserId: string | undefined,
     @Req() request: AsyncIterable<Buffer>
@@ -78,10 +85,19 @@ export class ProductSetupController {
     }
     const body = Buffer.concat(chunks);
     this.imageStorage.validate(contentType, body.length);
+    let rotation: ProductImageUploadRotation;
+    try {
+      rotation = parseProductImageUploadRotation(imageRotation);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : "Invalid image rotation");
+    }
+    const orientedBody = rotation === 0
+      ? body
+      : await this.imageTransformer.orientUploadedImage(body, contentType!, rotation);
 
     const imageId = randomUUID();
     const objectName = this.imageStorage.objectName(id, imageId, contentType!);
-    await this.imageStorage.upload(objectName, contentType!, body);
+    await this.imageStorage.upload(objectName, contentType!, orientedBody);
 
     const image = await prisma.productImage.create({
       data: {

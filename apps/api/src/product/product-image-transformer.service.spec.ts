@@ -3,8 +3,26 @@ import { describe, it } from "node:test";
 import sharp from "sharp";
 
 import { ProductImageTransformerService } from "./product-image-transformer.service";
+import { parseProductImageUploadRotation } from "./product-image-upload-orientation";
 
 describe("ProductImageTransformerService", () => {
+  it("accepts only supported upload rotations", () => {
+    assert.equal(parseProductImageUploadRotation(undefined), 0);
+    assert.equal(parseProductImageUploadRotation("180"), 180);
+    assert.throws(() => parseProductImageUploadRotation("45"), /0, 90, 180 or 270/);
+  });
+
+  it("applies the selected upload orientation to the stored image", async () => {
+    const input = await sharp({
+      create: { width: 80, height: 40, channels: 3, background: "#eeeeee" }
+    }).jpeg().toBuffer();
+    const body = await new ProductImageTransformerService().orientUploadedImage(input, "image/jpeg", 90);
+    const metadata = await sharp(body).metadata();
+
+    assert.equal(metadata.width, 40);
+    assert.equal(metadata.height, 80);
+  });
+
   it("composes transparent pixels onto white without changing dimensions", async () => {
     const input = await sharp({
       create: { width: 80, height: 60, channels: 4, background: { r: 20, g: 30, b: 40, alpha: 0.5 } }
