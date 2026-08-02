@@ -5,7 +5,7 @@ import unittest
 import cv2
 import numpy as np
 
-from app.balance import balance_garment
+from app.balance import _arm_row_shifts, balance_garment
 
 
 class BalanceGarmentTest(unittest.TestCase):
@@ -29,6 +29,18 @@ class BalanceGarmentTest(unittest.TestCase):
         self.assertIn("HOOD_CENTERING", result.transformations)
         self.assertTrue(np.all(output[0, 0] >= 248))
         self.assertGreater(np.count_nonzero(np.any(output < 235, axis=2)), 100_000)
+
+    def test_sleeve_alignment_can_raise_or_lower_a_cuff(self) -> None:
+        arm = np.zeros((500, 400), dtype=bool)
+        for y in range(100, 401):
+            x = 80 + (y - 100) // 5
+            arm[y, x : x + 35] = True
+
+        _horizontal, raised = _arm_row_shifts(arm, 100, 180, 300, 400, 340, -1)
+        _horizontal, lowered = _arm_row_shifts(arm, 100, 180, 300, 400, 440, -1)
+
+        self.assertLess(raised[400], -45)
+        self.assertGreater(lowered[400], 30)
 
 
 if __name__ == "__main__":

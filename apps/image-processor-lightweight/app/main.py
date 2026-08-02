@@ -71,7 +71,7 @@ async def balanced_main_image(
         media_type="image/jpeg",
         headers={
             "X-Processor": "lightweight-opencv",
-            "X-Processor-Version": "opencv-balance-v2",
+            "X-Processor-Version": "opencv-balance-v3",
             "X-Balance-Transforms": ",".join(result.transformations),
             "X-Source-Filename": x_filename or "unknown",
         },

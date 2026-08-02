@@ -24,7 +24,7 @@ describe("LightweightGarmentBalanceProvider", () => {
         headers: {
           "Content-Type": "image/jpeg",
           "X-Processor": "lightweight-opencv",
-          "X-Processor-Version": "opencv-balance-v2"
+          "X-Processor-Version": "opencv-balance-v3"
         }
       });
     }) as typeof fetch;
@@ -38,7 +38,7 @@ describe("LightweightGarmentBalanceProvider", () => {
     assert.equal(requestedUrl, "https://lightweight.example/balance-garment");
     assert.equal(requestedType, "image/png");
     assert.equal(result.provider, "lightweight-opencv");
-    assert.equal(result.processorVersion, "opencv-balance-v2");
+    assert.equal(result.processorVersion, "opencv-balance-v3");
     assert.equal(result.widthPx, 1200);
     assert.equal(result.heightPx, 1200);
   });
