@@ -23,6 +23,7 @@ import {
   type ProductImageComparisonResponse,
   type ProductImageVariantRecord
 } from "@online-saler/shared-types";
+import { recommendPlatformSize } from "@online-saler/business-rules";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -281,6 +282,8 @@ export function ProductBatchCalibrationPage({
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
   const [manualMeasurementEditorOpen, setManualMeasurementEditorOpen] = useState(false);
   const [manualMeasurementLines, setManualMeasurementLines] = useState<ManualMeasurementLine[]>([]);
+  const [formProductId, setFormProductId] = useState("");
+  const [platformSizeManuallyEdited, setPlatformSizeManuallyEdited] = useState(false);
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
@@ -320,16 +323,20 @@ export function ProductBatchCalibrationPage({
     setNotice("");
     const baseForm = formForProduct(product, latestExtraction);
     const saved = localStorage.getItem(`operations.product.calibration.draft.${product.id}`);
+    let nextForm = baseForm;
+    let savedSizeLabel = "";
     if (saved) {
       try {
-        setForm({ ...baseForm, ...(JSON.parse(saved) as Partial<WorkspaceForm>) });
+        const savedForm = JSON.parse(saved) as Partial<WorkspaceForm>;
+        nextForm = { ...baseForm, ...savedForm };
+        savedSizeLabel = typeof savedForm.sizeLabel === "string" ? savedForm.sizeLabel : "";
       } catch {
         localStorage.removeItem(`operations.product.calibration.draft.${product.id}`);
-        setForm(baseForm);
       }
-    } else {
-      setForm(baseForm);
     }
+    setForm(nextForm);
+    setFormProductId(product.id);
+    setPlatformSizeManuallyEdited(Boolean(stringValue(product.finalSizeLabel) || savedSizeLabel));
     const persistedLines = manualLinesFromProduct(product, measurementFields(baseForm));
     const savedLines = localStorage.getItem(`operations.product.calibration.measurement-lines.${product.id}`);
     setManualMeasurementLines(savedLines ? parseManualMeasurementLines(savedLines, persistedLines) : persistedLines);
@@ -379,6 +386,30 @@ export function ProductBatchCalibrationPage({
   });
   const completedCount = batch?.products.filter((item) => isCalibrationComplete(item.status)).length ?? 0;
   const readOnly = Boolean(product && isCalibrationComplete(product.status));
+  const platformSizeRecommendation = useMemo(() => recommendPlatformSize({
+    category: form.category,
+    subcategory: form.subcategory,
+    audience: form.audience,
+    kidsAgeRange: form.kidsAgeRange,
+    fitType: form.fitType,
+    measurements: {
+      chestWidthCm: form.chestWidthCm,
+      waistCm: form.waistCm,
+      hipCm: form.hipCm
+    }
+  }), [
+    form.audience,
+    form.category,
+    form.chestWidthCm,
+    form.fitType,
+    form.hipCm,
+    form.kidsAgeRange,
+    form.subcategory,
+    form.waistCm
+  ]);
+  const platformSizeBasis = platformSizeRecommendation
+    ? platformSizeRecommendation.measurementsUsed.map(platformSizeMeasurementText).join("、")
+    : "";
   const measurementAction = manualMeasurementAction(
     product?.status ?? "",
     Boolean(comparison?.original?.publicUrl)
@@ -405,6 +436,19 @@ export function ProductBatchCalibrationPage({
     ? activeSubcategories(taxonomy, form.category, form.subcategory)
     : subcategoriesFor(form.category, form.subcategory);
 
+  useEffect(() => {
+    if (
+      !product ||
+      formProductId !== product.id ||
+      readOnly ||
+      platformSizeManuallyEdited ||
+      !platformSizeRecommendation
+    ) return;
+    setForm((current) => current.sizeLabel === platformSizeRecommendation.size
+      ? current
+      : { ...current, sizeLabel: platformSizeRecommendation.size });
+  }, [formProductId, platformSizeManuallyEdited, platformSizeRecommendation, product, readOnly]);
+
   function updateForm(key: Exclude<keyof WorkspaceForm, "tags">, value: string) {
     setForm((current) => {
       const next = { ...current, [key]: value };
@@ -426,6 +470,12 @@ export function ProductBatchCalibrationPage({
         : current.tags.filter((value) => value !== tag)
     }));
     setNotice("");
+  }
+
+  function useMeasuredPlatformSize() {
+    if (!platformSizeRecommendation) return;
+    setPlatformSizeManuallyEdited(false);
+    updateForm("sizeLabel", platformSizeRecommendation.size);
   }
 
   function saveDraft() {
@@ -878,7 +928,40 @@ export function ProductBatchCalibrationPage({
             <FormSelect fieldKey="color" label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
             {form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
             <FormInput fieldKey="tagSize" label="标签尺码" value={form.tagSize} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("tagSize", value)} />
-            <FormSelect fieldKey="sizeLabel" label="平台推荐尺码" value={form.sizeLabel} values={sizeOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("sizeLabel", value)} />
+            <div className="min-w-0">
+              <FormSelect
+                fieldKey="sizeLabel"
+                label="平台推荐尺码"
+                value={form.sizeLabel}
+                values={sizeOptions}
+                labels={taxonomyLabels}
+                required
+                disabled={readOnly}
+                suggestion={aiSuggestion(aiOutput, "sizeLabel")}
+                onChange={(value) => {
+                  setPlatformSizeManuallyEdited(true);
+                  updateForm("sizeLabel", value);
+                }}
+              />
+              {platformSizeRecommendation ? (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
+                  <span className="text-emerald-700">
+                    测量推荐：{platformSizeRecommendation.size}（{platformSizeBasis}）
+                  </span>
+                  {!platformSizeManuallyEdited && form.sizeLabel === platformSizeRecommendation.size ? (
+                    <span className="text-muted-foreground">已自动填入，可人工修改</span>
+                  ) : !readOnly && form.sizeLabel !== platformSizeRecommendation.size ? (
+                    <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useMeasuredPlatformSize}>
+                      采用测量推荐
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs font-normal text-muted-foreground">
+                  {platformSizePendingText(form)}
+                </p>
+              )}
+            </div>
             <FormInput fieldKey="ukSizeLabel" label="英码" value={form.ukSizeLabel} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "ukSizeLabel")} hint="例如 UK 12、UK W32 或 UK M。" onChange={(value) => updateForm("ukSizeLabel", value)} />
           </div>
 
@@ -1016,6 +1099,30 @@ function ProcessingSummary({ job, warning }: { job: ImageProcessingJobRecord; wa
       {job.qualityIssues.length ? <div className="mt-2 flex flex-wrap gap-1">{job.qualityIssues.map((issue) => <Badge key={issue} variant="secondary">{imageIssueLabel(issue)}</Badge>)}</div> : null}
     </div>
   );
+}
+
+function platformSizeMeasurementText(measurement: { type: string; value: number | string }): string {
+  const label = ({
+    CHEST_WIDTH: "胸宽",
+    WAIST: "腰宽",
+    HIP: "臀宽",
+    KIDS_AGE_RANGE: "儿童年龄段"
+  } as Record<string, string>)[measurement.type] ?? measurement.type;
+  return measurement.type === "KIDS_AGE_RANGE"
+    ? `${label} ${enumLabel(String(measurement.value))}`
+    : `${label} ${measurement.value} cm`;
+}
+
+function platformSizePendingText(form: WorkspaceForm): string {
+  if (form.audience === "KIDS" || form.category === "KIDS") return "确认儿童年龄段后自动推荐。";
+  if (form.category === "PANTS" || form.category === "SHORT" || form.subcategory === "KIDS_PANTS") {
+    return "确认腰宽或臀宽后自动推荐。";
+  }
+  if (form.category === "DRESSES") return "确认胸宽、腰宽或臀宽后自动推荐。";
+  if (["TSHIRTS", "SHIRTS", "LADY_TOPS", "JACKETS", "TWO_PIECE"].includes(form.category)) {
+    return "确认胸宽后自动推荐。";
+  }
+  return "该品类暂不自动推荐，请人工选择。";
 }
 
 function FormInput(props: {
