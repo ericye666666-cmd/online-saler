@@ -43,6 +43,8 @@ def balance_garment(image_bytes: bytes) -> BalanceResult:
     hooded = _looks_hooded(mask, bounds)
     shoulder_y = _shoulder_y(mask, bounds, hooded)
     torso_left, torso_right = _torso_bounds(mask, bounds, shoulder_y)
+    torso_bottom = _torso_bottom(mask, bounds, torso_left, torso_right)
+    target_cuff_y = int(round(torso_bottom + subject_height * 0.02))
 
     left_arm = np.zeros_like(mask)
     right_arm = np.zeros_like(mask)
@@ -50,8 +52,12 @@ def balance_garment(image_bytes: bytes) -> BalanceResult:
     right_arm[shoulder_y : bottom + 1, torso_right + 1 : right + 1] = mask[
         shoulder_y : bottom + 1, torso_right + 1 : right + 1
     ]
-    left_shift, left_vertical = _arm_row_shifts(left_arm, shoulder_y, torso_left, subject_width, subject_height, bottom, -1)
-    right_shift, right_vertical = _arm_row_shifts(right_arm, shoulder_y, torso_right, subject_width, subject_height, bottom, 1)
+    left_shift, left_vertical = _arm_row_shifts(
+        left_arm, shoulder_y, torso_left, subject_width, subject_height, target_cuff_y, -1
+    )
+    right_shift, right_vertical = _arm_row_shifts(
+        right_arm, shoulder_y, torso_right, subject_width, subject_height, target_cuff_y, 1
+    )
     hood_shift = _hood_row_shifts(mask, top, shoulder_y, center_x, subject_width) if hooded else np.zeros(image.shape[0], dtype=np.float32)
     balanced = _continuous_pose_warp(
         image,
@@ -173,13 +179,33 @@ def _torso_bounds(mask: np.ndarray, bounds: tuple[int, int, int, int], shoulder_
     return left + torso_left, left + torso_right
 
 
+def _torso_bottom(
+    mask: np.ndarray,
+    bounds: tuple[int, int, int, int],
+    torso_left: int,
+    torso_right: int,
+) -> int:
+    _left, _top, _right, bottom = bounds
+    torso_width = torso_right - torso_left + 1
+    sample_left = torso_left + int(round(torso_width * 0.2))
+    sample_right = torso_right - int(round(torso_width * 0.2))
+    lowest_rows: list[int] = []
+    for x in range(sample_left, sample_right + 1):
+        ys = np.where(mask[:, x])[0]
+        if ys.size:
+            lowest_rows.append(int(ys.max()))
+    if not lowest_rows:
+        return bottom
+    return int(round(float(np.median(lowest_rows))))
+
+
 def _arm_row_shifts(
     arm_mask: np.ndarray,
     shoulder_y: int,
     joint_x: int,
     subject_width: int,
     subject_height: int,
-    subject_bottom: int,
+    target_cuff_y: int,
     direction: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     shifts = np.zeros(arm_mask.shape[0], dtype=np.float32)
@@ -195,17 +221,20 @@ def _arm_row_shifts(
     valid = np.where(np.isfinite(centroids))[0]
     interpolated = np.interp(np.arange(arm_mask.shape[0]), valid, centroids[valid])
     cuff_y = int(rows.max())
-    target_cuff_y = int(round(subject_bottom - subject_height * 0.07))
-    cuff_drop = float(np.clip(target_cuff_y - cuff_y, 0, subject_height * 0.06))
+    cuff_shift = float(np.clip(target_cuff_y - cuff_y, -subject_height * 0.12, subject_height * 0.12))
     for y in rows:
         progress = max(0.0, min(1.0, (y - shoulder_y) / max(1, cuff_y - shoulder_y)))
         target = joint_x + direction * subject_width * (0.025 + 0.055 * progress)
         shifts[y] = (target - interpolated[y]) * _smoothstep(progress)
-        vertical[y] = cuff_drop * _smoothstep(progress)
+        vertical[y] = cuff_shift * _smoothstep(progress)
+    if cuff_shift > 0:
+        extension_end = min(arm_mask.shape[0] - 1, cuff_y + int(np.ceil(cuff_shift)) + 2)
+        shifts[cuff_y : extension_end + 1] = shifts[cuff_y]
+        vertical[cuff_y : extension_end + 1] = cuff_shift
     kernel = max(3, int(rows.size * 0.06) | 1)
     return (
         cv2.GaussianBlur(shifts.reshape(-1, 1), (1, kernel), 0).reshape(-1),
-        cv2.GaussianBlur(vertical.reshape(-1, 1), (1, kernel), 0).reshape(-1),
+        vertical,
     )
 
 
