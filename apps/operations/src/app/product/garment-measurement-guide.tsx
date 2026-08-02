@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { MousePointer2Icon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import {
   deriveMeasurementGuideLines,
   imageDataForegroundMask,
   type MeasurementGuideLine
 } from "./garment-measurement-geometry";
+import type { ManualMeasurementLine } from "./manual-measurement-lines";
 
 type GuideMeasurement = {
   key: string;
@@ -21,8 +25,11 @@ export function GarmentMeasurementGuide(props: {
   subcategory: string;
   imageUrl: string;
   measurements: GuideMeasurement[];
+  manualLines?: ManualMeasurementLine[];
+  onManualCalibrate?: () => void;
 }) {
   const [detectedLines, setDetectedLines] = useState<MeasurementGuideLine[] | null>(null);
+  const [imageFrame, setImageFrame] = useState({ left: 0, top: 0, width: 100, height: 100 });
   const fallbackLines = useMemo(
     () => deriveMeasurementGuideLines({
       mask: new Uint8Array(GUIDE_CANVAS_SIZE * GUIDE_CANVAS_SIZE),
@@ -37,6 +44,7 @@ export function GarmentMeasurementGuide(props: {
   useEffect(() => {
     let active = true;
     setDetectedLines(null);
+    setImageFrame({ left: 0, top: 0, width: 100, height: 100 });
     if (!props.imageUrl) return () => { active = false; };
 
     const image = new Image();
@@ -52,7 +60,9 @@ export function GarmentMeasurementGuide(props: {
         const scale = Math.min(GUIDE_CANVAS_SIZE / image.naturalWidth, GUIDE_CANVAS_SIZE / image.naturalHeight);
         const width = image.naturalWidth * scale;
         const height = image.naturalHeight * scale;
-        context.drawImage(image, (GUIDE_CANVAS_SIZE - width) / 2, (GUIDE_CANVAS_SIZE - height) / 2, width, height);
+        const left = (GUIDE_CANVAS_SIZE - width) / 2;
+        const top = (GUIDE_CANVAS_SIZE - height) / 2;
+        context.drawImage(image, left, top, width, height);
         const pixels = context.getImageData(0, 0, GUIDE_CANVAS_SIZE, GUIDE_CANVAS_SIZE);
         const lines = deriveMeasurementGuideLines({
           mask: imageDataForegroundMask(pixels.data),
@@ -61,7 +71,15 @@ export function GarmentMeasurementGuide(props: {
           category: props.category,
           subcategory: props.subcategory
         });
-        if (active) setDetectedLines(lines);
+        if (active) {
+          setImageFrame({
+            left: left / GUIDE_CANVAS_SIZE * 100,
+            top: top / GUIDE_CANVAS_SIZE * 100,
+            width: width / GUIDE_CANVAS_SIZE * 100,
+            height: height / GUIDE_CANVAS_SIZE * 100
+          });
+          setDetectedLines(lines);
+        }
       } catch {
         if (active) setDetectedLines(null);
       }
@@ -72,17 +90,25 @@ export function GarmentMeasurementGuide(props: {
   }, [props.category, props.imageUrl, props.subcategory]);
 
   const visibleKeys = new Set(props.measurements.map((measurement) => measurement.key));
-  const lines = (detectedLines ?? fallbackLines).filter((line) => visibleKeys.has(line.key));
+  const manualLines = new Map((props.manualLines ?? []).map((line) => [line.key, line]));
+  const displayManualLines = new Map((props.manualLines ?? []).map((line) => [line.key, fitLineToImageFrame(line, imageFrame)]));
+  const lines = (detectedLines ?? fallbackLines)
+    .filter((line) => visibleKeys.has(line.key))
+    .map((line) => displayManualLines.get(line.key) ?? line);
   const values = new Map(props.measurements.map((measurement) => [measurement.key, measurement]));
 
   return (
     <div className="rounded-md border bg-muted/20 p-3">
-      <div className="mb-2 flex items-start justify-between gap-3">
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h4 className="text-sm font-semibold">尺寸位置示意</h4>
-          <p className="text-xs text-muted-foreground">虚线根据当前服装轮廓定位。连帽上衣从帽子下方的肩缝开始测量，请对照原图和刻度确认 AI 数值。</p>
+          <p className="text-xs text-muted-foreground">虚线根据当前服装轮廓定位。位置不准时，可在测量板原图上手动连接起点和终点。</p>
         </div>
-        <span className="shrink-0 text-[11px] font-medium text-blue-700">虚线 = 测量线</span>
+        {props.onManualCalibrate ? (
+          <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={props.onManualCalibrate}>
+            <MousePointer2Icon data-icon="inline-start" />手动连线校准
+          </Button>
+        ) : <span className="shrink-0 text-[11px] font-medium text-blue-700">虚线 = 测量线</span>}
       </div>
       <div className="relative mx-auto aspect-square w-full max-w-[320px] overflow-hidden rounded border bg-white">
         {props.imageUrl ? <img src={props.imageUrl} alt="尺寸位置参考商品图" className="absolute inset-0 size-full object-contain opacity-65" /> : null}
@@ -90,11 +116,12 @@ export function GarmentMeasurementGuide(props: {
           {lines.map((line) => {
             const measurement = values.get(line.key);
             const value = measurement?.value || measurement?.aiValue || "?";
+            const manual = manualLines.has(line.key);
             return (
               <g key={line.key}>
-                <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke="#1d4ed8" strokeWidth="0.9" strokeDasharray="2 1.5" />
-                <circle cx={line.x1} cy={line.y1} r="1.1" fill="#ffffff" stroke="#1d4ed8" strokeWidth="0.7" />
-                <circle cx={line.x2} cy={line.y2} r="1.1" fill="#ffffff" stroke="#1d4ed8" strokeWidth="0.7" />
+                <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={manual ? "#15803d" : "#1d4ed8"} strokeWidth="0.9" strokeDasharray="2 1.5" />
+                <circle cx={line.x1} cy={line.y1} r="1.1" fill="#ffffff" stroke={manual ? "#15803d" : "#1d4ed8"} strokeWidth="0.7" />
+                <circle cx={line.x2} cy={line.y2} r="1.1" fill="#ffffff" stroke={manual ? "#15803d" : "#1d4ed8"} strokeWidth="0.7" />
                 <text x={line.labelX} y={line.labelY} textAnchor="middle" fontSize="3.2" fontWeight="700" fill="#1e3a8a" paintOrder="stroke" stroke="#ffffff" strokeWidth="1.4">
                   {measurement?.label ?? line.key} {value} cm
                 </text>
@@ -106,11 +133,28 @@ export function GarmentMeasurementGuide(props: {
       <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
         {props.measurements.map((measurement) => (
           <div key={measurement.key} className="flex justify-between gap-2 border-b py-1">
-            <span className="text-muted-foreground">{measurement.label}</span>
+            <span className="text-muted-foreground">{measurement.label}{manualLines.has(measurement.key) ? <span className="ml-1 text-green-700">人工连线</span> : null}</span>
             <span className="font-medium tabular-nums">{measurement.value || measurement.aiValue || "待确认"}{measurement.value || measurement.aiValue ? " cm" : ""}</span>
           </div>
         ))}
       </div>
     </div>
   );
+}
+
+function fitLineToImageFrame(
+  line: ManualMeasurementLine,
+  frame: { left: number; top: number; width: number; height: number }
+): ManualMeasurementLine {
+  const x = (value: number) => frame.left + value / 100 * frame.width;
+  const y = (value: number) => frame.top + value / 100 * frame.height;
+  return {
+    ...line,
+    x1: x(line.x1),
+    y1: y(line.y1),
+    x2: x(line.x2),
+    y2: y(line.y2),
+    labelX: x(line.labelX),
+    labelY: y(line.labelY)
+  };
 }

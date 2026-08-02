@@ -467,6 +467,11 @@ model ProductMeasurement {
   aiConfidence         Decimal?           @db.Decimal(4, 3)
   finalValueCm         Decimal?           @db.Decimal(6, 2)
   finalSource          MeasurementSource?
+  manualLineImageId    String?
+  manualLineStartX     Decimal?           @db.Decimal(5, 4)
+  manualLineStartY     Decimal?           @db.Decimal(5, 4)
+  manualLineEndX       Decimal?           @db.Decimal(5, 4)
+  manualLineEndY       Decimal?           @db.Decimal(5, 4)
   reviewedByEmployeeId String?
   reviewedAt           DateTime?
   product              Product            @relation(fields: [productId], references: [id], onDelete: Cascade)

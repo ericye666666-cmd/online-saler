@@ -61,6 +61,8 @@ import {
 import { GarmentMeasurementGuide } from "./garment-measurement-guide";
 import { cutoutQualityWarning } from "./image-processing-quality";
 import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
+import { ManualMeasurementEditor } from "./manual-measurement-editor";
+import { calibrationLinePayload, type ManualMeasurementLine } from "./manual-measurement-lines";
 import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
@@ -107,6 +109,11 @@ type ProductRecord = JsonRecord & {
     aiValueCm?: unknown;
     aiConfidence?: unknown;
     finalValueCm?: unknown;
+    manualLineImageId?: unknown;
+    manualLineStartX?: unknown;
+    manualLineStartY?: unknown;
+    manualLineEndX?: unknown;
+    manualLineEndY?: unknown;
   }>;
   defects?: Array<{ description?: string }>;
   aiExtractions?: JsonRecord[];
@@ -272,6 +279,8 @@ export function ProductBatchCalibrationPage({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
+  const [manualMeasurementEditorOpen, setManualMeasurementEditorOpen] = useState(false);
+  const [manualMeasurementLines, setManualMeasurementLines] = useState<ManualMeasurementLine[]>([]);
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
@@ -296,6 +305,7 @@ export function ProductBatchCalibrationPage({
   const latestExtraction = product?.aiExtractions?.[0] ?? null;
   const aiOutput = normalizedAiOutput(latestExtraction);
   const draftKey = product ? `operations.product.calibration.draft.${product.id}` : "";
+  const measurementDraftKey = product ? `operations.product.calibration.measurement-lines.${product.id}` : "";
 
   useEffect(() => {
     if (!product) return;
@@ -308,17 +318,21 @@ export function ProductBatchCalibrationPage({
     setComparison(null);
     setError("");
     setNotice("");
+    const baseForm = formForProduct(product, latestExtraction);
     const saved = localStorage.getItem(`operations.product.calibration.draft.${product.id}`);
     if (saved) {
       try {
-        setForm({ ...formForProduct(product, latestExtraction), ...(JSON.parse(saved) as Partial<WorkspaceForm>) });
+        setForm({ ...baseForm, ...(JSON.parse(saved) as Partial<WorkspaceForm>) });
       } catch {
         localStorage.removeItem(`operations.product.calibration.draft.${product.id}`);
-        setForm(formForProduct(product, latestExtraction));
+        setForm(baseForm);
       }
     } else {
-      setForm(formForProduct(product, latestExtraction));
+      setForm(baseForm);
     }
+    const persistedLines = manualLinesFromProduct(product, measurementFields(baseForm));
+    const savedLines = localStorage.getItem(`operations.product.calibration.measurement-lines.${product.id}`);
+    setManualMeasurementLines(savedLines ? parseManualMeasurementLines(savedLines, persistedLines) : persistedLines);
     void loadComparison(product.id, ids.adminUserId)
       .then((value) => {
         setComparison(value);
@@ -405,7 +419,20 @@ export function ProductBatchCalibrationPage({
   function saveDraft() {
     if (!draftKey) return;
     localStorage.setItem(draftKey, JSON.stringify(form));
+    if (measurementDraftKey) localStorage.setItem(measurementDraftKey, JSON.stringify(manualMeasurementLines));
     setNotice("草稿已保存在本机，可稍后继续。");
+  }
+
+  function applyManualMeasurementLines(lines: ManualMeasurementLine[]) {
+    setManualMeasurementLines(lines);
+    setForm((current) => {
+      const next = { ...current };
+      for (const line of lines) {
+        if (line.key in next) next[line.key as keyof WorkspaceForm] = line.valueCm as never;
+      }
+      return next;
+    });
+    setNotice("人工连线已应用，请检查厘米值后保存校准。");
   }
 
   async function saveAndNext() {
@@ -430,14 +457,23 @@ export function ProductBatchCalibrationPage({
     setError("");
     setNotice("");
     try {
+      const calibrationBody = buildCalibrationBody({ employeeId: ids.employeeId, extractionId, form });
+      const measurementKeys = new Map(visibleMeasurementFields.map((field) => [field.type, field.key]));
+      const measurements = calibrationBody.measurements.map((measurement) => {
+        const key = measurementKeys.get(measurement.type);
+        const line = manualMeasurementLines.find((item) => item.key === key);
+        return line ? { ...measurement, manualLine: calibrationLinePayload(line) } : measurement;
+      });
       await request(`/products/${product.id}/calibrate`, {
         method: "POST",
         body: JSON.stringify({
-          ...buildCalibrationBody({ employeeId: ids.employeeId, extractionId, form }),
+          ...calibrationBody,
+          measurements,
           adminUserId: ids.adminUserId
         })
       });
       if (draftKey) localStorage.removeItem(draftKey);
+      if (measurementDraftKey) localStorage.removeItem(measurementDraftKey);
       const updated = await loadBatch(batchId, ids.adminUserId);
       setBatch(updated);
       const next = updated.products.findIndex((item, index) => index > currentIndex && isCalibratable(item));
@@ -608,6 +644,7 @@ export function ProductBatchCalibrationPage({
         body: JSON.stringify({ ...ids, reason: reason.trim() })
       });
       if (draftKey) localStorage.removeItem(draftKey);
+      if (measurementDraftKey) localStorage.removeItem(measurementDraftKey);
       router.push(`/product/batches/${encodeURIComponent(batchId)}/upload?productId=${encodeURIComponent(product.id)}`);
     } catch (caught) {
       setError(errorMessage(caught, "无法标记重拍。"));
@@ -737,6 +774,8 @@ export function ProductBatchCalibrationPage({
               category={form.category}
               subcategory={form.subcategory}
               imageUrl={measurementGuideImage(imageTabs)}
+              manualLines={manualMeasurementLines}
+              onManualCalibrate={!readOnly && comparison?.original?.publicUrl ? () => setManualMeasurementEditorOpen(true) : undefined}
               measurements={measurementSuggestions.map((item) => ({
                 key: item.key,
                 label: item.label,
@@ -830,6 +869,20 @@ export function ProductBatchCalibrationPage({
         onOpenChange={setManualEditorOpen}
         onGuidedCutout={saveGuidedCorrection}
         onSave={saveManualCorrection}
+      />
+      <ManualMeasurementEditor
+        open={manualMeasurementEditorOpen}
+        imageUrl={comparison?.original?.publicUrl ? `${API_PROXY_URL}${comparison.original.publicUrl}` : ""}
+        imageId={comparison?.original?.imageId ?? ""}
+        measurements={measurementSuggestions.map((item) => ({
+          key: item.key,
+          label: item.label,
+          value: form[item.key],
+          aiValue: item.aiValue
+        }))}
+        initialLines={manualMeasurementLines}
+        onOpenChange={setManualMeasurementEditorOpen}
+        onApply={applyManualMeasurementLines}
       />
     </div>
   );
@@ -1090,6 +1143,52 @@ function measurementGuideImage(tabs: ImageTab[]) {
     tabs.find((tab) => tab.key === "optimized" && tab.url)?.url ??
     tabs.find((tab) => tab.key === "white" && tab.url)?.url ??
     tabs.find((tab) => tab.key === "original" && tab.url)?.url ?? "";
+}
+
+function manualLinesFromProduct(
+  product: ProductRecord,
+  fields: Array<{ key: keyof WorkspaceForm; type: string }>
+): ManualMeasurementLine[] {
+  const keys = new Map(fields.map((field) => [field.type, String(field.key)]));
+  return (product.measurements ?? []).flatMap((measurement) => {
+    const key = keys.get(String(measurement.measurementType ?? ""));
+    const imageId = String(measurement.manualLineImageId ?? "");
+    const x1 = Number(measurement.manualLineStartX);
+    const y1 = Number(measurement.manualLineStartY);
+    const x2 = Number(measurement.manualLineEndX);
+    const y2 = Number(measurement.manualLineEndY);
+    const valueCm = Number(measurement.finalValueCm);
+    if (!key || !imageId || ![x1, y1, x2, y2, valueCm].every(Number.isFinite)) return [];
+    return [{
+      key,
+      imageId,
+      valueCm: String(Math.round(valueCm * 10) / 10),
+      x1: x1 * 100,
+      y1: y1 * 100,
+      x2: x2 * 100,
+      y2: y2 * 100,
+      labelX: (x1 + x2) * 50,
+      labelY: Math.max(0, (y1 + y2) * 50 - 3)
+    }];
+  });
+}
+
+function parseManualMeasurementLines(value: string, fallback: ManualMeasurementLine[]) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return fallback;
+    const valid = parsed.filter((item): item is ManualMeasurementLine => {
+      if (!item || typeof item !== "object") return false;
+      const line = item as Partial<ManualMeasurementLine>;
+      return typeof line.key === "string" && typeof line.imageId === "string" && typeof line.valueCm === "string" &&
+        [line.x1, line.y1, line.x2, line.y2, line.labelX, line.labelY].every((coordinate) =>
+          typeof coordinate === "number" && Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 100
+        );
+    });
+    return valid.length ? valid : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function focusValidationIssue(
