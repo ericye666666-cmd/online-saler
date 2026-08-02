@@ -455,6 +455,7 @@ export class ProductImageProcessingService {
       cutoutWhite: frontWhite,
       optimizedMain: mapAsset("OPTIMIZED_MAIN", frontWhite?.imageId ?? null),
       optimizedBalancedMain: mapAsset("OPTIMIZED_BALANCED_MAIN", frontTransparent?.imageId ?? null),
+      aiDisplayMain: mapAsset("AI_DISPLAY_MAIN", frontWhite?.imageId ?? null),
       backOriginal: backOriginal ? this.toOriginalRecord(backOriginal, selection?.selectedImageId ?? null) : null,
       backCutoutTransparent: backTransparent,
       backCutoutWhite: mapAsset("CUTOUT_WHITE", backTransparent?.imageId ?? null),

@@ -4,6 +4,7 @@ enum ProductImageVariant {
   CUTOUT_WHITE
   OPTIMIZED_MAIN
   OPTIMIZED_BALANCED_MAIN
+  AI_DISPLAY_MAIN
 }
 
 enum ImageProcessingOperation {
@@ -11,6 +12,7 @@ enum ImageProcessingOperation {
   COMPOSE_WHITE_BACKGROUND
   OPTIMIZE_MAIN_IMAGE
   OPTIMIZE_BALANCED_MAIN_IMAGE
+  GENERATE_AI_DISPLAY_MAIN_IMAGE
 }
 
 enum ImageProcessingStatus {

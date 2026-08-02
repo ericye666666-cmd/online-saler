@@ -702,7 +702,8 @@ function productImageVariantLabel(variant: string) {
     CUTOUT_TRANSPARENT: "透明抠图",
     CUTOUT_WHITE: "白底图",
     OPTIMIZED_MAIN: "优化主图",
-    OPTIMIZED_BALANCED_MAIN: "均整版"
+    OPTIMIZED_BALANCED_MAIN: "均整版",
+    AI_DISPLAY_MAIN: "AI 陈列图"
   };
   return labels[variant] ?? variant;
 }

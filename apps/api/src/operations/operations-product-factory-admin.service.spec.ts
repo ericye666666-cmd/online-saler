@@ -6,6 +6,7 @@ test("reports the same-origin Operations API channel without requiring OPERATION
   const checks = productFactoryConfigurationChecks({
     OPENAI_API_KEY: "configured",
     OPENAI_VISION_MODEL: "gpt-5-mini",
+    OPENAI_IMAGE_EDIT_MODEL: "gpt-image-2",
     PRODUCT_IMAGE_BUCKET: "product-images",
     BACKGROUND_REMOVAL_PROVIDER: "auto",
     LIGHTWEIGHT_CUTOUT_SERVICE_URL: "https://lightweight.example",

@@ -232,6 +232,9 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
             <div className={cn("flex aspect-[4/5] max-h-[70vh] min-h-80 items-center justify-center overflow-hidden rounded-md border bg-muted/20", currentImage?.transparent && "bg-[linear-gradient(45deg,#eee_25%,transparent_25%),linear-gradient(-45deg,#eee_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#eee_75%),linear-gradient(-45deg,transparent_75%,#eee_75%)] bg-[length:20px_20px] bg-[position:0_0,0_10px,10px_-10px,-10px_0]") }>
               <SafeProductImage src={currentImage?.url ?? ""} alt={`${product.productCode} ${currentImage?.label ?? "图片"}`} />
             </div>
+            {currentImage?.key === "ai-display" ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">AI 陈列图是生成式候选图。审核时必须与原图核对 Logo、口袋、纽扣、拉链、抽绳、纹理、磨损和瑕疵。</div>
+            ) : null}
           </div>
 
           <div className="flex min-w-0 flex-col gap-4">
@@ -358,7 +361,8 @@ function buildImageTabs(product: ProductRecord, comparison: ProductImageComparis
     variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, true),
     variantTab("white", "白底图", comparison?.cutoutWhite ?? null),
     variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null),
-    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null)
+    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null),
+    variantTab("ai-display", "AI 陈列图（生成式）", comparison?.aiDisplayMain ?? null)
   ].filter((tab) => tab.url);
   for (const [type, label] of [["BACK", "背面"], ["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
     const image = product.images?.find((candidate) => candidate.type === type);

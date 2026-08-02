@@ -150,6 +150,7 @@ export function productFactoryConfigurationChecks(env: NodeJS.ProcessEnv = proce
   return [
     check("OPENAI_API_KEY", "OpenAI API Key", Boolean(env.OPENAI_API_KEY?.trim()), true, "在 GitHub Environment staging 配置 OPENAI_API_KEY_STAGING。"),
     check("OPENAI_VISION_MODEL", "OpenAI 视觉模型", Boolean(env.OPENAI_VISION_MODEL?.trim()), false, "部署工作流应设置 OPENAI_VISION_MODEL。", env.OPENAI_VISION_MODEL),
+    check("OPENAI_IMAGE_EDIT_MODEL", "OpenAI 陈列图模型", Boolean(env.OPENAI_IMAGE_EDIT_MODEL?.trim()), false, "部署工作流应设置 OPENAI_IMAGE_EDIT_MODEL。", env.OPENAI_IMAGE_EDIT_MODEL),
     check("PRODUCT_IMAGE_BUCKET", "商品原图 Storage Bucket", Boolean(env.PRODUCT_IMAGE_BUCKET?.trim()), false, "部署工作流应设置 PRODUCT_IMAGE_BUCKET。", env.PRODUCT_IMAGE_BUCKET),
     check("BACKGROUND_REMOVAL_PROVIDER", "抠图自动路由", env.BACKGROUND_REMOVAL_PROVIDER === "auto", false, "将 BACKGROUND_REMOVAL_PROVIDER 设为 auto。", env.BACKGROUND_REMOVAL_PROVIDER),
     check("LIGHTWEIGHT_CUTOUT_SERVICE_URL", "lightweight OpenCV 服务", Boolean(env.LIGHTWEIGHT_CUTOUT_SERVICE_URL?.trim()), false, "重新运行 Deploy API to Staging。"),

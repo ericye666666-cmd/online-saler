@@ -336,7 +336,15 @@ export function ProductBatchCalibrationPage({
     void loadComparison(product.id, ids.adminUserId)
       .then((value) => {
         setComparison(value);
-        setActiveImage(value.optimizedBalancedMain ? "balanced" : value.optimizedMain ? "optimized" : "original");
+        setActiveImage(
+          value.aiDisplayMain?.selectedAsMain
+            ? "ai-display"
+            : value.optimizedBalancedMain
+              ? "balanced"
+              : value.optimizedMain
+                ? "optimized"
+                : "original"
+        );
       })
       .catch((caught) => setError(errorMessage(caught, "无法读取图片版本。")));
   }, [ids.adminUserId, latestExtraction, product]);
@@ -448,7 +456,7 @@ export function ProductBatchCalibrationPage({
       return;
     }
     if (!comparison?.selectedMainImageId) {
-      setError("请选择原图、白底图、优化主图或优化主图 2 作为商城主图。");
+      setError("请选择原图、白底图、优化主图、均整版或 AI 陈列图作为商城主图。");
       imagePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
@@ -551,6 +559,33 @@ export function ProductBatchCalibrationPage({
     }
   }
 
+  async function generateAiDisplayMain() {
+    if (!product) return;
+    const sourceId = comparison?.cutoutWhite?.imageId;
+    if (!sourceId) {
+      setError("请先生成并确认白底图。");
+      return;
+    }
+    setBusy("ai-display");
+    setError("");
+    setNotice("");
+    try {
+      await runImageOperation(
+        product.id,
+        sourceId,
+        "GENERATE_AI_DISPLAY_MAIN_IMAGE",
+        ids.adminUserId
+      );
+      setComparison(await loadComparison(product.id, ids.adminUserId));
+      setActiveImage("ai-display");
+      setNotice("AI 陈列图已生成。它是生成式候选图，不会自动成为主图；请逐项对照原图后再手动选择。");
+    } catch (caught) {
+      setError(errorMessage(caught, "无法生成 AI 陈列图。"));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function saveManualCorrection(image: Blob) {
     if (!product || !comparison?.original?.imageId) return;
     setBusy("manual-cutout");
@@ -647,6 +682,7 @@ export function ProductBatchCalibrationPage({
 
   async function chooseMain(image: ImageTab) {
     if (!product || !image.selectable || !image.imageId) return;
+    if (image.key === "ai-display" && !window.confirm("这是生成式 AI 陈列图。你是否已经对照原图确认所有商品细节和瑕疵完全一致？")) return;
     setBusy(`main-${image.imageId}`);
     setError("");
     try {
@@ -717,12 +753,16 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">原图永久保留；优化主图 2 使用原抠图像素轻微拉直袖子、居中帽子、调平下摆并统一白底，不生成或重画服装细节。</p>
+              <p className="text-xs text-muted-foreground">原图永久保留；均整版只调整原像素。AI 陈列图会生成规整展示候选，必须对照原图确认，系统不会自动选为主图。</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("rembg_birefnet")}><WandSparklesIcon data-icon="inline-start" />强制 BiRefNet</Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutTransparent?.imageId} onClick={() => void rerunBalancedMain()}><RefreshCwIcon data-icon="inline-start" />重做均整版</Button>
+              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutWhite?.imageId} onClick={() => void generateAiDisplayMain()}>
+                {busy === "ai-display" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <WandSparklesIcon data-icon="inline-start" />}
+                生成 AI 陈列图
+              </Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.publicUrl} onClick={() => setManualEditorOpen(true)}><ScissorsIcon data-icon="inline-start" />手动抠图</Button>
             </div>
           </div>
@@ -750,6 +790,13 @@ export function ProductBatchCalibrationPage({
               </TabsContent>
             ))}
           </Tabs>
+
+          {currentImage?.key === "ai-display" ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <p className="font-semibold">生成式候选图，必须人工核对</p>
+              <p className="mt-1 text-xs">请与原图逐项核对 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵。任何细节改变都不要设为商城主图。</p>
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             {currentImage?.selectable ? <Button size="sm" disabled={Boolean(busy) || currentImage.selected} onClick={() => void chooseMain(currentImage)}>{currentImage.selected ? "已是商城主图" : "设为商城主图"}</Button> : null}
@@ -1039,6 +1086,7 @@ function buildImageTabs(
     variantTab("white", "白底图", comparison?.cutoutWhite ?? null, derivedImagesUsable),
     variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null, derivedImagesUsable),
     variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null, derivedImagesUsable),
+    variantTab("ai-display", "AI 陈列图", comparison?.aiDisplayMain ?? null, derivedImagesUsable),
     variantTab("back-original", "背面原图", comparison?.backOriginal ?? null, false),
     variantTab("back-transparent", "背面透明抠图", comparison?.backCutoutTransparent ?? null, false, true),
     variantTab("back-white", "背面白底", comparison?.backCutoutWhite ?? null, false)
@@ -1237,13 +1285,14 @@ function providerLabel(provider: string | null) {
   if (!provider) return "-";
   if (provider === "manual-guided-grabcut") return "员工轮廓引导抠图";
   if (provider === "manual-cutout-editor") return "员工手工修边";
+  if (provider === "openai-image-edit") return "OpenAI 图片编辑";
   if (provider.includes("rembg") || provider.includes("birefnet")) return "rembg + BiRefNet";
   if (provider.includes("lightweight") || provider.includes("opencv")) return "lightweight OpenCV";
   return provider;
 }
 
 function operationLabel(value: string) {
-  return ({ REMOVE_BACKGROUND: "去除背景", COMPOSE_WHITE_BACKGROUND: "生成白底图", OPTIMIZE_MAIN_IMAGE: "优化主图", OPTIMIZE_BALANCED_MAIN_IMAGE: "优化主图 2（均整版）" } as Record<string, string>)[value] ?? value;
+  return ({ REMOVE_BACKGROUND: "去除背景", COMPOSE_WHITE_BACKGROUND: "生成白底图", OPTIMIZE_MAIN_IMAGE: "优化主图", OPTIMIZE_BALANCED_MAIN_IMAGE: "优化主图 2（均整版）", GENERATE_AI_DISPLAY_MAIN_IMAGE: "生成 AI 陈列图" } as Record<string, string>)[value] ?? value;
 }
 
 function statusLabel(value: string) {
