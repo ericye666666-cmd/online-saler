@@ -61,6 +61,7 @@ import {
 import { GarmentMeasurementGuide } from "./garment-measurement-guide";
 import { cutoutQualityWarning } from "./image-processing-quality";
 import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
+import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
@@ -251,7 +252,13 @@ async function runGuidedCutout(
   );
 }
 
-export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
+export function ProductBatchCalibrationPage({
+  batchId,
+  initialProductId
+}: {
+  batchId: string;
+  initialProductId?: string;
+}) {
   const ids = useOperationIds();
   const router = useRouter();
   const imagePanelRef = useRef<HTMLDivElement>(null);
@@ -270,13 +277,8 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     if (!ids.adminUserId) return;
     const loaded = await loadBatch(batchId, ids.adminUserId);
     setBatch(loaded);
-    setCurrentIndex((index) => {
-      if (!loaded.products.length) return 0;
-      if (index > 0 && index < loaded.products.length) return index;
-      const pending = loaded.products.findIndex(isCalibratable);
-      return pending === -1 ? 0 : pending;
-    });
-  }, [batchId, ids.adminUserId]);
+    setCurrentIndex(resolveCalibrationProductIndex(loaded.products, initialProductId ?? "", isCalibratable));
+  }, [batchId, ids.adminUserId, initialProductId]);
 
   useEffect(() => {
     void load().catch((caught) => setError(errorMessage(caught, "无法读取批次。")));
@@ -294,6 +296,12 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   const latestExtraction = product?.aiExtractions?.[0] ?? null;
   const aiOutput = normalizedAiOutput(latestExtraction);
   const draftKey = product ? `operations.product.calibration.draft.${product.id}` : "";
+
+  useEffect(() => {
+    if (!product) return;
+    const query = new URLSearchParams({ batchId, productId: product.id });
+    router.replace(`/product/calibration?${query.toString()}`, { scroll: false });
+  }, [batchId, product?.id, router]);
 
   useEffect(() => {
     if (!product || !ids.adminUserId) return;

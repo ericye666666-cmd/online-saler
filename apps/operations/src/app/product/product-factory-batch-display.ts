@@ -40,6 +40,22 @@ export function batchNextActionHref(batchId: string, nextAction: string): string
   return routes[nextAction] ?? `/product/batches/${encodedBatchId}`;
 }
 
+export function batchProductCalibrationHref(batchId: string, productId: string): string {
+  const query = new URLSearchParams({ batchId, productId });
+  return `/product/calibration?${query.toString()}`;
+}
+
+export function resolveCalibrationProductIndex<T extends { id: string }>(
+  products: T[],
+  requestedProductId: string,
+  isCalibratable: (product: T) => boolean
+): number {
+  const requestedIndex = products.findIndex((product) => product.id === requestedProductId);
+  if (requestedIndex >= 0) return requestedIndex;
+  const pendingIndex = products.findIndex(isCalibratable);
+  return pendingIndex >= 0 ? pendingIndex : 0;
+}
+
 export function batchFollowingStageLabel(stage: string): string {
   const index = PRODUCT_FACTORY_STAGE_ORDER.indexOf(stage as (typeof PRODUCT_FACTORY_STAGE_ORDER)[number]);
   if (index < 0) return stage === "COMPLETE" ? "已完成" : "处理异常";

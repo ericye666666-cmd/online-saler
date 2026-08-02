@@ -34,7 +34,8 @@ import {
   PRODUCT_FACTORY_STAGE_LABELS,
   PRODUCT_FACTORY_STAGE_ORDER,
   batchFollowingStageLabel,
-  batchNextActionHref
+  batchNextActionHref,
+  batchProductCalibrationHref
 } from "./product-factory-batch-display";
 import {
   PRODUCTION_PRODUCT_BATCH_SIZE,
@@ -492,7 +493,12 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           {batch.products.map((product) => (
-            <BatchProductItem key={product.id} product={product} onPreview={() => setPreviewProduct(product)} />
+            <BatchProductItem
+              key={product.id}
+              batchId={batch.id}
+              product={product}
+              onPreview={() => setPreviewProduct(product)}
+            />
           ))}
         </CardContent>
       </Card>
@@ -534,20 +540,29 @@ function BatchStageStepper({ batch }: { batch: ProductBatch }) {
   );
 }
 
-function BatchProductItem({ product, onPreview }: { product: ProductRecord; onPreview: () => void }) {
+function BatchProductItem({
+  batchId,
+  product,
+  onPreview
+}: {
+  batchId: string;
+  product: ProductRecord;
+  onPreview: () => void;
+}) {
   const missing: string[] = [];
   if (!product.images?.length) missing.push("缺正面图");
   if (["PHOTOGRAPHED", "AI_PROCESSING"].includes(product.status) && product.aiExtractions?.[0]?.status === "FAILED") missing.push("AI 失败");
   if (product.status === "REWORK_REQUIRED") missing.push("需返工");
   const preview = product.imagePreviews?.[0] ?? null;
   return (
-    <button
-      type="button"
-      className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-3 rounded-md border p-2 text-left transition-colors hover:border-foreground/30 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={`查看第 ${product.batchItemNumber ?? "-"} 件商品图片`}
-      onClick={onPreview}
-    >
-      <div className="flex h-[4.5rem] w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-white">
+    <div className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-3 rounded-md border p-2 transition-colors hover:border-foreground/30 hover:bg-muted/40">
+      <button
+        type="button"
+        className="flex h-[4.5rem] w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`查看第 ${product.batchItemNumber ?? "-"} 件商品图片`}
+        title="查看原图和处理后的图片"
+        onClick={onPreview}
+      >
         {preview ? (
           <img
             src={productImagePreviewUrl(preview.publicUrl)}
@@ -558,18 +573,25 @@ function BatchProductItem({ product, onPreview }: { product: ProductRecord; onPr
         ) : (
           <ImageIcon className="size-5 text-muted-foreground" aria-hidden="true" />
         )}
-      </div>
-      <div className="min-w-0 py-0.5">
+      </button>
+      <Link
+        href={batchProductCalibrationHref(batchId, product.id)}
+        className="min-w-0 rounded-sm py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`校准第 ${product.batchItemNumber ?? "-"} 件商品`}
+      >
         <div className="flex min-w-0 items-center justify-between gap-2">
           <span className="shrink-0 text-sm font-semibold tabular-nums">第 {product.batchItemNumber ?? "-"} 件</span>
-          <Badge variant="secondary" className="max-w-24 truncate">{productStatusLabel(product.status)}</Badge>
+          <span className="flex min-w-0 items-center gap-1">
+            <Badge variant="secondary" className="max-w-24 truncate">{productStatusLabel(product.status)}</Badge>
+            <ArrowRightIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </span>
         </div>
         <div className="mt-1 truncate text-xs text-muted-foreground">{product.productCode}</div>
         <div className="mt-2 min-h-5 text-xs">
           {missing.length ? <span className="text-destructive">{missing.join(" · ")}</span> : <span className="text-emerald-700">资料正常</span>}
         </div>
-      </div>
-    </button>
+      </Link>
+    </div>
   );
 }
 
@@ -659,8 +681,8 @@ function BatchProductPreviewDialog({
             </Button>
           ) : null}
           <Button asChild>
-            <Link href={`/product/calibration?batchId=${encodeURIComponent(batchId)}`}>
-              进入本批校准<ArrowRightIcon data-icon="inline-end" />
+            <Link href={product ? batchProductCalibrationHref(batchId, product.id) : `/product/calibration?batchId=${encodeURIComponent(batchId)}`}>
+              进入本件校准<ArrowRightIcon data-icon="inline-end" />
             </Link>
           </Button>
         </DialogFooter>
