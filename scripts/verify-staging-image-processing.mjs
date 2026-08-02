@@ -8,6 +8,38 @@ import { inflateSync } from "node:zlib";
 const EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const JPEG_SIGNATURE = Buffer.from([255, 216, 255]);
+const DEFAULT_STOREFRONT_MINIMUM_QUALITY_SCORE = 0.75;
+const DEFAULT_STOREFRONT_BLOCKING_ISSUES = ["SUBJECT_TOUCHES_EDGE", "EDGE_FRAGMENTED"];
+
+export function evaluateStorefrontCutoutQuality(input, environment = process.env) {
+  const configuredMinimum = Number.parseFloat(
+    environment.BACKGROUND_REMOVAL_MIN_QUALITY_SCORE ?? String(DEFAULT_STOREFRONT_MINIMUM_QUALITY_SCORE)
+  );
+  const minimumScore = Number.isFinite(configuredMinimum)
+    ? Math.max(0, Math.min(1, configuredMinimum))
+    : DEFAULT_STOREFRONT_MINIMUM_QUALITY_SCORE;
+
+  if (typeof input.qualityScore === "number" && input.qualityScore < minimumScore) {
+    return {
+      pass: false,
+      reason: `QUALITY_SCORE_BELOW_THRESHOLD:${input.qualityScore}<${minimumScore}`
+    };
+  }
+
+  const blockingIssues = new Set(
+    environment.BACKGROUND_REMOVAL_BLOCKING_QUALITY_ISSUES?.trim()
+      ? environment.BACKGROUND_REMOVAL_BLOCKING_QUALITY_ISSUES.split(",")
+        .map((issue) => issue.trim())
+        .filter(Boolean)
+      : DEFAULT_STOREFRONT_BLOCKING_ISSUES
+  );
+  const blockingIssue = (input.qualityIssues ?? []).find((issue) => blockingIssues.has(issue));
+  if (blockingIssue) {
+    return { pass: false, reason: `QUALITY_ISSUE:${blockingIssue}` };
+  }
+
+  return { pass: true, reason: null };
+}
 
 export function inspectJpeg(input) {
   const jpeg = Buffer.from(input);
@@ -243,13 +275,32 @@ async function verifyCutoutPath(input) {
     expectedVariant: "OPTIMIZED_BALANCED_MAIN",
     expectedProvider: "lightweight-opencv"
   });
-  const selected = await requestJson(`${input.serviceUrl}/products/${product.id}/main-image`, {
+  const storefrontQuality = evaluateStorefrontCutoutQuality(completed);
+  const selectionResponse = await fetch(`${input.serviceUrl}/products/${product.id}/main-image`, {
     method: "POST",
     headers: { ...input.adminHeaders, "Content-Type": "application/json" },
     body: JSON.stringify({ imageId: balanced.outputImageId })
   });
-  assert.equal(selected.selectedMainImageId, balanced.outputImageId);
-  assert.equal(selected.optimizedBalancedMain.selectedAsMain, true);
+  const selectionText = await selectionResponse.text();
+  const selection = selectionText ? JSON.parse(selectionText) : null;
+  if (storefrontQuality.pass) {
+    assert.equal(selectionResponse.status, 201, selectionText);
+    assert.equal(selection.selectedMainImageId, balanced.outputImageId);
+    assert.equal(selection.optimizedBalancedMain.selectedAsMain, true);
+  } else {
+    assert.equal(selectionResponse.status, 400, selectionText);
+    assert.match(
+      String(selection?.message ?? ""),
+      /Cutout quality is insufficient for storefront use/,
+      "low-quality cutouts must be rejected as storefront main images"
+    );
+    assert.match(String(selection.message), new RegExp(escapeRegExp(storefrontQuality.reason)));
+    const comparisonAfterRejection = await requestJson(
+      `${input.serviceUrl}/products/${product.id}/image-comparison`,
+      { headers: input.adminHeaders }
+    );
+    assert.equal(comparisonAfterRejection.selectedMainImageId, null);
+  }
   await assertOriginalUnchanged(input.serviceUrl, product.id, image.id, original);
 
   return {
@@ -263,8 +314,13 @@ async function verifyCutoutPath(input) {
     alpha,
     white,
     optimized,
-    balanced
+    balanced,
+    mainImageSelection: storefrontQuality.pass ? "selected" : "rejected-low-quality"
   };
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function runDerivedOperation(input) {
