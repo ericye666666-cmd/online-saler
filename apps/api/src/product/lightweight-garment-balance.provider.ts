@@ -45,7 +45,7 @@ export class LightweightGarmentBalanceProvider {
         body: Buffer.from(await response.arrayBuffer()),
         contentType: "image/jpeg",
         provider: response.headers.get("x-processor") ?? "lightweight-opencv",
-        processorVersion: response.headers.get("x-processor-version") ?? "opencv-balance-v3",
+        processorVersion: response.headers.get("x-processor-version") ?? "opencv-balance-v4",
         widthPx: 1200,
         heightPx: 1200
       };

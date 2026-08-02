@@ -7,12 +7,12 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from .balance import balance_garment
 from .cutout import remove_background, remove_background_guided
 
-app = FastAPI(title="Online Saler Lightweight Image Processor", version="2.0.0")
+app = FastAPI(title="Online Saler Lightweight Image Processor", version="2.1.0")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "processor": "lightweight-opencv", "version": "v2.0"}
+    return {"status": "ok", "processor": "lightweight-opencv", "version": "v2.1"}
 
 
 @app.post("/remove-background")
@@ -112,7 +112,7 @@ async def balanced_main_image(
         media_type="image/jpeg",
         headers={
             "X-Processor": "lightweight-opencv",
-            "X-Processor-Version": "opencv-balance-v3",
+            "X-Processor-Version": "opencv-balance-v4",
             "X-Balance-Transforms": ",".join(result.transformations),
             "X-Source-Filename": x_filename or "unknown",
         },
