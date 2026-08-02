@@ -84,7 +84,10 @@ export class ProductDetailGenerationController {
     @Headers(ADMIN_USER_HEADER) adminUserId?: string
   ) {
     await requireAdminPermission(adminUserId, "action.product.edit");
-    await this.details.ensureBatchGenerationJobs(batchId);
+    const setup = await this.details.ensureBatchGenerationJobs(batchId);
+    if (!setup.ready) {
+      throw new BadRequestException("Complete calibration for every product in the batch before generating details");
+    }
     return this.runner.runBatch(batchId);
   }
 

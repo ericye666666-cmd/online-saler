@@ -43,11 +43,32 @@ describe("ProductDetailGenerationService", () => {
     });
 
     assert.equal(summary.calibrated, 4);
+    assert.equal(summary.generationReady, true);
+    assert.equal(summary.awaitingCalibration, 0);
     assert.equal(summary.pending, 1);
     assert.equal(summary.succeeded, 1);
     assert.equal(summary.failed, 1);
     assert.equal(summary.approved, 1);
     assert.equal(summary.products[1]?.profileId, "profile-2");
+  });
+
+  it("does not report uncalibrated products as pending detail generation", () => {
+    const summary = summarizeDetailBatch({
+      id: "batch-partial",
+      batchCode: "BATCH-PARTIAL",
+      targetCount: 10,
+      createdAt: new Date("2026-08-02T00:00:00Z"),
+      products: Array.from({ length: 10 }, (_, index) => detailSummaryProduct(
+        index + 1,
+        null,
+        index === 0 ? ProductStatus.CALIBRATED : ProductStatus.CALIBRATION_PENDING
+      ))
+    });
+
+    assert.equal(summary.calibrated, 1);
+    assert.equal(summary.generationReady, false);
+    assert.equal(summary.awaitingCalibration, 9);
+    assert.equal(summary.pending, 0);
   });
 
   it("requires every item in the complete batch to be calibrated", () => {
@@ -274,17 +295,26 @@ describe("ProductDetailGenerationService", () => {
   });
 });
 
-function detailSummaryProduct(index: number, status: ProductDetailStatus) {
+function detailSummaryProduct(
+  index: number,
+  detailStatus: ProductDetailStatus | null,
+  productStatus: ProductStatus = ProductStatus.CALIBRATED
+) {
   return {
     id: `product-${index}`,
     productCode: `P-${index}`,
     batchItemNumber: index,
-    status: ProductStatus.CALIBRATED,
-    detailProfiles: [{
+    status: productStatus,
+    title: `Product ${index}`,
+    category: "TOPS",
+    finalSizeLabel: "M",
+    images: [{ id: `front-${index}`, publicUrl: null }],
+    detailProfiles: detailStatus ? [{
       id: `profile-${index}`,
-      status,
+      status: detailStatus,
       sourceDataVersion: 1,
-      updatedAt: new Date("2026-08-01T00:00:00Z")
-    }]
+      updatedAt: new Date("2026-08-01T00:00:00Z"),
+      assets: []
+    }] : []
   };
 }
