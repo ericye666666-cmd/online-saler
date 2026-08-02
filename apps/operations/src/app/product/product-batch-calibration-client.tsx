@@ -396,8 +396,13 @@ export function ProductBatchCalibrationPage({
     audience: form.audience,
     kidsAgeRange: form.kidsAgeRange,
     fitType: form.fitType,
+    sleeveType: form.sleeveType,
+    tags: form.tags,
     measurements: {
+      lengthCm: form.lengthCm,
       chestWidthCm: form.chestWidthCm,
+      shoulderWidthCm: form.shoulderWidthCm,
+      sleeveLengthCm: form.sleeveLengthCm,
       waistCm: form.waistCm,
       hipCm: form.hipCm
     }
@@ -408,7 +413,12 @@ export function ProductBatchCalibrationPage({
     form.fitType,
     form.hipCm,
     form.kidsAgeRange,
+    form.lengthCm,
+    form.shoulderWidthCm,
+    form.sleeveLengthCm,
+    form.sleeveType,
     form.subcategory,
+    form.tags,
     form.waistCm
   ]);
   const platformSizeBasis = platformSizeRecommendation
@@ -984,7 +994,7 @@ export function ProductBatchCalibrationPage({
               />
               {platformSizeRecommendation ? (
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
-                  <span className="text-emerald-700">
+                  <span className={platformSizeRecommendation.requiresHumanReview ? "text-amber-700" : "text-emerald-700"}>
                     测量推荐：{platformSizeRecommendation.size}（{platformSizeBasis}）
                   </span>
                   {!platformSizeManuallyEdited && form.sizeLabel === platformSizeRecommendation.size ? (
@@ -993,6 +1003,9 @@ export function ProductBatchCalibrationPage({
                     <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useMeasuredPlatformSize}>
                       采用测量推荐
                     </Button>
+                  ) : null}
+                  {platformSizeRecommendation.requiresHumanReview ? (
+                    <span className="text-amber-700">比例存在冲突，请员工重点核对测量线和适用人群。</span>
                   ) : null}
                 </div>
               ) : (
@@ -1075,9 +1088,9 @@ export function ProductBatchCalibrationPage({
             <FormInput fieldKey="priceKsh" label="价格（KSh）" value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
             <FormSelect fieldKey="pattern" label="图案" value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
             <FormSelect fieldKey="sleeveType" label="袖型" value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
-            <FormSelect fieldKey="fitType" label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fitType", value)} />
-            <FormSelect fieldKey="stretchLevel" label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("stretchLevel", value)} />
-            <FormSelect fieldKey="fabricWeight" label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fabricWeight", value)} />
+            <FormSelect fieldKey="fitType" label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fitType")} onChange={(value) => updateForm("fitType", value)} />
+            <FormSelect fieldKey="stretchLevel" label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "stretchLevel")} onChange={(value) => updateForm("stretchLevel", value)} />
+            <FormSelect fieldKey="fabricWeight" label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fabricWeight")} onChange={(value) => updateForm("fabricWeight", value)} />
             <FormSelect fieldKey="material" label="面料" value={form.material} values={materialOptions} labels={materialLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "material")} onChange={(value) => updateForm("material", value)} />
           </div>
 
@@ -1167,7 +1180,10 @@ function ProcessingSummary({ job, warning }: { job: ImageProcessingJobRecord; wa
 
 function platformSizeMeasurementText(measurement: { type: string; value: number | string }): string {
   const label = ({
+    LENGTH: "衣长",
     CHEST_WIDTH: "胸宽",
+    SHOULDER_WIDTH: "肩宽",
+    SLEEVE_LENGTH: "袖长",
     WAIST: "腰宽",
     HIP: "臀宽",
     KIDS_AGE_RANGE: "儿童年龄段"
@@ -1184,7 +1200,7 @@ function platformSizePendingText(form: WorkspaceForm): string {
   }
   if (form.category === "DRESSES") return "确认胸宽、腰宽或臀宽后自动推荐。";
   if (["TSHIRTS", "SHIRTS", "LADY_TOPS", "JACKETS", "TWO_PIECE"].includes(form.category)) {
-    return "确认胸宽后自动推荐。";
+    return "确认胸宽后自动推荐；衣长、有效肩宽和长袖袖长用于比例复核。";
   }
   return "该品类暂不自动推荐，请人工选择。";
 }

@@ -5,6 +5,9 @@ import {
   AI_KIDS_AGE_RANGES,
   AI_PATTERNS,
   AI_SLEEVE_TYPES,
+  PRODUCT_FABRIC_WEIGHTS,
+  PRODUCT_FIT_TYPES,
+  PRODUCT_STRETCH_LEVELS,
   type AIExtractionRequest
 } from "@online-saler/shared-types";
 import { ProductImageStorageService } from "../product/product-image-storage.service";
@@ -21,9 +24,15 @@ export const HOODED_GARMENT_MEASUREMENT_RULES = [
   "If a dropped shoulder, raglan sleeve or hidden seam makes the shoulder endpoints uncertain, return null instead of measuring across the hood or neckline."
 ] as const;
 export const PRODUCT_MATERIAL_TAG_RULES = [
-  "tags.value must be an array with at most 8 unique enum values. Include only visible construction, silhouette, use-case or styling facts.",
+  "tags.value must be an array with 2 to 8 unique enum values when at least two visible construction, silhouette, use-case or styling facts are clear. Return an empty array only when no tag is supported by the images.",
   "For material, prefer the care label. Without a readable label, use only an unmistakable visual material such as DENIM, LEATHER, FLEECE, KNIT, LACE or CORDUROY; otherwise use UNKNOWN.",
-  "Do not claim WATER_RESISTANT, INSULATED, REVERSIBLE or an exact fiber unless visible text or construction supports it."
+  "Estimate fitType, stretchLevel and fabricWeight conservatively from the visible construction. Use UNKNOWN when the photos do not support the value.",
+  "Do not claim WATER_RESISTANT, INSULATED, REVERSIBLE, THERMAL or an exact fiber unless visible text or construction supports it."
+] as const;
+export const PRODUCT_AUDIENCE_TITLE_RULES = [
+  "Use MEN or WOMEN only when a readable label explicitly identifies the range or the garment has unmistakably gender-specific tailoring. Never infer audience from color, pattern, apparent size or styling alone.",
+  "Neutral basics such as T-shirts, shirts, hoodies, sweatshirts, base layers, jackets and straight-cut trousers default to UNISEX when explicit evidence is absent.",
+  "Keep title gender-neutral. Never put Women's, Men's, Boys', Girls' or Unisex in title; the employee confirms audience separately."
 ] as const;
 
 @Injectable()
@@ -95,7 +104,7 @@ export class OpenAIVisionProvider implements AIProvider {
                 type: "input_text",
                 text: [
                   "Return one JSON object with these fields:",
-                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, material, tags, brandLabel, sizeLabel, ukSizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm.",
+                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, fitType, stretchLevel, fabricWeight, material, tags, brandLabel, sizeLabel, ukSizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm.",
                   `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
                   `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
                   `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
@@ -105,8 +114,12 @@ export class OpenAIVisionProvider implements AIProvider {
                   `kidsAgeRange enum: ${AI_KIDS_AGE_RANGES.join(", ")}`,
                   `pattern enum: ${AI_PATTERNS.join(", ")}`,
                   `sleeveType enum: ${AI_SLEEVE_TYPES.join(", ")}`,
+                  `fitType enum: ${PRODUCT_FIT_TYPES.join(", ")}`,
+                  `stretchLevel enum: ${PRODUCT_STRETCH_LEVELS.join(", ")}`,
+                  `fabricWeight enum: ${PRODUCT_FABRIC_WEIGHTS.join(", ")}`,
                   "Use kidsAgeRange=NOT_APPLICABLE unless audience=KIDS.",
                   "Each field must be an object: { value, confidence }.",
+                  ...PRODUCT_AUDIENCE_TITLE_RULES,
                   ...PRODUCT_MATERIAL_TAG_RULES,
                   "ukSizeLabel is the best UK size notation supported by the visible tag and measured garment fit, for example UK 12, UK W32, or UK M. Use null when the evidence is insufficient; do not convert from sizeLabel alone.",
                   "All centimeter values are flat-lay garment measurements, not body circumference.",

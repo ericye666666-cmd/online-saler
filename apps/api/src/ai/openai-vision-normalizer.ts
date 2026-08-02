@@ -5,7 +5,10 @@ import {
   AI_PATTERNS,
   AI_PRODUCT_CATEGORIES,
   AI_SLEEVE_TYPES,
+  PRODUCT_FABRIC_WEIGHTS,
+  PRODUCT_FIT_TYPES,
   PRODUCT_MATERIAL_OPTIONS,
+  PRODUCT_STRETCH_LEVELS,
   PRODUCT_SUBCATEGORY_OPTIONS,
   PRODUCT_TAG_OPTIONS,
   type AIAudience,
@@ -16,7 +19,10 @@ import {
   type AIPattern,
   type AIProductCategory,
   type AISleeveType,
+  type ProductFabricWeightValue,
+  type ProductFitTypeValue,
   type ProductMaterialOption,
+  type ProductStretchLevelValue,
   type ProductSubcategoryOption,
   type ProductTagOption
 } from "@online-saler/shared-types";
@@ -43,6 +49,9 @@ const AUDIENCE_SET = new Set<string>(AI_AUDIENCES);
 const KIDS_AGE_SET = new Set<string>(AI_KIDS_AGE_RANGES);
 const PATTERN_SET = new Set<string>(AI_PATTERNS);
 const SLEEVE_SET = new Set<string>(AI_SLEEVE_TYPES);
+const FIT_SET = new Set<string>(PRODUCT_FIT_TYPES);
+const STRETCH_SET = new Set<string>(PRODUCT_STRETCH_LEVELS);
+const FABRIC_WEIGHT_SET = new Set<string>(PRODUCT_FABRIC_WEIGHTS);
 const MATERIAL_SET = new Set<string>(PRODUCT_MATERIAL_OPTIONS);
 const TAG_SET = new Set<string>(PRODUCT_TAG_OPTIONS);
 
@@ -155,6 +164,9 @@ export function normalizeOpenAIVisionOutput(
     ),
     pattern: enumField<AIPattern>(record, ["pattern"], PATTERN_SET, "OTHER", evidenceImageIds),
     sleeveType: enumField<AISleeveType>(record, ["sleeveType", "sleeve"], SLEEVE_SET, "OTHER", evidenceImageIds),
+    fitType: enumField<ProductFitTypeValue>(record, ["fitType", "fit", "silhouette"], FIT_SET, "UNKNOWN", evidenceImageIds),
+    stretchLevel: enumField<ProductStretchLevelValue>(record, ["stretchLevel", "stretch"], STRETCH_SET, "UNKNOWN", evidenceImageIds),
+    fabricWeight: enumField<ProductFabricWeightValue>(record, ["fabricWeight", "fabric_weight", "weight"], FABRIC_WEIGHT_SET, "UNKNOWN", evidenceImageIds),
     material: enumField<ProductMaterialOption>(
       record,
       ["material", "fabric", "fabricMaterial", "fabric_material"],
@@ -166,7 +178,7 @@ export function normalizeOpenAIVisionOutput(
     brandLabel: stringField(record, ["brandLabel", "brand"], evidenceImageIds),
     sizeLabel: stringField(record, ["sizeLabel", "size"], evidenceImageIds),
     ukSizeLabel: stringField(record, ["ukSizeLabel", "ukSize", "uk_size"], evidenceImageIds),
-    title: stringField(record, ["title"], evidenceImageIds),
+    title: catalogTitleField(record, ["title"], evidenceImageIds),
     lengthCm: numberField(record, ["lengthCm", "length_cm", "bodyLengthCm"], evidenceImageIds),
     chestWidthCm: numberField(record, ["chestWidthCm", "chest_width_cm", "pitToPitCm"], evidenceImageIds),
     shoulderWidthCm: numberField(record, ["shoulderWidthCm", "shoulder_width_cm"], evidenceImageIds),
@@ -220,6 +232,15 @@ function stringField(record: RawExtraction, keys: string[], evidenceImageIds: st
   const field = firstField(record, keys);
   const value = typeof field.value === "string" ? field.value.trim() : "";
   return { value: value || null, confidence: confidence(field.confidence), evidenceImageIds };
+}
+
+function catalogTitleField(record: RawExtraction, keys: string[], evidenceImageIds: string[]): AIFieldValue<string> {
+  const field = stringField(record, keys, evidenceImageIds);
+  if (!field.value) return field;
+  const value = field.value
+    .replace(/^(?:women'?s|woman'?s|ladies'?|lady'?s|men'?s|man'?s|boy'?s?|girl'?s?|unisex)\s+/i, "")
+    .trim();
+  return { ...field, value: value || null };
 }
 
 function numberField(record: RawExtraction, keys: string[], evidenceImageIds: string[]): AIFieldValue<number> {

@@ -5,7 +5,7 @@ export const AI_JOB_STATUSES = [
   "FAILED"
 ] as const;
 
-export const PRODUCT_AI_PROMPT_VERSION = "product-material-tags-v4";
+export const PRODUCT_AI_PROMPT_VERSION = "product-fit-tags-v5";
 
 export type AIJobStatus = (typeof AI_JOB_STATUSES)[number];
 
@@ -284,7 +284,12 @@ export const PRODUCT_TAG_OPTIONS = [
   "FORMAL",
   "SPORTS",
   "OUTDOOR",
-  "MATERNITY"
+  "MATERNITY",
+  "DROP_SHOULDER",
+  "RAGLAN_SLEEVE",
+  "RIBBED",
+  "BASE_LAYER",
+  "THERMAL"
 ] as const;
 
 export type ProductTagOption = (typeof PRODUCT_TAG_OPTIONS)[number];
@@ -319,6 +324,9 @@ export const AI_EXTRACTED_FIELDS = [
   "kidsAgeRange",
   "pattern",
   "sleeveType",
+  "fitType",
+  "stretchLevel",
+  "fabricWeight",
   "material",
   "tags",
   "brandLabel",
@@ -352,6 +360,9 @@ export interface AIExtractionNormalizedOutput {
   kidsAgeRange: AIFieldValue<AIKidsAgeRange>;
   pattern: AIFieldValue<AIPattern>;
   sleeveType: AIFieldValue<AISleeveType>;
+  fitType: AIFieldValue<ProductFitTypeValue>;
+  stretchLevel: AIFieldValue<ProductStretchLevelValue>;
+  fabricWeight: AIFieldValue<ProductFabricWeightValue>;
   material: AIFieldValue<ProductMaterialOption>;
   tags: AIFieldValue<ProductTagOption[]>;
   brandLabel: AIFieldValue<string>;
@@ -408,6 +419,9 @@ export const requiresHumanConfirmation = (field: AIExtractedField, confidence: n
   const alwaysConfirm: AIExtractedField[] = [
     "brandLabel",
     "material",
+    "fitType",
+    "stretchLevel",
+    "fabricWeight",
     "tags",
     "sizeLabel",
     "ukSizeLabel",

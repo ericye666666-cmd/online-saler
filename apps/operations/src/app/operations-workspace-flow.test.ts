@@ -25,6 +25,9 @@ const job: JsonRecord = {
     ukSizeLabel: { value: "UK 12" },
     pattern: { value: "SOLID" },
     sleeveType: { value: "SHORT" },
+    fitType: { value: "RELAXED" },
+    stretchLevel: { value: "LOW" },
+    fabricWeight: { value: "LIGHT" },
     material: { value: "COTTON_BLEND" },
     tags: { value: ["CREW_NECK", "CASUAL"] }
   }
@@ -39,15 +42,19 @@ assert.equal(fromAi.brand, "Mock Brand");
 assert.equal(fromAi.tagSize, "M");
 assert.equal(fromAi.sizeLabel, "M");
 assert.equal(fromAi.ukSizeLabel, "UK 12");
+assert.equal(fromAi.fitType, "RELAXED");
+assert.equal(fromAi.stretchLevel, "LOW");
+assert.equal(fromAi.fabricWeight, "LIGHT");
 assert.equal(fromAi.material, "COTTON_BLEND");
 assert.deepEqual(fromAi.tags, ["CREW_NECK", "CASUAL"]);
 
 const fromPersistedProduct = formFromProductAndAi(
-  { ...product, pattern: "STRIPED", sleeveType: "LONG" },
+  { ...product, pattern: "STRIPED", sleeveType: "LONG", fitType: "SLIM" },
   job
 );
 assert.equal(fromPersistedProduct.pattern, "STRIPED");
 assert.equal(fromPersistedProduct.sleeveType, "LONG");
+assert.equal(fromPersistedProduct.fitType, "SLIM");
 
 const missingPhoto = workspaceReadiness({ product: { status: "DRAFT" }, image: null, job: null, form: fromAi });
 assert.equal(missingPhoto.needsPhoto, true);
@@ -120,9 +127,9 @@ assert.equal(body.gender, "WOMEN");
 assert.equal(body.priceKsh, 850);
 assert.equal(body.tagSize, "UK 12");
 assert.equal(body.ukSizeLabel, "UK 12");
-assert.equal(body.fitType, "UNKNOWN");
-assert.equal(body.stretchLevel, "UNKNOWN");
-assert.equal(body.fabricWeight, "UNKNOWN");
+assert.equal(body.fitType, "RELAXED");
+assert.equal(body.stretchLevel, "LOW");
+assert.equal(body.fabricWeight, "LIGHT");
 assert.equal(body.material, "COTTON_BLEND");
 assert.deepEqual(body.tags, ["CREW_NECK", "CASUAL"]);
 assert.equal(body.defects[0].description, "small stain on cuff");
