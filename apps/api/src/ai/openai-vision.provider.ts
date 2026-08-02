@@ -20,6 +20,11 @@ export const HOODED_GARMENT_MEASUREMENT_RULES = [
   "For hoodies and hooded jackets, the hood, collar and drawstrings are never part of shoulderWidthCm or lengthCm. Find the seam where the hood joins the body, place both shoulder endpoints below the hood, and start body length at the shoulder high point beside that neck seam.",
   "If a dropped shoulder, raglan sleeve or hidden seam makes the shoulder endpoints uncertain, return null instead of measuring across the hood or neckline."
 ] as const;
+export const PRODUCT_MATERIAL_TAG_RULES = [
+  "tags.value must be an array with at most 8 unique enum values. Include only visible construction, silhouette, use-case or styling facts.",
+  "For material, prefer the care label. Without a readable label, use only an unmistakable visual material such as DENIM, LEATHER, FLEECE, KNIT, LACE or CORDUROY; otherwise use UNKNOWN.",
+  "Do not claim WATER_RESISTANT, INSULATED, REVERSIBLE or an exact fiber unless visible text or construction supports it."
+] as const;
 
 @Injectable()
 export class OpenAIVisionProvider implements AIProvider {
@@ -40,7 +45,9 @@ export class OpenAIVisionProvider implements AIProvider {
     const runtimeTaxonomy = {
       categories: activeTaxonomyCodes(taxonomy, "CATEGORY"),
       subcategories: activeTaxonomyCodes(taxonomy, "SUBCATEGORY"),
-      colors: activeTaxonomyCodes(taxonomy, "COLOR")
+      colors: activeTaxonomyCodes(taxonomy, "COLOR"),
+      materials: activeTaxonomyCodes(taxonomy, "MATERIAL"),
+      tags: activeTaxonomyCodes(taxonomy, "TAG")
     };
     const images = await prisma.productImage.findMany({
       where: { id: { in: request.imageIds }, productId: request.productId },
@@ -79,7 +86,7 @@ export class OpenAIVisionProvider implements AIProvider {
           {
             role: "system",
             content:
-              "You identify and measure second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, choose OTHER for enum fields and null for text or measurement fields. Use the 120 cm by 160 cm measurement board, edge rulers, and perspective cues when visible. Never infer a centimeter measurement from the tag size alone. Confidence must be a number from 0 to 1."
+              "You identify and measure second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, use its documented UNKNOWN or OTHER fallback, return an empty array for tags, and null for text or measurement fields. Use the 120 cm by 160 cm measurement board, edge rulers, and perspective cues when visible. Never infer a centimeter measurement from the tag size alone. Confidence must be a number from 0 to 1."
           },
           {
             role: "user",
@@ -88,16 +95,19 @@ export class OpenAIVisionProvider implements AIProvider {
                 type: "input_text",
                 text: [
                   "Return one JSON object with these fields:",
-                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, brandLabel, sizeLabel, ukSizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm.",
+                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, material, tags, brandLabel, sizeLabel, ukSizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm.",
                   `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
                   `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
                   `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
+                  `material enum: ${runtimeTaxonomy.materials.join(", ")}`,
+                  `tags enum: ${runtimeTaxonomy.tags.join(", ")}`,
                   `audience enum: ${AI_AUDIENCES.join(", ")}`,
                   `kidsAgeRange enum: ${AI_KIDS_AGE_RANGES.join(", ")}`,
                   `pattern enum: ${AI_PATTERNS.join(", ")}`,
                   `sleeveType enum: ${AI_SLEEVE_TYPES.join(", ")}`,
                   "Use kidsAgeRange=NOT_APPLICABLE unless audience=KIDS.",
                   "Each field must be an object: { value, confidence }.",
+                  ...PRODUCT_MATERIAL_TAG_RULES,
                   "ukSizeLabel is the best UK size notation supported by the visible tag and measured garment fit, for example UK 12, UK W32, or UK M. Use null when the evidence is insufficient; do not convert from sizeLabel alone.",
                   "All centimeter values are flat-lay garment measurements, not body circumference.",
                   "lengthCm: shoulder high point at the neck/shoulder seam to hem for tops/dresses; top waistband to hem for bottoms.",

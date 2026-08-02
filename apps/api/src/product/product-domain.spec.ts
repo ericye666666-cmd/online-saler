@@ -258,6 +258,8 @@ class InMemoryProductRepository implements ProductRepository {
       fitType: null,
       stretchLevel: null,
       fabricWeight: null,
+      material: null,
+      tags: [],
       detailSourceVersion: 0,
       gender: null,
       kidsAgeRange: null,

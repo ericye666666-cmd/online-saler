@@ -147,7 +147,7 @@ function productWhere(query: ProductListQuery): Prisma.ProductWhereInput {
   }
   if (q) {
     filters.push({
-      OR: ["title", "brand", "category", "subcategory", "color"].map((field) => ({
+      OR: ["title", "brand", "category", "subcategory", "color", "material"].map((field) => ({
         [field]: {
           contains: q,
           mode: "insensitive"
@@ -255,6 +255,8 @@ function publicProduct(product: ProductWithPublicRelations) {
     audience: product.gender,
     kidsAgeRange: product.kidsAgeRange,
     brand: product.brand,
+    material: product.material,
+    tags: product.tags,
     size: product.finalSizeLabel ?? product.tagSize,
     conditionGrade: product.conditionGrade,
     fitType: product.fitType,

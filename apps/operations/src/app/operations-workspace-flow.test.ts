@@ -24,7 +24,9 @@ const job: JsonRecord = {
     sizeLabel: { value: "M" },
     ukSizeLabel: { value: "UK 12" },
     pattern: { value: "SOLID" },
-    sleeveType: { value: "SHORT" }
+    sleeveType: { value: "SHORT" },
+    material: { value: "COTTON_BLEND" },
+    tags: { value: ["CREW_NECK", "CASUAL"] }
   }
 };
 
@@ -37,6 +39,8 @@ assert.equal(fromAi.brand, "Mock Brand");
 assert.equal(fromAi.tagSize, "M");
 assert.equal(fromAi.sizeLabel, "M");
 assert.equal(fromAi.ukSizeLabel, "UK 12");
+assert.equal(fromAi.material, "COTTON_BLEND");
+assert.deepEqual(fromAi.tags, ["CREW_NECK", "CASUAL"]);
 
 const fromPersistedProduct = formFromProductAndAi(
   { ...product, pattern: "STRIPED", sleeveType: "LONG" },
@@ -121,6 +125,8 @@ assert.equal(body.description, "Black short sleeve dress.");
 assert.equal(body.fitType, "UNKNOWN");
 assert.equal(body.stretchLevel, "UNKNOWN");
 assert.equal(body.fabricWeight, "UNKNOWN");
+assert.equal(body.material, "COTTON_BLEND");
+assert.deepEqual(body.tags, ["CREW_NECK", "CASUAL"]);
 assert.equal(body.defects[0].description, "small stain on cuff");
 
 const pantsForm = {

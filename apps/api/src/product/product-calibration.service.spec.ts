@@ -81,6 +81,8 @@ describe("ProductCalibrationService", () => {
       fitType: ProductFitType.REGULAR,
       stretchLevel: ProductStretchLevel.LOW,
       fabricWeight: ProductFabricWeight.HEAVY,
+      material: "COTTON_BLEND",
+      tags: ["HOODED", "CASUAL"],
       sizeLabel: "M",
       ukSizeLabel: "UK M",
       conditionGrade: ConditionGrade.GOOD,
@@ -94,12 +96,16 @@ describe("ProductCalibrationService", () => {
     assert.equal(productUpdate?.fitType, "REGULAR");
     assert.equal(productUpdate?.stretchLevel, "LOW");
     assert.equal(productUpdate?.fabricWeight, "HEAVY");
+    assert.equal(productUpdate?.material, "COTTON_BLEND");
+    assert.deepEqual(productUpdate?.tags, ["HOODED", "CASUAL"]);
     assert.equal(productUpdate?.ukSizeLabel, "UK M");
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "STRIPED"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "LONG"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "REGULAR"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "LOW"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "HEAVY"));
+    assert.ok(decisionUpdates.some((update) => update.finalValueJson === "COTTON_BLEND"));
+    assert.ok(decisionUpdates.some((update) => JSON.stringify(update.finalValueJson) === JSON.stringify(["HOODED", "CASUAL"])));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "UK M"));
     assert.ok(decisionUpdates.every((update) => !("aiValueJson" in update)));
     assert.ok(measurementUpdates.every((update) => !("aiValueCm" in update) && !("aiConfidence" in update)));

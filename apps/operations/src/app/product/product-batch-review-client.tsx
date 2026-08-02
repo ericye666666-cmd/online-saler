@@ -42,6 +42,8 @@ type ProductRecord = JsonRecord & {
   color?: string | null;
   pattern?: string | null;
   sleeveType?: string | null;
+  material?: string | null;
+  tags?: string[];
   brand?: string | null;
   tagSize?: string | null;
   finalSizeLabel?: string | null;
@@ -244,6 +246,8 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
                 <Fact label="颜色" value={labelValue(product.color)} />
                 <Fact label="图案" value={labelValue(product.pattern)} />
                 <Fact label="袖型" value={labelValue(product.sleeveType)} />
+                <Fact label="面料" value={labelValue(product.material)} />
+                <Fact label="商品标签" value={(product.tags ?? []).map(labelValue).join("、")} wide />
                 <Fact label="标签尺码" value={product.tagSize} />
                 <Fact label="平台尺码" value={product.finalSizeLabel} />
                 <Fact label="成色" value={labelValue(product.conditionGrade)} />
@@ -260,6 +264,8 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
                 <Fact label="AI 分类" value={labelValue(aiValue(aiOutput, "category"))} />
                 <Fact label="AI 人群" value={labelValue(aiValue(aiOutput, "audience"))} />
                 <Fact label="AI 颜色" value={labelValue(aiValue(aiOutput, "primaryColor"))} />
+                <Fact label="AI 面料" value={labelValue(aiValue(aiOutput, "material"))} />
+                <Fact label="AI 标签" value={aiArrayValue(aiOutput, "tags").map(labelValue).join("、")} wide />
                 <Fact label="AI 尺码" value={aiValue(aiOutput, "sizeLabel")} />
                 {(product.measurements ?? []).map((measurement) => <Fact key={measurement.measurementType} label={measurementLabel(measurement.measurementType)} value={measurement.finalValueCm == null ? "" : `${measurement.finalValueCm} cm`} />)}
               </div>
@@ -369,6 +375,13 @@ function aiValue(output: JsonRecord | null, key: string) {
   const field = output?.[key];
   if (field && typeof field === "object" && !Array.isArray(field)) return stringValue((field as JsonRecord).value);
   return stringValue(field);
+}
+
+function aiArrayValue(output: JsonRecord | null, key: string) {
+  const field = output?.[key];
+  if (!field || typeof field !== "object" || Array.isArray(field)) return [];
+  const value = (field as JsonRecord).value;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function labelValue(value: unknown) {

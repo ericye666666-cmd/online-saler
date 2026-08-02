@@ -321,6 +321,8 @@ model Product {
   fitType              ProductFitType?
   stretchLevel         ProductStretchLevel?
   fabricWeight         ProductFabricWeight?
+  material             String?
+  tags                 String[]             @default([])
   detailSourceVersion  Int                  @default(0)
   gender               ProductGender?
   kidsAgeRange         String?

@@ -20,6 +20,8 @@ export type WorkspaceForm = {
   fitType: string;
   stretchLevel: string;
   fabricWeight: string;
+  material: string;
+  tags: string[];
   lengthCm: string;
   chestWidthCm: string;
   shoulderWidthCm: string;
@@ -66,6 +68,8 @@ export const emptyWorkspaceForm = (): WorkspaceForm => ({
   fitType: "UNKNOWN",
   stretchLevel: "UNKNOWN",
   fabricWeight: "UNKNOWN",
+  material: "UNKNOWN",
+  tags: [],
   lengthCm: "",
   chestWidthCm: "",
   shoulderWidthCm: "",
@@ -93,6 +97,15 @@ function stringField(source: JsonRecord | null, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function stringArrayField(source: JsonRecord | null, key: string): string[] {
+  const field = record(source?.[key]);
+  return stringArray(field?.value);
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
 export function normalizedAiOutput(job: JsonRecord | null): JsonRecord | null {
   return record(job?.normalizedOutput) ?? record(job?.normalizedOutputJson);
 }
@@ -118,6 +131,8 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     fitType: stringValue(product?.fitType) || form.fitType,
     stretchLevel: stringValue(product?.stretchLevel) || form.stretchLevel,
     fabricWeight: stringValue(product?.fabricWeight) || form.fabricWeight,
+    material: stringValue(product?.material) || stringField(ai, "material") || form.material,
+    tags: stringArray(product?.tags).length ? stringArray(product?.tags) : stringArrayField(ai, "tags"),
     conditionGrade: stringValue(product?.conditionGrade) || form.conditionGrade,
     priceKsh: typeof product?.priceKsh === "number" ? String(product.priceKsh) : form.priceKsh,
     description: stringValue(product?.description) || form.description
@@ -178,7 +193,7 @@ export function calibrationValidationIssues(
   const issues: CalibrationValidationIssue[] = [];
   if (input.hasPhoto === false) issues.push({ field: "photo", label: "商品照片", message: "先上传商品照片。" });
   if (input.hasAi === false) issues.push({ field: "ai", label: "AI 识别", message: "先完成 AI 识别。" });
-  const requiredFields: Array<[keyof WorkspaceForm, string]> = [
+  const requiredFields: Array<[Exclude<keyof WorkspaceForm, "tags">, string]> = [
     ["title", "标题"],
     ["category", "分类"],
     ["subcategory", "子分类"],
@@ -189,6 +204,7 @@ export function calibrationValidationIssues(
     ["fitType", "版型"],
     ["stretchLevel", "弹性"],
     ["fabricWeight", "面料厚度"],
+    ["material", "面料"],
     ["priceKsh", "价格"]
   ];
   for (const [field, label] of requiredFields) {
@@ -331,6 +347,8 @@ export function buildCalibrationBody(input: {
     fitType: input.form.fitType.trim(),
     stretchLevel: input.form.stretchLevel.trim(),
     fabricWeight: input.form.fabricWeight.trim(),
+    material: input.form.material.trim(),
+    tags: input.form.tags,
     brand: input.form.brand.trim() || undefined,
     tagSize: input.form.tagSize.trim() || undefined,
     sizeLabel: input.form.sizeLabel.trim() || undefined,

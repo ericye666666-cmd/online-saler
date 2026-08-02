@@ -13,8 +13,10 @@ import {
   PRODUCT_CATEGORY_OPTIONS,
   PRODUCT_FABRIC_WEIGHTS,
   PRODUCT_FIT_TYPES,
+  PRODUCT_MATERIAL_OPTIONS,
   PRODUCT_STRETCH_LEVELS,
   PRODUCT_SUBCATEGORIES_BY_CATEGORY,
+  PRODUCT_TAG_OPTIONS,
   type BackgroundRemovalMode,
   type ImageProcessingJobRecord,
   type ImageProcessingOperation,
@@ -37,6 +39,7 @@ import {
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -126,7 +129,7 @@ type ImageTab = {
 };
 
 type TaxonomyOption = { code: string; displayName: string; parentCode?: string | null; active: boolean };
-type ProductTaxonomy = { groups: Record<"CATEGORY" | "SUBCATEGORY" | "COLOR" | "SIZE" | "CONDITION" | "DEFECT", TaxonomyOption[]> };
+type ProductTaxonomy = { groups: Record<"CATEGORY" | "SUBCATEGORY" | "COLOR" | "MATERIAL" | "TAG" | "SIZE" | "CONDITION" | "DEFECT", TaxonomyOption[]> };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_PROXY_URL}${path}`, {
@@ -301,6 +304,10 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   const completedCount = batch?.products.filter((item) => isCalibrationComplete(item.status)).length ?? 0;
   const readOnly = Boolean(product && isCalibrationComplete(product.status));
   const taxonomyLabels = useMemo(() => taxonomyLabelMap(taxonomy), [taxonomy]);
+  const materialLabels = useMemo(
+    () => ({ ...taxonomyLabels, DENIM: taxonomyLabels.DENIM ?? "牛仔布" }),
+    [taxonomyLabels]
+  );
   const categoryOptions = activeValues(taxonomy, "CATEGORY", PRODUCT_CATEGORY_OPTIONS, form.category);
   const visibleMeasurementFields = measurementFields(form);
   const measurementSuggestions = visibleMeasurementFields.map((field) => ({
@@ -312,11 +319,13 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   const colorOptions = activeValues(taxonomy, "COLOR", AI_COLORS, form.color);
   const sizeOptions = activeValues(taxonomy, "SIZE", ["XS", "S", "M", "L", "XL", "XXL"], form.sizeLabel);
   const conditionOptions = activeValues(taxonomy, "CONDITION", ["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"], form.conditionGrade);
+  const materialOptions = activeValues(taxonomy, "MATERIAL", PRODUCT_MATERIAL_OPTIONS, form.material);
+  const tagOptions = activeValues(taxonomy, "TAG", PRODUCT_TAG_OPTIONS);
   const subcategoryOptions = taxonomy
     ? activeSubcategories(taxonomy, form.category, form.subcategory)
     : subcategoriesFor(form.category, form.subcategory);
 
-  function updateForm(key: keyof WorkspaceForm, value: string) {
+  function updateForm(key: Exclude<keyof WorkspaceForm, "tags">, value: string) {
     setForm((current) => {
       const next = { ...current, [key]: value };
       if (key === "category") {
@@ -326,6 +335,16 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
       if (key === "audience" && value !== "KIDS") next.kidsAgeRange = "NOT_APPLICABLE";
       return next;
     });
+    setNotice("");
+  }
+
+  function updateTags(tag: string, checked: boolean) {
+    setForm((current) => ({
+      ...current,
+      tags: checked
+        ? [...new Set([...current.tags, tag])].slice(0, 8)
+        : current.tags.filter((value) => value !== tag)
+    }));
     setNotice("");
   }
 
@@ -614,7 +633,19 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
             <FormSelect fieldKey="fitType" label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fitType", value)} />
             <FormSelect fieldKey="stretchLevel" label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("stretchLevel", value)} />
             <FormSelect fieldKey="fabricWeight" label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} onChange={(value) => updateForm("fabricWeight", value)} />
+            <FormSelect fieldKey="material" label="面料" value={form.material} values={materialOptions} labels={materialLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "material")} onChange={(value) => updateForm("material", value)} />
           </div>
+
+          <FormTagPicker
+            fieldKey="tags"
+            label="商品标签"
+            values={tagOptions}
+            selected={form.tags}
+            labels={taxonomyLabels}
+            suggestion={aiArraySuggestion(aiOutput, "tags")}
+            disabled={readOnly}
+            onChange={updateTags}
+          />
 
           <FormTextarea fieldKey="defects" label="瑕疵" value={form.defects} required disabled={readOnly} hint="没有瑕疵请填写 None。" onChange={(value) => updateForm("defects", value)} />
           <FormTextarea fieldKey="description" label="商品描述" value={form.description} disabled={readOnly} onChange={(value) => updateForm("description", value)} />
@@ -713,6 +744,38 @@ function FormTextarea(props: { fieldKey?: keyof WorkspaceForm; label: string; va
       <Textarea className="mt-2" rows={3} value={props.value} disabled={props.disabled} onChange={(event) => props.onChange(event.target.value)} />
       {props.hint ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{props.hint}</span> : null}
     </label>
+  );
+}
+
+function FormTagPicker(props: {
+  fieldKey?: keyof WorkspaceForm;
+  label: string;
+  values: readonly string[];
+  selected: string[];
+  labels?: Record<string, string>;
+  suggestion?: string[];
+  disabled?: boolean;
+  onChange: (value: string, checked: boolean) => void;
+}) {
+  return (
+    <fieldset className="min-w-0 rounded-md border p-3" data-field-key={props.fieldKey}>
+      <legend className="px-1 text-sm font-medium">{props.label} <span className="font-normal text-muted-foreground">（最多 8 个）</span></legend>
+      {props.suggestion?.length ? (
+        <p className="mb-3 text-xs text-muted-foreground">AI 建议：{props.suggestion.map((value) => props.labels?.[value] ?? enumLabel(value)).join("、")}</p>
+      ) : null}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {props.values.map((value) => {
+          const checked = props.selected.includes(value);
+          const atLimit = props.selected.length >= 8 && !checked;
+          return (
+            <label key={value} className="flex min-h-9 items-center gap-2 text-sm">
+              <Checkbox disabled={props.disabled || atLimit} checked={checked} onCheckedChange={(next) => props.onChange(value, next === true)} />
+              <span>{props.labels?.[value] ?? enumLabel(value)}</span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 
@@ -831,6 +894,13 @@ function aiSuggestion(output: JsonRecord | null, key: string) {
   return typeof value === "string" ? value : "";
 }
 
+function aiArraySuggestion(output: JsonRecord | null, key: string) {
+  const field = output?.[key];
+  if (!field || typeof field !== "object" || Array.isArray(field)) return [];
+  const value = (field as JsonRecord).value;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
 function aiMeasurementSuggestion(
   product: ProductRecord | null,
   output: JsonRecord | null,
@@ -890,6 +960,9 @@ function statusLabel(value: string) {
 const ENUM_LABELS: Record<string, string> = {
   KIDS: "童装", PANTS: "长裤", JACKETS: "外套", DRESSES: "连衣裙与半身裙", LADY_TOPS: "女士上衣", SHIRTS: "衬衫", TSHIRTS: "T恤", SHORT: "短裤", TWO_PIECE: "两件套", SHOES: "鞋", BAG: "包", OTHERS: "其他配饰", TEXTILE: "家纺", OTHER: "其他",
   KIDS_DRESS: "童装裙", KIDS_JACKET_TOP: "童装外套与上衣", KIDS_PANTS: "童装裤", NEWBORN: "新生儿服装", MEN_JEANS: "男士牛仔裤", LADIES_PANTS_MIX: "女士裤", SWEAT_PANTS: "运动裤", CARGO_PANTS: "工装裤", OFFICIAL_PANTS: "正装裤", MEN_JACKETS: "男士外套", THICK_VEST: "厚马甲", LADIES_JACKETS: "女士外套", UNISEX_JACKETS: "中性外套", HOODIES: "连帽卫衣", SWEATSHIRTS: "卫衣", DENIM_JACKETS: "牛仔外套", LONG_DRESSES: "长裙", SHORT_DRESSES_SKIRTS: "短裙与半身裙", OFFICIAL_TOPS: "正装上衣", FANCY_TOPS: "时尚上衣", SHORT_SHIRTS: "短袖衬衫", LONG_SHIRTS: "长袖衬衫", TSHIRT: "T恤", SHORT_PANTS: "短裤", LONG_TWO_PIECE: "长款两件套", SHORT_TWO_PIECE: "短款两件套", MEN_SPORT_SHOES: "男士运动鞋", MEN_SHOES: "男鞋", LADIES_SHOES: "女鞋", KIDS_SHOES: "童鞋", OFFICIAL_SHOES: "正装鞋", LADIES_BAGS: "女包", SCHOOL_BAGS: "书包", PACKAGE_BAGS: "包装袋", HATS_CAPS: "帽子", SCARFS: "围巾", BODY_SHAPERS: "塑身衣", INNER_WARES: "内衣", BEDSHEETS: "床单", LIGHT_BLANKETS: "薄毯",
+  KIDS_TOPS: "童装上衣", KIDS_HOODIES: "童装连帽卫衣", KIDS_SKIRTS: "童装半身裙", WOMEN_JEANS: "女士牛仔裤", LEGGINGS: "打底裤", WIDE_LEG_PANTS: "阔腿裤", BLAZERS: "西装外套", PUFFER_JACKETS: "羽绒或棉服", WINDBREAKERS: "防风外套", RAIN_JACKETS: "雨衣外套", COATS: "大衣", CARDIGANS: "开衫", MIDI_DRESSES: "中长连衣裙", MINI_DRESSES: "短连衣裙", MAXI_SKIRTS: "长款半身裙", MIDI_SKIRTS: "中长半身裙", MINI_SKIRTS: "短款半身裙", JUMPSUITS: "连体裤", BLOUSES: "女式衬衣", TANK_TOPS: "背心上衣", CROP_TOPS: "短款上衣", SWEATERS: "毛衣", POLO_SHIRTS: "Polo衫", BASIC_TSHIRT: "基础T恤", GRAPHIC_TSHIRT: "印花T恤", DENIM_SHORTS: "牛仔短裤", CARGO_SHORTS: "工装短裤", SPORTS_SHORTS: "运动短裤",
+  COTTON: "棉", COTTON_BLEND: "棉混纺", POLYESTER: "聚酯纤维", WOOL: "羊毛", WOOL_BLEND: "羊毛混纺", LINEN: "亚麻", VISCOSE_RAYON: "粘胶/人造丝", NYLON: "尼龙", LEATHER: "真皮", FAUX_LEATHER: "人造革", SILK: "真丝", SATIN: "缎面", FLEECE: "抓绒", VELVET: "天鹅绒", KNIT: "针织", ACRYLIC: "腈纶", SPANDEX_BLEND: "弹力混纺", LACE: "蕾丝", CHIFFON: "雪纺", CANVAS: "帆布", CORDUROY: "灯芯绒", MIXED: "混合面料", UNKNOWN: "无法确认",
+  HOODED: "连帽", ZIP_FRONT: "前拉链", BUTTON_FRONT: "前纽扣", PULLOVER: "套头", COLLARED: "有领", V_NECK: "V领", CREW_NECK: "圆领", TURTLENECK: "高领", POCKETS: "有口袋", CARGO_POCKETS: "工装口袋", LINED: "有内衬", REVERSIBLE: "双面穿", WATER_RESISTANT: "防泼水", INSULATED: "保暖填充", LIGHTWEIGHT: "轻量", HIGH_WAIST: "高腰", ELASTIC_WAIST: "松紧腰", DRAWSTRING_WAIST: "抽绳腰", STRAIGHT_LEG: "直筒", WIDE_LEG: "阔腿", SKINNY_FIT: "紧身", FLARED: "喇叭型", CROPPED: "短款", MIDI_LENGTH: "中长款", MAXI_LENGTH: "长款", MINI_LENGTH: "短款长度", GRAPHIC_PRINT: "图案印花", EMBROIDERED: "刺绣", BEADED: "珠饰", CASUAL: "休闲", FORMAL: "正装", SPORTS: "运动", OUTDOOR: "户外", MATERNITY: "孕妇装",
   WOMEN: "女士", MEN: "男士", UNISEX: "中性", NOT_APPLICABLE: "不适用", BABY_0_12M: "婴儿 0-12月", TODDLER_1_3Y: "幼儿 1-3岁", PRESCHOOL_3_5Y: "学龄前 3-5岁", KIDS_6_8Y: "儿童 6-8岁", KIDS_9_12Y: "儿童 9-12岁", TEEN_13_16Y: "青少年 13-16岁",
   BLACK: "黑色", WHITE: "白色", OFF_WHITE: "米白", GREY: "灰色", BROWN: "棕色", BEIGE: "米色", CREAM: "奶油色", TAN: "棕褐色", KHAKI: "卡其色", RED: "红色", MAROON: "栗色", BURGUNDY: "酒红", ORANGE: "橙色", CORAL: "珊瑚色", PEACH: "桃色", YELLOW: "黄色", MUSTARD: "芥末黄", GREEN: "绿色", LIGHT_GREEN: "浅绿", DARK_GREEN: "深绿", OLIVE: "橄榄绿", BLUE: "蓝色", LIGHT_BLUE: "浅蓝", DARK_BLUE: "深蓝", NAVY: "藏青", DENIM: "牛仔蓝", TEAL: "蓝绿色", TURQUOISE: "青绿色", PURPLE: "紫色", LILAC: "丁香紫", PINK: "粉色", GOLD: "金色", SILVER: "银色", MULTICOLOR: "多色",
   SOLID: "纯色", STRIPED: "条纹", CHECKED: "格纹", FLORAL: "花卉", GRAPHIC: "图案印花", POLKA_DOT: "波点", ANIMAL_PRINT: "动物纹", ABSTRACT: "抽象图案", SLEEVELESS: "无袖", THREE_QUARTER: "七分袖", LONG: "长袖",

@@ -234,6 +234,8 @@ type SourceProduct = {
   fitType: unknown;
   stretchLevel: unknown;
   fabricWeight: unknown;
+  material: string | null;
+  tags: string[];
   priceKsh: number | null;
   measurements: Array<{ measurementType: string; finalValueCm: unknown }>;
   defects: Array<{
@@ -284,6 +286,8 @@ export function buildProductDetailFacts(
     fitType: stringOrNull(product.fitType),
     stretchLevel: stringOrNull(product.stretchLevel),
     fabricWeight: stringOrNull(product.fabricWeight),
+    material: product.material,
+    tags: product.tags,
     priceKsh: product.priceKsh,
     measurementsCm: Object.fromEntries(
       product.measurements

@@ -109,17 +109,27 @@ function requireGroup(value?: ProductTaxonomyGroup): ProductTaxonomyGroup {
 }
 
 async function taxonomyUsageCounts(): Promise<Record<ProductTaxonomyGroup, Map<string, number>>> {
-  const [categories, subcategories, colors, sizes, conditions, defects] = await Promise.all([
+  const [categories, subcategories, colors, materials, taggedProducts, sizes, conditions, defects] = await Promise.all([
     prisma.product.groupBy({ by: ["category"], where: { category: { not: null } }, _count: { _all: true } }),
     prisma.product.groupBy({ by: ["subcategory"], where: { subcategory: { not: null } }, _count: { _all: true } }),
     prisma.product.groupBy({ by: ["color"], where: { color: { not: null } }, _count: { _all: true } }),
+    prisma.product.groupBy({ by: ["material"], where: { material: { not: null } }, _count: { _all: true } }),
+    prisma.product.findMany({ where: { tags: { isEmpty: false } }, select: { tags: true } }),
     prisma.product.groupBy({ by: ["finalSizeLabel"], where: { finalSizeLabel: { not: null } }, _count: { _all: true } }),
     prisma.product.groupBy({ by: ["conditionGrade"], where: { conditionGrade: { not: null } }, _count: { _all: true } }),
     prisma.productDefect.groupBy({ by: ["defectType"], _count: { _all: true } })
   ]);
   return {
-    CATEGORY: countMap(categories, "category"), SUBCATEGORY: countMap(subcategories, "subcategory"), COLOR: countMap(colors, "color"), SIZE: countMap(sizes, "finalSizeLabel"), CONDITION: countMap(conditions, "conditionGrade"), DEFECT: countMap(defects, "defectType")
+    CATEGORY: countMap(categories, "category"), SUBCATEGORY: countMap(subcategories, "subcategory"), COLOR: countMap(colors, "color"), MATERIAL: countMap(materials, "material"), TAG: countTags(taggedProducts), SIZE: countMap(sizes, "finalSizeLabel"), CONDITION: countMap(conditions, "conditionGrade"), DEFECT: countMap(defects, "defectType")
   };
+}
+
+function countTags(rows: Array<{ tags: string[] }>) {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    for (const tag of new Set(row.tags)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+  return counts;
 }
 
 function countMap(rows: Array<Record<string, unknown>>, key: string) {
