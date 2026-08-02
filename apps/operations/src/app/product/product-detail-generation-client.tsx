@@ -5,9 +5,11 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import {
   ArrowLeftIcon,
   CheckCircle2Icon,
+  EyeIcon,
   FileTextIcon,
   ImageOffIcon,
   LoaderCircleIcon,
+  PencilLineIcon,
   RefreshCwIcon,
   RotateCcwIcon,
   SparklesIcon
@@ -19,6 +21,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import {
+  detailGenerationButtonLabel,
+  detailProductStage,
+  PRODUCT_DETAIL_PAGE_PLAN
+} from "./product-detail-page-plan";
 
 const API_PROXY_URL = "/api-proxy";
 const ASSET_LABELS: Record<string, string> = {
@@ -37,6 +44,11 @@ type BatchProduct = {
   productStatus: string;
   profileId?: string | null;
   detailStatus?: string | null;
+  title?: string | null;
+  category?: string | null;
+  finalSizeLabel?: string | null;
+  frontImage?: { id: string; publicUrl?: string | null } | null;
+  assets: Array<{ id: string; type: string; status: string }>;
 };
 
 type DetailBatch = {
@@ -45,6 +57,8 @@ type DetailBatch = {
   targetCount: number;
   createdAt: string;
   calibrated: number;
+  generationReady: boolean;
+  awaitingCalibration: number;
   pending: number;
   generating: number;
   succeeded: number;
@@ -52,6 +66,11 @@ type DetailBatch = {
   outdated: number;
   approved: number;
   products: BatchProduct[];
+};
+
+type RunBatchResult = {
+  processed: number;
+  results: Array<{ status: string; error?: string }>;
 };
 
 type DetailAsset = {
@@ -98,12 +117,18 @@ type DetailProfile = {
     category?: string | null;
     subcategory?: string | null;
     gender?: string | null;
+    brand?: string | null;
+    color?: string | null;
+    material?: string | null;
+    tags?: string[];
     finalSizeLabel?: string | null;
+    ukSizeLabel?: string | null;
     conditionGrade?: string | null;
     priceKsh?: number | null;
     detailSourceVersion: number;
     measurements: Array<{ measurementType: string; finalValueCm?: unknown }>;
     defects: Array<{ defectType: string; severity: string; description: string; customerSafeDescription?: string | null }>;
+    images: Array<{ id: string; type: string; publicUrl?: string | null }>;
   };
 };
 
@@ -181,13 +206,38 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
     }
   }
 
+  async function generateBatch(batch: DetailBatch) {
+    const key = `${batch.id}-generate`;
+    setBusy(key);
+    setError("");
+    setNotice("");
+    try {
+      const result = await request<RunBatchResult>(`/operations/product-batches/${batch.id}/detail-generation/run`, ids.adminUserId, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      await load();
+      if (result.processed === 0) {
+        setError("未生成任何详情。请先完成本批全部商品校准，或刷新后检查任务状态。");
+        return;
+      }
+      const succeeded = result.results.filter((item) => item.status === "READY").length;
+      const failed = result.results.filter((item) => item.status === "FAILED").length;
+      setNotice(`已生成 ${succeeded} 件详情草稿${failed ? `，${failed} 件失败` : ""}。请逐件打开发布预览并批准。`);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-10">
       <header className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm text-muted-foreground">商品中心</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-normal">详情生成</h1>
-          <p className="mt-1 text-sm text-muted-foreground">主管检查自动生成的商品详情；该任务不阻断员工生成和贴 Barcode。</p>
+          <p className="mt-1 text-sm text-muted-foreground">先生成六页详情草稿，再逐件检查发布预览、编辑并批准。批准详情不等于发布商品。</p>
         </div>
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => void load()}>
           <RefreshCwIcon data-icon="inline-start" />刷新
@@ -201,10 +251,9 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
       <div className="flex flex-col gap-4">
         {batches.map((batch) => {
           const actionBusy = busy.startsWith(batch.id);
-          const readyForApproval = batch.succeeded + batch.approved === batch.targetCount;
           return (
-            <section key={batch.id} className="rounded-md border bg-background p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <section key={batch.id} className="overflow-hidden rounded-md border bg-background">
+              <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-semibold">{batch.batchCode}</h2>
@@ -213,8 +262,9 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                   <p className="mt-1 text-xs text-muted-foreground">{new Date(batch.createdAt).toLocaleString("zh-CN")}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" disabled={actionBusy || batch.pending === 0} onClick={() => void run(`${batch.id}-generate`, `/operations/product-batches/${batch.id}/detail-generation/run`, "本批详情生成已完成。") }>
-                    {busy === `${batch.id}-generate` ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}生成本批
+                  <Button size="sm" disabled={actionBusy || !batch.generationReady || batch.pending === 0} onClick={() => void generateBatch(batch)}>
+                    {busy === `${batch.id}-generate` ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
+                    {detailGenerationButtonLabel(batch)}
                   </Button>
                   <Button size="sm" variant="outline" disabled={actionBusy || batch.failed === 0} onClick={() => void run(`${batch.id}-failed`, `/operations/product-batches/${batch.id}/detail-generation/retry-failed`, "失败任务已重试。") }>
                     重试失败
@@ -222,13 +272,11 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                   <Button size="sm" variant="outline" disabled={actionBusy || batch.outdated === 0} onClick={() => void run(`${batch.id}-outdated`, `/operations/product-batches/${batch.id}/detail-generation/regenerate-outdated`, "过期详情已重新生成。") }>
                     重生成过期项
                   </Button>
-                  <Button size="sm" variant="outline" disabled={actionBusy || !readyForApproval || batch.approved === batch.targetCount} onClick={() => void run(`${batch.id}-approve`, `/operations/product-batches/${batch.id}/detail-generation/approve`, "本批详情已批准。", true) }>
-                    <CheckCircle2Icon data-icon="inline-start" />整批批准
-                  </Button>
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-7">
+              <div className="grid grid-cols-2 gap-px border-b bg-border sm:grid-cols-4 lg:grid-cols-8">
+                <Metric label="等待校准" value={batch.awaitingCalibration} />
                 <Metric label="待生成" value={batch.pending} />
                 <Metric label="生成中" value={batch.generating} />
                 <Metric label="成功" value={batch.succeeded} />
@@ -238,18 +286,47 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                 <Metric label="总数" value={batch.targetCount} />
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5 lg:grid-cols-10">
-                {batch.products.map((product) => product.profileId ? (
-                  <Link key={product.id} href={`/product/details/${product.profileId}`} className="rounded-md border px-3 py-2 text-sm transition-colors hover:bg-muted/60">
-                    <div className="font-medium">第 {product.batchItemNumber ?? "-"} 件</div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">{statusLabel(product.detailStatus)}</div>
-                  </Link>
-                ) : (
-                  <div key={product.id} className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                    <div>第 {product.batchItemNumber ?? "-"} 件</div>
-                    <div className="mt-1 text-xs">待创建</div>
-                  </div>
-                ))}
+              <div className="border-b px-4 py-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  {PRODUCT_DETAIL_PAGE_PLAN.map((page) => (
+                    <div key={page.type} className="border-l-2 pl-3">
+                      <div className="text-xs text-muted-foreground">第 {page.number} 页</div>
+                      <div className="mt-0.5 text-sm font-medium">{page.title}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="divide-y">
+                {batch.products.map((product) => {
+                  const productStage = detailProductStage(product, batch.generationReady);
+                  return (
+                    <div key={product.id} className="grid gap-3 p-4 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
+                      <div className="aspect-[4/5] overflow-hidden rounded-md border bg-muted/20">
+                        {product.frontImage ? <SafeImage src={sourceImageUrl(product.id, product.frontImage)} alt={product.title || product.productCode} /> : <EmptyImage compact />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-muted-foreground">第 {product.batchItemNumber ?? "-"} 件</span>
+                          <Badge variant="outline">{statusLabel(productStage)}</Badge>
+                        </div>
+                        <div className="mt-1 truncate font-medium">{product.title || product.productCode}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{labelValue(product.category) || "分类待确认"} · {product.finalSizeLabel || "尺码待确认"} · {product.productCode}</div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {PRODUCT_DETAIL_PAGE_PLAN.map((page) => {
+                            const asset = product.assets.find((item) => item.type === page.type);
+                            return <span key={page.type} className={cn("rounded-sm border px-1.5 py-0.5 text-[11px]", asset?.status === "READY" || asset?.status === "APPROVED" ? "border-emerald-600/30 bg-emerald-600/5 text-emerald-700" : "text-muted-foreground")}>{page.shortTitle}</span>;
+                          })}
+                        </div>
+                      </div>
+                      {product.profileId ? (
+                        <Button asChild size="sm" variant="outline" className="w-full sm:w-auto">
+                          <Link href={`/product/details/${product.profileId}`}><EyeIcon data-icon="inline-start" />发布预览</Link>
+                        </Button>
+                      ) : <Button size="sm" variant="outline" disabled className="w-full sm:w-auto">{statusLabel(productStage)}</Button>}
+                    </div>
+                  );
+                })}
               </div>
             </section>
           );
@@ -263,6 +340,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
   const ids = useOperationIds();
   const [profile, setProfile] = useState<DetailProfile | null>(null);
   const [copy, setCopy] = useState<EditableCopy>(emptyCopy());
+  const [viewMode, setViewMode] = useState<"preview" | "edit">("preview");
   const [activeAsset, setActiveAsset] = useState("FRONT_MAIN");
   const [recalibrationReason, setRecalibrationReason] = useState("");
   const [busy, setBusy] = useState("");
@@ -331,20 +409,37 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-12">
       <header className="border-b pb-4">
         <Link href="/product/details" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-4" />返回详情生成</Link>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-normal">{profile.product.productCode}</h1>
-          <Badge variant="outline">{statusLabel(profile.status)}</Badge>
-          <Badge variant="outline">源数据 v{profile.sourceDataVersion}</Badge>
-          <Badge variant="outline">文案 v{profile.contentVersion}</Badge>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-normal">{profile.product.productCode}</h1>
+              <Badge variant="outline">{statusLabel(profile.status)}</Badge>
+              <Badge variant="outline">源数据 v{profile.sourceDataVersion}</Badge>
+              <Badge variant="outline">文案 v{profile.contentVersion}</Badge>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">第 {profile.product.batchItemNumber ?? "-"} 件 · {labelValue(profile.product.category)} · {profile.product.finalSizeLabel || "尺码未确认"}</p>
+          </div>
+          <div className="inline-flex w-full rounded-md border p-1 sm:w-auto">
+            <Button size="sm" variant={viewMode === "preview" ? "default" : "ghost"} className="flex-1 sm:flex-none" onClick={() => setViewMode("preview")}><EyeIcon data-icon="inline-start" />发布预览</Button>
+            <Button size="sm" variant={viewMode === "edit" ? "default" : "ghost"} className="flex-1 sm:flex-none" onClick={() => setViewMode("edit")}><PencilLineIcon data-icon="inline-start" />编辑与素材</Button>
+          </div>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">第 {profile.product.batchItemNumber ?? "-"} 件 · {labelValue(profile.product.category)} · {profile.product.finalSizeLabel || "尺码未确认"}</p>
       </header>
 
       {error ? <Status tone="danger">{error}</Status> : null}
       {notice ? <Status tone="neutral">{notice}</Status> : null}
       {profile.sourceDataVersion !== profile.product.detailSourceVersion ? <Status tone="danger">商品事实已经变化，此详情版本不可批准。</Status> : null}
 
-      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,.95fr)]">
+      {viewMode === "preview" ? (
+        <ProductPublishPreview
+          profile={profile}
+          copy={copy}
+          assets={assets}
+          busy={Boolean(busy)}
+          onApprove={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId })}
+          onEdit={() => setViewMode("edit")}
+        />
+      ) : <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,.95fr)]">
         <section className="min-w-0">
           <div className="flex gap-2 overflow-x-auto pb-2">
             {assets.map((asset) => (
@@ -433,13 +528,131 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
             </div>
           </section>
         </div>
+      </div>}
+    </div>
+  );
+}
+
+function ProductPublishPreview({
+  profile,
+  copy,
+  assets,
+  busy,
+  onApprove,
+  onEdit
+}: {
+  profile: DetailProfile;
+  copy: EditableCopy;
+  assets: DetailAsset[];
+  busy: boolean;
+  onApprove: () => void;
+  onEdit: () => void;
+}) {
+  const assetByType = new Map(assets.map((asset) => [asset.type, asset]));
+  const main = assetByType.get("FRONT_MAIN");
+  const evidence = profile.product.images.filter((image) => ["LABEL", "DETAIL", "DEFECT"].includes(image.type));
+  const sellingPoints = copy.sellingPoints.filter(Boolean);
+
+  return (
+    <div className="overflow-hidden rounded-md border bg-background">
+      <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2"><Badge>发布预览</Badge><span className="text-sm font-medium">顾客视角 · 尚未发布</span></div>
+          <p className="mt-1 text-xs text-muted-foreground">逐页确认图片、尺寸、版型、成色和商品文案。批准只确认详情草稿，不会发布商品。</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={onEdit}><PencilLineIcon data-icon="inline-start" />编辑内容</Button>
+      </div>
+
+      <section className="grid border-b lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,.9fr)]">
+        <div className="flex min-h-[420px] items-center justify-center border-b bg-muted/10 p-4 lg:border-r lg:border-b-0">
+          {main ? <SafeImage src={assetUrl(main)} alt={`${copy.title || profile.product.productCode} 主图`} /> : <EmptyImage />}
+        </div>
+        <div className="p-5 sm:p-7">
+          <p className="text-xs font-medium uppercase text-muted-foreground">{profile.product.brand || "Unbranded"}</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-normal">{copy.title || profile.product.title || profile.product.productCode}</h2>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <span className="text-xl font-semibold">{priceLabel(profile.product.priceKsh)}</span>
+            <Badge variant="outline">一物一件</Badge>
+          </div>
+          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{copy.shortDescription || "商品描述尚未生成，请进入编辑与素材补充。"}</p>
+          {sellingPoints.length ? <ul className="mt-4 space-y-2 text-sm">{sellingPoints.map((point) => <li key={point} className="border-l-2 pl-3">{point}</li>)}</ul> : null}
+          <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-3 border-t pt-4 text-sm">
+            <PreviewFact label="平台尺码" value={profile.product.finalSizeLabel} />
+            <PreviewFact label="英码" value={profile.product.ukSizeLabel} />
+            <PreviewFact label="分类" value={labelValue(profile.product.subcategory || profile.product.category)} />
+            <PreviewFact label="适用人群" value={labelValue(profile.product.gender)} />
+            <PreviewFact label="面料" value={profile.product.material} />
+            <PreviewFact label="颜色" value={profile.product.color} />
+            <PreviewFact label="版型" value={labelValue(profile.fitType)} />
+            <PreviewFact label="成色" value={labelValue(profile.product.conditionGrade)} />
+          </dl>
+        </div>
+      </section>
+
+      <section className="border-b px-4 py-5 sm:px-6">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div><p className="text-xs text-muted-foreground">六页详情</p><h2 className="text-lg font-semibold">商品发布内容</h2></div>
+          <span className="text-xs text-muted-foreground">平铺实测 · 原商品像素保留</span>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {PRODUCT_DETAIL_PAGE_PLAN.map((page) => {
+            const asset = assetByType.get(page.type);
+            return (
+              <figure key={page.type} className="overflow-hidden rounded-md border">
+                <div className="flex items-center justify-between border-b px-3 py-2 text-sm"><span className="font-medium">第 {page.number} 页 · {page.title}</span><Badge variant="outline">{statusLabel(asset?.status)}</Badge></div>
+                <div className="flex aspect-square items-center justify-center bg-muted/10">{asset ? <SafeImage src={assetUrl(asset)} alt={page.title} /> : <EmptyImage compact />}</div>
+              </figure>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="grid border-b md:grid-cols-3">
+        <div className="border-b p-5 md:border-r md:border-b-0">
+          <h3 className="font-semibold">实测尺寸</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{copy.measurementSummary || "请核对每个测量点。"}</p>
+          <dl className="mt-4 space-y-2 text-sm">{profile.product.measurements.map((item) => <PreviewFact key={item.measurementType} label={measurementLabel(item.measurementType)} value={measurementValue(item.finalValueCm)} row />)}</dl>
+        </div>
+        <div className="border-b p-5 md:border-r md:border-b-0">
+          <h3 className="font-semibold">版型与尺码建议</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{copy.fitSummary || profile.expectedFit || "版型建议尚未生成。"}</p>
+          <dl className="mt-4 space-y-2 text-sm">
+            <PreviewFact label="建议胸围" value={range(profile.bodyChestMinCm, profile.bodyChestMaxCm, "cm")} row />
+            <PreviewFact label="建议腰围" value={range(profile.bodyWaistMinCm, profile.bodyWaistMaxCm, "cm")} row />
+            <PreviewFact label="建议臀围" value={range(profile.bodyHipMinCm, profile.bodyHipMaxCm, "cm")} row />
+          </dl>
+        </div>
+        <div className="p-5">
+          <h3 className="font-semibold">成色与瑕疵</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{copy.conditionSummary || "成色说明尚未生成。"}</p>
+          {profile.product.defects.length ? <ul className="mt-4 space-y-2 text-sm">{profile.product.defects.map((defect) => <li key={`${defect.defectType}-${defect.description}`} className="border-l-2 pl-3">{defect.customerSafeDescription || defect.description}</li>)}</ul> : <p className="mt-4 text-sm">校准时未记录明显瑕疵。</p>}
+        </div>
+      </section>
+
+      {evidence.length ? (
+        <section className="border-b px-4 py-5 sm:px-6">
+          <p className="text-xs text-muted-foreground">原始凭证</p>
+          <h2 className="text-lg font-semibold">标签、细节与瑕疵图</h2>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {evidence.map((image) => <figure key={image.id} className="overflow-hidden rounded-md border"><div className="aspect-square bg-muted/10"><SafeImage src={sourceImageUrl(profile.product.id, image)} alt={sourceImageLabel(image.type)} /></div><figcaption className="border-t px-3 py-2 text-xs">{sourceImageLabel(image.type)}</figcaption></figure>)}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground">{profile.sizeDisclaimer || "尺码建议仅供参考，请以平铺实测数据为准。"}</p>
+        <Button disabled={busy || profile.status === "APPROVED"} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : "确认预览并批准详情"}</Button>
       </div>
     </div>
   );
 }
 
+function PreviewFact({ label, value, row = false }: { label: string; value: unknown; row?: boolean }) {
+  return <div className={row ? "flex items-start justify-between gap-3 border-b pb-2 last:border-0" : ""}><dt className="text-xs text-muted-foreground">{label}</dt><dd className={cn("mt-0.5 break-words", row && "mt-0 text-right")}>{value == null || value === "" ? "-" : String(value)}</dd></div>;
+}
+
 function Metric({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-md border px-2 py-3 text-center"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 text-lg font-semibold tabular-nums">{value}</div></div>;
+  return <div className="bg-background px-2 py-3 text-center"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 text-lg font-semibold tabular-nums">{value}</div></div>;
 }
 
 function Status({ tone, children }: { tone: "danger" | "neutral"; children: ReactNode }) {
@@ -461,13 +674,26 @@ function SafeImage({ src, alt }: { src: string; alt: string }) {
   return <img src={src} alt={alt} className="size-full object-contain" onError={() => setFailed(true)} />;
 }
 
-function EmptyImage() {
-  return <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground"><ImageOffIcon className="size-6" />素材尚未生成</div>;
+function EmptyImage({ compact = false }: { compact?: boolean } = {}) {
+  return <div className="flex size-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground"><ImageOffIcon className={compact ? "size-4" : "size-6"} />{compact ? null : "素材尚未生成"}</div>;
 }
 
 function assetUrl(asset: DetailAsset) {
   if (asset.publicUrl) return asset.publicUrl.startsWith("http") ? asset.publicUrl : `${API_PROXY_URL}${asset.publicUrl}`;
   return `${API_PROXY_URL}/product-detail-assets/${asset.id}/content`;
+}
+
+function sourceImageUrl(productId: string, image: { id: string; publicUrl?: string | null }) {
+  if (image.publicUrl) return image.publicUrl.startsWith("http") ? image.publicUrl : `${API_PROXY_URL}${image.publicUrl}`;
+  return `${API_PROXY_URL}/products/${productId}/images/${image.id}/content`;
+}
+
+function sourceImageLabel(type: string) {
+  return ({ LABEL: "标签原图", DETAIL: "细节原图", DEFECT: "瑕疵原图" } as Record<string, string>)[type] ?? labelValue(type);
+}
+
+function priceLabel(value?: number | null) {
+  return value == null ? "价格待确认" : `KSh ${new Intl.NumberFormat("en-KE").format(value)}`;
 }
 
 function copyFromJson(value: unknown, fallbackTitle: string): EditableCopy {
@@ -495,7 +721,7 @@ function lines(value: string, separator = "\n") {
 }
 
 function statusLabel(value?: string | null) {
-  return ({ PENDING: "待生成", GENERATING: "生成中", READY: "待批准", FAILED: "失败", OUTDATED: "已过期", APPROVED: "已批准" } as Record<string, string>)[value ?? ""] ?? labelValue(value);
+  return ({ AWAITING_CALIBRATION: "等待校准", PENDING: "待生成", GENERATING: "生成中", READY: "待批准", FAILED: "失败", OUTDATED: "已过期", APPROVED: "已批准" } as Record<string, string>)[value ?? ""] ?? labelValue(value);
 }
 
 function assetOrder(type: string) {

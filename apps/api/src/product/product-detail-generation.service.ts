@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import {
   ProductDetailAssetType,
   ProductDetailStatus,
+  ProductImageType,
   ProductStatus,
   Prisma,
   prisma
@@ -46,16 +47,30 @@ export type DetailBatchSummaryInput = {
     productCode: string;
     batchItemNumber: number | null;
     status: ProductStatus;
+    title: string | null;
+    category: string | null;
+    finalSizeLabel: string | null;
+    images: Array<{
+      id: string;
+      publicUrl: string | null;
+    }>;
     detailProfiles: Array<{
       id: string;
       status: ProductDetailStatus;
       sourceDataVersion: number;
       updatedAt: Date;
+      assets: Array<{
+        id: string;
+        type: ProductDetailAssetType;
+        status: ProductDetailStatus;
+      }>;
     }>;
   }>;
 };
 
 export function summarizeDetailBatch(batch: DetailBatchSummaryInput) {
+  const generationReady = isBatchReadyForDetailGeneration(batch.products, batch.targetCount);
+  const calibrated = batch.products.filter((product) => CALIBRATED_OR_LATER.has(product.status)).length;
   const products = batch.products.map((product) => {
     const profile = product.detailProfiles[0] ?? null;
     return {
@@ -63,10 +78,15 @@ export function summarizeDetailBatch(batch: DetailBatchSummaryInput) {
       productCode: product.productCode,
       batchItemNumber: product.batchItemNumber,
       productStatus: product.status,
+      title: product.title,
+      category: product.category,
+      finalSizeLabel: product.finalSizeLabel,
+      frontImage: product.images[0] ?? null,
       profileId: profile?.id ?? null,
       detailStatus: profile?.status ?? null,
       sourceDataVersion: profile?.sourceDataVersion ?? null,
-      updatedAt: profile?.updatedAt ?? null
+      updatedAt: profile?.updatedAt ?? null,
+      assets: profile?.assets ?? []
     };
   });
   const count = (status: ProductDetailStatus) => products.filter((product) => product.detailStatus === status).length;
@@ -75,8 +95,12 @@ export function summarizeDetailBatch(batch: DetailBatchSummaryInput) {
     batchCode: batch.batchCode,
     targetCount: batch.targetCount,
     createdAt: batch.createdAt,
-    calibrated: batch.products.filter((product) => CALIBRATED_OR_LATER.has(product.status)).length,
-    pending: products.filter((product) => !product.detailStatus || product.detailStatus === ProductDetailStatus.PENDING).length,
+    calibrated,
+    generationReady,
+    awaitingCalibration: Math.max(0, batch.targetCount - calibrated),
+    pending: products.filter((product) =>
+      product.detailStatus === ProductDetailStatus.PENDING || (generationReady && !product.detailStatus)
+    ).length,
     generating: count(ProductDetailStatus.GENERATING),
     succeeded: count(ProductDetailStatus.READY),
     failed: count(ProductDetailStatus.FAILED),
@@ -107,10 +131,25 @@ export class ProductDetailGenerationService {
             productCode: true,
             batchItemNumber: true,
             status: true,
+            title: true,
+            category: true,
+            finalSizeLabel: true,
+            images: {
+              where: { type: ProductImageType.FRONT },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { id: true, publicUrl: true }
+            },
             detailProfiles: {
               orderBy: { sourceDataVersion: "desc" },
               take: 1,
-              select: { id: true, status: true, sourceDataVersion: true, updatedAt: true }
+              select: {
+                id: true,
+                status: true,
+                sourceDataVersion: true,
+                updatedAt: true,
+                assets: { select: { id: true, type: true, status: true } }
+              }
             }
           }
         }
