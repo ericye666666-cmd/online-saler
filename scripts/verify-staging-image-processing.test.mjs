@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deflateSync } from "node:zlib";
 
-import { inspectJpeg, inspectTransparentPng } from "./verify-staging-image-processing.mjs";
+import {
+  evaluateStorefrontCutoutQuality,
+  inspectJpeg,
+  inspectTransparentPng
+} from "./verify-staging-image-processing.mjs";
 
 function chunk(type, data) {
   const length = Buffer.alloc(4);
@@ -42,4 +46,32 @@ test("accepts a complete JPEG byte stream", () => {
 
 test("rejects a truncated JPEG byte stream", () => {
   assert.throws(() => inspectJpeg(Buffer.from([255, 216, 255, 224])), /EOI marker/);
+});
+
+test("accepts cutout quality that satisfies the storefront gate", () => {
+  assert.deepEqual(evaluateStorefrontCutoutQuality({ qualityScore: 0.8, qualityIssues: [] }, {}), {
+    pass: true,
+    reason: null
+  });
+});
+
+test("rejects cutout quality below the storefront score threshold", () => {
+  assert.deepEqual(evaluateStorefrontCutoutQuality({ qualityScore: 0.487, qualityIssues: [] }, {}), {
+    pass: false,
+    reason: "QUALITY_SCORE_BELOW_THRESHOLD:0.487<0.75"
+  });
+});
+
+test("rejects blocking cutout issues even when the score passes", () => {
+  assert.deepEqual(
+    evaluateStorefrontCutoutQuality({ qualityScore: 0.9, qualityIssues: ["SUBJECT_TOUCHES_EDGE"] }, {}),
+    { pass: false, reason: "QUALITY_ISSUE:SUBJECT_TOUCHES_EDGE" }
+  );
+});
+
+test("allows non-blocking cutout issues when the score passes", () => {
+  assert.deepEqual(
+    evaluateStorefrontCutoutQuality({ qualityScore: 0.9, qualityIssues: ["SUBJECT_TOO_SMALL"] }, {}),
+    { pass: true, reason: null }
+  );
 });
