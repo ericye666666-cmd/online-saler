@@ -23,6 +23,7 @@ import {
   stagingPilotBatchEnabled
 } from "./product-factory-batch-size";
 import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
+import { buildProductBatchImagePreviews } from "./product-batch-image-preview";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -248,7 +249,37 @@ export class OperationsProductBatchService {
       }
     });
     if (!batch) throw new NotFoundException("Product batch not found.");
-    return this.serializeBatch(batch);
+    const productIds = batch.products.map((product) => product.id);
+    const [variantAssets, selections] = productIds.length
+      ? await Promise.all([
+          prisma.productImageVariantAsset.findMany({
+            where: { productId: { in: productIds } },
+            orderBy: { createdAt: "desc" }
+          }),
+          prisma.productMainImageSelection.findMany({
+            where: { productId: { in: productIds } }
+          })
+        ])
+      : [[], []];
+    const variantsByProduct = new Map<string, typeof variantAssets>();
+    for (const asset of variantAssets) {
+      const productAssets = variantsByProduct.get(asset.productId) ?? [];
+      productAssets.push(asset);
+      variantsByProduct.set(asset.productId, productAssets);
+    }
+    const selectionByProduct = new Map(selections.map((selection) => [selection.productId, selection]));
+    const serialized = this.serializeBatch(batch);
+    return {
+      ...serialized,
+      products: batch.products.map((product) => ({
+        ...product,
+        imagePreviews: buildProductBatchImagePreviews(
+          product.images,
+          variantsByProduct.get(product.id) ?? [],
+          selectionByProduct.get(product.id) ?? null
+        )
+      }))
+    };
   }
 
   async listProducts(input: ListInput) {
