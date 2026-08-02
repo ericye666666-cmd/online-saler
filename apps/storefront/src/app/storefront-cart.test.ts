@@ -20,6 +20,8 @@ const product: PublicProduct = {
   audience: "UNISEX",
   kidsAgeRange: null,
   brand: "Mock Brand",
+  material: "COTTON_BLEND",
+  tags: ["CREW_NECK", "GRAPHIC_PRINT"],
   size: "M",
   conditionGrade: "GOOD",
   fitType: "REGULAR",

@@ -31,6 +31,8 @@ export type ProductDetailFacts = {
   fitType: string | null;
   stretchLevel: string | null;
   fabricWeight: string | null;
+  material: string | null;
+  tags: string[];
   priceKsh: number | null;
   measurementsCm: Record<string, number>;
   defects: Array<{

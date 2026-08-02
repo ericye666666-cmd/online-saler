@@ -5,7 +5,9 @@ import {
   AI_PATTERNS,
   AI_PRODUCT_CATEGORIES,
   AI_SLEEVE_TYPES,
+  PRODUCT_MATERIAL_OPTIONS,
   PRODUCT_SUBCATEGORY_OPTIONS,
+  PRODUCT_TAG_OPTIONS,
   type AIAudience,
   type AIColor,
   type AIExtractionNormalizedOutput,
@@ -14,7 +16,9 @@ import {
   type AIPattern,
   type AIProductCategory,
   type AISleeveType,
-  type ProductSubcategoryOption
+  type ProductMaterialOption,
+  type ProductSubcategoryOption,
+  type ProductTagOption
 } from "@online-saler/shared-types";
 
 type FieldLike = {
@@ -28,6 +32,8 @@ export type RuntimeProductTaxonomy = {
   categories?: string[];
   subcategories?: string[];
   colors?: string[];
+  materials?: string[];
+  tags?: string[];
 };
 
 const CATEGORY_SET = new Set<string>(AI_PRODUCT_CATEGORIES);
@@ -37,6 +43,8 @@ const AUDIENCE_SET = new Set<string>(AI_AUDIENCES);
 const KIDS_AGE_SET = new Set<string>(AI_KIDS_AGE_RANGES);
 const PATTERN_SET = new Set<string>(AI_PATTERNS);
 const SLEEVE_SET = new Set<string>(AI_SLEEVE_TYPES);
+const MATERIAL_SET = new Set<string>(PRODUCT_MATERIAL_OPTIONS);
+const TAG_SET = new Set<string>(PRODUCT_TAG_OPTIONS);
 
 const CATEGORY_ALIASES: Record<string, AIProductCategory> = {
   TOP: "LADY_TOPS",
@@ -116,6 +124,8 @@ export function normalizeOpenAIVisionOutput(
   const categorySet = runtimeSet(runtimeTaxonomy.categories, CATEGORY_SET);
   const subcategorySet = runtimeSet(runtimeTaxonomy.subcategories, SUBCATEGORY_SET);
   const colorSet = runtimeSet(runtimeTaxonomy.colors, COLOR_SET);
+  const materialSet = runtimeSet(runtimeTaxonomy.materials, MATERIAL_SET);
+  const tagSet = runtimeSet(runtimeTaxonomy.tags, TAG_SET);
 
   return {
     category: enumField<AIProductCategory>(record, ["category"], categorySet, "OTHER", evidenceImageIds, CATEGORY_ALIASES),
@@ -145,6 +155,14 @@ export function normalizeOpenAIVisionOutput(
     ),
     pattern: enumField<AIPattern>(record, ["pattern"], PATTERN_SET, "OTHER", evidenceImageIds),
     sleeveType: enumField<AISleeveType>(record, ["sleeveType", "sleeve"], SLEEVE_SET, "OTHER", evidenceImageIds),
+    material: enumField<ProductMaterialOption>(
+      record,
+      ["material", "fabric", "fabricMaterial", "fabric_material"],
+      materialSet,
+      "UNKNOWN",
+      evidenceImageIds
+    ),
+    tags: enumArrayField<ProductTagOption>(record, ["tags", "productTags", "product_tags"], tagSet, evidenceImageIds),
     brandLabel: stringField(record, ["brandLabel", "brand"], evidenceImageIds),
     sizeLabel: stringField(record, ["sizeLabel", "size"], evidenceImageIds),
     ukSizeLabel: stringField(record, ["ukSizeLabel", "ukSize", "uk_size"], evidenceImageIds),
@@ -158,6 +176,24 @@ export function normalizeOpenAIVisionOutput(
     thighWidthCm: numberField(record, ["thighWidthCm", "thigh_width_cm"], evidenceImageIds),
     legOpeningCm: numberField(record, ["legOpeningCm", "leg_opening_cm"], evidenceImageIds),
     inseamCm: numberField(record, ["inseamCm", "inseam_cm"], evidenceImageIds)
+  };
+}
+
+function enumArrayField<T extends string>(
+  record: RawExtraction,
+  keys: string[],
+  allowed: Set<string>,
+  evidenceImageIds: string[]
+): AIFieldValue<T[]> {
+  const field = firstField(record, keys);
+  const values = Array.isArray(field.value) ? field.value : [];
+  const normalized = values
+    .map((value) => String(value).trim().toUpperCase().replaceAll(" ", "_").replaceAll("-", "_"))
+    .filter((value): value is T => allowed.has(value));
+  return {
+    value: [...new Set(normalized)].slice(0, 8),
+    confidence: confidence(field.confidence),
+    evidenceImageIds
   };
 }
 

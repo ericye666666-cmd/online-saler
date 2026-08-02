@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { AIExtractionRequest } from "@online-saler/shared-types";
+import type { AIExtractionNormalizedOutput, AIExtractionRequest } from "@online-saler/shared-types";
 import type { AIProvider, AIProviderResult } from "./ai-provider";
 
 @Injectable()
@@ -8,7 +8,7 @@ export class MockAIProvider implements AIProvider {
     const startedAt = Date.now();
     const firstImageId = request.imageIds[0];
     const evidenceImageIds = firstImageId ? [firstImageId] : [];
-    const normalizedOutput = {
+    const normalizedOutput: AIExtractionNormalizedOutput = {
       category: { value: "TSHIRTS" as const, confidence: 0.93, evidenceImageIds },
       subcategory: { value: "TSHIRT" as const, confidence: 0.9, evidenceImageIds },
       primaryColor: { value: "ORANGE" as const, confidence: 0.9, evidenceImageIds },
@@ -16,6 +16,8 @@ export class MockAIProvider implements AIProvider {
       kidsAgeRange: { value: "NOT_APPLICABLE" as const, confidence: 0.9, evidenceImageIds },
       pattern: { value: "GRAPHIC" as const, confidence: 0.86, evidenceImageIds },
       sleeveType: { value: "SHORT" as const, confidence: 0.82, evidenceImageIds },
+      material: { value: "COTTON_BLEND" as const, confidence: 0.7, evidenceImageIds },
+      tags: { value: ["CREW_NECK", "GRAPHIC_PRINT", "CASUAL"], confidence: 0.84, evidenceImageIds },
       brandLabel: { value: "Mock Brand", confidence: 0.61, evidenceImageIds },
       sizeLabel: { value: "M", confidence: 0.74, evidenceImageIds },
       ukSizeLabel: { value: "UK M", confidence: 0.68, evidenceImageIds },

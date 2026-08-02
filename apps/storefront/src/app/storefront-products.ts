@@ -59,6 +59,8 @@ export type PublicProduct = {
   audience: string | null;
   kidsAgeRange: string | null;
   brand: string | null;
+  material: string | null;
+  tags: string[];
   size: string | null;
   conditionGrade: string | null;
   fitType: string | null;

@@ -14,13 +14,13 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const API_PROXY_URL = "/api-proxy";
-const GROUPS = ["CATEGORY", "SUBCATEGORY", "COLOR", "SIZE", "CONDITION", "DEFECT"] as const;
+const GROUPS = ["CATEGORY", "SUBCATEGORY", "COLOR", "MATERIAL", "TAG", "SIZE", "CONDITION", "DEFECT"] as const;
 type Group = (typeof GROUPS)[number];
 type Option = { code: string; displayName: string; parentCode?: string | null; sortOrder: number; active: boolean; productCount: number };
 type Taxonomy = { source: string; sharedBy: string[]; groups: Record<Group, Option[]> };
 
 const GROUP_LABELS: Record<Group, string> = {
-  CATEGORY: "分类", SUBCATEGORY: "子分类", COLOR: "颜色", SIZE: "尺码", CONDITION: "成色", DEFECT: "瑕疵"
+  CATEGORY: "分类", SUBCATEGORY: "子分类", COLOR: "颜色", MATERIAL: "面料", TAG: "商品标签", SIZE: "尺码", CONDITION: "成色", DEFECT: "瑕疵"
 };
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {

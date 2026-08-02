@@ -58,6 +58,8 @@ describe("product detail copy", () => {
         fitType: "REGULAR",
         stretchLevel: "NONE",
         fabricWeight: "REGULAR",
+        material: "COTTON_BLEND",
+        tags: ["COLLARED", "BUTTON_FRONT"],
         priceKsh: 1200,
         measurements: [
           { measurementType: "CHEST_WIDTH", finalValueCm: 52 },
@@ -94,6 +96,8 @@ describe("product detail copy", () => {
 
     assert.deepEqual(facts.measurementsCm, { CHEST_WIDTH: 52 });
     assert.equal(facts.fitType, "REGULAR");
+    assert.equal(facts.material, "COTTON_BLEND");
+    assert.deepEqual(facts.tags, ["COLLARED", "BUTTON_FRONT"]);
     assert.equal(facts.fitRecommendation.bodyChestMaxCm, 102);
     assert.equal(facts.sourceDataVersion, 4);
   });

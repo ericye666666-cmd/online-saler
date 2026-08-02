@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   HOODED_GARMENT_MEASUREMENT_RULES,
+  PRODUCT_MATERIAL_TAG_RULES,
   openAIVisionResponseSettings,
   parseOpenAIVisionOutput
 } from "./openai-vision.provider";
@@ -13,6 +14,14 @@ test("reserves the output budget for structured product fields", () => {
   assert.equal(settings.text.verbosity, "low");
   assert.equal(settings.text.format.type, "json_object");
   assert.ok(settings.max_output_tokens >= 3000);
+});
+
+test("keeps material and tags evidence-based", () => {
+  const rules = PRODUCT_MATERIAL_TAG_RULES.join(" ");
+  assert.match(rules, /at most 8 unique enum values/);
+  assert.match(rules, /prefer the care label/);
+  assert.match(rules, /otherwise use UNKNOWN/);
+  assert.match(rules, /Do not claim WATER_RESISTANT/);
 });
 
 test("excludes the hood and neckline from shoulder and body measurements", () => {

@@ -42,6 +42,8 @@ export interface CalibrateProductInput {
   fitType: ProductFitType;
   stretchLevel: ProductStretchLevel;
   fabricWeight: ProductFabricWeight;
+  material: string;
+  tags: string[];
   brand?: string;
   tagSize?: string;
   sizeLabel?: string;
@@ -80,7 +82,7 @@ export class ProductCalibrationService {
     });
 
     const reviewedAt = new Date();
-    const finalFields: Record<string, string | null> = {
+    const finalFields: Record<string, string | string[] | null> = {
       title: input.title,
       category: input.category,
       subcategory: input.subcategory ?? null,
@@ -92,6 +94,8 @@ export class ProductCalibrationService {
       fitType: input.fitType,
       stretchLevel: input.stretchLevel,
       fabricWeight: input.fabricWeight,
+      material: input.material,
+      tags: input.tags,
       brandLabel: input.brand ?? null,
       tagSize: input.tagSize ?? null,
       sizeLabel: input.sizeLabel ?? null,
@@ -111,6 +115,8 @@ export class ProductCalibrationService {
           fitType: input.fitType,
           stretchLevel: input.stretchLevel,
           fabricWeight: input.fabricWeight,
+          material: input.material,
+          tags: input.tags,
           detailSourceVersion: { increment: 1 },
           gender: input.gender ?? null,
           kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
@@ -147,16 +153,16 @@ export class ProductCalibrationService {
           create: {
             extractionId: extraction.id,
             fieldName,
-            finalValueJson: finalValue === null ? Prisma.JsonNull : finalValue,
+            finalValueJson: finalValue === null ? Prisma.JsonNull : finalValue as Prisma.InputJsonValue,
             source: AIFieldDecisionSource.HUMAN_ENTERED,
             requiresHumanConfirmation: false,
             reviewedByEmployeeId: input.employeeId,
             reviewedAt
           },
           update: {
-            finalValueJson: finalValue === null ? Prisma.JsonNull : finalValue,
+            finalValueJson: finalValue === null ? Prisma.JsonNull : finalValue as Prisma.InputJsonValue,
             source:
-              decision?.aiValueJson === finalValue
+              sameJsonValue(decision?.aiValueJson, finalValue)
                 ? AIFieldDecisionSource.HUMAN_ACCEPTED
                 : AIFieldDecisionSource.HUMAN_EDITED,
             requiresHumanConfirmation: false,
@@ -250,6 +256,15 @@ export class ProductCalibrationService {
     if (!Object.values(ProductFabricWeight).includes(input.fabricWeight)) {
       throw new BadRequestException("fabricWeight must be confirmed by an employee");
     }
+    if (!input.material?.trim()) {
+      throw new BadRequestException("material must be confirmed by an employee");
+    }
+    if (!Array.isArray(input.tags) || input.tags.length > 8 || input.tags.some((tag) => !tag?.trim())) {
+      throw new BadRequestException("tags must be an array of at most 8 confirmed values");
+    }
+    if (new Set(input.tags).size !== input.tags.length) {
+      throw new BadRequestException("tags must not contain duplicates");
+    }
     if (input.priceKsh !== undefined && (!Number.isInteger(input.priceKsh) || input.priceKsh <= 0)) {
       throw new BadRequestException("priceKsh must be a positive integer");
     }
@@ -263,4 +278,8 @@ export class ProductCalibrationService {
       throw new BadRequestException("each measurement requires a type and positive valueCm");
     }
   }
+}
+
+function sameJsonValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

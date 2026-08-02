@@ -5,7 +5,7 @@ export const AI_JOB_STATUSES = [
   "FAILED"
 ] as const;
 
-export const PRODUCT_AI_PROMPT_VERSION = "product-hood-aware-measurements-v3";
+export const PRODUCT_AI_PROMPT_VERSION = "product-material-tags-v4";
 
 export type AIJobStatus = (typeof AI_JOB_STATUSES)[number];
 
@@ -31,13 +31,19 @@ export type ProductCategoryOption = (typeof PRODUCT_CATEGORY_OPTIONS)[number];
 export const PRODUCT_SUBCATEGORY_OPTIONS = [
   "KIDS_DRESS",
   "KIDS_JACKET_TOP",
+  "KIDS_TOPS",
+  "KIDS_HOODIES",
+  "KIDS_SKIRTS",
   "KIDS_PANTS",
   "NEWBORN",
   "MEN_JEANS",
+  "WOMEN_JEANS",
   "LADIES_PANTS_MIX",
   "SWEAT_PANTS",
   "CARGO_PANTS",
   "OFFICIAL_PANTS",
+  "LEGGINGS",
+  "WIDE_LEG_PANTS",
   "MEN_JACKETS",
   "THICK_VEST",
   "LADIES_JACKETS",
@@ -45,14 +51,36 @@ export const PRODUCT_SUBCATEGORY_OPTIONS = [
   "HOODIES",
   "SWEATSHIRTS",
   "DENIM_JACKETS",
+  "BLAZERS",
+  "PUFFER_JACKETS",
+  "WINDBREAKERS",
+  "RAIN_JACKETS",
+  "COATS",
+  "CARDIGANS",
   "LONG_DRESSES",
+  "MIDI_DRESSES",
+  "MINI_DRESSES",
+  "MAXI_SKIRTS",
+  "MIDI_SKIRTS",
+  "MINI_SKIRTS",
+  "JUMPSUITS",
   "SHORT_DRESSES_SKIRTS",
   "OFFICIAL_TOPS",
   "FANCY_TOPS",
+  "BLOUSES",
+  "TANK_TOPS",
+  "CROP_TOPS",
+  "SWEATERS",
   "SHORT_SHIRTS",
   "LONG_SHIRTS",
+  "POLO_SHIRTS",
   "TSHIRT",
+  "BASIC_TSHIRT",
+  "GRAPHIC_TSHIRT",
   "SHORT_PANTS",
+  "DENIM_SHORTS",
+  "CARGO_SHORTS",
+  "SPORTS_SHORTS",
   "LONG_TWO_PIECE",
   "SHORT_TWO_PIECE",
   "MEN_SPORT_SHOES",
@@ -78,14 +106,14 @@ export const PRODUCT_SUBCATEGORIES_BY_CATEGORY: Record<
   ProductCategoryOption,
   readonly ProductSubcategoryOption[]
 > = {
-  KIDS: ["KIDS_DRESS", "KIDS_JACKET_TOP", "KIDS_PANTS", "NEWBORN", "OTHER"],
-  PANTS: ["MEN_JEANS", "LADIES_PANTS_MIX", "SWEAT_PANTS", "CARGO_PANTS", "OFFICIAL_PANTS", "OTHER"],
-  JACKETS: ["MEN_JACKETS", "THICK_VEST", "LADIES_JACKETS", "UNISEX_JACKETS", "HOODIES", "SWEATSHIRTS", "DENIM_JACKETS", "OTHER"],
-  DRESSES: ["LONG_DRESSES", "SHORT_DRESSES_SKIRTS", "OTHER"],
-  LADY_TOPS: ["OFFICIAL_TOPS", "FANCY_TOPS", "OTHER"],
-  SHIRTS: ["SHORT_SHIRTS", "LONG_SHIRTS", "OTHER"],
-  TSHIRTS: ["TSHIRT", "OTHER"],
-  SHORT: ["SHORT_PANTS", "OTHER"],
+  KIDS: ["KIDS_DRESS", "KIDS_JACKET_TOP", "KIDS_TOPS", "KIDS_HOODIES", "KIDS_SKIRTS", "KIDS_PANTS", "NEWBORN", "OTHER"],
+  PANTS: ["MEN_JEANS", "WOMEN_JEANS", "LADIES_PANTS_MIX", "SWEAT_PANTS", "CARGO_PANTS", "OFFICIAL_PANTS", "LEGGINGS", "WIDE_LEG_PANTS", "OTHER"],
+  JACKETS: ["MEN_JACKETS", "THICK_VEST", "LADIES_JACKETS", "UNISEX_JACKETS", "HOODIES", "SWEATSHIRTS", "DENIM_JACKETS", "BLAZERS", "PUFFER_JACKETS", "WINDBREAKERS", "RAIN_JACKETS", "COATS", "CARDIGANS", "OTHER"],
+  DRESSES: ["LONG_DRESSES", "MIDI_DRESSES", "MINI_DRESSES", "MAXI_SKIRTS", "MIDI_SKIRTS", "MINI_SKIRTS", "JUMPSUITS", "SHORT_DRESSES_SKIRTS", "OTHER"],
+  LADY_TOPS: ["OFFICIAL_TOPS", "FANCY_TOPS", "BLOUSES", "TANK_TOPS", "CROP_TOPS", "SWEATERS", "OTHER"],
+  SHIRTS: ["SHORT_SHIRTS", "LONG_SHIRTS", "POLO_SHIRTS", "OTHER"],
+  TSHIRTS: ["TSHIRT", "BASIC_TSHIRT", "GRAPHIC_TSHIRT", "OTHER"],
+  SHORT: ["SHORT_PANTS", "DENIM_SHORTS", "CARGO_SHORTS", "SPORTS_SHORTS", "OTHER"],
   TWO_PIECE: ["LONG_TWO_PIECE", "SHORT_TWO_PIECE", "OTHER"],
   SHOES: ["MEN_SPORT_SHOES", "MEN_SHOES", "LADIES_SHOES", "KIDS_SHOES", "OFFICIAL_SHOES", "OTHER"],
   BAG: ["LADIES_BAGS", "SCHOOL_BAGS", "PACKAGE_BAGS", "OTHER"],
@@ -192,6 +220,75 @@ export const PRODUCT_FABRIC_WEIGHTS = [
 
 export type ProductFabricWeightValue = (typeof PRODUCT_FABRIC_WEIGHTS)[number];
 
+export const PRODUCT_MATERIAL_OPTIONS = [
+  "COTTON",
+  "COTTON_BLEND",
+  "POLYESTER",
+  "DENIM",
+  "WOOL",
+  "WOOL_BLEND",
+  "LINEN",
+  "VISCOSE_RAYON",
+  "NYLON",
+  "LEATHER",
+  "FAUX_LEATHER",
+  "SILK",
+  "SATIN",
+  "FLEECE",
+  "VELVET",
+  "KNIT",
+  "ACRYLIC",
+  "SPANDEX_BLEND",
+  "LACE",
+  "CHIFFON",
+  "CANVAS",
+  "CORDUROY",
+  "MIXED",
+  "UNKNOWN",
+  "OTHER"
+] as const;
+
+export type ProductMaterialOption = (typeof PRODUCT_MATERIAL_OPTIONS)[number];
+
+export const PRODUCT_TAG_OPTIONS = [
+  "HOODED",
+  "ZIP_FRONT",
+  "BUTTON_FRONT",
+  "PULLOVER",
+  "COLLARED",
+  "V_NECK",
+  "CREW_NECK",
+  "TURTLENECK",
+  "POCKETS",
+  "CARGO_POCKETS",
+  "LINED",
+  "REVERSIBLE",
+  "WATER_RESISTANT",
+  "INSULATED",
+  "LIGHTWEIGHT",
+  "HIGH_WAIST",
+  "ELASTIC_WAIST",
+  "DRAWSTRING_WAIST",
+  "STRAIGHT_LEG",
+  "WIDE_LEG",
+  "SKINNY_FIT",
+  "FLARED",
+  "CROPPED",
+  "MIDI_LENGTH",
+  "MAXI_LENGTH",
+  "MINI_LENGTH",
+  "GRAPHIC_PRINT",
+  "EMBROIDERED",
+  "BEADED",
+  "CASUAL",
+  "FORMAL",
+  "SPORTS",
+  "OUTDOOR",
+  "MATERNITY"
+] as const;
+
+export type ProductTagOption = (typeof PRODUCT_TAG_OPTIONS)[number];
+
 export const AI_AUDIENCES = [
   "WOMEN",
   "MEN",
@@ -222,6 +319,8 @@ export const AI_EXTRACTED_FIELDS = [
   "kidsAgeRange",
   "pattern",
   "sleeveType",
+  "material",
+  "tags",
   "brandLabel",
   "sizeLabel",
   "ukSizeLabel",
@@ -253,6 +352,8 @@ export interface AIExtractionNormalizedOutput {
   kidsAgeRange: AIFieldValue<AIKidsAgeRange>;
   pattern: AIFieldValue<AIPattern>;
   sleeveType: AIFieldValue<AISleeveType>;
+  material: AIFieldValue<ProductMaterialOption>;
+  tags: AIFieldValue<ProductTagOption[]>;
   brandLabel: AIFieldValue<string>;
   sizeLabel: AIFieldValue<string>;
   ukSizeLabel: AIFieldValue<string>;
@@ -306,6 +407,8 @@ export const confidenceBand = (confidence: number): "LOW" | "MEDIUM" | "HIGH" =>
 export const requiresHumanConfirmation = (field: AIExtractedField, confidence: number): boolean => {
   const alwaysConfirm: AIExtractedField[] = [
     "brandLabel",
+    "material",
+    "tags",
     "sizeLabel",
     "ukSizeLabel",
     "lengthCm",
