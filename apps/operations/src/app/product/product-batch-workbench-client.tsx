@@ -8,6 +8,8 @@ import {
   CheckCircle2Icon,
   CircleDotIcon,
   Clock3Icon,
+  ExternalLinkIcon,
+  ImageIcon,
   ListChecksIcon,
   PackageCheckIcon,
   PlusIcon,
@@ -18,6 +20,14 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { productStatusLabel } from "./product-factory-display";
 import {
@@ -34,6 +44,13 @@ import {
 
 const API_PROXY_URL = "/api-proxy";
 
+type ProductBatchImagePreview = {
+  imageId: string;
+  variant: string;
+  publicUrl: string;
+  selectedAsMain: boolean;
+};
+
 type ProductRecord = Record<string, unknown> & {
   id: string;
   productCode: string;
@@ -42,6 +59,7 @@ type ProductRecord = Record<string, unknown> & {
   barcode?: string | null;
   labelPrintedAt?: string | null;
   images?: Array<Record<string, unknown>>;
+  imagePreviews?: ProductBatchImagePreview[];
   aiExtractions?: Array<Record<string, unknown>>;
   inventoryItem?: Record<string, unknown> | null;
 };
@@ -368,6 +386,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
   const ids = useOperationIds();
   const { hasPermission } = useOperationsSession();
   const [batch, setBatch] = useState<ProductBatch | null>(null);
+  const [previewProduct, setPreviewProduct] = useState<ProductRecord | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -469,10 +488,12 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
       <Card>
         <CardHeader>
           <CardTitle>{batch.targetCount} 件商品</CardTitle>
-          <CardDescription>紧凑查看每件商品的编号、当前状态和缺失项。</CardDescription>
+          <CardDescription>点击商品图片可查看原图和系统生成的各个图片版本。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-          {batch.products.map((product) => <BatchProductItem key={product.id} product={product} />)}
+          {batch.products.map((product) => (
+            <BatchProductItem key={product.id} product={product} onPreview={() => setPreviewProduct(product)} />
+          ))}
         </CardContent>
       </Card>
 
@@ -482,6 +503,13 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
           {Object.entries(batch.counts).map(([status, count]) => <Badge key={status} variant="secondary">{productStatusLabel(status)} {count}</Badge>)}
         </CardContent>
       </Card>
+      <BatchProductPreviewDialog
+        batchId={batch.id}
+        product={previewProduct}
+        onOpenChange={(open) => {
+          if (!open) setPreviewProduct(null);
+        }}
+      />
     </div>
   );
 }
@@ -506,23 +534,155 @@ function BatchStageStepper({ batch }: { batch: ProductBatch }) {
   );
 }
 
-function BatchProductItem({ product }: { product: ProductRecord }) {
+function BatchProductItem({ product, onPreview }: { product: ProductRecord; onPreview: () => void }) {
   const missing: string[] = [];
   if (!product.images?.length) missing.push("缺正面图");
   if (["PHOTOGRAPHED", "AI_PROCESSING"].includes(product.status) && product.aiExtractions?.[0]?.status === "FAILED") missing.push("AI 失败");
   if (product.status === "REWORK_REQUIRED") missing.push("需返工");
+  const preview = product.imagePreviews?.[0] ?? null;
   return (
-    <div className="min-w-0 rounded-md border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold tabular-nums">第 {product.batchItemNumber ?? "-"} 件</span>
-        <Badge variant="secondary" className="max-w-full truncate">{productStatusLabel(product.status)}</Badge>
+    <button
+      type="button"
+      className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-3 rounded-md border p-2 text-left transition-colors hover:border-foreground/30 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={`查看第 ${product.batchItemNumber ?? "-"} 件商品图片`}
+      onClick={onPreview}
+    >
+      <div className="flex h-[4.5rem] w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-white">
+        {preview ? (
+          <img
+            src={productImagePreviewUrl(preview.publicUrl)}
+            alt={`第 ${product.batchItemNumber ?? "-"} 件商品缩略图`}
+            className="size-full object-contain"
+            loading="lazy"
+          />
+        ) : (
+          <ImageIcon className="size-5 text-muted-foreground" aria-hidden="true" />
+        )}
       </div>
-      <div className="mt-2 truncate text-xs text-muted-foreground">{product.productCode}</div>
-      <div className="mt-3 min-h-5 text-xs">
-        {missing.length ? <span className="text-destructive">{missing.join(" · ")}</span> : <span className="text-emerald-700">资料正常</span>}
+      <div className="min-w-0 py-0.5">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <span className="shrink-0 text-sm font-semibold tabular-nums">第 {product.batchItemNumber ?? "-"} 件</span>
+          <Badge variant="secondary" className="max-w-24 truncate">{productStatusLabel(product.status)}</Badge>
+        </div>
+        <div className="mt-1 truncate text-xs text-muted-foreground">{product.productCode}</div>
+        <div className="mt-2 min-h-5 text-xs">
+          {missing.length ? <span className="text-destructive">{missing.join(" · ")}</span> : <span className="text-emerald-700">资料正常</span>}
+        </div>
       </div>
-    </div>
+    </button>
   );
+}
+
+function BatchProductPreviewDialog({
+  batchId,
+  product,
+  onOpenChange
+}: {
+  batchId: string;
+  product: ProductRecord | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const previews = product?.imagePreviews ?? [];
+  const [activeImageId, setActiveImageId] = useState("");
+
+  useEffect(() => {
+    setActiveImageId(previews[0]?.imageId ?? "");
+  }, [product?.id, previews]);
+
+  const activePreview = previews.find((preview) => preview.imageId === activeImageId) ?? previews[0] ?? null;
+  const activeUrl = activePreview ? productImagePreviewUrl(activePreview.publicUrl) : "";
+
+  return (
+    <Dialog open={Boolean(product)} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>第 {product?.batchItemNumber ?? "-"} 件商品图片</DialogTitle>
+          <DialogDescription>{product?.productCode} · 选择下方小图查看系统生成的不同版本。</DialogDescription>
+        </DialogHeader>
+
+        {activePreview ? (
+          <a
+            href={activeUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-h-72 items-center justify-center overflow-hidden rounded-md border bg-white p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-[32rem]"
+            title="点击打开大图"
+          >
+            <img
+              src={activeUrl}
+              alt={`${product?.productCode ?? "商品"} ${productImageVariantLabel(activePreview.variant)}`}
+              className="max-h-full max-w-full object-contain"
+            />
+          </a>
+        ) : (
+          <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-md border bg-muted/30 text-muted-foreground">
+            <ImageIcon className="size-8" aria-hidden="true" />
+            <span>这件商品还没有可查看的正面图片</span>
+          </div>
+        )}
+
+        {previews.length ? (
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {previews.map((preview) => (
+              <button
+                key={preview.imageId}
+                type="button"
+                className={cn(
+                  "min-w-0 rounded-md border p-1.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  preview.imageId === activePreview?.imageId && "border-primary bg-primary/5"
+                )}
+                onClick={() => setActiveImageId(preview.imageId)}
+              >
+                <span className="flex h-20 items-center justify-center overflow-hidden rounded bg-white">
+                  <img
+                    src={productImagePreviewUrl(preview.publicUrl)}
+                    alt={productImageVariantLabel(preview.variant)}
+                    className="size-full object-contain"
+                    loading="lazy"
+                  />
+                </span>
+                <span className="mt-1.5 flex min-w-0 items-center gap-1">
+                  <span className="truncate text-xs font-medium">{productImageVariantLabel(preview.variant)}</span>
+                  {preview.selectedAsMain ? <Badge className="shrink-0 px-1 py-0 text-[10px]">主图</Badge> : null}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          {activePreview ? (
+            <Button asChild variant="outline">
+              <a href={activeUrl} target="_blank" rel="noreferrer">
+                <ExternalLinkIcon data-icon="inline-start" />打开大图
+              </a>
+            </Button>
+          ) : null}
+          <Button asChild>
+            <Link href={`/product/calibration?batchId=${encodeURIComponent(batchId)}`}>
+              进入本批校准<ArrowRightIcon data-icon="inline-end" />
+            </Link>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function productImagePreviewUrl(publicUrl: string) {
+  if (/^(https?:|data:|blob:)/.test(publicUrl) || publicUrl.startsWith(API_PROXY_URL)) return publicUrl;
+  return `${API_PROXY_URL}${publicUrl.startsWith("/") ? "" : "/"}${publicUrl}`;
+}
+
+function productImageVariantLabel(variant: string) {
+  const labels: Record<string, string> = {
+    ORIGINAL: "原图",
+    CUTOUT_TRANSPARENT: "透明抠图",
+    CUTOUT_WHITE: "白底图",
+    OPTIMIZED_MAIN: "优化主图",
+    OPTIMIZED_BALANCED_MAIN: "均整版"
+  };
+  return labels[variant] ?? variant;
 }
 
 function BatchRow({ batch }: { batch: ProductBatch }) {
