@@ -4,6 +4,7 @@ import {
   HOODED_GARMENT_MEASUREMENT_RULES,
   PRODUCT_AUDIENCE_TITLE_RULES,
   PRODUCT_MATERIAL_TAG_RULES,
+  SHOULDER_WIDTH_MEASUREMENT_RULES,
   openAIVisionResponseSettings,
   parseOpenAIVisionOutput
 } from "./openai-vision.provider";
@@ -34,10 +35,13 @@ test("defaults neutral basics to unisex and keeps titles gender-neutral", () => 
 });
 
 test("excludes the hood and neckline from shoulder and body measurements", () => {
-  const rules = HOODED_GARMENT_MEASUREMENT_RULES.join(" ");
-  assert.match(rules, /hood, collar and drawstrings are never part of shoulderWidthCm or lengthCm/);
-  assert.match(rules, /shoulder endpoints below the hood/);
-  assert.match(rules, /return null instead of measuring across the hood or neckline/);
+  const hoodRules = HOODED_GARMENT_MEASUREMENT_RULES.join(" ");
+  const shoulderRules = SHOULDER_WIDTH_MEASUREMENT_RULES.join(" ");
+  assert.match(hoodRules, /hood, collar and drawstrings are never part of shoulderWidthCm or lengthCm/);
+  assert.match(hoodRules, /shoulder endpoints below the hood/);
+  assert.match(shoulderRules, /left sleeve-attachment shoulder seam endpoint to the right/);
+  assert.match(shoulderRules, /Never measure from the collar or neckline to one shoulder/);
+  assert.match(shoulderRules, /return null instead of guessing shoulderWidthCm/);
 });
 
 test("reads nested output text from a direct Responses API payload", () => {

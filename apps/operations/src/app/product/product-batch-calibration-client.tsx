@@ -63,7 +63,11 @@ import { GarmentMeasurementGuide } from "./garment-measurement-guide";
 import { cutoutQualityWarning } from "./image-processing-quality";
 import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
 import { ManualMeasurementEditor } from "./manual-measurement-editor";
-import { calibrationLinePayload, type ManualMeasurementLine } from "./manual-measurement-lines";
+import {
+  calibrationLinePayload,
+  manualMeasurementValueUpdates,
+  type ManualMeasurementLine
+} from "./manual-measurement-lines";
 import { manualMeasurementAction, resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
@@ -536,14 +540,9 @@ export function ProductBatchCalibrationPage({
 
   function applyManualMeasurementLines(lines: ManualMeasurementLine[]) {
     setManualMeasurementLines(lines);
-    setForm((current) => {
-      const next = { ...current };
-      for (const line of lines) {
-        if (line.key in next) next[line.key as keyof WorkspaceForm] = line.valueCm as never;
-      }
-      return next;
-    });
-    setNotice("人工连线已应用，请检查厘米值后保存校准。");
+    const updates = manualMeasurementValueUpdates(lines, measurementSuggestions.map((item) => item.key));
+    setForm((current) => ({ ...current, ...updates }));
+    setNotice("人工连线厘米值已写入尺寸字段，请检查后保存本件。");
   }
 
   async function openManualMeasurementCalibration() {

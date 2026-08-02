@@ -5,7 +5,7 @@ export const AI_JOB_STATUSES = [
   "FAILED"
 ] as const;
 
-export const PRODUCT_AI_PROMPT_VERSION = "product-fit-tags-v5";
+export const PRODUCT_AI_PROMPT_VERSION = "product-fit-tags-v6";
 
 export type AIJobStatus = (typeof AI_JOB_STATUSES)[number];
 
