@@ -122,6 +122,21 @@ export class ProductImageProcessingController {
     return this.imageProcessing.saveManualCutout({ productId, sourceImageId: imageId, body });
   }
 
+  @Post("products/:productId/images/:imageId/guided-cutout")
+  async saveGuidedCutout(
+    @Param("productId") productId: string,
+    @Param("imageId") imageId: string,
+    @Body() body: { points?: unknown },
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    return this.imageProcessing.saveGuidedCutout({
+      productId,
+      sourceImageId: imageId,
+      points: body?.points
+    });
+  }
+
   @Post("image-processing-jobs/:jobId/retry")
   async retry(
     @Param("jobId") jobId: string,

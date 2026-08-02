@@ -17,6 +17,8 @@ import {
   type ProductImageVariantRecord
 } from "@online-saler/shared-types";
 import sharp from "sharp";
+import type { GuidedCutoutPoint } from "./background-removal.provider";
+import { LightweightBackgroundRemovalProvider } from "./lightweight-background-removal.provider";
 import {
   canRetryImageProcessing,
   evaluateCutoutImageQuality,
@@ -31,7 +33,8 @@ import { ProductImageStorageService } from "./product-image-storage.service";
 export class ProductImageProcessingService {
   constructor(
     private readonly details: ProductDetailGenerationService,
-    private readonly storage: ProductImageStorageService
+    private readonly storage: ProductImageStorageService,
+    private readonly lightweight: LightweightBackgroundRemovalProvider
   ) {}
 
   async start(input: {
@@ -135,6 +138,84 @@ export class ProductImageProcessingService {
       );
     }
 
+    return this.saveCorrectedCutout({
+      ...input,
+      analyzed,
+      provider: "manual-cutout-editor",
+      processorVersion: "manual-v1",
+      fallbackReason: "MANUAL_CORRECTION",
+      variantSlug: "cutout-transparent-manual"
+    });
+  }
+
+  async saveGuidedCutout(input: {
+    productId: string;
+    sourceImageId: string;
+    points: unknown;
+  }): Promise<ImageProcessingJobRecord> {
+    const points = validateGuidedCutoutPoints(input.points);
+    const source = await prisma.productImage.findFirst({
+      where: {
+        id: input.sourceImageId,
+        productId: input.productId,
+        type: ProductImageType.FRONT
+      },
+      select: { id: true, originalUrl: true }
+    });
+    if (!source) {
+      throw new BadRequestException("A FRONT original image is required for guided cutout");
+    }
+    if (!source.originalUrl.startsWith(`gs://${this.storage.bucket}/`)) {
+      throw new BadRequestException("Original image is not stored in the configured image bucket");
+    }
+    const objectName = source.originalUrl.slice(`gs://${this.storage.bucket}/`.length);
+    const stored = await this.storage.download(objectName);
+    let guided;
+    try {
+      guided = await this.lightweight.removeBackgroundGuided(
+        {
+          body: Buffer.from(stored.body),
+          contentType: stored.contentType,
+          filename: `${source.id}.image`
+        },
+        points
+      );
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : "Guided cutout processing failed"
+      );
+    }
+
+    const analyzed = await analyzeManualCutout(guided.body);
+    const decision = evaluateCutoutImageQuality(analyzed);
+    if (!decision.pass) {
+      throw new BadRequestException(
+        `Guided cutout did not isolate the garment (${decision.reason}). Move the outline closer to the garment or mark the photo for retake.`
+      );
+    }
+
+    return this.saveCorrectedCutout({
+      productId: input.productId,
+      sourceImageId: input.sourceImageId,
+      body: guided.body,
+      analyzed,
+      provider: guided.provider || "manual-guided-grabcut",
+      processorVersion: guided.processorVersion || "guided-grabcut-v1",
+      fallbackReason: "MANUAL_CONTOUR",
+      variantSlug: "cutout-transparent-guided"
+    });
+  }
+
+  private async saveCorrectedCutout(input: {
+    productId: string;
+    sourceImageId: string;
+    body: Buffer;
+    analyzed: Awaited<ReturnType<typeof analyzeManualCutout>>;
+    provider: string;
+    processorVersion: string;
+    fallbackReason: string;
+    variantSlug: string;
+  }): Promise<ImageProcessingJobRecord> {
     const previousJob = await prisma.productImageProcessingJob.findFirst({
       where: {
         productId: input.productId,
@@ -147,7 +228,7 @@ export class ProductImageProcessingService {
     const objectName = this.storage.derivedObjectName(
       input.productId,
       assetId,
-      "cutout-transparent-manual",
+      input.variantSlug,
       "image/png"
     );
     await this.storage.upload(objectName, "image/png", input.body);
@@ -168,8 +249,8 @@ export class ProductImageProcessingService {
           variant: DatabaseProductImageVariant.CUTOUT_TRANSPARENT,
           storageUrl: `gs://${this.storage.bucket}/${objectName}`,
           publicUrl: `/products/${input.productId}/image-assets/${assetId}/content`,
-          widthPx: analyzed.widthPx,
-          heightPx: analyzed.heightPx,
+          widthPx: input.analyzed.widthPx,
+          heightPx: input.analyzed.heightPx,
           mimeType: "image/png"
         }
       });
@@ -180,12 +261,12 @@ export class ProductImageProcessingService {
           operation: DatabaseImageProcessingOperation.REMOVE_BACKGROUND,
           targetVariant: DatabaseProductImageVariant.CUTOUT_TRANSPARENT,
           status: DatabaseImageProcessingStatus.SUCCEEDED,
-          provider: "manual-cutout-editor",
-          processorVersion: "manual-v1",
-          qualityScore: analyzed.qualityScore,
-          qualityIssues: analyzed.qualityIssues,
+          provider: input.provider,
+          processorVersion: input.processorVersion,
+          qualityScore: input.analyzed.qualityScore,
+          qualityIssues: input.analyzed.qualityIssues,
           fallbackFrom: previousJob?.provider ?? null,
-          fallbackReason: "MANUAL_CORRECTION",
+          fallbackReason: input.fallbackReason,
           outputImageId: asset.id,
           startedAt: new Date(),
           completedAt: new Date()
@@ -521,4 +602,32 @@ export async function analyzeManualCutout(body: Buffer): Promise<{
     qualityScore: Math.round(qualityScore * 1000) / 1000,
     qualityIssues
   };
+}
+
+export function validateGuidedCutoutPoints(value: unknown): GuidedCutoutPoint[] {
+  if (!Array.isArray(value) || value.length < 6 || value.length > 60) {
+    throw new BadRequestException("Guided cutout requires between 6 and 60 outline points");
+  }
+  const points = value.map((point) => {
+    if (!point || typeof point !== "object" || Array.isArray(point)) {
+      throw new BadRequestException("Each guided cutout point must contain normalized x and y values");
+    }
+    const x = Number((point as { x?: unknown }).x);
+    const y = Number((point as { y?: unknown }).y);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) {
+      throw new BadRequestException("Guided cutout point coordinates must be between 0 and 1");
+    }
+    return { x, y };
+  });
+  const area = Math.abs(points.reduce((total, point, index) => {
+    const next = points[(index + 1) % points.length]!;
+    return total + point.x * next.y - next.x * point.y;
+  }, 0)) / 2;
+  if (area < 0.01) {
+    throw new BadRequestException("Guided cutout outline is too small or crosses itself");
+  }
+  if (area > 0.9) {
+    throw new BadRequestException("Guided cutout outline must stay close to the garment");
+  }
+  return points;
 }

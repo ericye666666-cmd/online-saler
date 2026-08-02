@@ -60,7 +60,7 @@ import {
 } from "../operations-workspace-flow";
 import { GarmentMeasurementGuide } from "./garment-measurement-guide";
 import { cutoutQualityWarning } from "./image-processing-quality";
-import { ManualCutoutEditor } from "./manual-cutout-editor";
+import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
@@ -233,6 +233,22 @@ async function uploadManualCutout(
   if (!response.ok) throw new Error(typeof body.message === "string" ? body.message : "无法保存修正版抠图。");
   if (body.status !== "SUCCEEDED" || !body.outputImageId) throw new Error("修正版抠图没有正确保存。");
   return body as ImageProcessingJobRecord;
+}
+
+async function runGuidedCutout(
+  productId: string,
+  sourceImageId: string,
+  points: GuidedCutoutPoint[],
+  adminUserId: string
+) {
+  return request<ImageProcessingJobRecord>(
+    `/products/${productId}/images/${sourceImageId}/guided-cutout`,
+    {
+      method: "POST",
+      headers: { "X-Admin-User-Id": adminUserId },
+      body: JSON.stringify({ points })
+    }
+  );
 }
 
 export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
@@ -485,6 +501,36 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     }
   }
 
+  async function saveGuidedCorrection(points: GuidedCutoutPoint[]) {
+    if (!product || !comparison?.original?.imageId) return;
+    setBusy("guided-cutout");
+    setError("");
+    setNotice("");
+    try {
+      const cutout = await runGuidedCutout(
+        product.id,
+        comparison.original.imageId,
+        points,
+        ids.adminUserId
+      );
+      if (cutout.status !== "SUCCEEDED" || !cutout.outputImageId) {
+        throw new Error(cutout.errorMessage || "按轮廓自动抠图失败。");
+      }
+      const white = await runImageOperation(product.id, cutout.outputImageId, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
+      await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
+      const balanced = await runImageOperation(product.id, cutout.outputImageId, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId);
+      const updated = await selectMainImage(product.id, balanced.outputImageId!, ids.adminUserId);
+      setComparison(updated);
+      setActiveImage("balanced");
+      setManualEditorOpen(false);
+      setNotice("已按员工点选轮廓重新抠图，并生成白底图与两版优化主图。请再次检查边缘。");
+    } catch (caught) {
+      throw new Error(errorMessage(caught, "按轮廓自动抠图失败，请调整轮廓后重试。"));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function rerunAiMeasurements() {
     if (!product) return;
     const imageIds = (product.images ?? []).map((image) => image.id).filter(Boolean);
@@ -590,7 +636,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("rembg_birefnet")}><WandSparklesIcon data-icon="inline-start" />强制 BiRefNet</Button>
-              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutTransparent?.publicUrl || !comparison?.original?.publicUrl} onClick={() => setManualEditorOpen(true)}><ScissorsIcon data-icon="inline-start" />手工修边</Button>
+              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.publicUrl} onClick={() => setManualEditorOpen(true)}><ScissorsIcon data-icon="inline-start" />手动抠图</Button>
             </div>
           </div>
 
@@ -599,7 +645,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
               <p className="font-semibold">抠图未通过，已禁止继续使用这张处理图</p>
               <p className="mt-1 text-xs">{cutoutWarning}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => setManualEditorOpen(true)} disabled={Boolean(busy) || !comparison?.cutoutTransparent?.publicUrl}><ScissorsIcon data-icon="inline-start" />打开手工修边</Button>
+                <Button size="sm" onClick={() => setManualEditorOpen(true)} disabled={Boolean(busy) || !comparison?.original?.publicUrl}><ScissorsIcon data-icon="inline-start" />点选轮廓重新抠图</Button>
                 <Button size="sm" variant="outline" onClick={() => void markRetake()} disabled={Boolean(busy) || readOnly}><RotateCcwIcon data-icon="inline-start" />无法修复，标记重拍</Button>
               </div>
             </div>
@@ -753,9 +799,14 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
       <ManualCutoutEditor
         open={manualEditorOpen}
         originalUrl={comparison?.original?.publicUrl ? `${API_PROXY_URL}${comparison.original.publicUrl}` : ""}
-        cutoutUrl={comparison?.cutoutTransparent?.publicUrl ? `${API_PROXY_URL}${comparison.cutoutTransparent.publicUrl}` : ""}
-        saving={busy === "manual-cutout"}
+        cutoutUrl={comparison?.cutoutTransparent?.publicUrl
+          ? `${API_PROXY_URL}${comparison.cutoutTransparent.publicUrl}`
+          : comparison?.original?.publicUrl
+            ? `${API_PROXY_URL}${comparison.original.publicUrl}`
+            : ""}
+        saving={busy === "manual-cutout" || busy === "guided-cutout"}
         onOpenChange={setManualEditorOpen}
+        onGuidedCutout={saveGuidedCorrection}
         onSave={saveManualCorrection}
       />
     </div>
@@ -1032,6 +1083,7 @@ function focusValidationIssue(
 
 function providerLabel(provider: string | null) {
   if (!provider) return "-";
+  if (provider === "manual-guided-grabcut") return "员工轮廓引导抠图";
   if (provider === "manual-cutout-editor") return "员工手工修边";
   if (provider.includes("rembg") || provider.includes("birefnet")) return "rembg + BiRefNet";
   if (provider.includes("lightweight") || provider.includes("opencv")) return "lightweight OpenCV";
