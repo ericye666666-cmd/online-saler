@@ -18,6 +18,7 @@ export const PRODUCT_STATUS_LABELS: Record<string, string> = {
 export const IMAGE_ISSUE_LABELS: Record<string, string> = {
   SUBJECT_TOO_SMALL: "主体过小",
   SUBJECT_TOO_LARGE: "主体过大",
+  SUBJECT_TOUCHES_EDGE: "主体触碰边缘",
   SUBJECT_TOUCHES_FRAME: "主体触碰边缘",
   EDGE_FRAGMENTED: "边缘破碎",
   MASK_HAS_LARGE_HOLES: "主体存在异常缺口"

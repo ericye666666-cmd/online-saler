@@ -55,6 +55,7 @@ import {
   type WorkspaceForm
 } from "../operations-workspace-flow";
 import { GarmentMeasurementGuide } from "./garment-measurement-guide";
+import { lightweightCutoutWarning } from "./image-processing-quality";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
@@ -385,6 +386,8 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     setError("");
     try {
       const cutout = await runImageOperation(product.id, sourceId, "REMOVE_BACKGROUND", ids.adminUserId, mode);
+      const cutoutWarning = lightweightCutoutWarning(cutout);
+      if (cutoutWarning) throw new Error(cutoutWarning);
       const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
       await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
       const balanced = await runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId);

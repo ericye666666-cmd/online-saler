@@ -17,6 +17,7 @@ import {
 } from "@online-saler/shared-types";
 import {
   canRetryImageProcessing,
+  evaluateLightweightImageQuality,
   isSelectableMainVariant,
   sourceVariantForOperation,
   targetVariantForOperation
@@ -126,20 +127,25 @@ export class ProductImageProcessingService {
     });
 
     let variant: ProductImageVariant = "ORIGINAL";
+    let derivedSourceImageId: string | null = null;
     if (!original) {
       const asset = await prisma.productImageVariantAsset.findFirst({
         where: {
           id: input.imageId,
           productId: input.productId
         },
-        select: { variant: true }
+        select: { variant: true, sourceImageId: true }
       });
       if (!asset) throw new BadRequestException("Front image variant not found for this product");
       variant = asset.variant;
+      derivedSourceImageId = asset.sourceImageId;
     }
 
     if (!isSelectableMainVariant(variant)) {
       throw new BadRequestException("Transparent cutout cannot be selected as the storefront main image");
+    }
+    if (derivedSourceImageId) {
+      await this.requireStorefrontQuality(input.productId, derivedSourceImageId);
     }
 
     await prisma.productMainImageSelection.upsert({
@@ -160,6 +166,43 @@ export class ProductImageProcessingService {
     }
 
     return this.getComparison(input.productId);
+  }
+
+  private async requireStorefrontQuality(productId: string, initialSourceImageId: string): Promise<void> {
+    let sourceImageId = initialSourceImageId;
+
+    for (let depth = 0; depth < 4; depth += 1) {
+      const job = await prisma.productImageProcessingJob.findUnique({
+        where: { outputImageId: sourceImageId },
+        select: {
+          productId: true,
+          operation: true,
+          provider: true,
+          qualityScore: true,
+          qualityIssues: true
+        }
+      });
+      if (job?.productId === productId && job.operation === DatabaseImageProcessingOperation.REMOVE_BACKGROUND) {
+        if (job.provider !== "lightweight-opencv") return;
+        const decision = evaluateLightweightImageQuality({
+          qualityScore: job.qualityScore,
+          qualityIssues: this.toQualityIssues(job.qualityIssues)
+        });
+        if (!decision.pass) {
+          throw new BadRequestException(
+            `Lightweight cutout quality is insufficient for storefront use (${decision.reason}). Run BiRefNet and select its result.`
+          );
+        }
+        return;
+      }
+
+      const sourceAsset = await prisma.productImageVariantAsset.findFirst({
+        where: { id: sourceImageId, productId },
+        select: { sourceImageId: true }
+      });
+      if (!sourceAsset) return;
+      sourceImageId = sourceAsset.sourceImageId;
+    }
   }
 
   async getComparison(productId: string): Promise<ProductImageComparisonResponse> {
@@ -288,6 +331,12 @@ export class ProductImageProcessingService {
     };
   }
 
+  private toQualityIssues(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value.filter((issue): issue is string => typeof issue === "string")
+      : [];
+  }
+
   private toJobRecord(job: {
     id: string;
     productId: string;
@@ -320,9 +369,7 @@ export class ProductImageProcessingService {
       provider: job.provider,
       processorVersion: job.processorVersion,
       qualityScore: job.qualityScore,
-      qualityIssues: Array.isArray(job.qualityIssues)
-        ? job.qualityIssues.filter((issue): issue is string => typeof issue === "string")
-        : [],
+      qualityIssues: this.toQualityIssues(job.qualityIssues),
       fallbackFrom: job.fallbackFrom,
       fallbackReason: job.fallbackReason,
       outputImageId: job.outputImageId,

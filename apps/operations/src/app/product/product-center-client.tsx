@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
+import { lightweightCutoutWarning } from "./image-processing-quality";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -812,6 +813,8 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     setError("");
     try {
       const cutout = await runImageOperation(productId, sourceId, "REMOVE_BACKGROUND", props.ids.adminUserId, mode);
+      const cutoutWarning = lightweightCutoutWarning(cutout);
+      if (cutoutWarning) throw new Error(cutoutWarning);
       const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", props.ids.adminUserId);
       await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", props.ids.adminUserId);
       const balanced = await runImageOperation(productId, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", props.ids.adminUserId);
