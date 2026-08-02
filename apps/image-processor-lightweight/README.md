@@ -1,6 +1,7 @@
-# Lightweight OpenCV Cutout Service
+# Lightweight OpenCV Image Processor
 
 This service removes the controlled measurement-board background without a paid API or generative image model.
+It also creates the optional balanced storefront image from the transparent cutout.
 
 ## Algorithm
 
@@ -18,6 +19,11 @@ This service removes the controlled measurement-board background without a paid 
   - body: raw JPEG, PNG or WEBP bytes
   - response: transparent PNG
   - headers: `X-Quality-Score`, `X-Quality-Issues`
+- `POST /balance-garment`
+  - body: transparent PNG cutout bytes
+  - response: 1200 x 1200 white-background JPEG
+  - uses continuous pixel warps to level the hem, center a detected hood and align sleeves
+  - does not generate, mirror or replace garment details
 
 ## Run locally
 
@@ -37,6 +43,8 @@ REMBG_BIREFNET_SERVICE_URL=http://localhost:8081
 ## Guardrails
 
 - No generative model is used.
-- Original product pixels are retained; only alpha is generated.
+- The original and transparent cutout assets are immutable.
+- The balanced variant samples only the supplied cutout pixels. It never invents logos, pockets, fasteners, fabric or defects.
+- Pose correction is deliberately conservative; physical restyling before capture is still the highest-quality option.
 - This first version assumes a controlled, mostly uniform measurement-board background.
 - White, translucent, lace and highly reflective garments may receive a low quality score and will be routed to the BiRefNet fallback when `BACKGROUND_REMOVAL_PROVIDER=auto`.

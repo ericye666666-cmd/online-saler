@@ -500,7 +500,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">原图永久保留；优化主图 2 只做透明边界裁切、白底、缩放与视觉重心校正，不重绘或移动袖子、帽子。</p>
+              <p className="text-xs text-muted-foreground">原图永久保留；优化主图 2 使用原抠图像素轻微拉直袖子、居中帽子、调平下摆并统一白底，不生成或重画服装细节。</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
@@ -848,7 +848,8 @@ function aiMeasurementSuggestion(
 }
 
 function measurementGuideImage(tabs: ImageTab[]) {
-  return tabs.find((tab) => tab.key === "balanced" && tab.url)?.url ??
+  return tabs.find((tab) => tab.key === "transparent" && tab.url)?.url ??
+    tabs.find((tab) => tab.key === "balanced" && tab.url)?.url ??
     tabs.find((tab) => tab.key === "optimized" && tab.url)?.url ??
     tabs.find((tab) => tab.key === "white" && tab.url)?.url ??
     tabs.find((tab) => tab.key === "original" && tab.url)?.url ?? "";

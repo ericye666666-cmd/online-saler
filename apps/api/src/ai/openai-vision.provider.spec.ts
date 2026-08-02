@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { openAIVisionResponseSettings, parseOpenAIVisionOutput } from "./openai-vision.provider";
+import {
+  HOODED_GARMENT_MEASUREMENT_RULES,
+  openAIVisionResponseSettings,
+  parseOpenAIVisionOutput
+} from "./openai-vision.provider";
 
 test("reserves the output budget for structured product fields", () => {
   const settings = openAIVisionResponseSettings();
@@ -9,6 +13,13 @@ test("reserves the output budget for structured product fields", () => {
   assert.equal(settings.text.verbosity, "low");
   assert.equal(settings.text.format.type, "json_object");
   assert.ok(settings.max_output_tokens >= 3000);
+});
+
+test("excludes the hood and neckline from shoulder and body measurements", () => {
+  const rules = HOODED_GARMENT_MEASUREMENT_RULES.join(" ");
+  assert.match(rules, /hood, collar and drawstrings are never part of shoulderWidthCm or lengthCm/);
+  assert.match(rules, /shoulder endpoints below the hood/);
+  assert.match(rules, /return null instead of measuring across the hood or neckline/);
 });
 
 test("reads nested output text from a direct Responses API payload", () => {

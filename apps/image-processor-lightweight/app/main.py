@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 
+from .balance import balance_garment
 from .cutout import remove_background
 
-app = FastAPI(title="Online Saler Lightweight Cutout", version="1.0.0")
+app = FastAPI(title="Online Saler Lightweight Image Processor", version="2.0.0")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "processor": "lightweight-opencv", "version": "v1.0"}
+    return {"status": "ok", "processor": "lightweight-opencv", "version": "v2.0"}
 
 
 @app.post("/remove-background")
@@ -40,6 +41,38 @@ async def cutout(
             "X-Processor-Version": "v1.0",
             "X-Quality-Score": str(result.quality_score),
             "X-Quality-Issues": ",".join(result.issues),
+            "X-Source-Filename": x_filename or "unknown",
+        },
+    )
+
+
+@app.post("/balance-garment")
+async def balanced_main_image(
+    request: Request,
+    content_type: str | None = Header(default=None),
+    x_filename: str | None = Header(default=None),
+) -> Response:
+    if content_type != "image/png":
+        raise HTTPException(status_code=415, detail="Balanced main image requires a transparent PNG cutout")
+
+    body = await request.body()
+    if not body or len(body) > 16 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image must be between 1 byte and 16 MB")
+
+    try:
+        result = balance_garment(body)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail="Garment balancing failed") from error
+
+    return Response(
+        content=result.jpeg,
+        media_type="image/jpeg",
+        headers={
+            "X-Processor": "lightweight-opencv",
+            "X-Processor-Version": "opencv-balance-v2",
+            "X-Balance-Transforms": ",".join(result.transformations),
             "X-Source-Filename": x_filename or "unknown",
         },
     )

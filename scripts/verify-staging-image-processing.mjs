@@ -224,22 +224,32 @@ async function verifyCutoutPath(input) {
     productId: product.id,
     sourceImageId: completed.outputImageId,
     operation: "COMPOSE_WHITE_BACKGROUND",
-    expectedVariant: "CUTOUT_WHITE"
+    expectedVariant: "CUTOUT_WHITE",
+    expectedProvider: "deterministic-sharp"
   });
   const optimized = await runDerivedOperation({
     ...input,
     productId: product.id,
     sourceImageId: white.outputImageId,
     operation: "OPTIMIZE_MAIN_IMAGE",
-    expectedVariant: "OPTIMIZED_MAIN"
+    expectedVariant: "OPTIMIZED_MAIN",
+    expectedProvider: "deterministic-sharp"
+  });
+  const balanced = await runDerivedOperation({
+    ...input,
+    productId: product.id,
+    sourceImageId: completed.outputImageId,
+    operation: "OPTIMIZE_BALANCED_MAIN_IMAGE",
+    expectedVariant: "OPTIMIZED_BALANCED_MAIN",
+    expectedProvider: "lightweight-opencv"
   });
   const selected = await requestJson(`${input.serviceUrl}/products/${product.id}/main-image`, {
     method: "POST",
     headers: { ...input.adminHeaders, "Content-Type": "application/json" },
-    body: JSON.stringify({ imageId: optimized.outputImageId })
+    body: JSON.stringify({ imageId: balanced.outputImageId })
   });
-  assert.equal(selected.selectedMainImageId, optimized.outputImageId);
-  assert.equal(selected.optimizedMain.selectedAsMain, true);
+  assert.equal(selected.selectedMainImageId, balanced.outputImageId);
+  assert.equal(selected.optimizedBalancedMain.selectedAsMain, true);
   await assertOriginalUnchanged(input.serviceUrl, product.id, image.id, original);
 
   return {
@@ -252,7 +262,8 @@ async function verifyCutoutPath(input) {
     originalSha256: sha256(original),
     alpha,
     white,
-    optimized
+    optimized,
+    balanced
   };
 }
 
@@ -271,18 +282,22 @@ async function runDerivedOperation(input) {
     body: "{}"
   });
   assert.equal(completed.status, "SUCCEEDED");
-  assert.equal(completed.provider, "deterministic-sharp");
+  assert.equal(completed.provider, input.expectedProvider);
   assert.equal(completed.targetVariant, input.expectedVariant);
   assert.ok(completed.outputImageId);
 
   const comparison = await requestJson(`${input.serviceUrl}/products/${input.productId}/image-comparison`, {
     headers: input.adminHeaders
   });
-  const property = input.expectedVariant === "CUTOUT_WHITE" ? "cutoutWhite" : "optimizedMain";
+  const property = input.expectedVariant === "CUTOUT_WHITE"
+    ? "cutoutWhite"
+    : input.expectedVariant === "OPTIMIZED_BALANCED_MAIN"
+      ? "optimizedBalancedMain"
+      : "optimizedMain";
   const asset = comparison[property];
   assert.equal(asset.imageId, completed.outputImageId);
   assert.equal(asset.mimeType, "image/jpeg");
-  if (input.expectedVariant === "OPTIMIZED_MAIN") {
+  if (input.expectedVariant === "OPTIMIZED_MAIN" || input.expectedVariant === "OPTIMIZED_BALANCED_MAIN") {
     assert.equal(asset.widthPx, 1200);
     assert.equal(asset.heightPx, 1200);
   }
