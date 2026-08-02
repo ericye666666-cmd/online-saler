@@ -47,7 +47,9 @@ const rembgResult: BackgroundRemovalResult = {
   body: Buffer.from("rembg"),
   contentType: "image/png",
   provider: "rembg-birefnet",
-  processorVersion: "rembg-v1"
+  processorVersion: "rembg-v1",
+  qualityScore: 0.88,
+  qualityIssues: []
 };
 
 const previousEnvironment = new Map<string, string | undefined>();
@@ -100,7 +102,7 @@ describe("SelectedBackgroundRemovalProvider", () => {
     assert.equal(result.provider, "rembg-birefnet");
     assert.equal(result.fallbackFrom, "lightweight-opencv");
     assert.equal(result.fallbackReason, "QUALITY_SCORE_BELOW_THRESHOLD:0.41<0.8");
-    assert.equal(result.qualityScore, 0.41);
+    assert.equal(result.qualityScore, 0.88);
     assert.deepEqual(result.qualityIssues, []);
     assert.equal(lightweight.calls, 1);
     assert.equal(rembg.calls, 1);

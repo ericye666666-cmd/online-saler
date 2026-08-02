@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from PIL import Image, UnidentifiedImageError
 from rembg import new_session, remove
 
-PROCESSOR_VERSION = "rembg-birefnet-v1"
+PROCESSOR_VERSION = "rembg-birefnet-v2"
 DEFAULT_MODEL = "birefnet-general"
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
 
@@ -44,6 +44,36 @@ def process_image(raw: bytes) -> bytes:
     return bytes(output)
 
 
+def analyze_cutout(output: bytes) -> tuple[float, tuple[str, ...]]:
+    with Image.open(io.BytesIO(output)) as image:
+        rgba = image.convert("RGBA")
+        alpha = rgba.getchannel("A")
+        width, height = rgba.size
+        histogram = alpha.histogram()
+        foreground_pixels = sum(histogram[16:])
+        area_ratio = foreground_pixels / max(1, width * height)
+        issues: list[str] = []
+
+        if area_ratio < 0.06:
+            issues.append("SUBJECT_TOO_SMALL")
+        if area_ratio > 0.82:
+            issues.append("SUBJECT_TOO_LARGE")
+
+        edge_pixels = list(alpha.crop((0, 0, width, 1)).getdata())
+        edge_pixels += list(alpha.crop((0, height - 1, width, height)).getdata())
+        edge_pixels += list(alpha.crop((0, 0, 1, height)).getdata())
+        edge_pixels += list(alpha.crop((width - 1, 0, width, height)).getdata())
+        edge_ratio = sum(1 for value in edge_pixels if value > 16) / max(1, len(edge_pixels))
+        if edge_ratio > 0.04:
+            issues.append("SUBJECT_TOUCHES_EDGE")
+
+        score = 1.0
+        score -= min(abs(area_ratio - 0.34), 0.34) * 0.45
+        score -= min(edge_ratio, 0.2) * 1.5
+        score -= len(issues) * 0.08
+        return round(max(0.0, min(1.0, score)), 3), tuple(issues)
+
+
 @app.on_event("startup")
 def preload_model() -> None:
     get_session()
@@ -68,6 +98,7 @@ async def remove_background(request: Request) -> Response:
 
     try:
         output = await run_in_threadpool(process_image, raw)
+        quality_score, quality_issues = await run_in_threadpool(analyze_cutout, output)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except Exception as error:
@@ -79,5 +110,7 @@ async def remove_background(request: Request) -> Response:
         headers={
             "X-Processor-Version": PROCESSOR_VERSION,
             "X-Processor-Model": os.getenv("REMBG_MODEL", DEFAULT_MODEL),
+            "X-Quality-Score": str(quality_score),
+            "X-Quality-Issues": ",".join(quality_issues),
         },
     )

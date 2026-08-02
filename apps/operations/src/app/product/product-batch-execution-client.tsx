@@ -31,6 +31,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { cn } from "@/lib/utils";
 import { productStatusLabel } from "./product-factory-display";
 import { lightweightCutoutWarning } from "./image-processing-quality";
+import { runWithConcurrency } from "./product-batch-processing-concurrency";
 import {
   PRODUCT_FACTORY_IMAGE_LABELS,
   PRODUCT_FACTORY_IMAGE_TYPES,
@@ -173,75 +174,91 @@ async function runImageOperation(
   return completed;
 }
 
-async function selectMainImage(productId: string, imageId: string, adminUserId: string) {
-  return request<ProductImageComparisonResponse>(`/products/${productId}/main-image`, {
-    method: "POST",
-    headers: { "X-Admin-User-Id": adminUserId },
-    body: JSON.stringify({ imageId })
-  });
-}
-
 async function runProductImagePipeline(
   product: ProductRecord,
   adminUserId: string,
   mode: BackgroundRemovalMode
 ) {
-  let comparison = await getImageComparison(product.id, adminUserId);
-  const originalId = comparison.original?.imageId ?? newestImageOfType(product, "FRONT")?.id;
-  if (!originalId) throw new Error("缺少正面原图");
+  const comparison = await getImageComparison(product.id, adminUserId);
+  const frontOriginalId = comparison.original?.imageId ?? newestImageOfType(product, "FRONT")?.id;
+  if (!frontOriginalId) throw new Error("缺少正面原图");
 
-  let transparentId = comparison.cutoutTransparent?.sourceImageId === originalId
-    ? comparison.cutoutTransparent.imageId
-    : "";
-  if (!transparentId || mode !== "auto") {
-    const cutout = await runImageOperation(
-      product.id,
-      originalId,
-      "REMOVE_BACKGROUND",
-      adminUserId,
-      mode
-    );
-    const cutoutWarning = lightweightCutoutWarning(cutout);
-    if (cutoutWarning) throw new Error(cutoutWarning);
-    transparentId = cutout.outputImageId!;
-  }
+  const processFront = async () => {
+    let transparentId = comparison.cutoutTransparent?.sourceImageId === frontOriginalId
+      ? comparison.cutoutTransparent.imageId
+      : "";
+    if (!transparentId || mode !== "auto") {
+      const cutout = await runImageOperation(
+        product.id,
+        frontOriginalId,
+        "REMOVE_BACKGROUND",
+        adminUserId,
+        mode
+      );
+      const cutoutWarning = lightweightCutoutWarning(cutout);
+      if (cutoutWarning) throw new Error(cutoutWarning);
+      transparentId = cutout.outputImageId!;
+    }
 
-  let whiteId = comparison.cutoutWhite?.sourceImageId === transparentId
-    ? comparison.cutoutWhite.imageId
-    : "";
-  if (!whiteId || mode !== "auto") {
-    whiteId = (await runImageOperation(
-      product.id,
-      transparentId,
-      "COMPOSE_WHITE_BACKGROUND",
-      adminUserId
-    )).outputImageId!;
-  }
+    const whiteAndOptimized = async () => {
+      let whiteId = comparison.cutoutWhite?.sourceImageId === transparentId
+        ? comparison.cutoutWhite.imageId
+        : "";
+      if (!whiteId || mode !== "auto") {
+        whiteId = (await runImageOperation(
+          product.id,
+          transparentId,
+          "COMPOSE_WHITE_BACKGROUND",
+          adminUserId
+        )).outputImageId!;
+      }
+      const optimizedId = comparison.optimizedMain?.sourceImageId === whiteId
+        ? comparison.optimizedMain.imageId
+        : "";
+      if (!optimizedId || mode !== "auto") {
+        await runImageOperation(product.id, whiteId, "OPTIMIZE_MAIN_IMAGE", adminUserId);
+      }
+    };
 
-  let optimizedId = comparison.optimizedMain?.sourceImageId === whiteId
-    ? comparison.optimizedMain.imageId
-    : "";
-  if (!optimizedId || mode !== "auto") {
-    optimizedId = (await runImageOperation(
-      product.id,
-      whiteId,
-      "OPTIMIZE_MAIN_IMAGE",
-      adminUserId
-    )).outputImageId!;
-  }
-  let balancedId = comparison.optimizedBalancedMain?.sourceImageId === transparentId
-    ? comparison.optimizedBalancedMain.imageId
-    : "";
-  if (!balancedId || mode !== "auto") {
-    balancedId = (await runImageOperation(
-      product.id,
-      transparentId,
-      "OPTIMIZE_BALANCED_MAIN_IMAGE",
-      adminUserId
-    )).outputImageId!;
-  }
-  comparison = await selectMainImage(product.id, balancedId || optimizedId, adminUserId);
-  return comparison;
+    const balancedId = comparison.optimizedBalancedMain?.sourceImageId === transparentId
+      ? comparison.optimizedBalancedMain.imageId
+      : "";
+    await Promise.all([
+      whiteAndOptimized(),
+      balancedId && mode === "auto"
+        ? Promise.resolve()
+        : runImageOperation(product.id, transparentId, "OPTIMIZE_BALANCED_MAIN_IMAGE", adminUserId)
+    ]);
+  };
+
+  const processBack = async () => {
+    const backOriginalId = comparison.backOriginal?.imageId ?? newestImageOfType(product, "BACK")?.id;
+    if (!backOriginalId) return;
+    let transparentId = comparison.backCutoutTransparent?.sourceImageId === backOriginalId
+      ? comparison.backCutoutTransparent.imageId
+      : "";
+    if (!transparentId || mode !== "auto") {
+      const cutout = await runImageOperation(
+        product.id,
+        backOriginalId,
+        "REMOVE_BACKGROUND",
+        adminUserId,
+        mode
+      );
+      const cutoutWarning = lightweightCutoutWarning(cutout);
+      if (cutoutWarning) throw new Error(`背面图：${cutoutWarning}`);
+      transparentId = cutout.outputImageId!;
+    }
+    const whiteId = comparison.backCutoutWhite?.sourceImageId === transparentId
+      ? comparison.backCutoutWhite.imageId
+      : "";
+    if (!whiteId || mode !== "auto") {
+      await runImageOperation(product.id, transparentId, "COMPOSE_WHITE_BACKGROUND", adminUserId);
+    }
+  };
+
+  await Promise.all([processFront(), processBack()]);
+  return getImageComparison(product.id, adminUserId);
 }
 
 async function runProductAi(product: ProductRecord, ids: ReturnType<typeof useOperationIds>) {
@@ -520,11 +537,13 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
       [product.id]: { ...current[product.id], status: "RUNNING", message: mode === "rembg_birefnet" ? "正在强制使用 BiRefNet" : "正在运行自动处理" }
     }));
     try {
-      const comparison = await runProductImagePipeline(product, ids.adminUserId, mode);
-      await runProductAi(product, ids);
+      const [comparison] = await Promise.all([
+        runProductImagePipeline(product, ids.adminUserId, mode),
+        runProductAi(product, ids)
+      ]);
       setStates((current) => ({
         ...current,
-        [product.id]: { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成" }
+        [product.id]: { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成，待校准选择主图" }
       }));
       return true;
     } catch (caught) {
@@ -544,11 +563,14 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
     if (!batch) return;
     setBusy(true);
     setError("");
-    for (const product of batch.products) {
-      if (states[product.id]?.status === "SUCCEEDED") continue;
-      await processOne(product, "auto");
+    try {
+      const pending = batch.products.filter((product) => states[product.id]?.status !== "SUCCEEDED");
+      await runWithConcurrency(pending, 2, async (product) => {
+        await processOne(product, "auto");
+      });
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
     await load().catch((caught) => setError(errorMessage(caught, "无法刷新批次。")));
   }
 
@@ -582,7 +604,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>批量处理 {batch.targetCount} 件商品</CardTitle>
-              <CardDescription>先运行 lightweight OpenCV；质量不足时自动回退 rembg + BiRefNet。随后用本件全部原图运行 OpenAI。</CardDescription>
+              <CardDescription>每次并行处理 2 件：正面与背面生成白底版本，同时用全部原图运行 OpenAI。主图留到人工校准时选择。</CardDescription>
             </div>
             {completed < batch.targetCount ? (
               <Button disabled={busy} onClick={() => void processAll()}>
@@ -681,7 +703,11 @@ function ProcessingRow(props: {
   disabled: boolean;
   onRetry: () => void;
 }) {
-  const removeJob = props.state.comparison?.jobs.find((job) => job.operation === "REMOVE_BACKGROUND" && job.status === "SUCCEEDED");
+  const removeJob = props.state.comparison?.jobs.find((job) =>
+    job.operation === "REMOVE_BACKGROUND" &&
+    job.status === "SUCCEEDED" &&
+    job.sourceImageId === props.state.comparison?.original?.imageId
+  );
   return (
     <div className="grid gap-3 rounded-md border p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] md:items-center">
       <div className="min-w-0">
@@ -763,9 +789,11 @@ function hasSucceededAi(product: ProductRecord) {
 }
 
 function stateFromProduct(product: ProductRecord, comparison: ProductImageComparisonResponse): ProcessingState {
-  const imageReady = Boolean((comparison.optimizedBalancedMain || comparison.optimizedMain) && comparison.selectedMainImageId);
+  const frontReady = Boolean(comparison.cutoutWhite && (comparison.optimizedBalancedMain || comparison.optimizedMain));
+  const backReady = !comparison.backOriginal || Boolean(comparison.backCutoutWhite);
+  const imageReady = frontReady && backReady;
   const aiReady = hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status);
-  if (imageReady && aiReady) return { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成" };
+  if (imageReady && aiReady) return { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成，待校准选择主图" };
   const failed = comparison.jobs.find((job) => job.status === "FAILED");
   if (failed) return { status: "FAILED", comparison, message: failed.errorMessage || "图片处理失败" };
   if (product.aiExtractions?.[0]?.status === "FAILED") {

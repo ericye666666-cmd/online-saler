@@ -14,14 +14,8 @@ class CutoutResult:
 
 
 def remove_background(image_bytes: bytes) -> CutoutResult:
-    encoded = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError("Unsupported or invalid image")
-
+    image = _decode_image(image_bytes)
     height, width = image.shape[:2]
-    if min(height, width) < 128:
-        raise ValueError("Image is too small")
 
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
     border = max(8, int(min(height, width) * 0.035))
@@ -54,6 +48,85 @@ def remove_background(image_bytes: bytes) -> CutoutResult:
     foreground = _keep_central_components(foreground)
     foreground = _refine_with_grabcut(image, foreground)
 
+    return _encode_result(image, foreground)
+
+
+def remove_background_guided(
+    image_bytes: bytes, normalized_points: list[tuple[float, float]]
+) -> CutoutResult:
+    image = _decode_image(image_bytes)
+    height, width = image.shape[:2]
+    if len(normalized_points) < 6 or len(normalized_points) > 60:
+        raise ValueError("Foreground polygon must contain between 6 and 60 points")
+
+    points = np.array(
+        [
+            [
+                int(round(np.clip(x, 0.0, 1.0) * (width - 1))),
+                int(round(np.clip(y, 0.0, 1.0) * (height - 1))),
+            ]
+            for x, y in normalized_points
+        ],
+        dtype=np.int32,
+    )
+    polygon = np.zeros((height, width), dtype=np.uint8)
+    cv2.fillPoly(polygon, [points], 255)
+    polygon_area = int(np.count_nonzero(polygon))
+    if polygon_area < height * width * 0.01:
+        raise ValueError("Foreground polygon is too small")
+    if polygon_area > height * width * 0.9:
+        raise ValueError("Foreground polygon is too large")
+
+    mask = np.full((height, width), cv2.GC_BGD, dtype=np.uint8)
+    mask[polygon == 255] = cv2.GC_PR_FGD
+
+    distance = cv2.distanceTransform(polygon, cv2.DIST_L2, 5)
+    inside_distances = distance[distance > 0]
+    if inside_distances.size == 0:
+        raise ValueError("Foreground polygon is empty")
+    sure_threshold = max(3.0, float(np.percentile(inside_distances, 62)))
+    mask[distance >= sure_threshold] = cv2.GC_FGD
+
+    background_model = np.zeros((1, 65), np.float64)
+    foreground_model = np.zeros((1, 65), np.float64)
+    try:
+        cv2.grabCut(
+            image,
+            mask,
+            None,
+            background_model,
+            foreground_model,
+            5,
+            cv2.GC_INIT_WITH_MASK,
+        )
+    except cv2.error as error:
+        raise ValueError("Unable to separate the garment inside the selected outline") from error
+
+    foreground = np.where(
+        ((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD)) & (polygon == 255),
+        255,
+        0,
+    ).astype(np.uint8)
+    foreground = _keep_central_components(foreground)
+
+    retained_ratio = float(np.count_nonzero(foreground)) / float(polygon_area)
+    if retained_ratio < 0.18:
+        raise ValueError("Selected outline did not contain a clear garment; place points closer to its edge")
+    return _encode_result(image, foreground)
+
+
+def _decode_image(image_bytes: bytes) -> np.ndarray:
+    encoded = np.frombuffer(image_bytes, dtype=np.uint8)
+    image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("Unsupported or invalid image")
+    height, width = image.shape[:2]
+    if min(height, width) < 128:
+        raise ValueError("Image is too small")
+    return image
+
+
+def _encode_result(image: np.ndarray, foreground: np.ndarray) -> CutoutResult:
     alpha = cv2.GaussianBlur(foreground, (0, 0), sigmaX=0.8)
     rgba = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
     rgba[:, :, 3] = alpha

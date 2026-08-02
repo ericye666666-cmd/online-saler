@@ -816,10 +816,14 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       const cutout = await runImageOperation(productId, sourceId, "REMOVE_BACKGROUND", props.ids.adminUserId, mode);
       const cutoutWarning = lightweightCutoutWarning(cutout);
       if (cutoutWarning) throw new Error(cutoutWarning);
-      const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", props.ids.adminUserId);
-      await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", props.ids.adminUserId);
-      const balanced = await runImageOperation(productId, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", props.ids.adminUserId);
-      setComparison(await selectProductMainImage(productId, balanced.outputImageId!, props.ids.adminUserId));
+      await Promise.all([
+        (async () => {
+          const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", props.ids.adminUserId);
+          await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", props.ids.adminUserId);
+        })(),
+        runImageOperation(productId, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", props.ids.adminUserId)
+      ]);
+      await loadComparison();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "图片处理失败。");
     } finally {
@@ -869,7 +873,9 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     }
   }
 
-  const latestRemovalJob = comparison?.jobs.find((job) => job.operation === "REMOVE_BACKGROUND");
+  const latestRemovalJob = comparison?.jobs.find((job) =>
+    job.operation === "REMOVE_BACKGROUND" && job.sourceImageId === comparison.original?.imageId
+  );
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -901,6 +907,9 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               <ImageVariantTile label="白底图" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
               <ImageVariantTile label="优化主图" asset={comparison?.optimizedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
               <ImageVariantTile label="优化主图 2（均整版）" asset={comparison?.optimizedBalancedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="背面原图" asset={comparison?.backOriginal ?? null} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="背面透明抠图" asset={comparison?.backCutoutTransparent ?? null} transparent busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="背面白底" asset={comparison?.backCutoutWhite ?? null} busy={Boolean(imageBusy)} />
             </div>
             {latestRemovalJob ? (
               <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-muted/30 p-3 text-xs">
