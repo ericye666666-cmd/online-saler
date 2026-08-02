@@ -34,6 +34,10 @@ export function uploadedFrontCount(products: Array<{ images?: Array<{ type?: unk
   return products.filter((product) => product.images?.some((image) => image.type === "FRONT")).length;
 }
 
+export function frontImage<TImage extends { type?: unknown }>(images: TImage[] | undefined): TImage | null {
+  return images?.find((image) => image.type === "FRONT") ?? null;
+}
+
 export function assignBatchFrontFiles<TFile>(
   products: Array<{ id: string; images?: Array<{ type?: unknown }> }>,
   files: TFile[]

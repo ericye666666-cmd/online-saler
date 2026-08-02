@@ -71,6 +71,7 @@ import {
   canUnpublishProduct
 } from "../product-control-flow";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
+import { frontImage } from "./product-factory-upload-flow";
 
 const API_PROXY_URL = "/api-proxy";
 const BATCH_SIZE = 10;
@@ -1319,7 +1320,11 @@ function latestImage(product: JsonRecord): JsonRecord | null {
 
 function latestImageRecord(product: JsonRecord | null): JsonRecord | null {
   const images = product?.images;
-  return Array.isArray(images) ? objectRecord(images[0]) : null;
+  if (!Array.isArray(images)) return null;
+  const records = images
+    .map((image) => objectRecord(image))
+    .filter((image): image is JsonRecord => image !== null);
+  return frontImage(records);
 }
 
 function imageUrlFromImage(image: JsonRecord): string {

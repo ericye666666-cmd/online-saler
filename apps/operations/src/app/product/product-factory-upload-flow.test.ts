@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   assignBatchFrontFiles,
+  frontImage,
   firstProductMissingFront,
   imageUploadIssue,
   shouldAdvanceWithoutUploading,
@@ -12,6 +13,14 @@ assert.match(imageUploadIssue({ type: "image/heic", size: 1024 }) ?? "", /HEIC/)
 assert.match(imageUploadIssue({ type: "image/jpeg", size: 11 * 1024 * 1024 }) ?? "", /10 MB/);
 assert.equal(firstProductMissingFront([{ images: [{ type: "FRONT" }] }, { images: [] }]), 1);
 assert.equal(uploadedFrontCount([{ images: [{ type: "FRONT" }] }, { images: [{ type: "BACK" }] }]), 1);
+assert.deepEqual(
+  frontImage([
+    { id: "label-latest", type: "LABEL" },
+    { id: "front-main", type: "FRONT" }
+  ]),
+  { id: "front-main", type: "FRONT" }
+);
+assert.equal(frontImage([{ id: "detail-only", type: "DETAIL" }]), null);
 assert.deepEqual(
   assignBatchFrontFiles(
     [
