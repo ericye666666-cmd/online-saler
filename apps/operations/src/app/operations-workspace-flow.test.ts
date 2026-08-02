@@ -104,7 +104,6 @@ const body = buildCalibrationBody({
     ...completeForm,
     tagSize: "UK 12",
     ukSizeLabel: "UK 12",
-    description: "Black short sleeve dress.",
     defects: "small stain on cuff"
   }
 });
@@ -121,7 +120,6 @@ assert.equal(body.gender, "WOMEN");
 assert.equal(body.priceKsh, 850);
 assert.equal(body.tagSize, "UK 12");
 assert.equal(body.ukSizeLabel, "UK 12");
-assert.equal(body.description, "Black short sleeve dress.");
 assert.equal(body.fitType, "UNKNOWN");
 assert.equal(body.stretchLevel, "UNKNOWN");
 assert.equal(body.fabricWeight, "UNKNOWN");

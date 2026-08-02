@@ -48,7 +48,6 @@ export interface CalibrateProductInput {
   tagSize?: string;
   sizeLabel?: string;
   ukSizeLabel?: string;
-  description?: string;
   conditionGrade: ConditionGrade;
   priceKsh?: number;
   measurements: CalibrationMeasurementInput[];
@@ -124,7 +123,6 @@ export class ProductCalibrationService {
           tagSize: input.tagSize ?? null,
           finalSizeLabel: input.sizeLabel ?? null,
           ukSizeLabel: input.ukSizeLabel ?? null,
-          description: input.description ?? null,
           conditionGrade: input.conditionGrade,
           priceKsh: input.priceKsh,
           status: ProductStatus.CALIBRATED

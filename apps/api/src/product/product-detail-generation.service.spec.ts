@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
+  ProductDetailAssetType,
   ProductDetailStatus,
   ProductFabricWeight,
   ProductFitType,
@@ -16,11 +17,13 @@ import {
 
 const originals = {
   batchFindUnique: prisma.productBatch.findUnique,
+  profileFindUnique: prisma.productDetailProfile.findUnique,
   transaction: prisma.$transaction
 };
 
 afterEach(() => {
   prisma.productBatch.findUnique = originals.batchFindUnique;
+  prisma.productDetailProfile.findUnique = originals.profileFindUnique;
   prisma.$transaction = originals.transaction;
 });
 
@@ -163,6 +166,111 @@ describe("ProductDetailGenerationService", () => {
       assert.equal(update?.data.outdatedReason, "BACK_IMAGE_CHANGED");
       assert.ok(update?.data.outdatedAt instanceof Date);
     }
+  });
+
+  it("publishes the approved detail description to the product record", async () => {
+    prisma.productDetailProfile.findUnique = (async () => ({
+      id: "profile-1",
+      productId: "product-1",
+      status: ProductDetailStatus.READY,
+      sourceDataVersion: 2,
+      customerDescription: "  Approved storefront description.  ",
+      product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
+      assets: Object.values(ProductDetailAssetType).map((type) => ({
+        id: `asset-${type}`,
+        type,
+        status: ProductDetailStatus.READY
+      }))
+    })) as never;
+
+    const updates: Array<{ target: string; data: Record<string, unknown> }> = [];
+    prisma.$transaction = (async (callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        productDetailProfile: {
+          update: async ({ data }: { data: Record<string, unknown> }) => {
+            updates.push({ target: "profile", data });
+            return { id: "profile-1", ...data };
+          }
+        },
+        product: {
+          update: async ({ data }: { data: Record<string, unknown> }) => {
+            updates.push({ target: "product", data });
+            return { id: "product-1", ...data };
+          }
+        }
+      })) as never;
+
+    await new ProductDetailGenerationService().approveProfile("profile-1", "employee-1");
+
+    assert.equal(updates.find((item) => item.target === "profile")?.data.status, ProductDetailStatus.APPROVED);
+    assert.equal(updates.find((item) => item.target === "product")?.data.description, "Approved storefront description.");
+  });
+
+  it("blocks detail approval when the product description is missing", async () => {
+    prisma.productDetailProfile.findUnique = (async () => ({
+      id: "profile-1",
+      productId: "product-1",
+      status: ProductDetailStatus.READY,
+      sourceDataVersion: 2,
+      customerDescription: null,
+      product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
+      assets: Object.values(ProductDetailAssetType).map((type) => ({
+        id: `asset-${type}`,
+        type,
+        status: ProductDetailStatus.READY
+      }))
+    })) as never;
+
+    await assert.rejects(
+      () => new ProductDetailGenerationService().approveProfile("profile-1", "employee-1"),
+      /Product description is required/
+    );
+  });
+
+  it("publishes every approved batch description to its product", async () => {
+    const assets = Object.values(ProductDetailAssetType).map((type) => ({
+      id: `asset-${type}`,
+      type,
+      status: ProductDetailStatus.READY
+    }));
+    prisma.productBatch.findUnique = (async () => ({
+      id: "batch-1",
+      batchCode: "BATCH-1",
+      targetCount: 2,
+      createdAt: new Date("2026-08-02T00:00:00Z"),
+      products: [1, 2].map((index) => ({
+        id: `product-${index}`,
+        productCode: `P-${index}`,
+        batchItemNumber: index,
+        status: ProductStatus.CALIBRATED,
+        detailSourceVersion: 1,
+        detailProfiles: [{
+          id: `profile-${index}`,
+          productId: `product-${index}`,
+          status: ProductDetailStatus.READY,
+          sourceDataVersion: 1,
+          updatedAt: new Date("2026-08-02T00:00:00Z"),
+          customerDescription: ` Description ${index}. `,
+          assets
+        }]
+      }))
+    })) as never;
+
+    const productDescriptions: string[] = [];
+    prisma.$transaction = (async (callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        productDetailProfile: { updateMany: async () => ({ count: 2 }) },
+        product: {
+          update: async ({ data }: { data: { description: string } }) => {
+            productDescriptions.push(data.description);
+            return data;
+          }
+        }
+      })) as never;
+
+    await new ProductDetailGenerationService().approveBatch("batch-1", "employee-1");
+
+    assert.deepEqual(productDescriptions, ["Description 1.", "Description 2."]);
   });
 });
 

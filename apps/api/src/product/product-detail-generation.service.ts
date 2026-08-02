@@ -401,16 +401,26 @@ export class ProductDetailGenerationService {
     if (profile.status !== ProductDetailStatus.READY && profile.status !== ProductDetailStatus.APPROVED) {
       throw new BadRequestException("Only ready product details can be approved");
     }
+    const customerDescription = profile.customerDescription?.trim();
+    if (!customerDescription) throw new BadRequestException("Product description is required before detail approval");
     const readyTypes = new Set(profile.assets.filter((asset) => asset.status === ProductDetailStatus.READY).map((asset) => asset.type));
     const missing = REQUIRED_DETAIL_ASSET_TYPES.filter((type) => !readyTypes.has(type));
     if (missing.length) throw new BadRequestException(`Product detail assets are incomplete: ${missing.join(", ")}`);
-    return prisma.productDetailProfile.update({
-      where: { id: profile.id },
-      data: {
-        status: ProductDetailStatus.APPROVED,
-        approvedAt: new Date(),
-        approvedByEmployeeId: employeeId?.trim() || null
-      }
+    const approvedAt = new Date();
+    return prisma.$transaction(async (transaction) => {
+      const approved = await transaction.productDetailProfile.update({
+        where: { id: profile.id },
+        data: {
+          status: ProductDetailStatus.APPROVED,
+          approvedAt,
+          approvedByEmployeeId: employeeId?.trim() || null
+        }
+      });
+      await transaction.product.update({
+        where: { id: profile.productId },
+        data: { description: customerDescription }
+      });
+      return approved;
     });
   }
 
@@ -444,13 +454,25 @@ export class ProductDetailGenerationService {
       if (REQUIRED_DETAIL_ASSET_TYPES.some((type) => !readyTypes.has(type))) {
         throw new BadRequestException("Every product detail must have all required assets before batch approval");
       }
+      if (!profile.customerDescription?.trim()) {
+        throw new BadRequestException("Every product detail must have a product description before batch approval");
+      }
     }
-    await prisma.productDetailProfile.updateMany({
-      where: { id: { in: profiles.map((profile) => profile.id) } },
-      data: {
-        status: ProductDetailStatus.APPROVED,
-        approvedAt: new Date(),
-        approvedByEmployeeId: employeeId?.trim() || null
+    const approvedAt = new Date();
+    await prisma.$transaction(async (transaction) => {
+      await transaction.productDetailProfile.updateMany({
+        where: { id: { in: profiles.map((profile) => profile.id) } },
+        data: {
+          status: ProductDetailStatus.APPROVED,
+          approvedAt,
+          approvedByEmployeeId: employeeId?.trim() || null
+        }
+      });
+      for (const profile of profiles) {
+        await transaction.product.update({
+          where: { id: profile.productId },
+          data: { description: profile.customerDescription!.trim() }
+        });
       }
     });
     return this.getBatchDetailStatus(batchId);

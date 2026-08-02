@@ -648,7 +648,6 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           />
 
           <FormTextarea fieldKey="defects" label="瑕疵" value={form.defects} required disabled={readOnly} hint="没有瑕疵请填写 None。" onChange={(value) => updateForm("defects", value)} />
-          <FormTextarea fieldKey="description" label="商品描述" value={form.description} disabled={readOnly} onChange={(value) => updateForm("description", value)} />
           {reasons.length && !readOnly ? <StatusMessage tone="danger">{reasons.join(" ")}</StatusMessage> : null}
         </section>
       </div>
