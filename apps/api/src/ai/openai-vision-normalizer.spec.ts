@@ -12,6 +12,9 @@ test("normalizes OpenAI clothing recognition values into the shared AI contract"
       kidsAgeRange: { value: "not applicable", confidence: 0.91 },
       pattern: { value: "graphic", confidence: 0.79 },
       sleeve: { value: "short", confidence: 0.81 },
+      fitType: { value: "relaxed", confidence: 0.76 },
+      stretchLevel: { value: "low", confidence: 0.65 },
+      fabricWeight: { value: "regular", confidence: 0.7 },
       material: { value: "cotton blend", confidence: 0.72 },
       tags: { value: ["crew neck", "graphic-print", "casual", "casual"], confidence: 0.8 },
       brand: { value: "Remon Soda Candy", confidence: 0.62 },
@@ -33,6 +36,9 @@ test("normalizes OpenAI clothing recognition values into the shared AI contract"
   assert.equal(output.kidsAgeRange.value, "NOT_APPLICABLE");
   assert.equal(output.pattern.value, "GRAPHIC");
   assert.equal(output.sleeveType.value, "SHORT");
+  assert.equal(output.fitType.value, "RELAXED");
+  assert.equal(output.stretchLevel.value, "LOW");
+  assert.equal(output.fabricWeight.value, "REGULAR");
   assert.equal(output.material.value, "COTTON_BLEND");
   assert.deepEqual(output.tags.value, ["CREW_NECK", "GRAPHIC_PRINT", "CASUAL"]);
   assert.equal(output.brandLabel.value, "Remon Soda Candy");
@@ -45,6 +51,18 @@ test("normalizes OpenAI clothing recognition values into the shared AI contract"
   assert.equal(output.sleeveLengthCm.value, 21);
   assert.equal(output.waistCm.value, null);
   assert.deepEqual(output.category.evidenceImageIds, ["image-1"]);
+});
+
+test("removes an unconfirmed gender prefix from the catalog title", () => {
+  const output = normalizeOpenAIVisionOutput(
+    {
+      audience: { value: "women", confidence: 0.92 },
+      title: { value: "Women's Off-White Pinstripe Long-Sleeve Pullover Shirt", confidence: 0.88 }
+    },
+    ["image-title"]
+  );
+
+  assert.equal(output.title.value, "Off-White Pinstripe Long-Sleeve Pullover Shirt");
 });
 
 test("falls back to OTHER and clamps confidence for unusable model values", () => {
@@ -75,6 +93,9 @@ test("falls back to OTHER and clamps confidence for unusable model values", () =
   assert.equal(output.pattern.value, "OTHER");
   assert.equal(output.pattern.confidence, 0.5);
   assert.equal(output.sleeveType.value, "OTHER");
+  assert.equal(output.fitType.value, "UNKNOWN");
+  assert.equal(output.stretchLevel.value, "UNKNOWN");
+  assert.equal(output.fabricWeight.value, "UNKNOWN");
   assert.equal(output.material.value, "UNKNOWN");
   assert.deepEqual(output.tags.value, ["HOODED"]);
   assert.equal(output.lengthCm.value, null);

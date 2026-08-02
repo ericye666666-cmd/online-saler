@@ -4,15 +4,20 @@ export type PlatformSizeRecommendationInput = {
   audience?: string | null;
   kidsAgeRange?: string | null;
   fitType?: string | null;
+  sleeveType?: string | null;
+  tags?: readonly string[] | null;
   measurements: {
+    lengthCm?: number | string | null;
     chestWidthCm?: number | string | null;
+    shoulderWidthCm?: number | string | null;
+    sleeveLengthCm?: number | string | null;
     waistCm?: number | string | null;
     hipCm?: number | string | null;
   };
 };
 
 export type PlatformSizeMeasurement = {
-  type: "CHEST_WIDTH" | "WAIST" | "HIP" | "KIDS_AGE_RANGE";
+  type: "LENGTH" | "CHEST_WIDTH" | "SHOULDER_WIDTH" | "SLEEVE_LENGTH" | "WAIST" | "HIP" | "KIDS_AGE_RANGE";
   value: number | string;
 };
 
@@ -22,6 +27,7 @@ export type PlatformSizeRecommendation = {
   measurementsUsed: PlatformSizeMeasurement[];
   basis: string[];
   warnings: string[];
+  requiresHumanReview: boolean;
 };
 
 const SIZE_LABELS = ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"] as const;
@@ -32,6 +38,21 @@ const DRESS_CATEGORIES = new Set(["DRESSES"]);
 const TOP_MAXIMA = {
   WOMEN: [43, 46, 50, 54, 58, 62, 66, 70, Number.POSITIVE_INFINITY],
   GENERAL: [47, 50, 54, 58, 62, 66, 70, 74, Number.POSITIVE_INFINITY]
+} as const;
+
+const TOP_LENGTH_MAXIMA = {
+  WOMEN: [56, 59, 62, 65, 68, 71, 74, 77, Number.POSITIVE_INFINITY],
+  GENERAL: [64, 67, 70, 73, 76, 79, 82, 85, Number.POSITIVE_INFINITY]
+} as const;
+
+const TOP_SHOULDER_MAXIMA = {
+  WOMEN: [35, 37, 39, 41, 43, 45, 47, 49, Number.POSITIVE_INFINITY],
+  GENERAL: [42, 44, 46, 48, 50, 52, 54, 56, Number.POSITIVE_INFINITY]
+} as const;
+
+const TOP_LONG_SLEEVE_MAXIMA = {
+  WOMEN: [54, 56, 58, 60, 62, 64, 66, 68, Number.POSITIVE_INFINITY],
+  GENERAL: [57, 59, 61, 63, 65, 67, 69, 71, Number.POSITIVE_INFINITY]
 } as const;
 
 const WAIST_MAXIMA = {
@@ -70,24 +91,63 @@ export function recommendPlatformSize(
           confidence: 0.82,
           measurementsUsed: [{ type: "KIDS_AGE_RANGE", value: ageRange }],
           basis: ["PLATFORM_SIZE_V1", "KIDS_AGE_RANGE"],
-          warnings: ["KIDS_SIZE_USES_AGE_RANGE"]
+          warnings: ["KIDS_SIZE_USES_AGE_RANGE"],
+          requiresHumanReview: false
         }
       : null;
   }
 
   const profile = audience === "WOMEN" ? "WOMEN" : "GENERAL";
+  const length = positiveNumber(input.measurements.lengthCm);
   const chestWidth = positiveNumber(input.measurements.chestWidthCm);
+  const shoulderWidth = positiveNumber(input.measurements.shoulderWidthCm);
+  const sleeveLength = positiveNumber(input.measurements.sleeveLengthCm);
   const waistWidth = positiveNumber(input.measurements.waistCm);
   const hipWidth = positiveNumber(input.measurements.hipCm);
 
   if (TOP_CATEGORIES.has(category) || (category === "KIDS" && !subCategoryIsPants(subcategory))) {
-    if (chestWidth === null) return null;
-    const adjustedChestWidth = chestWidth + fitAdjustment(input.fitType);
+    const tags = new Set((input.tags ?? []).map(code));
+    const nonStandardShoulder = hasNonStandardShoulder(tags, chestWidth, shoulderWidth);
+    const cropped = tags.has("CROPPED");
+    const supportCandidates = compactCandidates([
+      length === null || cropped ? null : topCandidate("LENGTH", length, TOP_LENGTH_MAXIMA[profile]),
+      shoulderWidth === null || nonStandardShoulder
+        ? null
+        : topCandidate("SHOULDER_WIDTH", shoulderWidth, TOP_SHOULDER_MAXIMA[profile]),
+      sleeveLength === null || nonStandardShoulder || code(input.sleeveType) !== "LONG"
+        ? null
+        : topCandidate("SLEEVE_LENGTH", sleeveLength, TOP_LONG_SLEEVE_MAXIMA[profile])
+    ]);
+    const warnings = [
+      ...(nonStandardShoulder ? ["DROPPED_OR_RAGLAN_SHOULDER_EXCLUDED"] : []),
+      ...(cropped ? ["CROPPED_LENGTH_EXCLUDED"] : []),
+      ...(input.fitType ? [`FIT_PROFILE_${code(input.fitType) || "UNKNOWN"}`] : [])
+    ];
+
+    if (chestWidth !== null) {
+      const size = sizeFromWidth(chestWidth, TOP_MAXIMA[profile]);
+      const sizeIndex = sizeIndexOf(size);
+      const conflicting = supportCandidates.filter((candidate) => Math.abs(sizeIndexOf(candidate.size) - sizeIndex) > 1);
+      warnings.push(...conflicting.map((candidate) => `${candidate.measurement.type}_PROPORTION_DIFFERS_FROM_CHEST`));
+      return recommendation(
+        size,
+        [{ type: "CHEST_WIDTH", value: chestWidth }, ...supportCandidates.map((candidate) => candidate.measurement)],
+        ["PLATFORM_SIZE_V2", "TOP_PRIMARY_CHEST_WITH_PROPORTION_CHECKS"],
+        warnings,
+        conflicting.length >= 2 || conflicting.some((candidate) => Math.abs(sizeIndexOf(candidate.size) - sizeIndex) > 2),
+        Math.max(0.55, Math.min(0.92, 0.82 + supportCandidates.length * 0.03 - conflicting.length * 0.08))
+      );
+    }
+
+    if (!supportCandidates.length) return null;
+    warnings.push("MISSING_CHEST_PRIMARY_MEASUREMENT");
     return recommendation(
-      sizeFromWidth(adjustedChestWidth, TOP_MAXIMA[profile]),
-      [{ type: "CHEST_WIDTH", value: chestWidth }],
-      ["PLATFORM_SIZE_V1", "TOP_FROM_FINAL_FLAT_CHEST_WIDTH"],
-      input.fitType ? [`FIT_PROFILE_${code(input.fitType) || "UNKNOWN"}`] : []
+      medianSize(supportCandidates.map((candidate) => candidate.size)),
+      supportCandidates.map((candidate) => candidate.measurement),
+      ["PLATFORM_SIZE_V2", "TOP_SUPPORTING_MEASUREMENTS_ONLY"],
+      warnings,
+      true,
+      0.58
     );
   }
 
@@ -143,15 +203,38 @@ function recommendation(
   size: string,
   measurementsUsed: PlatformSizeMeasurement[],
   basis: string[],
-  warnings: string[]
+  warnings: string[],
+  requiresHumanReview = false,
+  confidence = measurementsUsed.length > 1 ? 0.86 : 0.8
 ): PlatformSizeRecommendation {
   return {
     size,
-    confidence: measurementsUsed.length > 1 ? 0.86 : 0.8,
+    confidence,
     measurementsUsed,
     basis,
-    warnings
+    warnings,
+    requiresHumanReview
   };
+}
+
+function topCandidate(
+  type: Extract<PlatformSizeMeasurement["type"], "LENGTH" | "SHOULDER_WIDTH" | "SLEEVE_LENGTH">,
+  value: number,
+  maxima: readonly number[]
+) {
+  return {
+    size: sizeFromWidth(value, maxima),
+    measurement: { type, value } satisfies PlatformSizeMeasurement
+  };
+}
+
+function hasNonStandardShoulder(
+  tags: Set<string>,
+  chestWidth: number | null,
+  shoulderWidth: number | null
+): boolean {
+  if (tags.has("DROP_SHOULDER") || tags.has("RAGLAN_SLEEVE")) return true;
+  return chestWidth !== null && shoulderWidth !== null && shoulderWidth >= chestWidth * 0.98;
 }
 
 function sizeFromWidth(value: number, maxima: readonly number[]): string {
@@ -163,6 +246,16 @@ function largestSize(sizes: string[]): string {
   let largestIndex = 0;
   for (const size of sizes) largestIndex = Math.max(largestIndex, SIZE_LABELS.indexOf(size as never));
   return SIZE_LABELS[largestIndex];
+}
+
+function medianSize(sizes: string[]): string {
+  const indexes = sizes.map(sizeIndexOf).sort((left, right) => left - right);
+  return SIZE_LABELS[indexes[Math.floor(indexes.length / 2)]];
+}
+
+function sizeIndexOf(size: string): number {
+  const index = SIZE_LABELS.indexOf(size as never);
+  return index < 0 ? 0 : index;
 }
 
 function compactCandidates<T>(values: Array<T | null>): T[] {

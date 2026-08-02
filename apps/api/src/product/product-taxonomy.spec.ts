@@ -13,6 +13,7 @@ test("default taxonomy keeps stable codes and a shared OTHER subcategory", () =>
   assert.ok(document.groups.SUBCATEGORY.some((option) => option.code === "BLAZERS"));
   assert.ok(document.groups.MATERIAL.some((option) => option.code === "COTTON"));
   assert.ok(document.groups.TAG.some((option) => option.code === "HOODED"));
+  assert.ok(document.groups.TAG.some((option) => option.code === "DROP_SHOULDER"));
   assert.equal(document.groups.SUBCATEGORY.find((option) => option.code === "OTHER")?.parentCode, null);
   assert.equal(new Set(document.groups.SUBCATEGORY.map((option) => option.code)).size, document.groups.SUBCATEGORY.length);
 });
@@ -28,6 +29,20 @@ test("adds newly shipped default subcategories to an older persisted taxonomy", 
 
   assert.ok(document.groups.SUBCATEGORY.some((option) => option.code === "CUSTOM_TOP"));
   assert.ok(document.groups.SUBCATEGORY.some((option) => option.code === "BLAZERS"));
+});
+
+test("adds newly shipped AI tags to an older persisted taxonomy", () => {
+  const document = normalizeDocument({
+    groups: {
+      TAG: [
+        { code: "CUSTOM_TAG", displayName: "Custom tag", sortOrder: 1, active: true }
+      ]
+    }
+  });
+
+  assert.ok(document.groups.TAG.some((option) => option.code === "CUSTOM_TAG"));
+  assert.ok(document.groups.TAG.some((option) => option.code === "DROP_SHOULDER"));
+  assert.ok(document.groups.TAG.some((option) => option.code === "BASE_LAYER"));
 });
 
 test("normalizes persisted taxonomy and returns only active codes in sort order", () => {

@@ -15,6 +15,61 @@ test("recommends M for a men's shirt with 52 cm flat chest width", () => {
   assert.deepEqual(result?.measurementsUsed, [{ type: "CHEST_WIDTH", value: 52 }]);
 });
 
+test("uses length while excluding dropped-shoulder measurements for a wide men's base layer", () => {
+  const result = recommendPlatformSize({
+    category: "SHIRTS",
+    audience: "MEN",
+    fitType: "RELAXED",
+    sleeveType: "LONG",
+    tags: ["DROP_SHOULDER", "BASE_LAYER"],
+    measurements: {
+      chestWidthCm: 55,
+      lengthCm: 72,
+      shoulderWidthCm: 60,
+      sleeveLengthCm: 52
+    }
+  });
+
+  assert.equal(result?.size, "L");
+  assert.equal(result?.requiresHumanReview, false);
+  assert.deepEqual(result?.measurementsUsed, [
+    { type: "CHEST_WIDTH", value: 55 },
+    { type: "LENGTH", value: 72 }
+  ]);
+  assert.ok(result?.warnings.includes("DROPPED_OR_RAGLAN_SHOULDER_EXCLUDED"));
+});
+
+test("keeps chest primary but flags conflicting top proportions for employee review", () => {
+  const result = recommendPlatformSize({
+    category: "SHIRTS",
+    audience: "MEN",
+    sleeveType: "LONG",
+    measurements: {
+      chestWidthCm: 52,
+      lengthCm: 82,
+      shoulderWidthCm: 54,
+      sleeveLengthCm: 69
+    }
+  });
+
+  assert.equal(result?.size, "M");
+  assert.equal(result?.requiresHumanReview, true);
+  assert.ok(result?.warnings.includes("LENGTH_PROPORTION_DIFFERS_FROM_CHEST"));
+});
+
+test("can suggest a provisional top size from supporting dimensions when chest is missing", () => {
+  const result = recommendPlatformSize({
+    category: "SHIRTS",
+    audience: "MEN",
+    sleeveType: "LONG",
+    measurements: { lengthCm: 72, shoulderWidthCm: 46, sleeveLengthCm: 62 }
+  });
+
+  assert.equal(result?.size, "L");
+  assert.equal(result?.requiresHumanReview, true);
+  assert.ok(result?.warnings.includes("MISSING_CHEST_PRIMARY_MEASUREMENT"));
+});
+
 test("uses a separate women's top profile", () => {
   const result = recommendPlatformSize({
     category: "LADY_TOPS",
@@ -47,7 +102,7 @@ test("dresses use the largest available chest waist and hip recommendation", () 
   assert.equal(result?.size, "XL");
 });
 
-test("oversized top adjustment avoids treating intended ease as the full size increase", () => {
+test("fit labels do not silently reduce the measured platform size", () => {
   const regular = recommendPlatformSize({
     category: "JACKETS",
     audience: "UNISEX",
@@ -62,7 +117,7 @@ test("oversized top adjustment avoids treating intended ease as the full size in
   });
 
   assert.equal(regular?.size, "XL");
-  assert.equal(oversized?.size, "L");
+  assert.equal(oversized?.size, "XL");
 });
 
 test("kids platform size follows the confirmed age range", () => {

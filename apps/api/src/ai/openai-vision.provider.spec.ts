@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   HOODED_GARMENT_MEASUREMENT_RULES,
+  PRODUCT_AUDIENCE_TITLE_RULES,
   PRODUCT_MATERIAL_TAG_RULES,
   openAIVisionResponseSettings,
   parseOpenAIVisionOutput
@@ -18,10 +19,18 @@ test("reserves the output budget for structured product fields", () => {
 
 test("keeps material and tags evidence-based", () => {
   const rules = PRODUCT_MATERIAL_TAG_RULES.join(" ");
-  assert.match(rules, /at most 8 unique enum values/);
+  assert.match(rules, /2 to 8 unique enum values/);
   assert.match(rules, /prefer the care label/);
   assert.match(rules, /otherwise use UNKNOWN/);
+  assert.match(rules, /fitType, stretchLevel and fabricWeight/);
   assert.match(rules, /Do not claim WATER_RESISTANT/);
+});
+
+test("defaults neutral basics to unisex and keeps titles gender-neutral", () => {
+  const rules = PRODUCT_AUDIENCE_TITLE_RULES.join(" ");
+  assert.match(rules, /default to UNISEX/);
+  assert.match(rules, /Never infer audience from color/);
+  assert.match(rules, /Keep title gender-neutral/);
 });
 
 test("excludes the hood and neckline from shoulder and body measurements", () => {
