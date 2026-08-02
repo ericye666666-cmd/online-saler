@@ -87,7 +87,15 @@ describe("ProductCalibrationService", () => {
       ukSizeLabel: "UK M",
       conditionGrade: ConditionGrade.GOOD,
       priceKsh: 850,
-      measurements: [{ type: "LENGTH", valueCm: 72 }],
+      measurements: [{
+        type: "LENGTH",
+        valueCm: 72,
+        manualLine: {
+          imageId: "front-original",
+          start: { x: 0.51, y: 0.24 },
+          end: { x: 0.51, y: 0.88 }
+        }
+      }],
       defects: []
     });
 
@@ -109,5 +117,10 @@ describe("ProductCalibrationService", () => {
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "UK M"));
     assert.ok(decisionUpdates.every((update) => !("aiValueJson" in update)));
     assert.ok(measurementUpdates.every((update) => !("aiValueCm" in update) && !("aiConfidence" in update)));
+    assert.equal(measurementUpdates[0]?.manualLineImageId, "front-original");
+    assert.equal(measurementUpdates[0]?.manualLineStartX, 0.51);
+    assert.equal(measurementUpdates[0]?.manualLineStartY, 0.24);
+    assert.equal(measurementUpdates[0]?.manualLineEndX, 0.51);
+    assert.equal(measurementUpdates[0]?.manualLineEndY, 0.88);
   });
 });

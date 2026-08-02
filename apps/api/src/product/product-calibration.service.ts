@@ -18,6 +18,11 @@ import { ProductDetailGenerationService } from "./product-detail-generation.serv
 export interface CalibrationMeasurementInput {
   type: string;
   valueCm: number;
+  manualLine?: {
+    imageId: string;
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+  };
 }
 
 export interface CalibrationDefectInput {
@@ -136,6 +141,11 @@ export class ProductCalibrationService {
         data: {
           finalValueCm: null,
           finalSource: null,
+          manualLineImageId: null,
+          manualLineStartX: null,
+          manualLineStartY: null,
+          manualLineEndX: null,
+          manualLineEndY: null,
           reviewedByEmployeeId: null,
           reviewedAt: null
         }
@@ -185,12 +195,22 @@ export class ProductCalibrationService {
             measurementType: measurement.type,
             finalValueCm: measurement.valueCm,
             finalSource: MeasurementSource.HUMAN_ENTERED,
+            manualLineImageId: measurement.manualLine?.imageId ?? null,
+            manualLineStartX: measurement.manualLine?.start.x ?? null,
+            manualLineStartY: measurement.manualLine?.start.y ?? null,
+            manualLineEndX: measurement.manualLine?.end.x ?? null,
+            manualLineEndY: measurement.manualLine?.end.y ?? null,
             reviewedByEmployeeId: input.employeeId,
             reviewedAt
           },
           update: {
             finalValueCm: measurement.valueCm,
             finalSource: MeasurementSource.HUMAN_ENTERED,
+            manualLineImageId: measurement.manualLine?.imageId ?? null,
+            manualLineStartX: measurement.manualLine?.start.x ?? null,
+            manualLineStartY: measurement.manualLine?.start.y ?? null,
+            manualLineEndX: measurement.manualLine?.end.x ?? null,
+            manualLineEndY: measurement.manualLine?.end.y ?? null,
             reviewedByEmployeeId: input.employeeId,
             reviewedAt
           }
@@ -275,7 +295,17 @@ export class ProductCalibrationService {
     if (input.measurements.some((item) => !item.type?.trim() || !Number.isFinite(item.valueCm) || item.valueCm <= 0)) {
       throw new BadRequestException("each measurement requires a type and positive valueCm");
     }
+    if (input.measurements.some((item) => item.manualLine && !validManualMeasurementLine(item.manualLine))) {
+      throw new BadRequestException("manual measurement lines require an imageId and two distinct normalized points");
+    }
   }
+}
+
+function validManualMeasurementLine(line: NonNullable<CalibrationMeasurementInput["manualLine"]>) {
+  const coordinates = [line.start.x, line.start.y, line.end.x, line.end.y];
+  return Boolean(line.imageId?.trim()) &&
+    coordinates.every((value) => Number.isFinite(value) && value >= 0 && value <= 1) &&
+    (line.start.x !== line.end.x || line.start.y !== line.end.y);
 }
 
 function sameJsonValue(left: unknown, right: unknown) {
