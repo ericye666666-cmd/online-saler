@@ -56,6 +56,18 @@ export function resolveCalibrationProductIndex<T extends { id: string }>(
   return pendingIndex >= 0 ? pendingIndex : 0;
 }
 
+export type ManualMeasurementAction = "EDIT" | "REOPEN";
+
+export function manualMeasurementAction(
+  productStatus: string,
+  hasOriginalImage: boolean
+): ManualMeasurementAction | null {
+  if (!hasOriginalImage) return null;
+  if (productStatus === "CALIBRATED") return "REOPEN";
+  if (["AI_PROCESSED", "CALIBRATION_PENDING"].includes(productStatus)) return "EDIT";
+  return null;
+}
+
 export function batchFollowingStageLabel(stage: string): string {
   const index = PRODUCT_FACTORY_STAGE_ORDER.indexOf(stage as (typeof PRODUCT_FACTORY_STAGE_ORDER)[number]);
   if (index < 0) return stage === "COMPLETE" ? "已完成" : "处理异常";

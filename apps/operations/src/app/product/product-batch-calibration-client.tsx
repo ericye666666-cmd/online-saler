@@ -63,7 +63,7 @@ import { cutoutQualityWarning } from "./image-processing-quality";
 import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
 import { ManualMeasurementEditor } from "./manual-measurement-editor";
 import { calibrationLinePayload, type ManualMeasurementLine } from "./manual-measurement-lines";
-import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
+import { manualMeasurementAction, resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
@@ -379,6 +379,10 @@ export function ProductBatchCalibrationPage({
   });
   const completedCount = batch?.products.filter((item) => isCalibrationComplete(item.status)).length ?? 0;
   const readOnly = Boolean(product && isCalibrationComplete(product.status));
+  const measurementAction = manualMeasurementAction(
+    product?.status ?? "",
+    Boolean(comparison?.original?.publicUrl)
+  );
   const taxonomyLabels = useMemo(() => taxonomyLabelMap(taxonomy), [taxonomy]);
   const materialLabels = useMemo(
     () => ({ ...taxonomyLabels, DENIM: taxonomyLabels.DENIM ?? "牛仔布" }),
@@ -441,6 +445,41 @@ export function ProductBatchCalibrationPage({
       return next;
     });
     setNotice("人工连线已应用，请检查厘米值后保存校准。");
+  }
+
+  async function openManualMeasurementCalibration() {
+    if (!product || !measurementAction) return;
+    if (measurementAction === "EDIT") {
+      setManualMeasurementEditorOpen(true);
+      return;
+    }
+    if (!window.confirm("本件已完成校准。重新编辑测量线会将它退回待人工校准，保存后才能继续生成 Barcode。是否继续？")) return;
+
+    setBusy("reopen-measurements");
+    setError("");
+    setNotice("");
+    try {
+      const updatedProduct = await request<ProductRecord>(
+        `/operations/product-batches/products/${product.id}/recalibration`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...ids,
+            reason: "修正人工测量定位"
+          })
+        }
+      );
+      setBatch((current) => current ? {
+        ...current,
+        products: current.products.map((item) => item.id === updatedProduct.id ? updatedProduct : item)
+      } : current);
+      setNotice("本件已退回待人工校准。请重新连接测量起点和终点，然后保存本件。");
+      setManualMeasurementEditorOpen(true);
+    } catch (caught) {
+      setError(errorMessage(caught, "无法重新打开本件测量校准。"));
+    } finally {
+      setBusy("");
+    }
   }
 
   async function saveAndNext() {
@@ -850,7 +889,9 @@ export function ProductBatchCalibrationPage({
               subcategory={form.subcategory}
               imageUrl={measurementGuideImage(imageTabs)}
               manualLines={manualMeasurementLines}
-              onManualCalibrate={!readOnly && comparison?.original?.publicUrl ? () => setManualMeasurementEditorOpen(true) : undefined}
+              onManualCalibrate={measurementAction ? () => void openManualMeasurementCalibration() : undefined}
+              manualCalibrateLabel={measurementAction === "REOPEN" ? "重新编辑测量线" : "手动定位尺寸"}
+              manualCalibrateDisabled={Boolean(busy)}
               measurements={measurementSuggestions.map((item) => ({
                 key: item.key,
                 label: item.label,
