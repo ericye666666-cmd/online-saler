@@ -4,6 +4,7 @@ import {
   frontImage,
   firstProductMissingFront,
   imageUploadIssue,
+  rotateProductImage,
   shouldAdvanceWithoutUploading,
   uploadedFrontCount
 } from "./product-factory-upload-flow";
@@ -11,6 +12,10 @@ import {
 assert.equal(imageUploadIssue({ type: "image/jpeg", size: 1024 }), null);
 assert.match(imageUploadIssue({ type: "image/heic", size: 1024 }) ?? "", /HEIC/);
 assert.match(imageUploadIssue({ type: "image/jpeg", size: 11 * 1024 * 1024 }) ?? "", /10 MB/);
+assert.equal(rotateProductImage(0, "RIGHT"), 90);
+assert.equal(rotateProductImage(90, "LEFT"), 0);
+assert.equal(rotateProductImage(270, "RIGHT"), 0);
+assert.equal(rotateProductImage(0, "LEFT"), 270);
 assert.equal(firstProductMissingFront([{ images: [{ type: "FRONT" }] }, { images: [] }]), 1);
 assert.equal(uploadedFrontCount([{ images: [{ type: "FRONT" }] }, { images: [{ type: "BACK" }] }]), 1);
 assert.deepEqual(

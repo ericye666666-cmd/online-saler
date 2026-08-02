@@ -12,6 +12,7 @@ import {
   LoaderCircleIcon,
   RefreshCwIcon,
   RotateCcwIcon,
+  RotateCwIcon,
   SparklesIcon,
   UploadIcon,
   XCircleIcon
@@ -38,9 +39,12 @@ import {
   assignBatchFrontFiles,
   firstProductMissingFront,
   imageUploadIssue,
+  rotateProductImage,
   shouldAdvanceWithoutUploading,
   uploadedFrontCount,
-  type ProductFactoryImageType
+  type ProductFactoryImageType,
+  type ProductImageRotation,
+  type ProductImageRotationDirection
 } from "./product-factory-upload-flow";
 
 const API_PROXY_URL = "/api-proxy";
@@ -51,6 +55,11 @@ type ProductImage = {
   type: ProductFactoryImageType;
   publicUrl?: string | null;
   createdAt?: string;
+};
+
+type PendingImageUpload = {
+  file: File;
+  rotation: ProductImageRotation;
 };
 
 type ProductRecord = {
@@ -123,18 +132,19 @@ async function loadBatch(batchId: string, adminUserId: string): Promise<ProductB
 async function uploadOriginalImage(
   productId: string,
   imageType: ProductFactoryImageType,
-  file: File,
+  selection: PendingImageUpload,
   ids: ReturnType<typeof useOperationIds>
 ): Promise<ProductImage> {
   const response = await fetch(`${API_PROXY_URL}/products/${productId}/images/upload`, {
     method: "POST",
     headers: {
-      "Content-Type": file.type,
+      "Content-Type": selection.file.type,
       "X-Image-Type": imageType,
+      "X-Image-Rotation": String(selection.rotation),
       "X-Employee-Id": ids.employeeId,
       "X-Admin-User-Id": ids.adminUserId
     },
-    body: file
+    body: selection.file
   });
   const text = await response.text();
   const body = text ? JSON.parse(text) as ProductImage & { message?: string } : null;
@@ -283,8 +293,8 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
   const router = useRouter();
   const [batch, setBatch] = useState<ProductBatch | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [files, setFiles] = useState<Partial<Record<ProductFactoryImageType, File>>>({});
-  const [batchFrontFiles, setBatchFrontFiles] = useState<Record<string, File>>({});
+  const [files, setFiles] = useState<Partial<Record<ProductFactoryImageType, PendingImageUpload>>>({});
+  const [batchFrontFiles, setBatchFrontFiles] = useState<Record<string, PendingImageUpload>>({});
   const [busy, setBusy] = useState(false);
   const [uploadingType, setUploadingType] = useState<ProductFactoryImageType | "">("");
   const [bulkUploadingProgress, setBulkUploadingProgress] = useState("");
@@ -326,7 +336,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         return next;
       });
     }
-    setFiles((current) => ({ ...current, [type]: file }));
+    setFiles((current) => ({ ...current, [type]: { file, rotation: 0 } }));
   }
 
   function chooseMultiple(selected: FileList | null) {
@@ -347,13 +357,37 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       }
     }
     const assignments = assignBatchFrontFiles(batch.products, selectedFiles);
-    setBatchFrontFiles(Object.fromEntries(assignments.map(({ productId, file }) => [productId, file])));
+    setBatchFrontFiles(Object.fromEntries(assignments.map(({ productId, file }) => [
+      productId,
+      { file, rotation: 0 as const }
+    ])));
     setFiles((current) => ({ ...current, FRONT: undefined }));
     setCurrentIndex(batch.products.findIndex((item) => item.id === assignments[0]?.productId));
     setError("");
     setNotice(selectedFiles.length === remainingProducts.length
       ? `已按顺序分配本批剩余 ${selectedFiles.length} 件正面图。`
       : `已按顺序分配 ${selectedFiles.length} 件正面图；本批仍有 ${remainingProducts.length - selectedFiles.length} 件待选择。`);
+  }
+
+  function rotatePendingImage(type: ProductFactoryImageType, direction: ProductImageRotationDirection) {
+    if (type === "FRONT" && product && batchFrontFiles[product.id]) {
+      setBatchFrontFiles((current) => ({
+        ...current,
+        [product.id]: {
+          ...current[product.id]!,
+          rotation: rotateProductImage(current[product.id]!.rotation, direction)
+        }
+      }));
+      return;
+    }
+    setFiles((current) => {
+      const selection = current[type];
+      if (!selection) return current;
+      return {
+        ...current,
+        [type]: { ...selection, rotation: rotateProductImage(selection.rotation, direction) }
+      };
+    });
   }
 
   async function saveAndContinue() {
@@ -379,12 +413,12 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
     setNotice("");
     try {
       const bulkAssignments = batch.products.flatMap((item) => {
-        const file = batchFrontFiles[item.id];
-        return file ? [{ productId: item.id, file }] : [];
+        const selection = batchFrontFiles[item.id];
+        return selection ? [{ productId: item.id, selection }] : [];
       });
       for (const [index, assignment] of bulkAssignments.entries()) {
         setBulkUploadingProgress(`正在上传正面图 ${index + 1}/${bulkAssignments.length}`);
-        await uploadOriginalImage(assignment.productId, "FRONT", assignment.file, ids);
+        await uploadOriginalImage(assignment.productId, "FRONT", assignment.selection, ids);
         setBatchFrontFiles((current) => {
           const next = { ...current };
           delete next[assignment.productId];
@@ -465,9 +499,10 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
             type={type}
             required={type === "FRONT"}
             existing={newestImageOfType(product, type)}
-            file={type === "FRONT" ? batchFrontFiles[product.id] ?? files.FRONT : files[type]}
+            selection={type === "FRONT" ? batchFrontFiles[product.id] ?? files.FRONT : files[type]}
             busy={busy}
             onChoose={(file) => chooseFile(type, file)}
+            onRotate={(direction) => rotatePendingImage(type, direction)}
             onClear={() => {
               if (type === "FRONT" && batchFrontFiles[product.id]) {
                 setBatchFrontFiles((current) => {
@@ -484,7 +519,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       </section>
 
       <p className="text-xs text-muted-foreground">
-        支持 JPEG、PNG、WEBP，单张不超过 10 MB。iPhone 请使用“兼容性最佳”格式；HEIC 需先转换。原图会永久保留，不会被抠图或优化结果覆盖。
+        支持 JPEG、PNG、WEBP，单张不超过 10 MB。保存前请用图片下方按钮调整方向，预览方向就是实际上传和 AI 识别方向。iPhone 请使用“兼容性最佳”格式；HEIC 需先转换。原图会永久保留，不会被抠图或优化结果覆盖。
       </p>
 
       <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-background/95 py-3 backdrop-blur sm:flex-row sm:justify-between">
@@ -636,21 +671,22 @@ function ImageInputCard(props: {
   type: ProductFactoryImageType;
   required: boolean;
   existing?: ProductImage | null;
-  file?: File;
+  selection?: PendingImageUpload;
   busy: boolean;
   onChoose: (file: File | null) => void;
+  onRotate: (direction: ProductImageRotationDirection) => void;
   onClear: () => void;
 }) {
   const [previewUrl, setPreviewUrl] = useState("");
   useEffect(() => {
-    if (!props.file) {
+    if (!props.selection?.file) {
       setPreviewUrl("");
       return;
     }
-    const url = URL.createObjectURL(props.file);
+    const url = URL.createObjectURL(props.selection.file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [props.file]);
+  }, [props.selection?.file]);
   const existingUrl = props.existing?.publicUrl ? `${API_PROXY_URL}${props.existing.publicUrl}` : "";
   const imageUrl = previewUrl || existingUrl;
 
@@ -663,7 +699,7 @@ function ImageInputCard(props: {
     <div className="min-w-0 rounded-md border bg-background p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{PRODUCT_FACTORY_IMAGE_LABELS[props.type]}{props.required ? " *" : ""}</span>
-        {props.file ? <Badge>待上传</Badge> : props.existing ? <Badge variant="secondary">已上传</Badge> : <Badge variant="outline">可选</Badge>}
+        {props.selection ? <Badge>待上传</Badge> : props.existing ? <Badge variant="secondary">已上传</Badge> : <Badge variant="outline">可选</Badge>}
       </div>
       <label
         className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-md border border-dashed bg-muted/20 text-center"
@@ -671,7 +707,15 @@ function ImageInputCard(props: {
         onDrop={drop}
       >
         {imageUrl ? (
-          <img src={imageUrl} alt={PRODUCT_FACTORY_IMAGE_LABELS[props.type]} className="size-full object-contain" />
+          <img
+            src={imageUrl}
+            alt={PRODUCT_FACTORY_IMAGE_LABELS[props.type]}
+            className={cn(
+              "size-full object-contain transition-transform",
+              props.selection && props.selection.rotation % 180 !== 0 && "scale-[0.78]"
+            )}
+            style={props.selection ? { transform: `rotate(${props.selection.rotation}deg)` } : undefined}
+          />
         ) : (
           <span className="flex flex-col items-center gap-2 px-3 text-xs text-muted-foreground">
             {props.type === "FRONT" ? <CameraIcon className="size-5" /> : <ImageIcon className="size-5" />}
@@ -687,10 +731,41 @@ function ImageInputCard(props: {
           onChange={(event) => props.onChoose(event.target.files?.[0] ?? null)}
         />
       </label>
-      {props.file ? (
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="truncate text-xs text-muted-foreground">{props.file.name}</span>
-          <button type="button" className="text-xs text-destructive" disabled={props.busy} onClick={props.onClear}>移除</button>
+      {props.selection ? (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-xs text-muted-foreground">{props.selection.file.name}</span>
+            <button type="button" className="text-xs text-destructive" disabled={props.busy} onClick={props.onClear}>移除</button>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">
+              {props.selection.rotation === 0 ? "方向未调整" : `已旋转 ${props.selection.rotation}°`}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                disabled={props.busy}
+                aria-label="向左旋转 90 度"
+                title="向左旋转 90 度"
+                onClick={() => props.onRotate("LEFT")}
+              >
+                <RotateCcwIcon />
+              </Button>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                disabled={props.busy}
+                aria-label="向右旋转 90 度"
+                title="向右旋转 90 度"
+                onClick={() => props.onRotate("RIGHT")}
+              >
+                <RotateCwIcon />
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

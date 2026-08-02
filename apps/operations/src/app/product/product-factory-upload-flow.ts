@@ -1,5 +1,8 @@
 export const PRODUCT_FACTORY_IMAGE_TYPES = ["FRONT", "BACK", "LABEL", "DEFECT", "DETAIL"] as const;
 export type ProductFactoryImageType = (typeof PRODUCT_FACTORY_IMAGE_TYPES)[number];
+export const PRODUCT_IMAGE_ROTATIONS = [0, 90, 180, 270] as const;
+export type ProductImageRotation = (typeof PRODUCT_IMAGE_ROTATIONS)[number];
+export type ProductImageRotationDirection = "LEFT" | "RIGHT";
 
 export const PRODUCT_FACTORY_IMAGE_LABELS: Record<ProductFactoryImageType, string> = {
   FRONT: "正面图",
@@ -11,6 +14,14 @@ export const PRODUCT_FACTORY_IMAGE_LABELS: Record<ProductFactoryImageType, strin
 
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+export function rotateProductImage(
+  current: ProductImageRotation,
+  direction: ProductImageRotationDirection
+): ProductImageRotation {
+  const delta = direction === "RIGHT" ? 90 : 270;
+  return ((current + delta) % 360) as ProductImageRotation;
+}
 
 export function imageUploadIssue(file: Pick<File, "type" | "size">): string | null {
   if (["image/heic", "image/heif"].includes(file.type.toLowerCase())) {

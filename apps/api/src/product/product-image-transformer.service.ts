@@ -1,6 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import sharp from "sharp";
 
+import type { ProductImageUploadRotation } from "./product-image-upload-orientation";
+
 export interface ProductImageTransformResult {
   body: Buffer;
   contentType: "image/png" | "image/jpeg";
@@ -12,6 +14,21 @@ export interface ProductImageTransformResult {
 
 @Injectable()
 export class ProductImageTransformerService {
+  async orientUploadedImage(
+    input: Buffer,
+    contentType: string,
+    rotation: ProductImageUploadRotation
+  ): Promise<Buffer> {
+    const pipeline = sharp(input).autoOrient().rotate(rotation);
+    if (contentType === "image/png") {
+      return pipeline.png({ compressionLevel: 9 }).toBuffer();
+    }
+    if (contentType === "image/webp") {
+      return pipeline.webp({ quality: 95 }).toBuffer();
+    }
+    return pipeline.jpeg({ quality: 98, chromaSubsampling: "4:4:4" }).toBuffer();
+  }
+
   async composeWhiteBackground(input: Buffer): Promise<ProductImageTransformResult> {
     const { data, info } = await sharp(input)
       .rotate()
