@@ -721,7 +721,7 @@ function lines(value: string, separator = "\n") {
 }
 
 function statusLabel(value?: string | null) {
-  return ({ AWAITING_CALIBRATION: "等待校准", PENDING: "待生成", GENERATING: "生成中", READY: "待批准", FAILED: "失败", OUTDATED: "已过期", APPROVED: "已批准" } as Record<string, string>)[value ?? ""] ?? labelValue(value);
+  return ({ AWAITING_CALIBRATION: "等待校准", AWAITING_BATCH: "等待本批其他商品", PENDING: "待生成", GENERATING: "生成中", READY: "待批准", FAILED: "失败", OUTDATED: "已过期", APPROVED: "已批准" } as Record<string, string>)[value ?? ""] ?? labelValue(value);
 }
 
 function assetOrder(type: string) {

@@ -23,6 +23,7 @@ export function detailProductStage(product: {
   detailStatus?: string | null;
 }, generationReady: boolean) {
   if (product.detailStatus) return product.detailStatus;
-  if (!generationReady || product.productStatus === "CALIBRATION_PENDING") return "AWAITING_CALIBRATION";
+  if (product.productStatus === "CALIBRATION_PENDING") return "AWAITING_CALIBRATION";
+  if (!generationReady) return "AWAITING_BATCH";
   return "PENDING";
 }
