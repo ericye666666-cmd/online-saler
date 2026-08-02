@@ -4,6 +4,7 @@ import {
   batchFollowingStageLabel,
   batchNextActionHref,
   batchProductCalibrationHref,
+  manualMeasurementAction,
   resolveCalibrationProductIndex
 } from "./product-factory-batch-display";
 
@@ -24,6 +25,10 @@ const calibrationProducts = [
 ];
 assert.equal(resolveCalibrationProductIndex(calibrationProducts, "first", (product) => product.pending), 0);
 assert.equal(resolveCalibrationProductIndex(calibrationProducts, "", (product) => product.pending), 1);
+assert.equal(manualMeasurementAction("CALIBRATION_PENDING", true), "EDIT");
+assert.equal(manualMeasurementAction("CALIBRATED", true), "REOPEN");
+assert.equal(manualMeasurementAction("BARCODE_ASSIGNED", true), null);
+assert.equal(manualMeasurementAction("CALIBRATION_PENDING", false), null);
 assert.equal(batchFollowingStageLabel("AI_IMAGE"), "人工校准");
 assert.equal(batchFollowingStageLabel("CALIBRATION"), "生成 Barcode");
 assert.equal(batchFollowingStageLabel("PUBLISH"), "完成批次");

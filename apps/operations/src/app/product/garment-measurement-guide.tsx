@@ -27,6 +27,8 @@ export function GarmentMeasurementGuide(props: {
   measurements: GuideMeasurement[];
   manualLines?: ManualMeasurementLine[];
   onManualCalibrate?: () => void;
+  manualCalibrateLabel?: string;
+  manualCalibrateDisabled?: boolean;
 }) {
   const [detectedLines, setDetectedLines] = useState<MeasurementGuideLine[] | null>(null);
   const [imageFrame, setImageFrame] = useState({ left: 0, top: 0, width: 100, height: 100 });
@@ -105,8 +107,8 @@ export function GarmentMeasurementGuide(props: {
           <p className="text-xs text-muted-foreground">虚线根据当前服装轮廓定位。位置不准时，可在测量板原图上手动连接起点和终点。</p>
         </div>
         {props.onManualCalibrate ? (
-          <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={props.onManualCalibrate}>
-            <MousePointer2Icon data-icon="inline-start" />手动连线校准
+          <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={props.manualCalibrateDisabled} onClick={props.onManualCalibrate}>
+            <MousePointer2Icon data-icon="inline-start" />{props.manualCalibrateLabel ?? "手动连线校准"}
           </Button>
         ) : <span className="shrink-0 text-[11px] font-medium text-blue-700">虚线 = 测量线</span>}
       </div>
