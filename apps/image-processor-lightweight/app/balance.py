@@ -38,13 +38,11 @@ def balance_garment(image_bytes: bytes) -> BalanceResult:
 
     left, top, right, bottom = bounds
     subject_width = right - left + 1
-    subject_height = bottom - top + 1
     center_x = int(round((left + right) / 2))
     hooded = _looks_hooded(mask, bounds)
     shoulder_y = _shoulder_y(mask, bounds, hooded)
     torso_left, torso_right = _torso_bounds(mask, bounds, shoulder_y)
-    torso_bottom = _torso_bottom(mask, bounds, torso_left, torso_right)
-    target_cuff_y = int(round(torso_bottom + subject_height * 0.02))
+    source_for_balance = image.copy()
 
     left_arm = np.zeros_like(mask)
     right_arm = np.zeros_like(mask)
@@ -52,19 +50,15 @@ def balance_garment(image_bytes: bytes) -> BalanceResult:
     right_arm[shoulder_y : bottom + 1, torso_right + 1 : right + 1] = mask[
         shoulder_y : bottom + 1, torso_right + 1 : right + 1
     ]
-    left_shift, left_vertical = _arm_row_shifts(
-        left_arm, shoulder_y, torso_left, subject_width, subject_height, target_cuff_y, -1
-    )
-    right_shift, right_vertical = _arm_row_shifts(
-        right_arm, shoulder_y, torso_right, subject_width, subject_height, target_cuff_y, 1
-    )
+    left_arm = _largest_connected_component(left_arm)
+    right_arm = _largest_connected_component(right_arm)
+    left_shift = _arm_row_shifts(left_arm, shoulder_y, torso_left, subject_width, -1)
+    right_shift = _arm_row_shifts(right_arm, shoulder_y, torso_right, subject_width, 1)
     hood_shift = _hood_row_shifts(mask, top, shoulder_y, center_x, subject_width) if hooded else np.zeros(image.shape[0], dtype=np.float32)
     balanced = _continuous_pose_warp(
         image,
         left_shift,
         right_shift,
-        left_vertical,
-        right_vertical,
         hood_shift,
         torso_left,
         torso_right,
@@ -73,8 +67,11 @@ def balance_garment(image_bytes: bytes) -> BalanceResult:
 
     if hooded and np.max(np.abs(hood_shift)) >= 1.0:
         transformations.append("HOOD_CENTERING")
-    if max(np.max(np.abs(left_shift)), np.max(np.abs(right_shift)), np.max(left_vertical), np.max(right_vertical)) >= 1.0:
+    if max(np.max(np.abs(left_shift)), np.max(np.abs(right_shift))) >= 1.0:
         transformations.append("SLEEVE_ALIGNMENT")
+    if not _balanced_outline_is_safe(source_for_balance, balanced):
+        balanced = source_for_balance
+        transformations.append("OUTLINE_SAFETY_FALLBACK")
 
     output = _storefront_canvas(balanced)
     ok, encoded_jpeg = cv2.imencode(
@@ -179,40 +176,17 @@ def _torso_bounds(mask: np.ndarray, bounds: tuple[int, int, int, int], shoulder_
     return left + torso_left, left + torso_right
 
 
-def _torso_bottom(
-    mask: np.ndarray,
-    bounds: tuple[int, int, int, int],
-    torso_left: int,
-    torso_right: int,
-) -> int:
-    _left, _top, _right, bottom = bounds
-    torso_width = torso_right - torso_left + 1
-    sample_left = torso_left + int(round(torso_width * 0.2))
-    sample_right = torso_right - int(round(torso_width * 0.2))
-    lowest_rows: list[int] = []
-    for x in range(sample_left, sample_right + 1):
-        ys = np.where(mask[:, x])[0]
-        if ys.size:
-            lowest_rows.append(int(ys.max()))
-    if not lowest_rows:
-        return bottom
-    return int(round(float(np.median(lowest_rows))))
-
-
 def _arm_row_shifts(
     arm_mask: np.ndarray,
     shoulder_y: int,
     joint_x: int,
     subject_width: int,
-    subject_height: int,
-    target_cuff_y: int,
     direction: int,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray:
     shifts = np.zeros(arm_mask.shape[0], dtype=np.float32)
-    vertical = np.zeros(arm_mask.shape[0], dtype=np.float32)
     rows = np.where(np.any(arm_mask, axis=1))[0]
     if rows.size < 8:
-        return shifts, vertical
+        return shifts
     centroids = np.full(arm_mask.shape[0], np.nan, dtype=np.float32)
     for y in rows:
         xs = np.where(arm_mask[y])[0]
@@ -221,21 +195,27 @@ def _arm_row_shifts(
     valid = np.where(np.isfinite(centroids))[0]
     interpolated = np.interp(np.arange(arm_mask.shape[0]), valid, centroids[valid])
     cuff_y = int(rows.max())
-    cuff_shift = float(np.clip(target_cuff_y - cuff_y, -subject_height * 0.12, subject_height * 0.12))
+    maximum_shift = subject_width * 0.08
     for y in rows:
         progress = max(0.0, min(1.0, (y - shoulder_y) / max(1, cuff_y - shoulder_y)))
-        target = joint_x + direction * subject_width * (0.025 + 0.055 * progress)
-        shifts[y] = (target - interpolated[y]) * _smoothstep(progress)
-        vertical[y] = cuff_shift * _smoothstep(progress)
-    if cuff_shift > 0:
-        extension_end = min(arm_mask.shape[0] - 1, cuff_y + int(np.ceil(cuff_shift)) + 2)
-        shifts[cuff_y : extension_end + 1] = shifts[cuff_y]
-        vertical[cuff_y : extension_end + 1] = cuff_shift
+        target = joint_x + direction * subject_width * (0.035 + 0.075 * progress)
+        shifts[y] = np.clip(
+            (target - interpolated[y]) * _smoothstep(progress),
+            -maximum_shift,
+            maximum_shift,
+        )
     kernel = max(3, int(rows.size * 0.06) | 1)
-    return (
-        cv2.GaussianBlur(shifts.reshape(-1, 1), (1, kernel), 0).reshape(-1),
-        vertical,
-    )
+    return cv2.GaussianBlur(shifts.reshape(-1, 1), (1, kernel), 0).reshape(-1)
+
+
+def _largest_connected_component(mask: np.ndarray) -> np.ndarray:
+    if not np.any(mask):
+        return np.zeros_like(mask)
+    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
+    if count <= 1:
+        return np.zeros_like(mask)
+    largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    return labels == largest
 
 
 def _hood_row_shifts(
@@ -261,8 +241,6 @@ def _continuous_pose_warp(
     image: np.ndarray,
     left_shift: np.ndarray,
     right_shift: np.ndarray,
-    left_vertical: np.ndarray,
-    right_vertical: np.ndarray,
     hood_shift: np.ndarray,
     torso_left: int,
     torso_right: int,
@@ -279,24 +257,49 @@ def _continuous_pose_warp(
         + right_shift[:, None] * right_weight[None, :]
         + hood_shift[:, None]
     )
-    vertical_displacement = (
-        left_vertical[:, None] * left_weight[None, :]
-        + right_vertical[:, None] * right_weight[None, :]
-    )
     grid_x = np.broadcast_to(xs[None, :], (height, width)).copy()
     grid_y = np.broadcast_to(np.arange(height, dtype=np.float32)[:, None], (height, width)).copy()
     map_x = grid_x - displacement.astype(np.float32)
-    map_y = grid_y - vertical_displacement.astype(np.float32)
     warped = cv2.remap(
         image,
         map_x,
-        map_y,
+        grid_y,
         interpolation=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_CONSTANT,
         borderValue=(0, 0, 0, 0),
     )
     warped[warped[:, :, 3] < 18] = 0
     return warped
+
+
+def _balanced_outline_is_safe(source: np.ndarray, candidate: np.ndarray) -> bool:
+    source_mask = source[:, :, 3] > 8
+    candidate_mask = candidate[:, :, 3] > 8
+    source_bounds = _bounds(source_mask)
+    candidate_bounds = _bounds(candidate_mask)
+    if source_bounds is None or candidate_bounds is None:
+        return False
+
+    source_area = int(np.count_nonzero(source_mask))
+    candidate_area = int(np.count_nonzero(candidate_mask))
+    if source_area == 0:
+        return False
+    area_ratio = candidate_area / source_area
+    if area_ratio < 0.9 or area_ratio > 1.1:
+        return False
+
+    source_left, source_top, source_right, source_bottom = source_bounds
+    candidate_left, candidate_top, candidate_right, candidate_bottom = candidate_bounds
+    source_width = source_right - source_left + 1
+    source_height = source_bottom - source_top + 1
+    candidate_width = candidate_right - candidate_left + 1
+    candidate_height = candidate_bottom - candidate_top + 1
+    if candidate_width > source_width * 1.1 or candidate_height > source_height * 1.08:
+        return False
+
+    source_max_span = max(_row_span(source_mask, y) for y in range(source_top, source_bottom + 1))
+    candidate_max_span = max(_row_span(candidate_mask, y) for y in range(candidate_top, candidate_bottom + 1))
+    return candidate_max_span <= source_max_span * 1.1
 
 
 def _storefront_canvas(image: np.ndarray) -> np.ndarray:

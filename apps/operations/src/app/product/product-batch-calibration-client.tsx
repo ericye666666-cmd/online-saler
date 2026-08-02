@@ -524,6 +524,33 @@ export function ProductBatchCalibrationPage({
     }
   }
 
+  async function rerunBalancedMain() {
+    if (!product) return;
+    const sourceId = comparison?.cutoutTransparent?.imageId;
+    if (!sourceId) {
+      setError("请先生成并确认透明抠图。");
+      return;
+    }
+    setBusy("balanced-main");
+    setError("");
+    setNotice("");
+    try {
+      await runImageOperation(
+        product.id,
+        sourceId,
+        "OPTIMIZE_BALANCED_MAIN_IMAGE",
+        ids.adminUserId
+      );
+      setComparison(await loadComparison(product.id, ids.adminUserId));
+      setActiveImage("balanced");
+      setNotice("均整版已使用当前透明抠图重新生成。请检查袖口、衣摆和服装轮廓后再选择商城主图。");
+    } catch (caught) {
+      setError(errorMessage(caught, "无法重新生成均整版。"));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function saveManualCorrection(image: Blob) {
     if (!product || !comparison?.original?.imageId) return;
     setBusy("manual-cutout");
@@ -695,6 +722,7 @@ export function ProductBatchCalibrationPage({
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("rembg_birefnet")}><WandSparklesIcon data-icon="inline-start" />强制 BiRefNet</Button>
+              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutTransparent?.imageId} onClick={() => void rerunBalancedMain()}><RefreshCwIcon data-icon="inline-start" />重做均整版</Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.publicUrl} onClick={() => setManualEditorOpen(true)}><ScissorsIcon data-icon="inline-start" />手动抠图</Button>
             </div>
           </div>
