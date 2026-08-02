@@ -74,8 +74,6 @@ export class SelectedBackgroundRemovalProvider implements BackgroundRemovalProvi
     const fallback = await this.rembgBirefnet.removeBackground(input);
     return {
       ...fallback,
-      qualityScore: lightweightResult.qualityScore ?? null,
-      qualityIssues: lightweightResult.qualityIssues ?? [],
       fallbackFrom: lightweightResult.provider,
       fallbackReason: decision.reason
     };

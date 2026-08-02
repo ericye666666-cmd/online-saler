@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {
   ImageProcessingOperation as DatabaseImageProcessingOperation,
@@ -15,18 +16,23 @@ import {
   type ProductImageVariant,
   type ProductImageVariantRecord
 } from "@online-saler/shared-types";
+import sharp from "sharp";
 import {
   canRetryImageProcessing,
-  evaluateLightweightImageQuality,
+  evaluateCutoutImageQuality,
   isSelectableMainVariant,
   sourceVariantForOperation,
   targetVariantForOperation
 } from "./product-image-processing.rules";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
+import { ProductImageStorageService } from "./product-image-storage.service";
 
 @Injectable()
 export class ProductImageProcessingService {
-  constructor(private readonly details: ProductDetailGenerationService) {}
+  constructor(
+    private readonly details: ProductDetailGenerationService,
+    private readonly storage: ProductImageStorageService
+  ) {}
 
   async start(input: {
     productId: string;
@@ -109,6 +115,91 @@ export class ProductImageProcessingService {
     return this.toJobRecord(retried);
   }
 
+  async saveManualCutout(input: {
+    productId: string;
+    sourceImageId: string;
+    body: Buffer;
+  }): Promise<ImageProcessingJobRecord> {
+    await this.requireSourceImage({
+      productId: input.productId,
+      sourceImageId: input.sourceImageId,
+      variant: "ORIGINAL"
+    });
+    this.storage.validate("image/png", input.body.length);
+
+    const analyzed = await analyzeManualCutout(input.body);
+    const decision = evaluateCutoutImageQuality(analyzed);
+    if (!decision.pass) {
+      throw new BadRequestException(
+        `Manual cutout still contains an invalid foreground (${decision.reason}). Continue erasing the board or mark the photo for retake.`
+      );
+    }
+
+    const previousJob = await prisma.productImageProcessingJob.findFirst({
+      where: {
+        productId: input.productId,
+        operation: DatabaseImageProcessingOperation.REMOVE_BACKGROUND
+      },
+      orderBy: { createdAt: "desc" },
+      select: { provider: true }
+    });
+    const assetId = randomUUID();
+    const objectName = this.storage.derivedObjectName(
+      input.productId,
+      assetId,
+      "cutout-transparent-manual",
+      "image/png"
+    );
+    await this.storage.upload(objectName, "image/png", input.body);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const staleSelection = await tx.productMainImageSelection.findUnique({
+        where: { productId: input.productId },
+        select: { variant: true }
+      });
+      if (staleSelection && staleSelection.variant !== DatabaseProductImageVariant.ORIGINAL) {
+        await tx.productMainImageSelection.delete({ where: { productId: input.productId } });
+      }
+      const asset = await tx.productImageVariantAsset.create({
+        data: {
+          id: assetId,
+          productId: input.productId,
+          sourceImageId: input.sourceImageId,
+          variant: DatabaseProductImageVariant.CUTOUT_TRANSPARENT,
+          storageUrl: `gs://${this.storage.bucket}/${objectName}`,
+          publicUrl: `/products/${input.productId}/image-assets/${assetId}/content`,
+          widthPx: analyzed.widthPx,
+          heightPx: analyzed.heightPx,
+          mimeType: "image/png"
+        }
+      });
+      const job = await tx.productImageProcessingJob.create({
+        data: {
+          productId: input.productId,
+          sourceImageId: input.sourceImageId,
+          operation: DatabaseImageProcessingOperation.REMOVE_BACKGROUND,
+          targetVariant: DatabaseProductImageVariant.CUTOUT_TRANSPARENT,
+          status: DatabaseImageProcessingStatus.SUCCEEDED,
+          provider: "manual-cutout-editor",
+          processorVersion: "manual-v1",
+          qualityScore: analyzed.qualityScore,
+          qualityIssues: analyzed.qualityIssues,
+          fallbackFrom: previousJob?.provider ?? null,
+          fallbackReason: "MANUAL_CORRECTION",
+          outputImageId: asset.id,
+          startedAt: new Date(),
+          completedAt: new Date()
+        }
+      });
+      return { job, selectionCleared: Boolean(staleSelection && staleSelection.variant !== DatabaseProductImageVariant.ORIGINAL) };
+    });
+
+    if (result.selectionCleared) {
+      await this.details.recordSourceChange(input.productId, "MAIN_IMAGE_CHANGED");
+    }
+    return this.toJobRecord(result.job);
+  }
+
   async selectMainImage(input: {
     productId: string;
     imageId: string;
@@ -183,14 +274,14 @@ export class ProductImageProcessingService {
         }
       });
       if (job?.productId === productId && job.operation === DatabaseImageProcessingOperation.REMOVE_BACKGROUND) {
-        if (job.provider !== "lightweight-opencv") return;
-        const decision = evaluateLightweightImageQuality({
+        if (job.provider === "manual-cutout-editor") return;
+        const decision = evaluateCutoutImageQuality({
           qualityScore: job.qualityScore,
           qualityIssues: this.toQualityIssues(job.qualityIssues)
         });
         if (!decision.pass) {
           throw new BadRequestException(
-            `Lightweight cutout quality is insufficient for storefront use (${decision.reason}). Run BiRefNet and select its result.`
+            `Cutout quality is insufficient for storefront use (${decision.reason}). Correct the cutout or retake the photo.`
           );
         }
         return;
@@ -382,4 +473,52 @@ export class ProductImageProcessingService {
       updatedAt: job.updatedAt.toISOString()
     };
   }
+}
+
+export async function analyzeManualCutout(body: Buffer): Promise<{
+  widthPx: number;
+  heightPx: number;
+  qualityScore: number;
+  qualityIssues: string[];
+}> {
+  let decoded;
+  try {
+    decoded = await sharp(body, { limitInputPixels: 40_000_000 })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+  } catch {
+    throw new BadRequestException("Manual cutout is not a valid PNG image");
+  }
+  const { width, height, channels } = decoded.info;
+  if (!width || !height || channels < 4) {
+    throw new BadRequestException("Manual cutout must contain an alpha channel");
+  }
+
+  let foreground = 0;
+  let edgeForeground = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = decoded.data[(y * width + x) * channels + 3] ?? 0;
+      if (alpha <= 16) continue;
+      foreground += 1;
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) edgeForeground += 1;
+    }
+  }
+  const areaRatio = foreground / Math.max(1, width * height);
+  const edgeRatio = edgeForeground / Math.max(1, width * 2 + height * 2 - 4);
+  const qualityIssues: string[] = [];
+  if (areaRatio < 0.06) qualityIssues.push("SUBJECT_TOO_SMALL");
+  if (areaRatio > 0.82) qualityIssues.push("SUBJECT_TOO_LARGE");
+  if (edgeRatio > 0.04) qualityIssues.push("SUBJECT_TOUCHES_EDGE");
+  const qualityScore = Math.max(
+    0,
+    Math.min(1, 1 - Math.min(Math.abs(areaRatio - 0.34), 0.34) * 0.45 - Math.min(edgeRatio, 0.2) * 1.5 - qualityIssues.length * 0.08)
+  );
+  return {
+    widthPx: width,
+    heightPx: height,
+    qualityScore: Math.round(qualityScore * 1000) / 1000,
+    qualityIssues
+  };
 }

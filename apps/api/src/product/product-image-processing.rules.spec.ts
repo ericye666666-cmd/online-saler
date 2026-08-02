@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   MAX_IMAGE_PROCESSING_RETRIES,
   canRetryImageProcessing,
+  evaluateCutoutImageQuality,
   evaluateLightweightImageQuality,
   isSelectableMainVariant,
   sourceVariantForOperation,
@@ -56,6 +57,13 @@ describe("Product image processing rules", () => {
     assert.deepEqual(evaluateLightweightImageQuality({ qualityScore: 0.9, qualityIssues: [] }), {
       pass: true,
       reason: null
+    });
+  });
+
+  it("applies the same storefront threshold to every automatic cutout provider", () => {
+    assert.deepEqual(evaluateCutoutImageQuality({ qualityScore: 0.47, qualityIssues: ["SUBJECT_TOUCHES_EDGE"] }), {
+      pass: false,
+      reason: "QUALITY_SCORE_BELOW_THRESHOLD:0.47<0.75"
     });
   });
 });
