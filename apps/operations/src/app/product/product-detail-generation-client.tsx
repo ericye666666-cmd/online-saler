@@ -404,10 +404,11 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               <h2 className="font-semibold">AI 商品文案</h2>
               <span className="text-xs text-muted-foreground">{latestJob?.model || "未调用"}</span>
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">商品描述由 AI 在详情生成阶段起草，员工确认或修改后，批准的版本才会成为商城展示描述。</p>
             <div className="mt-3 space-y-3">
               <Field label="标题"><Input value={copy.title} maxLength={120} onChange={(event) => setCopy((current) => ({ ...current, title: event.target.value }))} /></Field>
               {copy.sellingPoints.map((point, index) => <Field key={index} label={`卖点 ${index + 1}`}><Input value={point} maxLength={160} onChange={(event) => setCopy((current) => ({ ...current, sellingPoints: current.sellingPoints.map((item, itemIndex) => itemIndex === index ? event.target.value : item) as EditableCopy["sellingPoints"] }))} /></Field>)}
-              <Field label="短描述"><Textarea rows={3} value={copy.shortDescription} onChange={(event) => setCopy((current) => ({ ...current, shortDescription: event.target.value }))} /></Field>
+              <Field label="商品描述"><Textarea rows={4} value={copy.shortDescription} onChange={(event) => setCopy((current) => ({ ...current, shortDescription: event.target.value }))} /></Field>
               <Field label="版型摘要"><Textarea rows={2} value={copy.fitSummary} onChange={(event) => setCopy((current) => ({ ...current, fitSummary: event.target.value }))} /></Field>
               <Field label="尺寸摘要"><Textarea rows={2} value={copy.measurementSummary} onChange={(event) => setCopy((current) => ({ ...current, measurementSummary: event.target.value }))} /></Field>
               <Field label="成色摘要"><Textarea rows={2} value={copy.conditionSummary} onChange={(event) => setCopy((current) => ({ ...current, conditionSummary: event.target.value }))} /></Field>

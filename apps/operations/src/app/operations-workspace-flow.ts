@@ -34,7 +34,6 @@ export type WorkspaceForm = {
   conditionGrade: string;
   priceKsh: string;
   defects: string;
-  description: string;
 };
 
 export type WorkspaceReadiness = {
@@ -81,8 +80,7 @@ export const emptyWorkspaceForm = (): WorkspaceForm => ({
   inseamCm: "",
   conditionGrade: "GOOD",
   priceKsh: "",
-  defects: "",
-  description: ""
+  defects: ""
 });
 
 function record(value: unknown): JsonRecord | null {
@@ -134,8 +132,7 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     material: stringValue(product?.material) || stringField(ai, "material") || form.material,
     tags: stringArray(product?.tags).length ? stringArray(product?.tags) : stringArrayField(ai, "tags"),
     conditionGrade: stringValue(product?.conditionGrade) || form.conditionGrade,
-    priceKsh: typeof product?.priceKsh === "number" ? String(product.priceKsh) : form.priceKsh,
-    description: stringValue(product?.description) || form.description
+    priceKsh: typeof product?.priceKsh === "number" ? String(product.priceKsh) : form.priceKsh
   };
 }
 
@@ -353,7 +350,6 @@ export function buildCalibrationBody(input: {
     tagSize: input.form.tagSize.trim() || undefined,
     sizeLabel: input.form.sizeLabel.trim() || undefined,
     ukSizeLabel: input.form.ukSizeLabel.trim() || undefined,
-    description: input.form.description.trim() || undefined,
     conditionGrade: input.form.conditionGrade,
     priceKsh: Number(input.form.priceKsh),
     measurements,
