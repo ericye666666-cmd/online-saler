@@ -79,7 +79,7 @@ async def guided_cutout(
         media_type="image/png",
         headers={
             "X-Processor": "manual-guided-grabcut",
-            "X-Processor-Version": "guided-grabcut-v1",
+            "X-Processor-Version": "guided-grabcut-v2",
             "X-Quality-Score": str(result.quality_score),
             "X-Quality-Issues": ",".join(result.issues),
             "X-Source-Filename": x_filename or "unknown",

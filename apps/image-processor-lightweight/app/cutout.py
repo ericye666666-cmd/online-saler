@@ -77,15 +77,35 @@ def remove_background_guided(
     if polygon_area > height * width * 0.9:
         raise ValueError("Foreground polygon is too large")
 
-    mask = np.full((height, width), cv2.GC_BGD, dtype=np.uint8)
-    mask[polygon == 255] = cv2.GC_PR_FGD
-
-    distance = cv2.distanceTransform(polygon, cv2.DIST_L2, 5)
-    inside_distances = distance[distance > 0]
-    if inside_distances.size == 0:
+    # The employee's polygon is a guide, not a hard crop. Give GrabCut a small
+    # search band outside it and seed every narrow garment section from a local
+    # erosion. A global distance percentile only seeded the torso and allowed
+    # pale sleeves on a white board to be classified as background.
+    search_margin = max(5, int(round(min(height, width) * 0.012)))
+    seed_margin = max(2, int(round(min(height, width) * 0.004)))
+    expanded = cv2.dilate(
+        polygon,
+        cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (search_margin * 2 + 1, search_margin * 2 + 1),
+        ),
+        iterations=1,
+    )
+    sure_foreground = cv2.erode(
+        polygon,
+        cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (seed_margin * 2 + 1, seed_margin * 2 + 1),
+        ),
+        iterations=1,
+    )
+    if not np.any(sure_foreground):
         raise ValueError("Foreground polygon is empty")
-    sure_threshold = max(3.0, float(np.percentile(inside_distances, 62)))
-    mask[distance >= sure_threshold] = cv2.GC_FGD
+
+    mask = np.full((height, width), cv2.GC_BGD, dtype=np.uint8)
+    mask[expanded == 255] = cv2.GC_PR_BGD
+    mask[polygon == 255] = cv2.GC_PR_FGD
+    mask[sure_foreground == 255] = cv2.GC_FGD
 
     background_model = np.zeros((1, 65), np.float64)
     foreground_model = np.zeros((1, 65), np.float64)
@@ -103,7 +123,7 @@ def remove_background_guided(
         raise ValueError("Unable to separate the garment inside the selected outline") from error
 
     foreground = np.where(
-        ((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD)) & (polygon == 255),
+        ((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD)) & (expanded == 255),
         255,
         0,
     ).astype(np.uint8)
