@@ -19,6 +19,7 @@ test("blocks detail generation until the complete batch is calibrated", () => {
     "等待校准（1/10）"
   );
   assert.equal(detailProductStage({ productStatus: "CALIBRATION_PENDING" }, false), "AWAITING_CALIBRATION");
+  assert.equal(detailProductStage({ productStatus: "CALIBRATED" }, false), "AWAITING_BATCH");
 });
 
 test("reports the exact number of detail drafts to generate", () => {
