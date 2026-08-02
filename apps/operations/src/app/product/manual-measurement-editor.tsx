@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CheckIcon, MousePointer2Icon, RotateCcwIcon, Undo2Icon } from "lucide-react";
+import { CheckIcon, MousePointer2Icon, RotateCcwIcon, ScanLineIcon, Undo2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,11 +16,18 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   createManualMeasurementLine,
+  manualMeasurementLineIssue,
+  measurementLengthCm,
   measurementPointFromClient,
   upsertManualMeasurementLine,
+  validMeasurementBoardCalibration,
+  type MeasurementBoardCalibration,
   type ManualMeasurementLine,
   type MeasurementPoint
 } from "./manual-measurement-lines";
+
+const BOARD_CALIBRATION_STORAGE_KEY = "operations.product.measurement-board-calibration.v1";
+const BOARD_CORNER_LABELS = ["左上角", "右上角", "右下角", "左下角"] as const;
 
 type EditableMeasurement = {
   key: string;
@@ -44,6 +51,9 @@ export function ManualMeasurementEditor(props: {
   const [lines, setLines] = useState<ManualMeasurementLine[]>([]);
   const [start, setStart] = useState<MeasurementPoint | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [boardCalibration, setBoardCalibration] = useState<MeasurementBoardCalibration | null>(null);
+  const [calibrationPoints, setCalibrationPoints] = useState<MeasurementPoint[]>([]);
+  const [calibratingBoard, setCalibratingBoard] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -60,6 +70,7 @@ export function ManualMeasurementEditor(props: {
     setActiveKey(nextKey);
     setLines(props.initialLines);
     setStart(null);
+    setCalibrationPoints([]);
     setError("");
     setValues(Object.fromEntries(props.measurements.map((item) => [
       item.key,
@@ -89,6 +100,9 @@ export function ManualMeasurementEditor(props: {
         canvas.width = width;
         canvas.height = height;
       }
+      const savedCalibration = readSavedBoardCalibration(width / height);
+      setBoardCalibration(savedCalibration);
+      setCalibratingBoard(!savedCalibration);
       setLoading(false);
     };
     image.onerror = () => {
@@ -108,9 +122,25 @@ export function ManualMeasurementEditor(props: {
     if (!canvas || !source || !context || loading) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.drawImage(source, 0, 0);
-    for (const line of lines) drawLine(context, canvas, line, labels.get(line.key) ?? line.key, line.key === activeMeasurement?.key);
-    if (start) drawStart(context, canvas, start);
-  }, [activeMeasurement?.key, labels, lines, loading, start]);
+    if (boardCalibration) drawBoardCalibration(context, canvas, boardCalibration);
+    if (calibratingBoard && calibrationPoints.length) drawCalibrationProgress(context, canvas, calibrationPoints);
+    if (!calibratingBoard) {
+      for (const line of lines) drawLine(context, canvas, line, labels.get(line.key) ?? line.key, line.key === activeMeasurement?.key);
+      if (start) drawStart(context, canvas, start);
+    }
+  }, [activeMeasurement?.key, boardCalibration, calibratingBoard, calibrationPoints, labels, lines, loading, start]);
+
+  useEffect(() => {
+    if (!boardCalibration || !props.open) return;
+    setLines((current) => {
+      const recalculated = recalculateLines(current, boardCalibration);
+      setValues((currentValues) => ({
+        ...currentValues,
+        ...Object.fromEntries(recalculated.map((line) => [line.key, line.valueCm]))
+      }));
+      return recalculated;
+    });
+  }, [boardCalibration, props.open]);
 
   function selectMeasurement(key: string) {
     setActiveKey(key);
@@ -119,14 +149,35 @@ export function ManualMeasurementEditor(props: {
   }
 
   function addPoint(event: ReactPointerEvent<HTMLCanvasElement>) {
-    if (!activeMeasurement || loading) return;
+    if (loading) return;
     const point = measurementPointFromClient(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
+    if (calibratingBoard) {
+      addBoardCalibrationPoint(point);
+      return;
+    }
+    if (!activeMeasurement) return;
+    if (!boardCalibration) {
+      setError("请先校准测量板四角，再连接衣服尺寸。");
+      return;
+    }
     if (!start) {
       setStart(point);
       setError("");
       return;
     }
-    const valueCm = values[activeMeasurement.key]?.trim() ?? "";
+    const lineIssue = manualMeasurementLineIssue(activeMeasurement.key, boardCalibration, start, point);
+    if (lineIssue) {
+      setError(lineIssue);
+      setStart(null);
+      return;
+    }
+    const measuredValue = measurementLengthCm(boardCalibration, start, point);
+    if (measuredValue === null) {
+      setError("无法根据测量板计算这条线，请重新校准板面后再试。");
+      setStart(null);
+      return;
+    }
+    const valueCm = formatCentimeters(measuredValue);
     const line = createManualMeasurementLine({
       key: activeMeasurement.key,
       start,
@@ -134,7 +185,37 @@ export function ManualMeasurementEditor(props: {
       valueCm,
       imageId: props.imageId
     });
+    setValues((current) => ({ ...current, [activeMeasurement.key]: valueCm }));
     setLines((current) => upsertManualMeasurementLine(current, line));
+    setStart(null);
+    setError("");
+  }
+
+  function addBoardCalibrationPoint(point: MeasurementPoint) {
+    const nextPoints = [...calibrationPoints, point];
+    if (nextPoints.length < 4) {
+      setCalibrationPoints(nextPoints);
+      setError("");
+      return;
+    }
+    const calibration = calibrationFromPoints(nextPoints);
+    if (!validMeasurementBoardCalibration(calibration)) {
+      setCalibrationPoints([]);
+      setError("板面四角无效，请按左上、右上、右下、左下的顺序重新点击。");
+      return;
+    }
+    setBoardCalibration(calibration);
+    setCalibrationPoints([]);
+    setCalibratingBoard(false);
+    setStart(null);
+    setError("");
+    const source = imageCanvasRef.current;
+    if (source) saveBoardCalibration(calibration, source.width / source.height);
+  }
+
+  function beginBoardCalibration() {
+    setCalibratingBoard(true);
+    setCalibrationPoints([]);
     setStart(null);
     setError("");
   }
@@ -153,6 +234,10 @@ export function ManualMeasurementEditor(props: {
   }
 
   function apply() {
+    if (!boardCalibration || calibratingBoard) {
+      setError("请先完成测量板四角校准。");
+      return;
+    }
     const invalid = lines.find((line) => !Number.isFinite(Number(line.valueCm)) || Number(line.valueCm) <= 0);
     if (invalid) {
       setActiveKey(invalid.key);
@@ -172,7 +257,7 @@ export function ManualMeasurementEditor(props: {
       <DialogContent className="max-h-[calc(100vh-1rem)] overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>手动连线校准尺寸</DialogTitle>
-          <DialogDescription>选择一个尺寸，在测量板原图上依次点击起点和终点，再确认厘米值。人工结果会保存，AI原始值不会被覆盖。</DialogDescription>
+          <DialogDescription>系统先根据 120 × 160 cm 测量板校正透视，再把衣服连线自动换算为厘米。人工结果会保存，AI原始值不会被覆盖。</DialogDescription>
         </DialogHeader>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -187,6 +272,27 @@ export function ManualMeasurementEditor(props: {
           </div>
 
           <div className="space-y-4">
+            <div className={cn("space-y-2 rounded-md border p-3", calibratingBoard ? "border-amber-400 bg-amber-50" : "border-emerald-300 bg-emerald-50/60")}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">测量板透视校准</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {calibratingBoard
+                      ? `请点击${BOARD_CORNER_LABELS[calibrationPoints.length] ?? "四角"}（${Math.min(calibrationPoints.length + 1, 4)}/4）。`
+                      : "已按 120 × 160 cm 建立坐标；固定机位会自动复用。"}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={beginBoardCalibration}>
+                  <ScanLineIcon data-icon="inline-start" />{boardCalibration ? "重新校准" : "校准板面"}
+                </Button>
+              </div>
+              {calibratingBoard && calibrationPoints.length ? (
+                <Button type="button" size="sm" variant="ghost" onClick={() => setCalibrationPoints((current) => current.slice(0, -1))}>
+                  <Undo2Icon data-icon="inline-start" />撤销上一个板角
+                </Button>
+              ) : null}
+            </div>
+
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
               {props.measurements.map((measurement) => {
                 const completed = lines.some((line) => line.key === measurement.key);
@@ -196,6 +302,7 @@ export function ManualMeasurementEditor(props: {
                     type="button"
                     variant={activeMeasurement?.key === measurement.key ? "default" : "outline"}
                     className="justify-between"
+                    disabled={calibratingBoard || !boardCalibration}
                     onClick={() => selectMeasurement(measurement.key)}
                   >
                     <span>{measurement.label}</span>
@@ -205,16 +312,19 @@ export function ManualMeasurementEditor(props: {
               })}
             </div>
 
-            {activeMeasurement ? (
+            {activeMeasurement && !calibratingBoard ? (
               <div className="space-y-3 rounded-md border p-3">
                 <div>
                   <p className="text-sm font-medium">{activeMeasurement.label}</p>
                   <p className="text-xs text-muted-foreground">
-                    {activeLine ? "已连线，可重画或修改数值。" : start ? "已选起点，请点击终点。" : "请先点击起点，再点击终点。"}
+                    {activeLine ? "已按板面坐标换算，可重画或人工修正数值。" : start ? "已选起点，请点击终点。" : "请先点击起点，再点击终点。"}
                   </p>
+                  {activeMeasurement.key === "shoulderWidthCm" ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700">从左侧肩袖接缝连接到右侧肩袖接缝；不要从领口开始。</p>
+                  ) : null}
                 </div>
                 <label className="block space-y-1 text-sm">
-                  <span>确认尺寸（cm）</span>
+                  <span>测量板换算（cm）</span>
                   <Input inputMode="decimal" value={values[activeMeasurement.key] ?? ""} onChange={(event) => updateValue(event.target.value)} />
                 </label>
                 {activeMeasurement.aiValue ? <p className="text-xs text-muted-foreground">AI 原值：{activeMeasurement.aiValue} cm</p> : null}
@@ -227,7 +337,7 @@ export function ManualMeasurementEditor(props: {
 
             <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
               <p className="font-medium text-foreground"><MousePointer2Icon className="mr-1 inline size-3.5" />连线规则</p>
-              <p className="mt-1">胸宽、肩宽、腰宽等横向连接两侧端点；衣长、裤长纵向连接起止点；袖长从肩点连接到袖口。</p>
+              <p className="mt-1">肩宽必须连接左右肩缝端点，不是领口到单侧肩；胸宽、腰宽连接两侧端点；衣长纵向连接起止点；袖长从肩缝连接到袖口。</p>
             </div>
             {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p> : null}
           </div>
@@ -235,7 +345,7 @@ export function ManualMeasurementEditor(props: {
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => props.onOpenChange(false)}>取消</Button>
-          <Button type="button" onClick={apply}><CheckIcon data-icon="inline-start" />应用人工连线</Button>
+          <Button type="button" disabled={!boardCalibration || calibratingBoard} onClick={apply}><CheckIcon data-icon="inline-start" />应用人工连线</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -291,4 +401,139 @@ function drawStart(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement,
   context.lineWidth = 3;
   context.stroke();
   context.restore();
+}
+
+function calibrationFromPoints(points: MeasurementPoint[]): MeasurementBoardCalibration {
+  return {
+    topLeft: points[0]!,
+    topRight: points[1]!,
+    bottomRight: points[2]!,
+    bottomLeft: points[3]!
+  };
+}
+
+function readSavedBoardCalibration(aspectRatio: number): MeasurementBoardCalibration | null {
+  try {
+    const raw = window.localStorage.getItem(BOARD_CALIBRATION_STORAGE_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as {
+      aspectRatio?: number;
+      calibration?: MeasurementBoardCalibration;
+    };
+    if (!Number.isFinite(saved.aspectRatio) || Math.abs((saved.aspectRatio ?? 0) - aspectRatio) > 0.01) {
+      return null;
+    }
+    return saved.calibration && validMeasurementBoardCalibration(saved.calibration)
+      ? saved.calibration
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveBoardCalibration(calibration: MeasurementBoardCalibration, aspectRatio: number) {
+  try {
+    window.localStorage.setItem(BOARD_CALIBRATION_STORAGE_KEY, JSON.stringify({
+      aspectRatio,
+      calibration
+    }));
+  } catch {
+    // Calibration still applies to the current session if browser storage is unavailable.
+  }
+}
+
+function recalculateLines(
+  lines: ManualMeasurementLine[],
+  calibration: MeasurementBoardCalibration
+): ManualMeasurementLine[] {
+  return lines.map((line) => {
+    const length = measurementLengthCm(
+      calibration,
+      { x: line.x1, y: line.y1 },
+      { x: line.x2, y: line.y2 }
+    );
+    return length === null ? line : { ...line, valueCm: formatCentimeters(length) };
+  });
+}
+
+function formatCentimeters(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function drawBoardCalibration(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  calibration: MeasurementBoardCalibration
+) {
+  const points = [
+    calibration.topLeft,
+    calibration.topRight,
+    calibration.bottomRight,
+    calibration.bottomLeft
+  ];
+  context.save();
+  context.strokeStyle = "#059669";
+  context.fillStyle = "#059669";
+  context.lineWidth = Math.max(3, canvas.width / 500);
+  context.setLineDash([14, 10]);
+  context.beginPath();
+  points.forEach((point, index) => {
+    const canvasPoint = toCanvasPoint(canvas, point);
+    if (index === 0) context.moveTo(canvasPoint.x, canvasPoint.y);
+    else context.lineTo(canvasPoint.x, canvasPoint.y);
+  });
+  const first = toCanvasPoint(canvas, points[0]!);
+  context.lineTo(first.x, first.y);
+  context.stroke();
+  context.setLineDash([]);
+  points.forEach((point) => {
+    const canvasPoint = toCanvasPoint(canvas, point);
+    context.beginPath();
+    context.arc(canvasPoint.x, canvasPoint.y, Math.max(6, canvas.width / 220), 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 2;
+    context.stroke();
+  });
+  context.restore();
+}
+
+function drawCalibrationProgress(
+  context: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  points: MeasurementPoint[]
+) {
+  context.save();
+  context.strokeStyle = "#d97706";
+  context.fillStyle = "#d97706";
+  context.lineWidth = Math.max(3, canvas.width / 500);
+  context.setLineDash([14, 10]);
+  context.beginPath();
+  points.forEach((point, index) => {
+    const canvasPoint = toCanvasPoint(canvas, point);
+    if (index === 0) context.moveTo(canvasPoint.x, canvasPoint.y);
+    else context.lineTo(canvasPoint.x, canvasPoint.y);
+  });
+  context.stroke();
+  context.setLineDash([]);
+  context.font = `700 ${Math.max(16, canvas.width / 55)}px sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  points.forEach((point, index) => {
+    const canvasPoint = toCanvasPoint(canvas, point);
+    context.beginPath();
+    context.arc(canvasPoint.x, canvasPoint.y, Math.max(11, canvas.width / 100), 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#ffffff";
+    context.fillText(String(index + 1), canvasPoint.x, canvasPoint.y);
+    context.fillStyle = "#d97706";
+  });
+  context.restore();
+}
+
+function toCanvasPoint(canvas: HTMLCanvasElement, point: MeasurementPoint) {
+  return {
+    x: point.x / 100 * canvas.width,
+    y: point.y / 100 * canvas.height
+  };
 }
