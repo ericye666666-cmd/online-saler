@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { productStatusLabel } from "./product-factory-display";
+import { lightweightCutoutWarning } from "./image-processing-quality";
 import {
   PRODUCT_FACTORY_IMAGE_LABELS,
   PRODUCT_FACTORY_IMAGE_TYPES,
@@ -193,13 +194,16 @@ async function runProductImagePipeline(
     ? comparison.cutoutTransparent.imageId
     : "";
   if (!transparentId || mode !== "auto") {
-    transparentId = (await runImageOperation(
+    const cutout = await runImageOperation(
       product.id,
       originalId,
       "REMOVE_BACKGROUND",
       adminUserId,
       mode
-    )).outputImageId!;
+    );
+    const cutoutWarning = lightweightCutoutWarning(cutout);
+    if (cutoutWarning) throw new Error(cutoutWarning);
+    transparentId = cutout.outputImageId!;
   }
 
   let whiteId = comparison.cutoutWhite?.sourceImageId === transparentId

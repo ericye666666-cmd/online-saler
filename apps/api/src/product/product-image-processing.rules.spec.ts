@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   MAX_IMAGE_PROCESSING_RETRIES,
   canRetryImageProcessing,
+  evaluateLightweightImageQuality,
   isSelectableMainVariant,
   sourceVariantForOperation,
   targetVariantForOperation
@@ -38,5 +39,23 @@ describe("Product image processing rules", () => {
     assert.equal(canRetryImageProcessing("PENDING", 0), false);
     assert.equal(canRetryImageProcessing("RUNNING", 0), false);
     assert.equal(canRetryImageProcessing("SUCCEEDED", 0), false);
+  });
+
+  it("blocks low quality lightweight output from storefront selection", () => {
+    assert.deepEqual(evaluateLightweightImageQuality({ qualityScore: 0.54, qualityIssues: [] }), {
+      pass: false,
+      reason: "QUALITY_SCORE_BELOW_THRESHOLD:0.54<0.75"
+    });
+    assert.deepEqual(
+      evaluateLightweightImageQuality({ qualityScore: 0.9, qualityIssues: ["SUBJECT_TOUCHES_EDGE"] }),
+      { pass: false, reason: "QUALITY_ISSUE:SUBJECT_TOUCHES_EDGE" }
+    );
+  });
+
+  it("allows a lightweight output that passes the storefront threshold", () => {
+    assert.deepEqual(evaluateLightweightImageQuality({ qualityScore: 0.9, qualityIssues: [] }), {
+      pass: true,
+      reason: null
+    });
   });
 });

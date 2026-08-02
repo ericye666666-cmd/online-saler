@@ -6,7 +6,7 @@
     "build": "next build",
     "dev": "next dev --port 3001",
     "start": "next start --port 3001",
-    "test": "tsx src/app/ai-digitization-flow.test.ts && tsx src/app/operations-workspace-flow.test.ts && tsx src/app/local-label-print.test.ts && tsx src/app/product-control-flow.test.ts && tsx src/app/product/product-factory-display.test.ts && tsx src/app/product/product-factory-batch-display.test.ts && tsx src/app/product/product-factory-batch-size.test.ts && tsx src/app/product/product-factory-upload-flow.test.ts && tsx src/app/product/product-factory-barcode-flow.test.ts && tsx src/app/product/product-factory-storage-flow.test.ts && tsx --test src/app/product/garment-measurement-geometry.test.ts && tsx src/app/orders/order-center-routes.test.ts && tsx src/app/operations-access.test.ts && tsx src/app/operations-style-build.test.ts",
+    "test": "tsx src/app/ai-digitization-flow.test.ts && tsx src/app/operations-workspace-flow.test.ts && tsx src/app/local-label-print.test.ts && tsx src/app/product-control-flow.test.ts && tsx src/app/product/product-factory-display.test.ts && tsx src/app/product/product-factory-batch-display.test.ts && tsx src/app/product/product-factory-batch-size.test.ts && tsx src/app/product/product-factory-upload-flow.test.ts && tsx src/app/product/product-factory-barcode-flow.test.ts && tsx src/app/product/product-factory-storage-flow.test.ts && tsx --test src/app/product/garment-measurement-geometry.test.ts src/app/product/image-processing-quality.test.ts && tsx src/app/orders/order-center-routes.test.ts && tsx src/app/operations-access.test.ts && tsx src/app/operations-style-build.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
