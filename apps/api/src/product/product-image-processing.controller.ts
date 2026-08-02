@@ -6,6 +6,7 @@ import {
   Headers,
   Param,
   Post,
+  Req,
   Res
 } from "@nestjs/common";
 import { prisma } from "@online-saler/database";
@@ -105,6 +106,37 @@ export class ProductImageProcessingController {
     return this.imageProcessing.selectMainImage({ productId, imageId: body.imageId.trim() });
   }
 
+  @Post("products/:productId/images/:imageId/manual-cutout")
+  async saveManualCutout(
+    @Param("productId") productId: string,
+    @Param("imageId") imageId: string,
+    @Req() request: any,
+    @Headers("content-type") contentType?: string,
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    if (contentType?.split(";", 1)[0]?.trim().toLowerCase() !== "image/png") {
+      throw new BadRequestException("Manual cutout must be uploaded as image/png");
+    }
+    const body = await readBinaryBody(request, 10 * 1024 * 1024);
+    return this.imageProcessing.saveManualCutout({ productId, sourceImageId: imageId, body });
+  }
+
+  @Post("products/:productId/images/:imageId/guided-cutout")
+  async saveGuidedCutout(
+    @Param("productId") productId: string,
+    @Param("imageId") imageId: string,
+    @Body() body: { points?: unknown },
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    return this.imageProcessing.saveGuidedCutout({
+      productId,
+      sourceImageId: imageId,
+      points: body?.points
+    });
+  }
+
   @Post("image-processing-jobs/:jobId/retry")
   async retry(
     @Param("jobId") jobId: string,
@@ -114,4 +146,26 @@ export class ProductImageProcessingController {
     await requireAdminPermission(adminUserId, "action.product.edit");
     return this.imageProcessing.retry({ jobId, reason: body?.reason });
   }
+}
+
+async function readBinaryBody(request: any, maximumBytes: number): Promise<Buffer> {
+  if (Buffer.isBuffer(request.body)) {
+    if (!request.body.length || request.body.length > maximumBytes) {
+      throw new BadRequestException("Manual cutout must be between 1 byte and 10 MB");
+    }
+    return request.body;
+  }
+
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maximumBytes) {
+      throw new BadRequestException("Manual cutout must be between 1 byte and 10 MB");
+    }
+    chunks.push(buffer);
+  }
+  if (!size) throw new BadRequestException("Manual cutout image is required");
+  return Buffer.concat(chunks);
 }

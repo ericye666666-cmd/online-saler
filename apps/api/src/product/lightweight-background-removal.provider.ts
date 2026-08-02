@@ -3,7 +3,8 @@ import {
   BackgroundRemovalProviderError,
   type BackgroundRemovalInput,
   type BackgroundRemovalProvider,
-  type BackgroundRemovalResult
+  type BackgroundRemovalResult,
+  type GuidedCutoutPoint
 } from "./background-removal.provider";
 
 @Injectable()
@@ -15,6 +16,23 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
   }
 
   async removeBackground(input: BackgroundRemovalInput): Promise<BackgroundRemovalResult> {
+    return this.request(input, "/remove-background");
+  }
+
+  async removeBackgroundGuided(
+    input: BackgroundRemovalInput,
+    points: GuidedCutoutPoint[]
+  ): Promise<BackgroundRemovalResult> {
+    return this.request(input, "/remove-background-guided", {
+      "X-Foreground-Polygon": JSON.stringify(points)
+    });
+  }
+
+  private async request(
+    input: BackgroundRemovalInput,
+    path: string,
+    additionalHeaders: Record<string, string> = {}
+  ): Promise<BackgroundRemovalResult> {
     const serviceUrl = process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL?.trim();
     if (!serviceUrl) {
       throw new BackgroundRemovalProviderError(
@@ -30,11 +48,12 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
       const payload = new Uint8Array(input.body.length);
       payload.set(input.body);
 
-      const response = await fetch(`${serviceUrl.replace(/\/$/, "")}/remove-background`, {
+      const response = await fetch(`${serviceUrl.replace(/\/$/, "")}${path}`, {
         method: "POST",
         headers: {
           "Content-Type": input.contentType,
-          "X-Filename": input.filename
+          "X-Filename": input.filename,
+          ...additionalHeaders
         },
         body: payload,
         signal: controller.signal
@@ -53,7 +72,7 @@ export class LightweightBackgroundRemovalProvider implements BackgroundRemovalPr
       return {
         body: Buffer.from(await response.arrayBuffer()),
         contentType: "image/png",
-        provider: "lightweight-opencv",
+        provider: response.headers.get("x-processor") ?? "lightweight-opencv",
         processorVersion: response.headers.get("x-processor-version") ?? "v1.0",
         qualityScore: parseQualityScore(response.headers.get("x-quality-score")),
         qualityIssues: parseQualityIssues(response.headers.get("x-quality-issues"))

@@ -46,7 +46,7 @@ export function canRetryImageProcessing(status: ImageProcessingStatus, retryCoun
   return status === "FAILED" && retryCount < MAX_IMAGE_PROCESSING_RETRIES;
 }
 
-export function evaluateLightweightImageQuality(input: {
+export function evaluateCutoutImageQuality(input: {
   qualityScore?: number | null;
   qualityIssues?: readonly string[] | null;
 }): { pass: boolean; reason: string | null } {
@@ -69,6 +69,8 @@ export function evaluateLightweightImageQuality(input: {
 
   return { pass: true, reason: null };
 }
+
+export const evaluateLightweightImageQuality = evaluateCutoutImageQuality;
 
 function configuredMinimumQualityScore(): number {
   const value = Number.parseFloat(

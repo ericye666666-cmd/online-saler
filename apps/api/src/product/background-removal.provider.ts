@@ -21,6 +21,11 @@ export interface BackgroundRemovalResult {
   fallbackReason?: string | null;
 }
 
+export type GuidedCutoutPoint = {
+  x: number;
+  y: number;
+};
+
 export interface BackgroundRemovalProvider {
   isConfigured(): boolean;
   removeBackground(input: BackgroundRemovalInput): Promise<BackgroundRemovalResult>;

@@ -33,6 +33,7 @@ import {
   RefreshCwIcon,
   RotateCcwIcon,
   SaveIcon,
+  ScissorsIcon,
   WandSparklesIcon
 } from "lucide-react";
 
@@ -58,7 +59,8 @@ import {
   type WorkspaceForm
 } from "../operations-workspace-flow";
 import { GarmentMeasurementGuide } from "./garment-measurement-guide";
-import { lightweightCutoutWarning } from "./image-processing-quality";
+import { cutoutQualityWarning } from "./image-processing-quality";
+import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
@@ -213,6 +215,42 @@ async function selectMainImage(productId: string, imageId: string, adminUserId: 
   });
 }
 
+async function uploadManualCutout(
+  productId: string,
+  sourceImageId: string,
+  image: Blob,
+  adminUserId: string
+) {
+  const response = await fetch(
+    `${API_PROXY_URL}/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(sourceImageId)}/manual-cutout`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "image/png", "X-Admin-User-Id": adminUserId },
+      body: image
+    }
+  );
+  const body = await response.json().catch(() => ({})) as { message?: unknown } & Partial<ImageProcessingJobRecord>;
+  if (!response.ok) throw new Error(typeof body.message === "string" ? body.message : "无法保存修正版抠图。");
+  if (body.status !== "SUCCEEDED" || !body.outputImageId) throw new Error("修正版抠图没有正确保存。");
+  return body as ImageProcessingJobRecord;
+}
+
+async function runGuidedCutout(
+  productId: string,
+  sourceImageId: string,
+  points: GuidedCutoutPoint[],
+  adminUserId: string
+) {
+  return request<ImageProcessingJobRecord>(
+    `/products/${productId}/images/${sourceImageId}/guided-cutout`,
+    {
+      method: "POST",
+      headers: { "X-Admin-User-Id": adminUserId },
+      body: JSON.stringify({ points })
+    }
+  );
+}
+
 export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   const ids = useOperationIds();
   const router = useRouter();
@@ -226,6 +264,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [manualEditorOpen, setManualEditorOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
@@ -291,7 +330,14 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  const imageTabs = useMemo(() => buildImageTabs(product, comparison), [comparison, product]);
+  const latestRemovalJob = comparison?.jobs.find((job) =>
+    job.operation === "REMOVE_BACKGROUND" && job.sourceImageId === comparison.original?.imageId
+  ) ?? null;
+  const cutoutWarning = latestRemovalJob ? cutoutQualityWarning(latestRemovalJob) : null;
+  const imageTabs = useMemo(
+    () => buildImageTabs(product, comparison, !cutoutWarning),
+    [comparison, cutoutWarning, product]
+  );
   const currentImage = imageTabs.find((item) => item.key === activeImage) ?? imageTabs[0] ?? null;
   const reasons = calibrationValidationReasons(form, {
     hasPhoto: Boolean(product?.images?.length),
@@ -356,6 +402,11 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
 
   async function saveAndNext() {
     if (!product || readOnly) return;
+    if (cutoutWarning) {
+      setError("抠图尚未通过质量检查。请手工修边或标记重拍后再继续。");
+      imagePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     if (reasons.length) {
       setError(reasons.join(" "));
       focusValidationIssue(validationIssues[0], imagePanelRef.current);
@@ -405,17 +456,90 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     setError("");
     try {
       const cutout = await runImageOperation(product.id, sourceId, "REMOVE_BACKGROUND", ids.adminUserId, mode);
-      const cutoutWarning = lightweightCutoutWarning(cutout);
-      if (cutoutWarning) throw new Error(cutoutWarning);
-      const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-      await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-      const balanced = await runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId);
-      const updated = await selectMainImage(product.id, balanced.outputImageId!, ids.adminUserId);
+      const warning = cutoutQualityWarning(cutout);
+      if (warning) {
+        setComparison(await loadComparison(product.id, ids.adminUserId));
+        setActiveImage("transparent");
+        throw new Error(warning);
+      }
+      await Promise.all([
+        (async () => {
+          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
+          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
+        })(),
+        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
+      ]);
+      const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
       setActiveImage("balanced");
-      setNotice(mode === "rembg_birefnet" ? "已使用 BiRefNet 重新处理。" : "已使用 lightweight OpenCV 重新处理。");
+      setNotice(`${mode === "rembg_birefnet" ? "已使用 BiRefNet" : "已使用 lightweight OpenCV"} 重新处理。请手动选择白底图、优化主图或均整版作为商城主图。`);
     } catch (caught) {
       setError(errorMessage(caught, "图片处理失败。"));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveManualCorrection(image: Blob) {
+    if (!product || !comparison?.original?.imageId) return;
+    setBusy("manual-cutout");
+    setError("");
+    setNotice("");
+    try {
+      const cutout = await uploadManualCutout(
+        product.id,
+        comparison.original.imageId,
+        image,
+        ids.adminUserId
+      );
+      await Promise.all([
+        (async () => {
+          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
+          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
+        })(),
+        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
+      ]);
+      const updated = await loadComparison(product.id, ids.adminUserId);
+      setComparison(updated);
+      setActiveImage("balanced");
+      setManualEditorOpen(false);
+      setNotice("修正版已保存，并重新生成白底图与两版优化主图。请检查后手动选择商城主图。");
+    } catch (caught) {
+      throw new Error(errorMessage(caught, "无法保存修正版抠图。"));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveGuidedCorrection(points: GuidedCutoutPoint[]) {
+    if (!product || !comparison?.original?.imageId) return;
+    setBusy("guided-cutout");
+    setError("");
+    setNotice("");
+    try {
+      const cutout = await runGuidedCutout(
+        product.id,
+        comparison.original.imageId,
+        points,
+        ids.adminUserId
+      );
+      if (cutout.status !== "SUCCEEDED" || !cutout.outputImageId) {
+        throw new Error(cutout.errorMessage || "按轮廓自动抠图失败。");
+      }
+      await Promise.all([
+        (async () => {
+          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
+          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
+        })(),
+        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
+      ]);
+      const updated = await loadComparison(product.id, ids.adminUserId);
+      setComparison(updated);
+      setActiveImage("balanced");
+      setManualEditorOpen(false);
+      setNotice("已按员工点选轮廓重新抠图，并生成白底图与两版优化主图。请检查边缘并手动选择商城主图。");
+    } catch (caught) {
+      throw new Error(errorMessage(caught, "按轮廓自动抠图失败，请调整轮廓后重试。"));
     } finally {
       setBusy("");
     }
@@ -487,7 +611,6 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
     return <StatusMessage tone={error ? "danger" : "neutral"}>{error || "正在读取校准工作台..."}</StatusMessage>;
   }
 
-  const latestRemovalJob = comparison?.jobs.find((job) => job.operation === "REMOVE_BACKGROUND");
   const allComplete = completedCount === batch.targetCount;
 
   return (
@@ -527,8 +650,20 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("rembg_birefnet")}><WandSparklesIcon data-icon="inline-start" />强制 BiRefNet</Button>
+              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.publicUrl} onClick={() => setManualEditorOpen(true)}><ScissorsIcon data-icon="inline-start" />手动抠图</Button>
             </div>
           </div>
+
+          {cutoutWarning ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              <p className="font-semibold">抠图未通过，已禁止继续使用这张处理图</p>
+              <p className="mt-1 text-xs">{cutoutWarning}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => setManualEditorOpen(true)} disabled={Boolean(busy) || !comparison?.original?.publicUrl}><ScissorsIcon data-icon="inline-start" />点选轮廓重新抠图</Button>
+                <Button size="sm" variant="outline" onClick={() => void markRetake()} disabled={Boolean(busy) || readOnly}><RotateCcwIcon data-icon="inline-start" />无法修复，标记重拍</Button>
+              </div>
+            </div>
+          ) : null}
 
           <Tabs value={activeImage} onValueChange={setActiveImage}>
             <TabsList className="h-auto w-full justify-start overflow-x-auto">
@@ -549,7 +684,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
             {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
           </div>
 
-          {latestRemovalJob ? <ProcessingSummary job={latestRemovalJob} /> : <StatusMessage tone="neutral">还没有图片处理记录。</StatusMessage>}
+          {latestRemovalJob ? <ProcessingSummary job={latestRemovalJob} warning={cutoutWarning} /> : <StatusMessage tone="neutral">还没有图片处理记录。</StatusMessage>}
           <details className="rounded-md border px-3 py-2 text-sm">
             <summary className="cursor-pointer font-medium">处理历史（{comparison?.jobs.length ?? 0}）</summary>
             <div className="mt-2 space-y-2">
@@ -655,8 +790,10 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 backdrop-blur lg:sticky lg:inset-auto lg:px-0">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           {!readOnly ? (
-            <p className={cn("text-xs", validationIssues.length || !comparison?.selectedMainImageId ? "font-medium text-destructive" : "text-emerald-700")}>
-              {validationIssues.length
+            <p className={cn("text-xs", cutoutWarning || validationIssues.length || !comparison?.selectedMainImageId ? "font-medium text-destructive" : "text-emerald-700")}>
+              {cutoutWarning
+                ? "还差：修正抠图或标记重拍"
+                : validationIssues.length
                 ? `还差：${[...new Set(validationIssues.map((issue) => issue.label))].join("、")}`
                 : !comparison?.selectedMainImageId
                   ? "还差：选择商城主图"
@@ -665,7 +802,7 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           ) : <span />}
           <div className="grid grid-cols-3 gap-2 lg:flex">
             <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />保存草稿</Button>
-            <Button disabled={Boolean(busy) || readOnly} onClick={() => void saveAndNext()}>
+            <Button disabled={Boolean(busy) || readOnly || Boolean(cutoutWarning)} onClick={() => void saveAndNext()}>
               {busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
               {readOnly ? "本件已校准" : "保存并下一件"}
             </Button>
@@ -673,13 +810,26 @@ export function ProductBatchCalibrationPage({ batchId }: { batchId: string }) {
           </div>
         </div>
       </div>
+      <ManualCutoutEditor
+        open={manualEditorOpen}
+        originalUrl={comparison?.original?.publicUrl ? `${API_PROXY_URL}${comparison.original.publicUrl}` : ""}
+        cutoutUrl={comparison?.cutoutTransparent?.publicUrl
+          ? `${API_PROXY_URL}${comparison.cutoutTransparent.publicUrl}`
+          : comparison?.original?.publicUrl
+            ? `${API_PROXY_URL}${comparison.original.publicUrl}`
+            : ""}
+        saving={busy === "manual-cutout" || busy === "guided-cutout"}
+        onOpenChange={setManualEditorOpen}
+        onGuidedCutout={saveGuidedCorrection}
+        onSave={saveManualCorrection}
+      />
     </div>
   );
 }
 
-function ProcessingSummary({ job }: { job: ImageProcessingJobRecord }) {
+function ProcessingSummary({ job, warning }: { job: ImageProcessingJobRecord; warning: string | null }) {
   return (
-    <div className="rounded-md border bg-muted/30 p-3 text-xs">
+    <div className={cn("rounded-md border p-3 text-xs", warning ? "border-destructive/40 bg-destructive/5" : "bg-muted/30")}>
       <div className="flex flex-wrap gap-x-4 gap-y-2">
         <span>处理引擎：<strong>{providerLabel(job.provider)}</strong></span>
         <span>质量分：<strong>{job.qualityScore == null ? "-" : Math.round(job.qualityScore * 100)}</strong></span>
@@ -789,15 +939,22 @@ function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; childre
   return <div className={cn("rounded-md border px-4 py-3 text-sm", tone === "danger" ? "border-destructive/40 bg-destructive/5 text-destructive" : "bg-muted/40 text-muted-foreground")}>{children}</div>;
 }
 
-function buildImageTabs(product: ProductRecord | null, comparison: ProductImageComparisonResponse | null): ImageTab[] {
+function buildImageTabs(
+  product: ProductRecord | null,
+  comparison: ProductImageComparisonResponse | null,
+  derivedImagesUsable: boolean
+): ImageTab[] {
   const tabs: ImageTab[] = [
     variantTab("original", "原图", comparison?.original ?? null, true),
     variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, false, true),
-    variantTab("white", "白底图", comparison?.cutoutWhite ?? null, true),
-    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null, true),
-    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null, true)
+    variantTab("white", "白底图", comparison?.cutoutWhite ?? null, derivedImagesUsable),
+    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null, derivedImagesUsable),
+    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null, derivedImagesUsable),
+    variantTab("back-original", "背面原图", comparison?.backOriginal ?? null, false),
+    variantTab("back-transparent", "背面透明抠图", comparison?.backCutoutTransparent ?? null, false, true),
+    variantTab("back-white", "背面白底", comparison?.backCutoutWhite ?? null, false)
   ];
-  for (const [type, label] of [["BACK", "背面"], ["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
+  for (const [type, label] of [["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
     const image = newestImage(product, type);
     if (image) tabs.push({ key: type.toLowerCase(), label, url: image.publicUrl ? `${API_PROXY_URL}${image.publicUrl}` : "", imageId: image.id, selectable: false, selected: false });
   }
@@ -943,6 +1100,8 @@ function focusValidationIssue(
 
 function providerLabel(provider: string | null) {
   if (!provider) return "-";
+  if (provider === "manual-guided-grabcut") return "员工轮廓引导抠图";
+  if (provider === "manual-cutout-editor") return "员工手工修边";
   if (provider.includes("rembg") || provider.includes("birefnet")) return "rembg + BiRefNet";
   if (provider.includes("lightweight") || provider.includes("opencv")) return "lightweight OpenCV";
   return provider;
