@@ -30,7 +30,7 @@ export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
       >
         {available ? (saving ? "Adding..." : "Buy this item") : "Unavailable"}
       </button>
-      <p>Cart does not reserve stock. Availability is checked again before payment.</p>
+      <p>This item is not reserved until payment is completed.</p>
     </div>
   );
 }
