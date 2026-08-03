@@ -140,3 +140,13 @@ test("escapes customer-facing text before inserting it into SVG", () => {
   assert.match(svg, /A &amp; B &lt;Tee&gt;/);
   assert.doesNotMatch(svg, /Some measurements are not available/);
 });
+
+test("removes unsupported non-latin glyphs from the rendered heading", () => {
+  const svg = renderProductDetailMeasurementGuideSvg({
+    template: PRODUCT_DETAIL_MEASUREMENT_TEMPLATES.TOP_LONG_SLEEVE,
+    title: "mbu 布先生 Black Long-Sleeve T-Shirt",
+    measurements: { SHOULDER_WIDTH: 47, CHEST_WIDTH: 48.5, SLEEVE_LENGTH: 53, LENGTH: 68.5 }
+  });
+  assert.match(svg, />mbu Black Long-Sleeve T-Shirt</);
+  assert.doesNotMatch(svg, /布先生/);
+});

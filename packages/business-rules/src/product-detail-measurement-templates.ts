@@ -398,6 +398,7 @@ export function renderProductDetailMeasurementGuideSvg(input: {
   locale?: "en" | "sw" | "zh";
 }): string {
   const locale = input.locale ?? "en";
+  const displayTitle = formatMeasurementGuideDisplayTitle(input.title, input.template.name);
   const values = resolveProductDetailMeasurements(input.template, input.measurements);
   const missingRequired = input.template.measurementFields.some((measurementField) =>
     measurementField.required && !values.some((value) => value.key === measurementField.key)
@@ -428,7 +429,7 @@ export function renderProductDetailMeasurementGuideSvg(input: {
   <rect width="1200" height="1200" fill="#fff"/>
   <rect x="24" y="24" width="1152" height="1152" rx="16" fill="none" stroke="#e1e1e1" stroke-width="2"/>
   <text x="72" y="82" class="eyebrow">MEASUREMENT GUIDE</text>
-  <text x="72" y="145" class="heading">${escapeXml(input.title)}</text>
+  <text x="72" y="145" class="heading">${escapeXml(displayTitle)}</text>
   <text x="72" y="188" class="meta">${escapeXml(input.template.name)} · flat garment measurements</text>
   <text x="700" y="246" class="table-heading">MEASUREMENTS</text>
   <line x1="700" y1="262" x2="1118" y2="262" class="separator"/>
@@ -450,6 +451,14 @@ function token(value?: string | null): string {
 
 function formatCentimetres(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function formatMeasurementGuideDisplayTitle(title: string, templateName: string): string {
+  const supportedTitle = title
+    .replace(/[^\u0020-\u007e]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return supportedTitle || `${templateName} measurements`;
 }
 
 function escapeXml(value: string): string {
