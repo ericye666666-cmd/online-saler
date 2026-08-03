@@ -60,6 +60,27 @@ export function sortDetailBatches<T extends DetailBatchSelectionSummary>(batches
   });
 }
 
+export function detailCopyWithoutPrice(value: string | null | undefined) {
+  return (value ?? "")
+    .replace(/\bKSh\s*[\d,]+(?:\.\d{1,2})?\b\.?/gi, "")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/\.{2,}/g, ".")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+export function detailSellingPointsWithoutPrice(values: readonly string[]) {
+  return values
+    .filter((value) => !/\bKSh\s*[\d,]+(?:\.\d{1,2})?\b/i.test(value))
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+export function detailConditionSummary(value: string | null | undefined, confirmedDefectCount: number) {
+  return confirmedDefectCount > 0 ? (value ?? "").trim() : "";
+}
+
 function detailBatchPriority(batch: DetailBatchSelectionSummary) {
   if (batch.generating > 0) return 0;
   if (batch.generationReady && batch.pending > 0) return 1;

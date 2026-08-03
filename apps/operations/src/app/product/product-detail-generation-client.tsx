@@ -30,8 +30,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   detailBatchStageLabel,
+  detailConditionSummary,
+  detailCopyWithoutPrice,
   detailGenerationButtonLabel,
   detailProductStage,
+  detailSellingPointsWithoutPrice,
   PRODUCT_DETAIL_ASSET_PLAN,
   sortDetailBatches
 } from "./product-detail-page-plan";
@@ -406,7 +409,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     );
     setProfile(next);
     setComparison(nextComparison);
-    setCopy(copyFromJson(next.finalOutputJson, next.product.title ?? ""));
+    setCopy(copyFromJson(next.finalOutputJson, next.product.title ?? "", next.product.defects.length));
     const currentAssets = next.assets.filter((asset) =>
       CURRENT_DETAIL_ASSET_TYPES.has(asset.type) && (asset.status === "READY" || asset.status === "APPROVED")
     );
@@ -673,7 +676,9 @@ function ProductPublishPreview({
   const back = assetByType.get("BACK_MAIN");
   const measurementGuide = assetByType.get("MEASUREMENT_GUIDE");
   const evidence = profile.product.images.filter((image) => ["DETAIL", "DEFECT"].includes(image.type));
-  const sellingPoints = copy.sellingPoints.filter(Boolean);
+  const sellingPoints = detailSellingPointsWithoutPrice(copy.sellingPoints);
+  const shortDescription = detailCopyWithoutPrice(copy.shortDescription);
+  const conditionSummary = detailConditionSummary(copy.conditionSummary, profile.product.defects.length);
 
   return (
     <div className="overflow-hidden rounded-md border bg-background">
@@ -695,7 +700,7 @@ function ProductPublishPreview({
             <span className="text-xl font-semibold">{priceLabel(profile.product.priceKsh)}</span>
             <Badge variant="outline">一物一件</Badge>
           </div>
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{copy.shortDescription || "商品描述尚未生成，请进入编辑与素材补充。"}</p>
+          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{shortDescription || "商品描述尚未生成，请进入编辑与素材补充。"}</p>
           {sellingPoints.length ? <ul className="mt-4 space-y-2 text-sm">{sellingPoints.map((point) => <li key={point} className="border-l-2 pl-3">{point}</li>)}</ul> : null}
           <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-3 border-t pt-4 text-sm">
             <OptionalPreviewFact label="平台尺码" value={profile.product.finalSizeLabel} />
@@ -731,7 +736,7 @@ function ProductPublishPreview({
         <div className="p-5">
           <h3 className="font-semibold">成色与瑕疵</h3>
           <OptionalPreviewFact label="成色" value={labelValue(profile.product.conditionGrade)} />
-          {copy.conditionSummary ? <p className="mt-3 text-sm text-muted-foreground">{copy.conditionSummary}</p> : null}
+          {conditionSummary ? <p className="mt-3 text-sm text-muted-foreground">{conditionSummary}</p> : null}
           {profile.product.defects.length ? <ul className="mt-4 space-y-2 text-sm">{profile.product.defects.map((defect) => <li key={`${defect.defectType}-${defect.description}`} className="border-l-2 pl-3">{defect.customerSafeDescription || defect.description}</li>)}</ul> : null}
         </div>
       </section>
@@ -833,15 +838,15 @@ function priceLabel(value?: number | null) {
   return value == null ? "价格待确认" : `KSh ${new Intl.NumberFormat("en-KE").format(value)}`;
 }
 
-function copyFromJson(value: unknown, fallbackTitle: string): EditableCopy {
+function copyFromJson(value: unknown, fallbackTitle: string, confirmedDefectCount = 0): EditableCopy {
   const record = isRecord(value) ? value : {};
-  const points = stringArray(record.sellingPoints);
+  const points = detailSellingPointsWithoutPrice(stringArray(record.sellingPoints));
   return {
     title: stringValue(record.title) || fallbackTitle,
     sellingPoints: [points[0] ?? "", points[1] ?? "", points[2] ?? ""],
-    shortDescription: stringValue(record.shortDescription),
+    shortDescription: detailCopyWithoutPrice(stringValue(record.shortDescription)),
     fitSummary: stringValue(record.fitSummary),
-    conditionSummary: stringValue(record.conditionSummary),
+    conditionSummary: detailConditionSummary(stringValue(record.conditionSummary), confirmedDefectCount),
     warnings: stringArray(record.warnings).join("\n")
   };
 }
