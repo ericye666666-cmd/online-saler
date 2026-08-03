@@ -2837,7 +2837,7 @@ select:focus-visible {
   .thumbnailRail {
     grid-row: 2;
     grid-auto-flow: column;
-    grid-auto-columns: 68px;
+    grid-auto-columns: 56px;
     grid-template-columns: none;
     overflow-x: auto;
     padding: 0 14px 4px;
@@ -2859,7 +2859,7 @@ select:focus-visible {
   }
 
   .productDetailGrid {
-    gap: 22px;
+    gap: 14px;
   }
 
   .productPurchasePanel > h1 {
@@ -2871,7 +2871,7 @@ select:focus-visible {
     align-items: center;
     flex-direction: row;
     gap: 12px;
-    margin: 14px 0 17px;
+    margin: 12px 0 14px;
   }
 
   .commercePriceRow strong {
