@@ -1,25 +1,29 @@
-export type StorageScanProduct = {
-  barcode?: string | null;
+export type BatchStorageProduct = {
   status?: string | null;
-  inventoryItem?: { status?: string | null } | null;
+  inventoryItem?: { status?: string | null; locationId?: string | null } | null;
 };
 
-export function normalizeStorageScan(value: string): string {
-  return value.trim().toUpperCase();
+export function needsBatchStoragePreparation(
+  products: BatchStorageProduct[],
+  targetCount: number
+): boolean {
+  if (products.length !== targetCount || targetCount < 1) return false;
+  if (!products.every((product) => product.status === "APPROVED" || product.status === "READY_FOR_STORAGE")) {
+    return false;
+  }
+  return products.some((product) => product.status === "APPROVED" || !product.inventoryItem?.locationId);
 }
 
-export function storageScanIssue(
-  barcodeValue: string,
-  locationValue: string,
-  products: StorageScanProduct[]
+export function batchStorageCompletionIssue(
+  products: BatchStorageProduct[],
+  targetCount: number
 ): string | null {
-  const barcode = normalizeStorageScan(barcodeValue);
-  const locationCode = normalizeStorageScan(locationValue);
-  if (!barcode) return "请扫描商品 Barcode。";
-  const product = products.find((item) => normalizeStorageScan(item.barcode ?? "") === barcode);
-  if (!product) return "该 Barcode 不属于当前批次。";
-  if (product.inventoryItem?.status === "AVAILABLE") return "该商品已经完成入仓，请勿重复扫描。";
-  if (product.status !== "READY_FOR_STORAGE") return "该商品尚未完成审核和入仓准备。";
-  if (!locationCode) return "请扫描货位码。";
+  if (products.length !== targetCount) return `本批必须包含 ${targetCount} 件商品。`;
+  if (products.some((product) => product.status !== "READY_FOR_STORAGE")) {
+    return "本批商品尚未全部完成审核和入仓准备。";
+  }
+  if (products.some((product) => !product.inventoryItem?.locationId)) {
+    return "还有商品未分配货架号，请刷新后重试。";
+  }
   return null;
 }

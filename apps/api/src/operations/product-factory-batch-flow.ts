@@ -21,7 +21,7 @@ export type ProductFactoryBatchNextAction =
   | "GENERATE_BARCODES"
   | "PRINT_AND_APPLY_LABELS"
   | "CONTINUE_REVIEW"
-  | "SCAN_INTO_STORAGE"
+  | "COMPLETE_STORAGE"
   | "REVIEW_PRODUCT_DETAILS"
   | "PUBLISH_PRODUCTS"
   | "RESOLVE_EXCEPTION"
@@ -75,7 +75,7 @@ const STAGE_LABELS: Record<ProductFactoryBatchStage, string> = {
   BARCODE: "生成 Barcode",
   LABEL_APPLY: "打印并贴码",
   REVIEW: "商品审核",
-  STORAGE: "扫码入仓",
+  STORAGE: "货架入库",
   PUBLISH: "发布商品",
   EXCEPTION: "处理异常",
   COMPLETE: "批次已完成"
@@ -88,7 +88,7 @@ const ACTION_LABELS: Record<ProductFactoryBatchNextAction, string> = {
   GENERATE_BARCODES: "生成本批 Barcode",
   PRINT_AND_APPLY_LABELS: "打印并贴码",
   CONTINUE_REVIEW: "继续审核",
-  SCAN_INTO_STORAGE: "扫码入仓",
+  COMPLETE_STORAGE: "确认全部入库",
   REVIEW_PRODUCT_DETAILS: "检查并批准商品详情",
   PUBLISH_PRODUCTS: "发布本批商品",
   RESOLVE_EXCEPTION: "处理异常商品",
@@ -198,7 +198,7 @@ function nextActionFor(
     BARCODE: "GENERATE_BARCODES",
     LABEL_APPLY: "PRINT_AND_APPLY_LABELS",
     REVIEW: "CONTINUE_REVIEW",
-    STORAGE: "SCAN_INTO_STORAGE",
+    STORAGE: "COMPLETE_STORAGE",
     PUBLISH: "PUBLISH_PRODUCTS"
   };
   return actions[stage];

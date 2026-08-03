@@ -20,7 +20,7 @@ test("derives the eight legal stages in order", () => {
     [products("CALIBRATED"), "BARCODE", "GENERATE_BARCODES"],
     [products("BARCODE_ASSIGNED"), "LABEL_APPLY", "PRINT_AND_APPLY_LABELS"],
     [products("BARCODE_ASSIGNED", 10, { labelPrintedAt: new Date() }), "REVIEW", "CONTINUE_REVIEW"],
-    [products("READY_FOR_STORAGE"), "STORAGE", "SCAN_INTO_STORAGE"],
+    [products("READY_FOR_STORAGE"), "STORAGE", "COMPLETE_STORAGE"],
     [products("READY_FOR_STORAGE", 10, {
       detailSourceVersion: 2,
       detailProfiles: [{ status: "APPROVED", sourceDataVersion: 2 }],

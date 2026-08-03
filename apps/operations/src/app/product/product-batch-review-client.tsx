@@ -10,7 +10,6 @@ import {
   ImageOffIcon,
   LoaderCircleIcon,
   PackageCheckIcon,
-  ScanLineIcon,
   SendIcon,
   XCircleIcon
 } from "lucide-react";
@@ -18,12 +17,11 @@ import {
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { normalizedAiOutput, stringValue, type JsonRecord } from "../operations-workspace-flow";
 import { productStatusLabel } from "./product-factory-display";
-import { normalizeStorageScan, storageScanIssue } from "./product-factory-storage-flow";
+import { batchStorageCompletionIssue, needsBatchStoragePreparation } from "./product-factory-storage-flow";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -91,8 +89,6 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
   const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
   const [activeImage, setActiveImage] = useState("original");
   const [reason, setReason] = useState("");
-  const [barcode, setBarcode] = useState("");
-  const [locationCode, setLocationCode] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -100,8 +96,16 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
     const query = new URLSearchParams({ adminUserId: ids.adminUserId });
-    const next = await request<ProductBatch>(`/operations/product-batches/${encodeURIComponent(batchId)}?${query.toString()}`);
+    let next = await request<ProductBatch>(`/operations/product-batches/${encodeURIComponent(batchId)}?${query.toString()}`);
     next.products = [...next.products].sort((left, right) => Number(left.batchItemNumber ?? 0) - Number(right.batchItemNumber ?? 0));
+    if (needsBatchStoragePreparation(next.products, next.targetCount)) {
+      await request(`/operations/product-batches/${next.id}/prepare-storage`, {
+        method: "POST",
+        body: JSON.stringify(ids)
+      });
+      next = await request<ProductBatch>(`/operations/product-batches/${encodeURIComponent(batchId)}?${query.toString()}`);
+      next.products = [...next.products].sort((left, right) => Number(left.batchItemNumber ?? 0) - Number(right.batchItemNumber ?? 0));
+    }
     setBatch(next);
     const firstReviewable = next.products.findIndex((product) => isReviewable(product.status));
     if (firstReviewable >= 0) setCurrentIndex((current) => isReviewable(next.products[current]?.status ?? "") ? current : firstReviewable);
@@ -150,27 +154,16 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
     }, result === "APPROVED" ? `第 ${product.batchItemNumber} 件审核通过。` : `第 ${product.batchItemNumber} 件已${result === "REJECTED" ? "拒绝" : "退回返工"}。`);
   }
 
-  async function prepareStorage() {
+  async function completeStorage() {
     if (!batch) return;
-    await run("prepare-storage", async () => {
-      await request(`/operations/product-batches/${batch.id}/prepare-storage`, { method: "POST", body: JSON.stringify(ids) });
-    }, "本批已完成入仓准备，请逐件扫描商品和货位。");
-  }
-
-  async function confirmStorage() {
-    if (!batch) return;
-    const issue = storageScanIssue(barcode, locationCode, batch.products);
+    const issue = batchStorageCompletionIssue(batch.products, batch.targetCount);
     if (issue) { setError(issue); setNotice(""); return; }
-    const normalizedBarcode = normalizeStorageScan(barcode);
-    const scanned = batch.products.find((item) => normalizeStorageScan(item.barcode ?? "") === normalizedBarcode);
-    await run("confirm-storage", async () => {
-      await request(`/operations/product-batches/${batch.id}/confirm-storage`, {
+    await run("stock-in", async () => {
+      await request(`/operations/product-batches/${batch.id}/stock-in`, {
         method: "POST",
-        body: JSON.stringify({ ...ids, barcode: normalizedBarcode, locationCode: normalizeStorageScan(locationCode) })
+        body: JSON.stringify(ids)
       });
-      setBarcode("");
-      setLocationCode("");
-    }, `第 ${scanned?.batchItemNumber ?? "-"} 件已入仓。`);
+    }, `本批 ${batch.targetCount} 件已全部完成入库。`);
   }
 
   async function publishBatch() {
@@ -188,6 +181,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
   const hasException = batch.products.some((item) => ["REWORK_REQUIRED", "ARCHIVED"].includes(item.status));
   const allApproved = approvedCount === batch.targetCount;
   const allPrepared = batch.products.every((item) => item.status === "READY_FOR_STORAGE" || item.status === "PUBLISHED");
+  const allAssigned = batch.products.every((item) => Boolean(item.inventoryItem?.locationId));
   const allAvailable = availableCount === batch.targetCount;
   const imageTabs = buildImageTabs(product, comparison);
   const currentImage = imageTabs.find((tab) => tab.key === activeImage) ?? imageTabs[0];
@@ -299,23 +293,33 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
 
       {allApproved && !allPrepared ? (
         <section className="rounded-md border p-4">
-          <h2 className="font-semibold">审核完成</h2>
-          <p className="mt-1 text-sm text-muted-foreground">本批 {batch.targetCount} 件均已通过审核。下一步将状态统一转为待入仓，不会自动分配货位。</p>
-          <Button className="mt-4" disabled={Boolean(busy)} onClick={() => void prepareStorage()}><PackageCheckIcon data-icon="inline-start" />准备扫码入仓</Button>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircleIcon className="size-4 animate-spin" />正在为本批商品分配货架号...</div>
         </section>
       ) : null}
 
       {allPrepared && !allAvailable ? (
         <section className="rounded-md border p-4">
-          <h2 className="font-semibold">扫描入仓</h2>
-          <p className="mt-1 text-sm text-muted-foreground">先扫描衣服 Barcode，再扫描实际货位码。系统不会随机分配货位。</p>
-          <form className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]" onSubmit={(event) => { event.preventDefault(); void confirmStorage(); }}>
-            <Input autoFocus autoComplete="off" className="font-mono" placeholder="商品 Barcode" value={barcode} onChange={(event) => setBarcode(event.target.value)} />
-            <Input autoComplete="off" className="font-mono" placeholder="货位码，例如 A-010101" value={locationCode} onChange={(event) => setLocationCode(event.target.value)} />
-            <Button type="submit" disabled={Boolean(busy)}>{busy === "confirm-storage" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <ScanLineIcon data-icon="inline-start" />}确认入仓</Button>
-          </form>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold">按货架号归位</h2>
+              <p className="mt-1 text-sm text-muted-foreground">将每件商品放到对应货架，放完后统一确认。</p>
+            </div>
+            <Button disabled={Boolean(busy) || !allAssigned} onClick={() => void completeStorage()}>
+              {busy === "stock-in" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <PackageCheckIcon data-icon="inline-start" />}
+              全部完成入库
+            </Button>
+          </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-            {batch.products.map((item) => <div key={item.id} className={cn("rounded-md border px-3 py-2 text-xs", item.inventoryItem?.status === "AVAILABLE" && "border-emerald-500 bg-emerald-50/50")}><div className="font-medium">第 {item.batchItemNumber}/{batch.targetCount} 件</div><div className="mt-1 font-mono text-muted-foreground">{item.barcode}</div><div className="mt-1">{item.inventoryItem?.status === "AVAILABLE" ? `已入 ${item.inventoryItem.location?.locationCode ?? "货位"}` : "待扫描"}</div></div>)}
+            {batch.products.map((item) => (
+              <div key={item.id} className={cn("rounded-md border px-3 py-3", item.inventoryItem?.status === "AVAILABLE" && "border-emerald-500 bg-emerald-50/50")}>
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>第 {item.batchItemNumber}/{batch.targetCount} 件</span>
+                  {item.inventoryItem?.status === "AVAILABLE" ? <span className="text-emerald-700">已完成</span> : null}
+                </div>
+                <div className="mt-2 text-xl font-semibold tabular-nums">{item.inventoryItem?.location?.locationCode ?? "待分配"}</div>
+                <div className="mt-1 truncate font-mono text-xs text-muted-foreground">{item.barcode}</div>
+              </div>
+            ))}
           </div>
         </section>
       ) : null}
@@ -405,7 +409,8 @@ function translateApiError(value: string) {
     [/location is not active or does not exist/i, "货位码不存在或未启用。"],
     [/Approve the product/i, "商品必须先通过审核。"],
     [/must be approved/i, "本批商品必须全部审核通过。"],
-    [/must be scanned into storage/i, "本批商品必须全部扫码入仓。"]
+    [/must have assigned shelf locations/i, "本批仍有商品未分配货架号。"],
+    [/must complete storage/i, "本批商品必须全部完成入库。"]
   ];
   return translations.find(([pattern]) => pattern.test(value))?.[1] ?? value;
 }
