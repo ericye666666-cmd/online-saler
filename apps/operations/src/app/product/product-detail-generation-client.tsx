@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
   ImageProcessingJobRecord,
@@ -9,6 +10,7 @@ import type {
 } from "@online-saler/shared-types";
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   CheckCircle2Icon,
   EyeIcon,
   FileTextIcon,
@@ -24,12 +26,15 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
+  detailBatchStageLabel,
   detailGenerationButtonLabel,
   detailProductStage,
-  PRODUCT_DETAIL_PAGE_PLAN
+  PRODUCT_DETAIL_PAGE_PLAN,
+  sortDetailBatches
 } from "./product-detail-page-plan";
 
 const API_PROXY_URL = "/api-proxy";
@@ -211,19 +216,34 @@ function useOperationIds() {
 }
 
 export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = {}) {
+  const router = useRouter();
   const ids = useOperationIds();
   const [batches, setBatches] = useState<DetailBatch[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState(batchId ?? "");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
-    const query = batchId ? `?batchId=${encodeURIComponent(batchId)}` : "";
-    setBatches(await request<DetailBatch[]>(`/operations/product-detail-generation${query}`, ids.adminUserId));
-  }, [batchId, ids.adminUserId]);
+    setBatches(await request<DetailBatch[]>("/operations/product-detail-generation", ids.adminUserId));
+  }, [ids.adminUserId]);
 
   useEffect(() => { void load().catch((caught) => setError(errorMessage(caught))); }, [load]);
+  useEffect(() => { if (batchId) setSelectedBatchId(batchId); }, [batchId]);
+
+  const orderedBatches = useMemo(() => sortDetailBatches(batches), [batches]);
+  const selectedBatch = useMemo(
+    () => orderedBatches.find((batch) => batch.id === selectedBatchId) ?? null,
+    [orderedBatches, selectedBatchId]
+  );
+
+  function selectBatch(nextBatchId: string) {
+    setSelectedBatchId(nextBatchId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("batchId", nextBatchId);
+    window.history.replaceState({}, "", url);
+  }
 
   async function run(key: string, path: string, success: string, includeEmployee = false) {
     setBusy(key);
@@ -247,23 +267,20 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
     const key = `${batch.id}-generate`;
     setBusy(key);
     setError("");
-    setNotice("");
+    setNotice("正在启动本批详情生成。");
     try {
-      const result = await request<RunBatchResult>(`/operations/product-batches/${batch.id}/detail-generation/run`, ids.adminUserId, {
+      await request(`/operations/product-batches/${batch.id}/detail-generation-jobs`, ids.adminUserId, {
         method: "POST",
         body: JSON.stringify({})
       });
-      await load();
-      if (result.processed === 0) {
-        setError("未生成任何详情。请先完成本批全部商品校准，或刷新后检查任务状态。");
-        return;
-      }
-      const succeeded = result.results.filter((item) => item.status === "READY").length;
-      const failed = result.results.filter((item) => item.status === "FAILED").length;
-      setNotice(`已生成 ${succeeded} 件详情草稿${failed ? `，${failed} 件失败` : ""}。请逐件打开发布预览并批准。`);
+      void request<RunBatchResult>(`/operations/product-batches/${batch.id}/detail-generation/run`, ids.adminUserId, {
+        method: "POST",
+        body: JSON.stringify({}),
+        keepalive: true
+      }).catch(() => undefined);
+      router.push("/product/new-batch");
     } catch (caught) {
       setError(errorMessage(caught));
-    } finally {
       setBusy("");
     }
   }
@@ -274,7 +291,7 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
         <div>
           <p className="text-sm text-muted-foreground">商品中心</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-normal">详情生成</h1>
-          <p className="mt-1 text-sm text-muted-foreground">先生成六页详情草稿，再逐件检查发布预览、编辑并批准。批准详情不等于发布商品。</p>
+          <p className="mt-1 text-sm text-muted-foreground">按批次统一生成六页详情草稿，再检查发布预览并批准。</p>
         </div>
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => void load()}>
           <RefreshCwIcon data-icon="inline-start" />刷新
@@ -285,8 +302,36 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
       {notice ? <Status tone="neutral">{notice}</Status> : null}
       {!batches.length ? <Status tone="neutral">暂无已完成校准的批次。</Status> : null}
 
+      {batches.length ? (
+        <section className="grid gap-4 border-y py-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.55fr)] md:items-end">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">选择批次</label>
+            <Select value={selectedBatchId || undefined} onValueChange={selectBatch}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="选择要统一生成详情的批次" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {orderedBatches.map((batch) => (
+                    <SelectItem key={batch.id} value={batch.id}>
+                      {batch.batchCode} · {detailBatchStageLabel(batch)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1 md:items-end">
+            <span className="text-xs text-muted-foreground">可处理批次</span>
+            <span className="text-lg font-semibold">{orderedBatches.length}</span>
+          </div>
+        </section>
+      ) : null}
+
+      {batches.length && !selectedBatch ? <Status tone="neutral">请选择一个批次。</Status> : null}
+
       <div className="flex flex-col gap-4">
-        {batches.map((batch) => {
+        {selectedBatch ? [selectedBatch].map((batch) => {
           const actionBusy = busy.startsWith(batch.id);
           return (
             <section key={batch.id} className="overflow-hidden rounded-md border bg-background">
@@ -301,7 +346,8 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" disabled={actionBusy || !batch.generationReady || batch.pending === 0} onClick={() => void generateBatch(batch)}>
                     {busy === `${batch.id}-generate` ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                    {detailGenerationButtonLabel(batch)}
+                    {batch.generationReady && batch.pending > 0 ? `统一生成本批 ${batch.pending} 件并录下一批` : detailGenerationButtonLabel(batch)}
+                    {batch.generationReady && batch.pending > 0 ? <ArrowRightIcon data-icon="inline-end" /> : null}
                   </Button>
                   <Button size="sm" variant="outline" disabled={actionBusy || batch.failed === 0} onClick={() => void run(`${batch.id}-failed`, `/operations/product-batches/${batch.id}/detail-generation/retry-failed`, "失败任务已重试。") }>
                     重试失败
@@ -367,7 +413,7 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
               </div>
             </section>
           );
-        })}
+        }) : null}
       </div>
     </div>
   );

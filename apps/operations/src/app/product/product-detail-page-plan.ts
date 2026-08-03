@@ -27,3 +27,46 @@ export function detailProductStage(product: {
   if (!generationReady) return "AWAITING_BATCH";
   return "PENDING";
 }
+
+export type DetailBatchSelectionSummary = {
+  id: string;
+  batchCode: string;
+  createdAt: string;
+  targetCount: number;
+  calibrated: number;
+  generationReady: boolean;
+  pending: number;
+  generating: number;
+  succeeded: number;
+  failed: number;
+  outdated: number;
+  approved: number;
+};
+
+export function detailBatchStageLabel(batch: DetailBatchSelectionSummary) {
+  if (!batch.generationReady) return `等待校准 ${batch.calibrated}/${batch.targetCount}`;
+  if (batch.generating > 0) return `生成中 ${batch.generating}/${batch.targetCount}`;
+  if (batch.pending > 0) return `待生成 ${batch.pending} 件`;
+  if (batch.failed > 0) return `失败 ${batch.failed} 件`;
+  if (batch.outdated > 0) return `待重生成 ${batch.outdated} 件`;
+  if (batch.approved >= batch.targetCount) return "详情已批准";
+  if (batch.succeeded > 0) return `待检查 ${batch.succeeded - batch.approved} 件`;
+  return "等待生成";
+}
+
+export function sortDetailBatches<T extends DetailBatchSelectionSummary>(batches: T[]) {
+  return [...batches].sort((left, right) => {
+    const priorityDifference = detailBatchPriority(left) - detailBatchPriority(right);
+    if (priorityDifference !== 0) return priorityDifference;
+    return Date.parse(right.createdAt) - Date.parse(left.createdAt);
+  });
+}
+
+function detailBatchPriority(batch: DetailBatchSelectionSummary) {
+  if (batch.generating > 0) return 0;
+  if (batch.generationReady && batch.pending > 0) return 1;
+  if (batch.failed > 0 || batch.outdated > 0) return 2;
+  if (batch.succeeded > batch.approved) return 3;
+  if (!batch.generationReady) return 4;
+  return 5;
+}
