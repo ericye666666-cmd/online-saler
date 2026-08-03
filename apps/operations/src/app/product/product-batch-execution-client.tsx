@@ -32,7 +32,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { cn } from "@/lib/utils";
 import { productStatusLabel } from "./product-factory-display";
 import { lightweightCutoutWarning } from "./image-processing-quality";
-import { runWithConcurrency } from "./product-batch-processing-concurrency";
+import {
+  PRODUCT_AI_BATCH_CONCURRENCY,
+  PRODUCT_IMAGE_BATCH_CONCURRENCY,
+  PRODUCT_UPLOAD_BATCH_CONCURRENCY,
+  runWithConcurrency
+} from "./product-batch-processing-concurrency";
 import {
   PRODUCT_FACTORY_IMAGE_LABELS,
   PRODUCT_FACTORY_IMAGE_TYPES,
@@ -416,15 +421,18 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         const selection = batchFrontFiles[item.id];
         return selection ? [{ productId: item.id, selection }] : [];
       });
-      for (const [index, assignment] of bulkAssignments.entries()) {
-        setBulkUploadingProgress(`正在上传正面图 ${index + 1}/${bulkAssignments.length}`);
+      let uploadedAssignments = 0;
+      setBulkUploadingProgress(`正在批量上传正面图 0/${bulkAssignments.length}`);
+      await runWithConcurrency(bulkAssignments, PRODUCT_UPLOAD_BATCH_CONCURRENCY, async (assignment) => {
         await uploadOriginalImage(assignment.productId, "FRONT", assignment.selection, ids);
+        uploadedAssignments += 1;
+        setBulkUploadingProgress(`正在批量上传正面图 ${uploadedAssignments}/${bulkAssignments.length}`);
         setBatchFrontFiles((current) => {
           const next = { ...current };
           delete next[assignment.productId];
           return next;
         });
-      }
+      });
       for (const type of selected) {
         setUploadingType(type);
         await uploadOriginalImage(product.id, type, files[type]!, ids);
@@ -459,7 +467,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <FlowHeader
-        title={`${batch.batchCode} · 连续上传`}
+        title={`${batch.batchCode} · 第 1 步：批量上传`}
         description={`第 ${currentIndex + 1}/${batch.targetCount} 件 · 已完成正面图 ${frontCount}/${batch.targetCount}`}
         batchId={batch.id}
       />
@@ -549,6 +557,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
   const [batch, setBatch] = useState<ProductBatch | null>(null);
   const [states, setStates] = useState<Record<string, ProcessingState>>({});
   const [busy, setBusy] = useState(false);
+  const [batchPhase, setBatchPhase] = useState<"" | "images" | "ai">("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -578,7 +587,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
       ]);
       setStates((current) => ({
         ...current,
-        [product.id]: { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成，待校准选择主图" }
+        [product.id]: { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成，待人工校准" }
       }));
       return true;
     } catch (caught) {
@@ -600,10 +609,67 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
     setError("");
     try {
       const pending = batch.products.filter((product) => states[product.id]?.status !== "SUCCEEDED");
-      await runWithConcurrency(pending, 2, async (product) => {
-        await processOne(product, "auto");
+      const imageResults = new Map<string, ProductImageComparisonResponse>();
+
+      setBatchPhase("images");
+      setStates((current) => {
+        const next = { ...current };
+        for (const product of pending) {
+          next[product.id] = {
+            ...current[product.id],
+            status: "RUNNING",
+            message: `本批 ${pending.length} 件正在同时抠图与生成白底`
+          };
+        }
+        return next;
+      });
+      await runWithConcurrency(pending, PRODUCT_IMAGE_BATCH_CONCURRENCY, async (product) => {
+        try {
+          const comparison = await runProductImagePipeline(product, ids.adminUserId, "auto");
+          imageResults.set(product.id, comparison);
+          setStates((current) => ({
+            ...current,
+            [product.id]: { status: "RUNNING", comparison, message: "抠图与白底已完成，等待 AI 识别" }
+          }));
+        } catch (caught) {
+          setStates((current) => ({
+            ...current,
+            [product.id]: {
+              ...current[product.id],
+              status: "FAILED",
+              message: errorMessage(caught, "抠图或白底处理失败")
+            }
+          }));
+        }
+      });
+
+      setBatchPhase("ai");
+      const readyForAi = pending.filter((product) => imageResults.has(product.id));
+      await runWithConcurrency(readyForAi, PRODUCT_AI_BATCH_CONCURRENCY, async (product) => {
+        const comparison = imageResults.get(product.id) ?? null;
+        setStates((current) => ({
+          ...current,
+          [product.id]: { status: "RUNNING", comparison, message: "白底已完成，正在运行 AI 识别" }
+        }));
+        try {
+          await runProductAi(product, ids);
+          setStates((current) => ({
+            ...current,
+            [product.id]: { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成，待人工校准" }
+          }));
+        } catch (caught) {
+          setStates((current) => ({
+            ...current,
+            [product.id]: {
+              status: "FAILED",
+              comparison,
+              message: errorMessage(caught, "AI 识别失败")
+            }
+          }));
+        }
       });
     } finally {
+      setBatchPhase("");
       setBusy(false);
     }
     await load().catch((caught) => setError(errorMessage(caught, "无法刷新批次。")));
@@ -627,7 +693,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <FlowHeader
-        title={`${batch.batchCode} · AI 与图片处理`}
+        title={`${batch.batchCode} · 第 2 步：批量抠图与 AI`}
         description={`已完成 ${completed}/${batch.targetCount}${failed ? ` · 失败 ${failed}` : ""}`}
         batchId={batch.id}
       />
@@ -638,13 +704,17 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>批量处理 {batch.targetCount} 件商品</CardTitle>
-              <CardDescription>每次并行处理 2 件：正面与背面生成白底版本，同时用全部原图运行 OpenAI。主图留到人工校准时选择。</CardDescription>
+              <CardTitle>整批处理 {batch.targetCount} 件商品</CardTitle>
+              <CardDescription>本批最多 10 件同时抠图并生成正反面白底；完成后 OpenAI 独立并行识别。商城主图留到详情生成阶段人工选择。</CardDescription>
             </div>
             {completed < batch.targetCount ? (
               <Button disabled={busy} onClick={() => void processAll()}>
                 {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                {failed ? "重试未完成商品" : "开始批量处理"}
+                {batchPhase === "images"
+                  ? `正在同时抠图 ${batch.targetCount} 件`
+                  : batchPhase === "ai"
+                    ? "正在批量 AI 识别"
+                    : failed ? "重试未完成商品" : `一键处理本批 ${batch.targetCount} 件`}
               </Button>
             ) : (
               <Button asChild><Link href={`/product/calibration?batchId=${encodeURIComponent(batch.id)}`}>开始人工校准<ArrowRightIcon data-icon="inline-end" /></Link></Button>
@@ -868,7 +938,7 @@ function stateFromProduct(product: ProductRecord, comparison: ProductImageCompar
   const backReady = !comparison.backOriginal || Boolean(comparison.backCutoutWhite);
   const imageReady = frontReady && backReady;
   const aiReady = hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status);
-  if (imageReady && aiReady) return { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成，待校准选择主图" };
+  if (imageReady && aiReady) return { status: "SUCCEEDED", comparison, message: "图片与 AI 已完成，待人工校准" };
   const failed = comparison.jobs.find((job) => job.status === "FAILED");
   if (failed) return { status: "FAILED", comparison, message: failed.errorMessage || "图片处理失败" };
   if (product.aiExtractions?.[0]?.status === "FAILED") {

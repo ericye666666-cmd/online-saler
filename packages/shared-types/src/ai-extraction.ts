@@ -352,6 +352,39 @@ export interface AIFieldValue<T> {
   evidenceImageIds?: string[];
 }
 
+export type AIMeasurementField =
+  | "lengthCm"
+  | "chestWidthCm"
+  | "shoulderWidthCm"
+  | "sleeveLengthCm"
+  | "waistCm"
+  | "hipCm"
+  | "thighWidthCm"
+  | "legOpeningCm"
+  | "inseamCm";
+
+export type AIImagePoint = { x: number; y: number };
+
+export type AIMeasurementBoardCorners = {
+  topLeft: AIImagePoint;
+  topRight: AIImagePoint;
+  bottomRight: AIImagePoint;
+  bottomLeft: AIImagePoint;
+};
+
+export type AIMeasurementLine = {
+  start: AIImagePoint;
+  end: AIImagePoint;
+  confidence: number;
+};
+
+export interface AIMeasurementGeometry {
+  imageId: string | null;
+  boardCorners: AIMeasurementBoardCorners | null;
+  boardConfidence: number;
+  lines: Partial<Record<AIMeasurementField, AIMeasurementLine>>;
+}
+
 export interface AIExtractionNormalizedOutput {
   category: AIFieldValue<AIProductCategory>;
   subcategory: AIFieldValue<ProductSubcategoryOption>;
@@ -378,6 +411,7 @@ export interface AIExtractionNormalizedOutput {
   thighWidthCm: AIFieldValue<number>;
   legOpeningCm: AIFieldValue<number>;
   inseamCm: AIFieldValue<number>;
+  measurementGeometry?: AIMeasurementGeometry;
 }
 
 export interface AIExtractionRequest {

@@ -31,3 +31,4 @@ export * from "./garment-fit-engine";
 export * from "./product-measurement-requirements";
 export * from "./platform-size-recommendation";
 export * from "./uk-size-recommendation";
+export * from "./measurement-board-geometry";

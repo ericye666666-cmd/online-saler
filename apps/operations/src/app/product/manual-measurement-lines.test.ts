@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  aiMeasurementSeed,
   calibrationLinePayload,
   createManualMeasurementLine,
   manualMeasurementLineIssue,
@@ -126,4 +127,54 @@ test("maps recalculated manual centimeters back to editable measurement fields",
     manualMeasurementValueUpdates([shoulder, unknown], ["shoulderWidthCm", "chestWidthCm"]),
     { shoulderWidthCm: "60" }
   );
+});
+
+test("loads AI board corners and measurement lines as editable seeds", () => {
+  const seed = aiMeasurementSeed({
+    measurementGeometry: {
+      imageId: "front-original",
+      boardCorners: {
+        topLeft: { x: 10, y: 10 },
+        topRight: { x: 90, y: 10 },
+        bottomRight: { x: 90, y: 90 },
+        bottomLeft: { x: 10, y: 90 }
+      },
+      lines: {
+        chestWidthCm: {
+          start: { x: 30, y: 30 },
+          end: { x: 70, y: 30 },
+          confidence: 0.8
+        },
+        ignoredCm: {
+          start: { x: 20, y: 20 },
+          end: { x: 30, y: 20 },
+          confidence: 0.9
+        }
+      }
+    }
+  }, "front-original", ["chestWidthCm"]);
+
+  assert.deepEqual(seed.calibration?.topLeft, { x: 10, y: 10 });
+  assert.equal(seed.lines.length, 1);
+  assert.equal(seed.lines[0]?.key, "chestWidthCm");
+  assert.equal(seed.lines[0]?.valueCm, "60");
+  assert.equal(seed.lines[0]?.source, "AI");
+});
+
+test("does not reuse AI points against a different original image", () => {
+  const seed = aiMeasurementSeed({
+    measurementGeometry: {
+      imageId: "old-front",
+      boardCorners: {
+        topLeft: { x: 10, y: 10 },
+        topRight: { x: 90, y: 10 },
+        bottomRight: { x: 90, y: 90 },
+        bottomLeft: { x: 10, y: 90 }
+      },
+      lines: {}
+    }
+  }, "new-front", []);
+
+  assert.equal(seed.calibration, null);
+  assert.deepEqual(seed.lines, []);
 });

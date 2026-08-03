@@ -18,12 +18,18 @@ import {
 const originals = {
   batchFindUnique: prisma.productBatch.findUnique,
   profileFindUnique: prisma.productDetailProfile.findUnique,
+  profileUpdate: prisma.productDetailProfile.update,
+  mainImageFindUnique: prisma.productMainImageSelection.findUnique,
+  mainImageFindMany: prisma.productMainImageSelection.findMany,
   transaction: prisma.$transaction
 };
 
 afterEach(() => {
   prisma.productBatch.findUnique = originals.batchFindUnique;
   prisma.productDetailProfile.findUnique = originals.profileFindUnique;
+  prisma.productDetailProfile.update = originals.profileUpdate;
+  prisma.productMainImageSelection.findUnique = originals.mainImageFindUnique;
+  prisma.productMainImageSelection.findMany = originals.mainImageFindMany;
   prisma.$transaction = originals.transaction;
 });
 
@@ -203,6 +209,7 @@ describe("ProductDetailGenerationService", () => {
         status: ProductDetailStatus.READY
       }))
     })) as never;
+    prisma.productMainImageSelection.findUnique = (async () => ({ selectedImageId: "main-1" })) as never;
 
     const updates: Array<{ target: string; data: Record<string, unknown> }> = [];
     prisma.$transaction = (async (callback: (transaction: unknown) => Promise<unknown>) =>
@@ -248,6 +255,52 @@ describe("ProductDetailGenerationService", () => {
     );
   });
 
+  it("blocks detail approval until an employee selects the storefront main image", async () => {
+    prisma.productDetailProfile.findUnique = (async () => ({
+      id: "profile-1",
+      productId: "product-1",
+      status: ProductDetailStatus.READY,
+      sourceDataVersion: 2,
+      customerDescription: "Complete description.",
+      product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
+      assets: Object.values(ProductDetailAssetType).map((type) => ({
+        id: `asset-${type}`,
+        type,
+        status: ProductDetailStatus.READY
+      }))
+    })) as never;
+    prisma.productMainImageSelection.findUnique = (async () => null) as never;
+
+    await assert.rejects(
+      () => new ProductDetailGenerationService().approveProfile("profile-1", "employee-1"),
+      /Select the storefront main image/
+    );
+  });
+
+  it("unapproves the current detail before changing its storefront main image", async () => {
+    prisma.productDetailProfile.findUnique = (async () => ({
+      id: "profile-1",
+      productId: "product-1",
+      status: ProductDetailStatus.APPROVED,
+      sourceDataVersion: 2,
+      product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
+      assets: []
+    })) as never;
+    let updateData: Record<string, unknown> | undefined;
+    prisma.productDetailProfile.update = (async ({ data }: { data: Record<string, unknown> }) => {
+      updateData = data;
+      return { id: "profile-1", productId: "product-1" };
+    }) as never;
+
+    const result = await new ProductDetailGenerationService().prepareMainImageChange("profile-1");
+
+    assert.deepEqual(result, { id: "profile-1", productId: "product-1" });
+    assert.equal(updateData?.status, ProductDetailStatus.READY);
+    assert.deepEqual(updateData?.contentVersion, { increment: 1 });
+    assert.equal(updateData?.approvedAt, null);
+    assert.equal(updateData?.approvedByEmployeeId, null);
+  });
+
   it("publishes every approved batch description to its product", async () => {
     const assets = Object.values(ProductDetailAssetType).map((type) => ({
       id: `asset-${type}`,
@@ -276,6 +329,10 @@ describe("ProductDetailGenerationService", () => {
         }]
       }))
     })) as never;
+    prisma.productMainImageSelection.findMany = (async () => [
+      { productId: "product-1" },
+      { productId: "product-2" }
+    ]) as never;
 
     const productDescriptions: string[] = [];
     prisma.$transaction = (async (callback: (transaction: unknown) => Promise<unknown>) =>

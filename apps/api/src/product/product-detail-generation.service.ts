@@ -365,6 +365,20 @@ export class ProductDetailGenerationService {
     });
   }
 
+  async prepareMainImageChange(profileId: string) {
+    const profile = await this.requireCurrentProfile(profileId);
+    return prisma.productDetailProfile.update({
+      where: { id: profile.id },
+      data: {
+        status: ProductDetailStatus.READY,
+        contentVersion: { increment: 1 },
+        approvedAt: null,
+        approvedByEmployeeId: null
+      },
+      select: { id: true, productId: true }
+    });
+  }
+
   async recalculateFit(profileId: string) {
     const profile = await this.requireCurrentProfile(profileId, true);
     const recommendation = calculateGarmentFitRecommendation({
@@ -442,6 +456,11 @@ export class ProductDetailGenerationService {
     }
     const customerDescription = profile.customerDescription?.trim();
     if (!customerDescription) throw new BadRequestException("Product description is required before detail approval");
+    const mainImage = await prisma.productMainImageSelection.findUnique({
+      where: { productId: profile.productId },
+      select: { selectedImageId: true }
+    });
+    if (!mainImage) throw new BadRequestException("Select the storefront main image before detail approval");
     const readyTypes = new Set(profile.assets.filter((asset) => asset.status === ProductDetailStatus.READY).map((asset) => asset.type));
     const missing = REQUIRED_DETAIL_ASSET_TYPES.filter((type) => !readyTypes.has(type));
     if (missing.length) throw new BadRequestException(`Product detail assets are incomplete: ${missing.join(", ")}`);
@@ -482,6 +501,11 @@ export class ProductDetailGenerationService {
     if (batch.products.length !== batch.targetCount) throw new BadRequestException("Product batch is incomplete");
     const profiles = batch.products.map((product) => product.detailProfiles[0]).filter(Boolean);
     if (profiles.length !== batch.targetCount) throw new BadRequestException("Every product must have generated details");
+    const mainImageSelections = await prisma.productMainImageSelection.findMany({
+      where: { productId: { in: profiles.map((profile) => profile.productId) } },
+      select: { productId: true }
+    });
+    const productsWithMainImages = new Set(mainImageSelections.map((selection) => selection.productId));
     for (const profile of profiles) {
       if (profile.sourceDataVersion !== batch.products.find((item) => item.id === profile.productId)?.detailSourceVersion) {
         throw new BadRequestException("A product detail profile is outdated");
@@ -495,6 +519,9 @@ export class ProductDetailGenerationService {
       }
       if (!profile.customerDescription?.trim()) {
         throw new BadRequestException("Every product detail must have a product description before batch approval");
+      }
+      if (!productsWithMainImages.has(profile.productId)) {
+        throw new BadRequestException("Every product detail must have a selected storefront main image before batch approval");
       }
     }
     const approvedAt = new Date();

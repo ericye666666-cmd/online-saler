@@ -134,3 +134,71 @@ test("accepts active runtime taxonomy values and rejects inactive values", () =>
   );
   assert.equal(inactive.category.value, "OTHER");
 });
+
+test("normalizes board corners and garment endpoints, then calculates centimeters from geometry", () => {
+  const output = normalizeOpenAIVisionOutput(
+    {
+      lengthCm: { value: 61, confidence: 0.91 },
+      chestWidthCm: { value: 48, confidence: 0.9 },
+      measurementGeometry: {
+        boardCorners: {
+          value: {
+            topLeft: { x: 10, y: 10 },
+            topRight: { x: 90, y: 10 },
+            bottomRight: { x: 90, y: 90 },
+            bottomLeft: { x: 10, y: 90 }
+          },
+          confidence: 0.88
+        },
+        lines: {
+          lengthCm: {
+            value: { start: { x: 50, y: 20 }, end: { x: 50, y: 60 } },
+            confidence: 0.84
+          },
+          chestWidthCm: {
+            value: { start: { x: 30, y: 30 }, end: { x: 70, y: 30 } },
+            confidence: 0.8
+          }
+        }
+      }
+    },
+    ["front-image", "label-image"],
+    {},
+    "front-image"
+  );
+
+  assert.equal(output.measurementGeometry?.imageId, "front-image");
+  assert.deepEqual(output.measurementGeometry?.boardCorners?.topLeft, { x: 10, y: 10 });
+  assert.equal(output.measurementGeometry?.lines.lengthCm?.confidence, 0.84);
+  assert.equal(output.lengthCm.value, 80);
+  assert.equal(output.lengthCm.confidence, 0.84);
+  assert.equal(output.chestWidthCm.value, 60);
+  assert.deepEqual(output.chestWidthCm.evidenceImageIds, ["front-image"]);
+});
+
+test("keeps the model centimeter estimate when its board geometry is invalid", () => {
+  const output = normalizeOpenAIVisionOutput({
+    chestWidthCm: { value: 52, confidence: 0.7 },
+    measurementGeometry: {
+      boardCorners: {
+        value: {
+          topLeft: { x: 0.2, y: 0.2 },
+          topRight: { x: 0.2, y: 0.2 },
+          bottomRight: { x: 0.2, y: 0.2 },
+          bottomLeft: { x: 0.2, y: 0.2 }
+        },
+        confidence: 0.9
+      },
+      lines: {
+        chestWidthCm: {
+          value: { start: { x: 0.3, y: 0.4 }, end: { x: 0.7, y: 0.4 } },
+          confidence: 0.8
+        }
+      }
+    }
+  }, ["front-image"]);
+
+  assert.equal(output.measurementGeometry?.boardCorners, null);
+  assert.equal(output.chestWidthCm.value, 52);
+  assert.equal(output.chestWidthCm.confidence, 0.7);
+});

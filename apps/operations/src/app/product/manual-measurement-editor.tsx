@@ -42,8 +42,10 @@ export function ManualMeasurementEditor(props: {
   imageId: string;
   measurements: EditableMeasurement[];
   initialLines: ManualMeasurementLine[];
+  initialAiLines?: ManualMeasurementLine[];
+  initialBoardCalibration?: MeasurementBoardCalibration | null;
   onOpenChange: (open: boolean) => void;
-  onApply: (lines: ManualMeasurementLine[]) => void;
+  onApply: (manualLines: ManualMeasurementLine[], resolvedLines: ManualMeasurementLine[]) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -52,6 +54,7 @@ export function ManualMeasurementEditor(props: {
   const [start, setStart] = useState<MeasurementPoint | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [boardCalibration, setBoardCalibration] = useState<MeasurementBoardCalibration | null>(null);
+  const [boardCalibrationSource, setBoardCalibrationSource] = useState<"AI" | "SAVED" | "MANUAL" | null>(null);
   const [calibrationPoints, setCalibrationPoints] = useState<MeasurementPoint[]>([]);
   const [calibratingBoard, setCalibratingBoard] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -67,16 +70,22 @@ export function ManualMeasurementEditor(props: {
   useEffect(() => {
     if (!props.open) return;
     const nextKey = props.measurements[0]?.key ?? "";
+    const manualLines = props.initialLines.map((line) => ({ ...line, source: "MANUAL" as const }));
+    const manualKeys = new Set(manualLines.map((line) => line.key));
+    const mergedLines = [
+      ...(props.initialAiLines ?? []).filter((line) => !manualKeys.has(line.key)).map((line) => ({ ...line, source: "AI" as const })),
+      ...manualLines
+    ];
     setActiveKey(nextKey);
-    setLines(props.initialLines);
+    setLines(mergedLines);
     setStart(null);
     setCalibrationPoints([]);
     setError("");
     setValues(Object.fromEntries(props.measurements.map((item) => [
       item.key,
-      props.initialLines.find((line) => line.key === item.key)?.valueCm || item.value || item.aiValue || ""
+      mergedLines.find((line) => line.key === item.key)?.valueCm || item.value || item.aiValue || ""
     ])));
-  }, [props.initialLines, props.measurements, props.open]);
+  }, [props.initialAiLines, props.initialLines, props.measurements, props.open]);
 
   useEffect(() => {
     if (!props.open || !props.imageUrl) return;
@@ -100,9 +109,13 @@ export function ManualMeasurementEditor(props: {
         canvas.width = width;
         canvas.height = height;
       }
-      const savedCalibration = readSavedBoardCalibration(width / height);
-      setBoardCalibration(savedCalibration);
-      setCalibratingBoard(!savedCalibration);
+      const aiCalibration = props.initialBoardCalibration && validMeasurementBoardCalibration(props.initialBoardCalibration)
+        ? props.initialBoardCalibration
+        : null;
+      const savedCalibration = aiCalibration ? null : readSavedBoardCalibration(width / height);
+      setBoardCalibration(aiCalibration ?? savedCalibration);
+      setBoardCalibrationSource(aiCalibration ? "AI" : savedCalibration ? "SAVED" : null);
+      setCalibratingBoard(!aiCalibration && !savedCalibration);
       setLoading(false);
     };
     image.onerror = () => {
@@ -113,7 +126,7 @@ export function ManualMeasurementEditor(props: {
     };
     image.src = props.imageUrl;
     return () => { cancelled = true; };
-  }, [props.imageUrl, props.open]);
+  }, [props.imageUrl, props.initialBoardCalibration, props.open]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -205,6 +218,7 @@ export function ManualMeasurementEditor(props: {
       return;
     }
     setBoardCalibration(calibration);
+    setBoardCalibrationSource("MANUAL");
     setCalibrationPoints([]);
     setCalibratingBoard(false);
     setStart(null);
@@ -223,7 +237,9 @@ export function ManualMeasurementEditor(props: {
   function updateValue(value: string) {
     if (!activeMeasurement) return;
     setValues((current) => ({ ...current, [activeMeasurement.key]: value }));
-    setLines((current) => current.map((line) => line.key === activeMeasurement.key ? { ...line, valueCm: value } : line));
+    setLines((current) => current.map((line) => line.key === activeMeasurement.key
+      ? { ...line, valueCm: value, source: "MANUAL" }
+      : line));
   }
 
   function redrawActive() {
@@ -248,7 +264,7 @@ export function ManualMeasurementEditor(props: {
       setError("请至少选择一个尺寸并在原图上连接起点和终点。");
       return;
     }
-    props.onApply(lines);
+    props.onApply(lines.filter((line) => line.source !== "AI"), lines);
     props.onOpenChange(false);
   }
 
@@ -257,7 +273,7 @@ export function ManualMeasurementEditor(props: {
       <DialogContent className="max-h-[calc(100vh-1rem)] overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>手动连线校准尺寸</DialogTitle>
-          <DialogDescription>系统先根据 120 × 160 cm 测量板校正透视，再把衣服连线自动换算为厘米。人工结果会保存，AI原始值不会被覆盖。</DialogDescription>
+          <DialogDescription>AI先找测量板四角和服装测量点，系统按 120 × 160 cm 板面校正透视并换算厘米。员工只需调整错误点位；AI原始点不会被覆盖。</DialogDescription>
         </DialogHeader>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -279,7 +295,11 @@ export function ManualMeasurementEditor(props: {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {calibratingBoard
                       ? `请点击${BOARD_CORNER_LABELS[calibrationPoints.length] ?? "四角"}（${Math.min(calibrationPoints.length + 1, 4)}/4）。`
-                      : "已按 120 × 160 cm 建立坐标；固定机位会自动复用。"}
+                      : boardCalibrationSource === "AI"
+                        ? "AI 已找到四个板面校准点，请检查绿色边框；不准时点击重新校准。"
+                        : boardCalibrationSource === "MANUAL"
+                          ? "已使用本次人工校准的四个板角建立坐标。"
+                          : "已按固定机位保存的板角建立坐标；不准时点击重新校准。"}
                   </p>
                 </div>
                 <Button type="button" size="sm" variant="outline" onClick={beginBoardCalibration}>
@@ -317,7 +337,11 @@ export function ManualMeasurementEditor(props: {
                 <div>
                   <p className="text-sm font-medium">{activeMeasurement.label}</p>
                   <p className="text-xs text-muted-foreground">
-                    {activeLine ? "已按板面坐标换算，可重画或人工修正数值。" : start ? "已选起点，请点击终点。" : "请先点击起点，再点击终点。"}
+                    {activeLine?.source === "AI"
+                      ? "AI 已先定位起点和终点；不准时点击重画本项。"
+                      : activeLine
+                        ? "已按人工点位和板面坐标换算，可重画或修正数值。"
+                        : start ? "已选起点，请点击终点。" : "请先点击起点，再点击终点。"}
                   </p>
                   {activeMeasurement.key === "shoulderWidthCm" ? (
                     <p className="mt-1 text-xs font-medium text-amber-700">从左侧肩袖接缝连接到右侧肩袖接缝；不要从领口开始。</p>
@@ -327,7 +351,7 @@ export function ManualMeasurementEditor(props: {
                   <span>测量板换算（cm）</span>
                   <Input inputMode="decimal" value={values[activeMeasurement.key] ?? ""} onChange={(event) => updateValue(event.target.value)} />
                 </label>
-                {activeMeasurement.aiValue ? <p className="text-xs text-muted-foreground">AI 原值：{activeMeasurement.aiValue} cm</p> : null}
+                  {activeMeasurement.aiValue ? <p className="text-xs text-muted-foreground">AI 原值：{activeMeasurement.aiValue} cm{activeLine?.source === "AI" ? " · AI点位" : ""}</p> : null}
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" size="sm" variant="outline" disabled={!start} onClick={() => setStart(null)}><Undo2Icon data-icon="inline-start" />撤销起点</Button>
                   <Button type="button" size="sm" variant="outline" disabled={!activeLine && !start} onClick={redrawActive}><RotateCcwIcon data-icon="inline-start" />重画本项</Button>
@@ -363,10 +387,11 @@ function drawLine(
   const y1 = line.y1 / 100 * canvas.height;
   const x2 = line.x2 / 100 * canvas.width;
   const y2 = line.y2 / 100 * canvas.height;
+  const lineColor = line.source === "AI" ? "#2563eb" : "#15803d";
   context.save();
-  context.strokeStyle = active ? "#1d4ed8" : "#64748b";
+  context.strokeStyle = lineColor;
   context.fillStyle = "#ffffff";
-  context.lineWidth = Math.max(3, canvas.width / 420);
+  context.lineWidth = Math.max(active ? 4 : 3, canvas.width / (active ? 360 : 420));
   context.setLineDash([12, 8]);
   context.beginPath();
   context.moveTo(x1, y1);
@@ -386,7 +411,7 @@ function drawLine(
   context.lineWidth = Math.max(4, canvas.width / 250);
   context.strokeStyle = "#ffffff";
   context.strokeText(text, (x1 + x2) / 2, (y1 + y2) / 2 - 8);
-  context.fillStyle = active ? "#1e3a8a" : "#334155";
+  context.fillStyle = line.source === "AI" ? "#1e3a8a" : "#166534";
   context.fillText(text, (x1 + x2) / 2, (y1 + y2) / 2 - 8);
   context.restore();
 }
