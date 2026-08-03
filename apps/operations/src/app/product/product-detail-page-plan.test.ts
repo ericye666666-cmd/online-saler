@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   detailBatchStageLabel,
+  detailConditionSummary,
+  detailCopyWithoutPrice,
   detailGenerationButtonLabel,
   detailProductStage,
+  detailSellingPointsWithoutPrice,
   PRODUCT_DETAIL_ASSET_PLAN,
   sortDetailBatches
 } from "./product-detail-page-plan";
@@ -17,6 +20,19 @@ test("tracks only commerce detail assets and marks missing photography as option
     PRODUCT_DETAIL_ASSET_PLAN.filter((asset) => asset.optional).map((asset) => asset.type),
     ["BACK_MAIN", "DETAIL_GALLERY"]
   );
+});
+
+test("keeps legacy price and unconfirmed defect claims out of the customer preview", () => {
+  assert.equal(
+    detailCopyWithoutPrice("Heavy denim with low stretch. KSh 500."),
+    "Heavy denim with low stretch."
+  );
+  assert.deepEqual(
+    detailSellingPointsWithoutPrice(["KSh 700", "Faded wash", "Zip-front design"]),
+    ["Faded wash", "Zip-front design"]
+  );
+  assert.equal(detailConditionSummary("Good condition with no confirmed defects.", 0), "");
+  assert.equal(detailConditionSummary("Small cuff mark.", 1), "Small cuff mark.");
 });
 
 test("blocks detail generation until the complete batch is calibrated", () => {
