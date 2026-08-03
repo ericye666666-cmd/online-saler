@@ -34,7 +34,22 @@ test("keeps explicit generic top, bottom and garment fallbacks", () => {
   assert.equal(selectProductDetailMeasurementTemplate("TOPS", "OTHER").code, "GENERIC_TOP");
   assert.equal(selectProductDetailMeasurementTemplate("BOTTOMS", "OTHER").code, "GENERIC_BOTTOM");
   assert.equal(selectProductDetailMeasurementTemplate("OTHER", null).code, "GENERIC_GARMENT");
-  assert.equal(Object.keys(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES).length, 15);
+  assert.equal(Object.keys(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES).length, 17);
+});
+
+test("selects sleeveless and sleeved dress outlines while keeping the generic dress fallback", () => {
+  assert.equal(
+    selectProductDetailMeasurementTemplate("DRESSES", "MIDI_DRESSES", "SLEEVELESS").code,
+    "DRESS_SLEEVELESS"
+  );
+  assert.equal(
+    selectProductDetailMeasurementTemplate("DRESSES", "MIDI_DRESSES", "LONG").code,
+    "DRESS_SLEEVED"
+  );
+  assert.equal(
+    selectProductDetailMeasurementTemplate("DRESSES", "MIDI_DRESSES", null).code,
+    "DRESS"
+  );
 });
 
 test("maps database measurement keys, supports aliases and hides missing values", () => {
@@ -64,6 +79,36 @@ test("renders deterministic standalone SVG without external images or unconfirme
   assert.match(svg, />84 cm</);
   assert.match(svg, /Some measurements are not available\./);
   assert.doesNotMatch(svg, /Not confirmed|<image|href=/i);
+});
+
+test("injects A-E markers, labels and calibrated values into a sleeveless dress SVG", () => {
+  const svg = renderProductDetailMeasurementGuideSvg({
+    template: PRODUCT_DETAIL_MEASUREMENT_TEMPLATES.DRESS_SLEEVELESS,
+    title: "Cream floral sleeveless midi dress",
+    measurements: {
+      SHOULDER_WIDTH: 24,
+      CHEST_WIDTH: 33.5,
+      WAIST: 29,
+      HIP: 45,
+      LENGTH: 107.5
+    }
+  });
+  assert.match(svg, /data-template-code="DRESS_SLEEVELESS"/);
+  assert.match(svg, /data-template-version="measurement-guides-v2\.0\.0"/);
+  assert.match(svg, /data-measurement-count="5"/);
+  assert.match(svg, /<circle cx="24" cy="0"/);
+  assert.match(svg, /<text x="418" y="7" text-anchor="end" class="value">33\.5 cm</);
+  assert.doesNotMatch(svg, /cx="724"/);
+  for (const marker of ["A", "B", "C", "D", "E"]) {
+    assert.match(svg, new RegExp(`class="diagram-marker">${marker}<`));
+  }
+  for (const label of ["Shoulder width", "Bust width", "Waist width", "Hip width", "Garment length"]) {
+    assert.match(svg, new RegExp(`>${label}<`));
+  }
+  for (const value of ["24 cm", "33.5 cm", "29 cm", "45 cm", "107.5 cm"]) {
+    assert.match(svg, new RegExp(`>${value}<`));
+  }
+  assert.doesNotMatch(svg, /Sleeve length/);
 });
 
 test("escapes customer-facing text before inserting it into SVG", () => {

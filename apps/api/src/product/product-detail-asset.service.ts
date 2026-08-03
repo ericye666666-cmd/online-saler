@@ -65,7 +65,8 @@ export class ProductDetailAssetService implements OnModuleInit {
     const title = stringValue(finalCopy.title) ?? profile.product.title ?? "Product details";
     const measurementTemplate = selectProductDetailMeasurementTemplate(
       profile.product.category,
-      profile.product.subcategory
+      profile.product.subcategory,
+      profile.product.sleeveType
     );
     await this.syncMeasurementTemplates(profile.id, measurementTemplate);
     const assets = [];

@@ -285,7 +285,7 @@ export class ProductImageProcessingService {
   async selectMainImage(input: {
     productId: string;
     imageId: string;
-  }, options: { recordDetailSourceChange?: boolean } = {}): Promise<ProductImageComparisonResponse> {
+  }, options: { recordDetailSourceChange?: boolean; humanConfirmed?: boolean } = {}): Promise<ProductImageComparisonResponse> {
     const currentSelection = await prisma.productMainImageSelection.findUnique({
       where: { productId: input.productId },
       select: { selectedImageId: true }
@@ -322,17 +322,20 @@ export class ProductImageProcessingService {
       await this.requireStorefrontQuality(input.productId, derivedSourceImageId);
     }
 
+    const confirmedAt = options.humanConfirmed === false ? null : new Date();
     await prisma.productMainImageSelection.upsert({
       where: { productId: input.productId },
       create: {
         productId: input.productId,
         selectedImageId: input.imageId,
-        variant: variant as DatabaseProductImageVariant
+        variant: variant as DatabaseProductImageVariant,
+        confirmedAt
       },
       update: {
         selectedImageId: input.imageId,
         variant: variant as DatabaseProductImageVariant,
-        selectedAt: new Date()
+        selectedAt: new Date(),
+        confirmedAt
       }
     });
     if (currentSelection?.selectedImageId !== input.imageId && options.recordDetailSourceChange !== false) {
@@ -460,6 +463,7 @@ export class ProductImageProcessingService {
       backCutoutTransparent: backTransparent,
       backCutoutWhite: mapAsset("CUTOUT_WHITE", backTransparent?.imageId ?? null),
       selectedMainImageId: selection?.selectedImageId ?? null,
+      selectedMainImageConfirmedAt: selection?.confirmedAt?.toISOString() ?? null,
       jobs: jobs.map((job) => this.toJobRecord(job))
     };
   }

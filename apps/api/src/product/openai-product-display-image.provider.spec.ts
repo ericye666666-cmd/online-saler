@@ -51,12 +51,13 @@ describe("OpenAIProductDisplayImageProvider", () => {
     });
 
     assert.equal(requestUrl, "https://api.openai.com/v1/images/edits");
-    assert.ok(form);
-    assert.equal(form!.get("model"), "gpt-image-test");
-    assert.equal(form!.get("quality"), "high");
-    assert.equal(form!.get("size"), "1024x1024");
-    assert.equal(form!.get("prompt"), PRODUCT_DISPLAY_IMAGE_PROMPT);
-    assert.ok(form!.get("image[]") instanceof Blob);
+    const submittedForm = form as unknown as FormData;
+    assert.ok(submittedForm);
+    assert.equal(submittedForm.get("model"), "gpt-image-test");
+    assert.equal(submittedForm.get("quality"), "high");
+    assert.equal(submittedForm.get("size"), "1024x1024");
+    assert.equal(submittedForm.get("prompt"), PRODUCT_DISPLAY_IMAGE_PROMPT);
+    assert.ok(submittedForm.get("image[]") instanceof Blob);
     assert.equal(result.body.toString(), "generated-png");
     assert.equal(result.contentType, "image/png");
     assert.equal(result.provider, "openai-image-edit");

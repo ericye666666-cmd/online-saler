@@ -71,6 +71,7 @@ model ProductMainImageSelection {
   selectedImageId String
   variant         ProductImageVariant
   selectedAt      DateTime            @default(now())
+  confirmedAt     DateTime?
   updatedAt       DateTime            @updatedAt
 
   @@index([selectedImageId])

@@ -27,6 +27,8 @@ describe("ProductDetailCardRendererService", () => {
     for (const [category, subcategory, expected] of cases) {
       assert.equal(selectMeasurementTemplate(category, subcategory), expected);
     }
+    assert.equal(selectMeasurementTemplate("DRESSES", "MIDI_DRESSES", "SLEEVELESS"), "DRESS_SLEEVELESS");
+    assert.equal(selectMeasurementTemplate("DRESSES", "MIDI_DRESSES", "LONG"), "DRESS_SLEEVED");
   });
 
   it("renders a separate 1200px measurement guide without a product photo", async () => {
