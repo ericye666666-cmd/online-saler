@@ -347,8 +347,33 @@ export class ProductDetailAssetService implements OnModuleInit {
   }
 
   private async syncTemplateCatalog() {
-    await prisma.$transaction(Object.values(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES).map((template) =>
-      prisma.productDetailTemplate.upsert({
+    const templates = Object.values(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES);
+    const activeCodes = templates.map((template) => template.code);
+    const version = templates[0]?.version;
+    const outdatedAt = new Date();
+    await prisma.$transaction([
+      prisma.productDetailTemplate.updateMany({
+        where: { code: { notIn: activeCodes } },
+        data: { isActive: false }
+      }),
+      prisma.productDetailAsset.updateMany({
+        where: {
+          type: ProductDetailAssetType.MEASUREMENT_GUIDE,
+          status: { not: ProductDetailStatus.OUTDATED },
+          OR: [
+            { templateCode: null },
+            { templateCode: { notIn: activeCodes } },
+            { templateVersion: null },
+            { templateVersion: { not: version } }
+          ]
+        },
+        data: {
+          status: ProductDetailStatus.OUTDATED,
+          outdatedReason: "MEASUREMENT_TEMPLATE_VERSION_CHANGED",
+          outdatedAt
+        }
+      }),
+      ...templates.map((template) => prisma.productDetailTemplate.upsert({
         where: { code: template.code },
         create: {
           code: template.code,
@@ -367,8 +392,8 @@ export class ProductDetailAssetService implements OnModuleInit {
           measurementFieldsJson: template.measurementFields as unknown as Prisma.InputJsonValue,
           isActive: true
         }
-      })
-    ));
+      }))
+    ]);
   }
 
   private async markUnavailable(profileId: string, type: ProductDetailAssetType, reason: string) {
