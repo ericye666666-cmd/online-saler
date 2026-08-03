@@ -56,7 +56,7 @@ type ProductRecord = JsonRecord & {
   reviews?: Array<{ result?: string; reason?: string | null; createdAt?: string }>;
   aiExtractions?: JsonRecord[];
   inventoryItem?: InventoryItem | null;
-  labelAppliedAt?: string | null;
+  labelPrintedAt?: string | null;
 };
 type ProductBatch = { id: string; batchCode: string; targetCount: number; stage: string; stageLabel: string; products: ProductRecord[] };
 type ImageTab = { key: string; label: string; url: string; transparent?: boolean; selected?: boolean };
@@ -219,7 +219,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <h2 className="font-semibold">第 {product.batchItemNumber}/{batch.targetCount} 件</h2>
-                <p className="text-xs text-muted-foreground">{product.productCode} · {product.labelAppliedAt && product.status === "BARCODE_ASSIGNED" ? "待审核" : productStatusLabel(product.status)}</p>
+                <p className="text-xs text-muted-foreground">{product.productCode} · {product.labelPrintedAt && product.status === "BARCODE_ASSIGNED" ? "待审核" : productStatusLabel(product.status)}</p>
               </div>
               <div className="flex gap-2">
                 <Button size="icon" variant="outline" title="上一件" disabled={currentIndex === 0 || Boolean(busy)} onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}><ArrowLeftIcon /></Button>

@@ -32,7 +32,6 @@ export type BatchFlowProduct = {
   detailSourceVersion?: number | null;
   barcode?: string | null;
   labelPrintedAt?: Date | string | null;
-  labelAppliedAt?: Date | string | null;
   images?: unknown[];
   aiExtractions?: Array<{ status?: string | null }>;
   reviews?: Array<{ result?: string | null }>;
@@ -168,7 +167,7 @@ function earliestIncompleteStage(products: BatchFlowProduct[]): (typeof PRODUCT_
 
 function productStageRank(product: BatchFlowProduct): number {
   const baseRank = STATUS_RANK[product.status] ?? 0;
-  if (product.status === "BARCODE_ASSIGNED") return product.labelAppliedAt ? 5 : 4;
+  if (product.status === "BARCODE_ASSIGNED") return product.labelPrintedAt ? 5 : 4;
   if (product.status === "APPROVED") return 6;
   if (product.status === "READY_FOR_STORAGE") {
     return product.inventoryItem?.checkedInAt && product.inventoryItem.locationId ? 7 : 6;
