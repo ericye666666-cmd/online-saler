@@ -107,10 +107,8 @@ function productInclude() {
               in: [
                 ProductDetailAssetType.FRONT_MAIN,
                 ProductDetailAssetType.BACK_MAIN,
-                ProductDetailAssetType.MODEL_DISPLAY,
                 ProductDetailAssetType.MEASUREMENT_GUIDE,
-                ProductDetailAssetType.DETAIL_GALLERY,
-                ProductDetailAssetType.DELIVERY_GUIDE
+                ProductDetailAssetType.DETAIL_GALLERY
               ]
             }
           },

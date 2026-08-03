@@ -32,3 +32,4 @@ export * from "./product-measurement-requirements";
 export * from "./platform-size-recommendation";
 export * from "./uk-size-recommendation";
 export * from "./measurement-board-geometry";
+export * from "./product-detail-measurement-templates";
