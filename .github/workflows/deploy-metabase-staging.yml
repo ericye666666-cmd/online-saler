@@ -1,6 +1,13 @@
 name: Deploy Metabase to Staging
 
 on:
+  push:
+    branches:
+      - develop
+    paths:
+      - .github/workflows/deploy-metabase-staging.yml
+      - infrastructure/metabase/**
+      - scripts/bootstrap-metabase-bi.mjs
   workflow_dispatch:
     inputs:
       bootstrap_dashboards:
@@ -94,7 +101,7 @@ jobs:
             "${METABASE_URL}/api/health"
 
       - name: Check dashboard bootstrap configuration
-        if: ${{ inputs.bootstrap_dashboards }}
+        if: ${{ github.event_name == 'push' || inputs.bootstrap_dashboards }}
         id: bootstrap_config
         run: |
           if [ -z "${{ vars.METABASE_WAREHOUSE_DATABASE_ID_STAGING }}" ]; then
@@ -110,7 +117,7 @@ jobs:
           echo "configured=true" >> "${GITHUB_OUTPUT}"
 
       - name: Refresh warehouse and search dashboards
-        if: ${{ inputs.bootstrap_dashboards && steps.bootstrap_config.outputs.configured == 'true' }}
+        if: ${{ (github.event_name == 'push' || inputs.bootstrap_dashboards) && steps.bootstrap_config.outputs.configured == 'true' }}
         env:
           METABASE_WAREHOUSE_DATABASE_ID: ${{ vars.METABASE_WAREHOUSE_DATABASE_ID_STAGING }}
         run: |
