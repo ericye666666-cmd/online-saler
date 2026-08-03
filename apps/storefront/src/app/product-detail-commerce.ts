@@ -68,6 +68,26 @@ export function optionalDisplayValue(value: string | null | undefined): string |
   return clean;
 }
 
+export function productCopyWithoutPrice(value: string | null | undefined): string | null {
+  const visible = optionalDisplayValue(value);
+  if (!visible) return null;
+  const cleaned = visible
+    .replace(/\bKSh\s*[\d,]+(?:\.\d{1,2})?\b\.?/gi, "")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/\.{2,}/g, ".")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return optionalDisplayValue(cleaned);
+}
+
+export function sellingPointsWithoutPrice(values: readonly string[]): string[] {
+  return values
+    .filter((value) => !/\bKSh\s*[\d,]+(?:\.\d{1,2})?\b/i.test(value))
+    .map((value) => optionalDisplayValue(value))
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 3);
+}
+
 export function buildProductGallery(product: Product): ProductGalleryItem[] {
   const detailAssets = product.detail?.assets ?? [];
   const sourceImages = product.detail?.sourceImages ?? [];

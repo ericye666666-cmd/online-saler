@@ -1,11 +1,11 @@
 "use client";
 
 import { Check, Copy, MessageCircle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Product,
+  productPath,
   productUrl,
-  whatsappShareUrl,
 } from "../data/products";
 
 type ShareActionsProps = {
@@ -15,10 +15,26 @@ type ShareActionsProps = {
 
 export function ShareActions({ product, sellerRef }: ShareActionsProps) {
   const [copied, setCopied] = useState(false);
-  const directUrl = productUrl(product.code, sellerRef);
+  const [directUrl, setDirectUrl] = useState(() => productUrl(product.code, sellerRef));
+
+  useEffect(() => {
+    setDirectUrl(new URL(productPath(product.code, sellerRef), window.location.origin).toString());
+  }, [product.code, sellerRef]);
 
   async function copyLink() {
-    await navigator.clipboard.writeText(directUrl);
+    try {
+      await navigator.clipboard.writeText(directUrl);
+    } catch {
+      const field = document.createElement("textarea");
+      field.value = directUrl;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.append(field);
+      field.select();
+      document.execCommand("copy");
+      field.remove();
+    }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   }
@@ -27,7 +43,7 @@ export function ShareActions({ product, sellerRef }: ShareActionsProps) {
     <div className="shareActions" aria-label="Share this item">
       <a
         className="whatsappTextButton"
-        href={whatsappShareUrl(product, sellerRef)}
+        href={`https://wa.me/?text=${encodeURIComponent(new URL(productPath(product.code, sellerRef, { source: "whatsapp" }), directUrl).toString())}`}
         target="_blank"
         rel="noreferrer"
       >

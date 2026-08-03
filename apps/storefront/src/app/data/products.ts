@@ -358,9 +358,13 @@ export function storeUrl(sellerRef?: string, tracking?: ShareTrackingParams) {
 }
 
 export function productUrl(code: string, sellerRef?: string, tracking?: ShareTrackingParams) {
+  return `${SITE_URL}${productPath(code, sellerRef, tracking)}`;
+}
+
+export function productPath(code: string, sellerRef?: string, tracking?: ShareTrackingParams) {
   const query = trackingQuery(sellerRef, tracking);
   const suffix = query.toString();
-  return `${SITE_URL}/p/${code}${suffix ? `?${suffix}` : ""}`;
+  return `/p/${code}${suffix ? `?${suffix}` : ""}`;
 }
 
 export function whatsappShareMessage(

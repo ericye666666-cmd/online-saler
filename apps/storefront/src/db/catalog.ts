@@ -12,7 +12,9 @@ import type { Product } from "../app/data/products";
 import {
   normalizeProductTitle,
   optionalDisplayValue,
-  publicProductCode
+  productCopyWithoutPrice,
+  publicProductCode,
+  sellingPointsWithoutPrice
 } from "../app/product-detail-commerce";
 
 const categoryMap: Record<string, string> = {
@@ -78,7 +80,7 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
     condition: condition as Product["condition"],
     image,
     ogImage: image,
-    description: product.detail.shortDescription?.trim() || [
+    description: productCopyWithoutPrice(product.detail.shortDescription) || [
       brand === "Unbranded" ? null : brand,
       category,
       color,
@@ -86,9 +88,9 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
       "checked in Kikuyu warehouse"
     ].filter(Boolean).join(", "),
     detail: {
-      sellingPoints: product.detail.sellingPoints,
+      sellingPoints: sellingPointsWithoutPrice(product.detail.sellingPoints),
       measurementSummary: optionalDisplayValue(product.detail.measurementSummary),
-      conditionSummary: optionalDisplayValue(product.detail.conditionSummary),
+      conditionSummary: product.defects.length ? optionalDisplayValue(product.detail.conditionSummary) : null,
       styleTags: [...new Set([...product.tags.map(display), ...product.detail.styleTags])],
       fitType: optionalDisplayValue(product.detail.fitType || product.fitType)
         ? display(product.detail.fitType || product.fitType || "")
