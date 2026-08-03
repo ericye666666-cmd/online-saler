@@ -27,6 +27,15 @@ export const SHOULDER_WIDTH_MEASUREMENT_RULES = [
   "Never measure from the collar or neckline to one shoulder. That is a one-side shoulder length, not shoulderWidthCm.",
   "If a dropped shoulder, raglan sleeve or hidden seam makes either sleeve-attachment endpoint uncertain, return null instead of guessing shoulderWidthCm."
 ] as const;
+export const MEASUREMENT_GEOMETRY_RULES = [
+  "measurementGeometry must locate the visible board and garment endpoints before estimating centimeters.",
+  "Return measurementGeometry as { boardCorners: { value: { topLeft, topRight, bottomRight, bottomLeft } | null, confidence }, lines }.",
+  "Each point is { x, y } in image-relative percentages from 0 to 100. The image top-left is (0,0) and bottom-right is (100,100).",
+  "Use the four printed calibration marks together with the outer ruler intersections to return the OUTER corners of the complete 120 cm by 160 cm board, in top-left, top-right, bottom-right, bottom-left order. Do not return garment corners or the inner ends of ruler marks.",
+  "measurementGeometry.lines contains lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm and inseamCm. Each line is { value: { start, end } | null, confidence } using the same image-relative point format.",
+  "Only return a line when both garment endpoints are visible. Apply the same measurement definitions to the line endpoints and centimeter field. For shoulderWidthCm the line must span both sleeve-attachment shoulder seams; never start at the collar.",
+  "Use null when the ruler, garment endpoint, or full board is not clear enough. Do not guess a missing measurement."
+] as const;
 export const PRODUCT_MATERIAL_TAG_RULES = [
   "tags.value must be an array with 2 to 8 unique enum values when at least two visible construction, silhouette, use-case or styling facts are clear. Return an empty array only when no tag is supported by the images.",
   "For material, prefer the care label. Without a readable label, use only an unmistakable visual material such as DENIM, LEATHER, FLEECE, KNIT, LACE or CORDUROY; otherwise use UNKNOWN.",
@@ -108,7 +117,7 @@ export class OpenAIVisionProvider implements AIProvider {
                 type: "input_text",
                 text: [
                   "Return one JSON object with these fields:",
-                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, fitType, stretchLevel, fabricWeight, material, tags, brandLabel, sizeLabel, ukSizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm.",
+                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, fitType, stretchLevel, fabricWeight, material, tags, brandLabel, sizeLabel, ukSizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm, measurementGeometry.",
                   `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
                   `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
                   `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
@@ -122,7 +131,7 @@ export class OpenAIVisionProvider implements AIProvider {
                   `stretchLevel enum: ${PRODUCT_STRETCH_LEVELS.join(", ")}`,
                   `fabricWeight enum: ${PRODUCT_FABRIC_WEIGHTS.join(", ")}`,
                   "Use kidsAgeRange=NOT_APPLICABLE unless audience=KIDS.",
-                  "Each field must be an object: { value, confidence }.",
+                  "Each catalog and centimeter field must be an object: { value, confidence }.",
                   ...PRODUCT_AUDIENCE_TITLE_RULES,
                   ...PRODUCT_MATERIAL_TAG_RULES,
                   "ukSizeLabel is the best UK size notation supported by the visible tag and measured garment fit, for example UK 12, UK W32, or UK M. Use null when the evidence is insufficient; do not convert from sizeLabel alone.",
@@ -132,7 +141,7 @@ export class OpenAIVisionProvider implements AIProvider {
                   ...SHOULDER_WIDTH_MEASUREMENT_RULES,
                   ...HOODED_GARMENT_MEASUREMENT_RULES,
                   "waistCm and hipCm are flat widths. thighWidthCm is one leg flat width. legOpeningCm is one opening flat width. inseamCm is crotch to hem.",
-                  "Use null when the ruler, garment endpoint, or full board is not clear enough. Do not guess a missing measurement.",
+                  ...MEASUREMENT_GEOMETRY_RULES,
                   "Base the answer only on the attached images."
                 ].join("\n")
               },
@@ -155,7 +164,12 @@ export class OpenAIVisionProvider implements AIProvider {
       provider: "openai",
       model: this.model(),
       rawOutput: payload,
-      normalizedOutput: normalizeOpenAIVisionOutput(rawOutput, request.imageIds, runtimeTaxonomy),
+      normalizedOutput: normalizeOpenAIVisionOutput(
+        rawOutput,
+        request.imageIds,
+        runtimeTaxonomy,
+        images.find((image) => image.type === "FRONT")?.id ?? request.imageIds[0] ?? null
+      ),
       latencyMs: Date.now() - startedAt,
       inputTokens: numberOrUndefined(payload.usage?.input_tokens),
       outputTokens: numberOrUndefined(payload.usage?.output_tokens)
@@ -178,7 +192,7 @@ export function openAIVisionResponseSettings() {
       verbosity: "low",
       format: { type: "json_object" }
     },
-    max_output_tokens: 3000
+    max_output_tokens: 5000
   } as const;
 }
 

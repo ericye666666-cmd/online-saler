@@ -26,6 +26,7 @@ export function GarmentMeasurementGuide(props: {
   imageUrl: string;
   measurements: GuideMeasurement[];
   manualLines?: ManualMeasurementLine[];
+  aiLines?: ManualMeasurementLine[];
   onManualCalibrate?: () => void;
   manualCalibrateLabel?: string;
   manualCalibrateDisabled?: boolean;
@@ -93,10 +94,12 @@ export function GarmentMeasurementGuide(props: {
 
   const visibleKeys = new Set(props.measurements.map((measurement) => measurement.key));
   const manualLines = new Map((props.manualLines ?? []).map((line) => [line.key, line]));
+  const aiLines = new Map((props.aiLines ?? []).map((line) => [line.key, line]));
   const displayManualLines = new Map((props.manualLines ?? []).map((line) => [line.key, fitLineToImageFrame(line, imageFrame)]));
+  const displayAiLines = new Map((props.aiLines ?? []).map((line) => [line.key, fitLineToImageFrame(line, imageFrame)]));
   const lines = (detectedLines ?? fallbackLines)
     .filter((line) => visibleKeys.has(line.key))
-    .map((line) => displayManualLines.get(line.key) ?? line);
+    .map((line) => displayManualLines.get(line.key) ?? displayAiLines.get(line.key) ?? line);
   const values = new Map(props.measurements.map((measurement) => [measurement.key, measurement]));
 
   return (
@@ -119,11 +122,13 @@ export function GarmentMeasurementGuide(props: {
             const measurement = values.get(line.key);
             const value = measurement?.value || measurement?.aiValue || "?";
             const manual = manualLines.has(line.key);
+            const aiLocated = !manual && aiLines.has(line.key);
+            const stroke = manual ? "#15803d" : aiLocated ? "#2563eb" : "#64748b";
             return (
               <g key={line.key}>
-                <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={manual ? "#15803d" : "#1d4ed8"} strokeWidth="0.9" strokeDasharray="2 1.5" />
-                <circle cx={line.x1} cy={line.y1} r="1.1" fill="#ffffff" stroke={manual ? "#15803d" : "#1d4ed8"} strokeWidth="0.7" />
-                <circle cx={line.x2} cy={line.y2} r="1.1" fill="#ffffff" stroke={manual ? "#15803d" : "#1d4ed8"} strokeWidth="0.7" />
+                <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={stroke} strokeWidth="0.9" strokeDasharray="2 1.5" />
+                <circle cx={line.x1} cy={line.y1} r="1.1" fill="#ffffff" stroke={stroke} strokeWidth="0.7" />
+                <circle cx={line.x2} cy={line.y2} r="1.1" fill="#ffffff" stroke={stroke} strokeWidth="0.7" />
                 <text x={line.labelX} y={line.labelY} textAnchor="middle" fontSize="3.2" fontWeight="700" fill="#1e3a8a" paintOrder="stroke" stroke="#ffffff" strokeWidth="1.4">
                   {measurement?.label ?? line.key} {value} cm
                 </text>
@@ -135,7 +140,14 @@ export function GarmentMeasurementGuide(props: {
       <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
         {props.measurements.map((measurement) => (
           <div key={measurement.key} className="flex justify-between gap-2 border-b py-1">
-            <span className="text-muted-foreground">{measurement.label}{manualLines.has(measurement.key) ? <span className="ml-1 text-green-700">人工连线</span> : null}</span>
+            <span className="text-muted-foreground">
+              {measurement.label}
+              {manualLines.has(measurement.key)
+                ? <span className="ml-1 text-green-700">人工连线</span>
+                : aiLines.has(measurement.key)
+                  ? <span className="ml-1 text-blue-700">AI定位</span>
+                  : null}
+            </span>
             <span className="font-medium tabular-nums">{measurement.value || measurement.aiValue || "待确认"}{measurement.value || measurement.aiValue ? " cm" : ""}</span>
           </div>
         ))}

@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import type {
+  ImageProcessingJobRecord,
+  ProductImageComparisonResponse,
+  ProductImageVariantRecord
+} from "@online-saler/shared-types";
 import {
   ArrowLeftIcon,
   CheckCircle2Icon,
@@ -144,6 +149,14 @@ type EditableCopy = {
   warnings: string;
 };
 
+type DetailMainImageChoice = {
+  key: "original" | "white" | "optimized" | "balanced" | "ai-display";
+  label: string;
+  image: ProductImageVariantRecord | null;
+  selectable: boolean;
+  generated: boolean;
+};
+
 async function request<T>(path: string, adminUserId: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_PROXY_URL}${path}`, {
     ...options,
@@ -163,6 +176,30 @@ async function request<T>(path: string, adminUserId: string, options?: RequestIn
     throw new Error(message);
   }
   return body as T;
+}
+
+async function generateAiDisplayImage(
+  productId: string,
+  sourceImageId: string,
+  adminUserId: string
+): Promise<ImageProcessingJobRecord> {
+  const job = await request<ImageProcessingJobRecord>(
+    `/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(sourceImageId)}/processing-jobs`,
+    adminUserId,
+    {
+      method: "POST",
+      body: JSON.stringify({ operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" })
+    }
+  );
+  const completed = await request<ImageProcessingJobRecord>(
+    `/image-processing-jobs/${encodeURIComponent(job.id)}/run`,
+    adminUserId,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+  if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
+    throw new Error(completed.errorMessage || "AI 陈列图生成失败。");
+  }
+  return completed;
 }
 
 function useOperationIds() {
@@ -339,9 +376,11 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
 export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
   const ids = useOperationIds();
   const [profile, setProfile] = useState<DetailProfile | null>(null);
+  const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
   const [copy, setCopy] = useState<EditableCopy>(emptyCopy());
   const [viewMode, setViewMode] = useState<"preview" | "edit">("preview");
   const [activeAsset, setActiveAsset] = useState("FRONT_MAIN");
+  const [activeMainImage, setActiveMainImage] = useState<DetailMainImageChoice["key"]>("white");
   const [recalibrationReason, setRecalibrationReason] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -350,9 +389,22 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
     const next = await request<DetailProfile>(`/product-detail-profiles/${encodeURIComponent(profileId)}`, ids.adminUserId);
+    const nextComparison = await request<ProductImageComparisonResponse>(
+      `/products/${encodeURIComponent(next.product.id)}/image-comparison`,
+      ids.adminUserId
+    );
     setProfile(next);
+    setComparison(nextComparison);
     setCopy(copyFromJson(next.finalOutputJson, next.product.title ?? ""));
     if (!next.assets.some((asset) => asset.type === activeAsset)) setActiveAsset(next.assets[0]?.type ?? "FRONT_MAIN");
+    const choices = detailMainImageChoices(nextComparison);
+    setActiveMainImage((current) => {
+      if (choices.some((choice) => choice.key === current && choice.image)) return current;
+      return choices.find((choice) => choice.image?.selectedAsMain)?.key
+        ?? choices.find((choice) => choice.key === "ai-display" && choice.image)?.key
+        ?? choices.find((choice) => choice.image)?.key
+        ?? "white";
+    });
   }, [activeAsset, ids.adminUserId, profileId]);
 
   useEffect(() => { void load().catch((caught) => setError(errorMessage(caught))); }, [load]);
@@ -400,10 +452,54 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     }
   }
 
+  async function generateDisplayImage() {
+    if (!profile || !comparison?.cutoutWhite?.imageId) {
+      setError("缺少已确认的白底图，请先返回人工校准完成抠图和白底处理。");
+      return;
+    }
+    setBusy("ai-display");
+    setError("");
+    setNotice("");
+    try {
+      await generateAiDisplayImage(profile.product.id, comparison.cutoutWhite.imageId, ids.adminUserId);
+      await load();
+      setActiveMainImage("ai-display");
+      setNotice("AI 陈列图候选已生成。请与原图逐项核对后，再决定是否选为商城主图。");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function chooseStorefrontMain(choice: DetailMainImageChoice) {
+    if (!profile || !choice.selectable || !choice.image) return;
+    if (choice.generated && !window.confirm("这是生成式 AI 陈列图。请确认 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵均与原图一致。继续设为商城主图吗？")) return;
+    setBusy(`main-${choice.image.imageId}`);
+    setError("");
+    setNotice("");
+    try {
+      await request(`/product-detail-profiles/${encodeURIComponent(profile.id)}/main-image`, ids.adminUserId, {
+        method: "POST",
+        body: JSON.stringify({ imageId: choice.image.imageId })
+      });
+      await load();
+      setActiveMainImage(choice.key);
+      setNotice(`${choice.label}已设为商城主图，发布预览素材已同步更新，请重新确认后批准。`);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (!profile) return <Status tone={error ? "danger" : "neutral"}>{error || "正在读取商品详情…"}</Status>;
   const assets = [...profile.assets].sort((left, right) => assetOrder(left.type) - assetOrder(right.type));
   const selectedAsset = assets.find((asset) => asset.type === activeAsset) ?? assets[0];
   const latestJob = profile.generationJobs[0];
+  const mainImageChoices = detailMainImageChoices(comparison);
+  const currentMainImage = mainImageChoices.find((choice) => choice.key === activeMainImage) ?? mainImageChoices[0];
+  const hasSelectedMainImage = Boolean(comparison?.selectedMainImageId);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-12">
@@ -436,11 +532,68 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
           copy={copy}
           assets={assets}
           busy={Boolean(busy)}
+          mainImageSelected={hasSelectedMainImage}
           onApprove={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId })}
           onEdit={() => setViewMode("edit")}
         />
       ) : <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,.95fr)]">
-        <section className="min-w-0">
+        <div className="min-w-0 space-y-6">
+          <section className="min-w-0 space-y-3" aria-label="商城主图确认">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="font-semibold">陈列主图</h2>
+                <p className="mt-1 text-xs text-muted-foreground">在详情生成阶段对照原图，人工选择白底图、白底优化图、白底均整图或 AI 陈列图。系统不会自动选择生成式图片。</p>
+              </div>
+              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutWhite?.imageId} onClick={() => void generateDisplayImage()}>
+                {busy === "ai-display" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
+                {comparison?.aiDisplayMain ? "重新生成 AI 陈列图" : "生成 AI 陈列图"}
+              </Button>
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {mainImageChoices.map((choice) => (
+                <Button
+                  key={choice.key}
+                  size="sm"
+                  variant={activeMainImage === choice.key ? "default" : "outline"}
+                  className="shrink-0"
+                  disabled={!choice.image}
+                  onClick={() => setActiveMainImage(choice.key)}
+                >
+                  {choice.label}{choice.image?.selectedAsMain ? " · 主图" : ""}
+                </Button>
+              ))}
+            </div>
+
+            <div className="flex aspect-square min-h-80 items-center justify-center overflow-hidden rounded-md border bg-white">
+              {currentMainImage?.image ? <SafeImage src={variantImageUrl(currentMainImage.image)} alt={currentMainImage.label} /> : <EmptyImage />}
+            </div>
+
+            {currentMainImage?.generated ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="font-semibold">生成式候选图，必须与原图人工核对</p>
+                <p className="mt-1 text-xs">重点检查 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵。任何商品事实改变都不能选为商城主图。</p>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className={cn("text-xs", hasSelectedMainImage ? "text-emerald-700" : "font-medium text-amber-700")}>
+                {hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "批准详情前必须人工选择一张商城主图。"}
+              </p>
+              {currentMainImage?.selectable && currentMainImage.image ? (
+                <Button
+                  size="sm"
+                  disabled={Boolean(busy) || currentMainImage.image.selectedAsMain}
+                  onClick={() => void chooseStorefrontMain(currentMainImage)}
+                >
+                  {currentMainImage.image.selectedAsMain ? "已是商城主图" : "设为商城主图"}
+                </Button>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="min-w-0 border-t pt-5" aria-label="详情素材">
+            <h2 className="mb-3 font-semibold">详情素材</h2>
           <div className="flex gap-2 overflow-x-auto pb-2">
             {assets.map((asset) => (
               <Button key={asset.id} size="sm" variant={activeAsset === asset.type ? "default" : "outline"} className="shrink-0" onClick={() => setActiveAsset(asset.type)}>
@@ -459,7 +612,8 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               </button>
             ))}
           </div>
-        </section>
+          </section>
+        </div>
 
         <div className="flex min-w-0 flex-col gap-5">
           <section className="rounded-md border p-4">
@@ -520,7 +674,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("fit", `/product-detail-profiles/${profile.id}/recalculate-fit`, "版型推荐和素材已重新计算。") }><RefreshCwIcon data-icon="inline-start" />重算版型</Button>
               <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("assets", `/product-detail-profiles/${profile.id}/assets/generate`, "固定详情素材已重新生成。") }><RefreshCwIcon data-icon="inline-start" />重生成素材</Button>
               <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("openai", `/product-detail-profiles/${profile.id}/regenerate-openai`, "OpenAI 文案和详情素材已重新生成。") }><SparklesIcon data-icon="inline-start" />重新调用 OpenAI</Button>
-              <Button disabled={Boolean(busy) || profile.status === "APPROVED"} onClick={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId }) }><CheckCircle2Icon data-icon="inline-start" />批准详情</Button>
+              <Button disabled={Boolean(busy) || profile.status === "APPROVED" || !hasSelectedMainImage} onClick={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId }) }><CheckCircle2Icon data-icon="inline-start" />批准详情</Button>
             </div>
             <div className="mt-4 border-t pt-4">
               <Field label="退回校准原因"><Textarea rows={2} placeholder="说明需要员工重新确认的商品事实。" value={recalibrationReason} onChange={(event) => setRecalibrationReason(event.target.value)} /></Field>
@@ -538,6 +692,7 @@ function ProductPublishPreview({
   copy,
   assets,
   busy,
+  mainImageSelected,
   onApprove,
   onEdit
 }: {
@@ -545,6 +700,7 @@ function ProductPublishPreview({
   copy: EditableCopy;
   assets: DetailAsset[];
   busy: boolean;
+  mainImageSelected: boolean;
   onApprove: () => void;
   onEdit: () => void;
 }) {
@@ -641,7 +797,7 @@ function ProductPublishPreview({
 
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted-foreground">{profile.sizeDisclaimer || "尺码建议仅供参考，请以平铺实测数据为准。"}</p>
-        <Button disabled={busy || profile.status === "APPROVED"} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : "确认预览并批准详情"}</Button>
+        <Button disabled={busy || profile.status === "APPROVED" || !mainImageSelected} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : mainImageSelected ? "确认预览并批准详情" : "请先选择商城主图"}</Button>
       </div>
     </div>
   );
@@ -672,6 +828,21 @@ function SafeImage({ src, alt }: { src: string; alt: string }) {
   useEffect(() => setFailed(false), [src]);
   if (!src || failed) return <EmptyImage />;
   return <img src={src} alt={alt} className="size-full object-contain" onError={() => setFailed(true)} />;
+}
+
+function detailMainImageChoices(comparison: ProductImageComparisonResponse | null): DetailMainImageChoice[] {
+  return [
+    { key: "original", label: "原图（对照）", image: comparison?.original ?? null, selectable: false, generated: false },
+    { key: "white", label: "白底图", image: comparison?.cutoutWhite ?? null, selectable: true, generated: false },
+    { key: "optimized", label: "白底优化图", image: comparison?.optimizedMain ?? null, selectable: true, generated: false },
+    { key: "balanced", label: "白底均整图", image: comparison?.optimizedBalancedMain ?? null, selectable: true, generated: false },
+    { key: "ai-display", label: "AI 陈列图", image: comparison?.aiDisplayMain ?? null, selectable: true, generated: true }
+  ];
+}
+
+function variantImageUrl(image: ProductImageVariantRecord) {
+  if (image.publicUrl) return image.publicUrl.startsWith("http") ? image.publicUrl : `${API_PROXY_URL}${image.publicUrl}`;
+  return "";
 }
 
 function EmptyImage({ compact = false }: { compact?: boolean } = {}) {

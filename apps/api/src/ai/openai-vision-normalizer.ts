@@ -1,4 +1,5 @@
 import {
+  AI_MEASUREMENT_FIELDS,
   AI_AUDIENCES,
   AI_COLORS,
   AI_KIDS_AGE_RANGES,
@@ -15,7 +16,12 @@ import {
   type AIColor,
   type AIExtractionNormalizedOutput,
   type AIFieldValue,
+  type AIImagePoint,
   type AIKidsAgeRange,
+  type AIMeasurementBoardCorners,
+  type AIMeasurementField,
+  type AIMeasurementGeometry,
+  type AIMeasurementLine,
   type AIPattern,
   type AIProductCategory,
   type AISleeveType,
@@ -26,6 +32,10 @@ import {
   type ProductSubcategoryOption,
   type ProductTagOption
 } from "@online-saler/shared-types";
+import {
+  measurementLengthCm,
+  validMeasurementBoardCalibration
+} from "@online-saler/business-rules";
 
 type FieldLike = {
   value?: unknown;
@@ -127,7 +137,8 @@ const AUDIENCE_ALIASES: Record<string, AIAudience> = {
 export function normalizeOpenAIVisionOutput(
   raw: unknown,
   evidenceImageIds: string[],
-  runtimeTaxonomy: RuntimeProductTaxonomy = {}
+  runtimeTaxonomy: RuntimeProductTaxonomy = {},
+  measurementImageId = evidenceImageIds[0] ?? null
 ): AIExtractionNormalizedOutput {
   const record = asRecord(raw);
   const categorySet = runtimeSet(runtimeTaxonomy.categories, CATEGORY_SET);
@@ -136,7 +147,7 @@ export function normalizeOpenAIVisionOutput(
   const materialSet = runtimeSet(runtimeTaxonomy.materials, MATERIAL_SET);
   const tagSet = runtimeSet(runtimeTaxonomy.tags, TAG_SET);
 
-  return {
+  const output: AIExtractionNormalizedOutput = {
     category: enumField<AIProductCategory>(record, ["category"], categorySet, "OTHER", evidenceImageIds, CATEGORY_ALIASES),
     subcategory: enumField<ProductSubcategoryOption>(
       record,
@@ -189,6 +200,83 @@ export function normalizeOpenAIVisionOutput(
     legOpeningCm: numberField(record, ["legOpeningCm", "leg_opening_cm"], evidenceImageIds),
     inseamCm: numberField(record, ["inseamCm", "inseam_cm"], evidenceImageIds)
   };
+  const geometry = normalizeMeasurementGeometry(record, measurementImageId);
+  output.measurementGeometry = geometry;
+  if (geometry.boardCorners) {
+    for (const { field } of AI_MEASUREMENT_FIELDS) {
+      const line = geometry.lines[field];
+      if (!line) continue;
+      const value = measurementLengthCm(geometry.boardCorners, line.start, line.end);
+      if (value === null) continue;
+      output[field] = {
+        value,
+        confidence: Math.min(geometry.boardConfidence, line.confidence),
+        evidenceImageIds: geometry.imageId ? [geometry.imageId] : evidenceImageIds
+      };
+    }
+  }
+  return output;
+}
+
+function normalizeMeasurementGeometry(
+  record: RawExtraction,
+  measurementImageId: string | null
+): AIMeasurementGeometry {
+  const geometry = asRecord(record.measurementGeometry);
+  const boardField = firstField(geometry, ["boardCorners", "boardCalibration", "calibrationPoints"]);
+  const boardCorners = measurementBoardCorners(boardField.value);
+  const linesRecord = asRecord(geometry.lines ?? geometry.measurementLines);
+  const lines: Partial<Record<AIMeasurementField, AIMeasurementLine>> = {};
+  for (const { field } of AI_MEASUREMENT_FIELDS) {
+    const normalized = measurementLine(linesRecord[field]);
+    if (normalized) lines[field] = normalized;
+  }
+  return {
+    imageId: measurementImageId,
+    boardCorners,
+    boardConfidence: boardCorners ? confidence(boardField.confidence) : 0,
+    lines
+  };
+}
+
+function measurementBoardCorners(value: unknown): AIMeasurementBoardCorners | null {
+  const record = asRecord(value);
+  const corners = {
+    topLeft: imagePoint(record.topLeft),
+    topRight: imagePoint(record.topRight),
+    bottomRight: imagePoint(record.bottomRight),
+    bottomLeft: imagePoint(record.bottomLeft)
+  };
+  if (!corners.topLeft || !corners.topRight || !corners.bottomRight || !corners.bottomLeft) return null;
+  const calibration: AIMeasurementBoardCorners = {
+    topLeft: corners.topLeft,
+    topRight: corners.topRight,
+    bottomRight: corners.bottomRight,
+    bottomLeft: corners.bottomLeft
+  };
+  return validMeasurementBoardCalibration(calibration) ? calibration : null;
+}
+
+function measurementLine(value: unknown): AIMeasurementLine | null {
+  const field = asRecord(value);
+  const line = asRecord(field.value ?? field);
+  const start = imagePoint(line.start);
+  const end = imagePoint(line.end);
+  if (!start || !end || Math.hypot(end.x - start.x, end.y - start.y) < 0.5) return null;
+  return { start, end, confidence: confidence(field.confidence ?? line.confidence) };
+}
+
+function imagePoint(value: unknown): AIImagePoint | null {
+  const point = asRecord(value);
+  let x = Number(point.x);
+  let y = Number(point.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+    x *= 100;
+    y *= 100;
+  }
+  if (x < 0 || x > 100 || y < 0 || y > 100) return null;
+  return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
 }
 
 function enumArrayField<T extends string>(

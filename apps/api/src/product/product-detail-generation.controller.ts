@@ -5,6 +5,7 @@ import { ProductDetailGenerationService } from "./product-detail-generation.serv
 import { ProductDetailGenerationRunnerService } from "./product-detail-generation-runner.service";
 import { ProductDetailAssetService } from "./product-detail-asset.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
+import { ProductImageProcessingService } from "./product-image-processing.service";
 
 @Controller()
 export class ProductDetailGenerationController {
@@ -12,7 +13,8 @@ export class ProductDetailGenerationController {
     private readonly details: ProductDetailGenerationService,
     private readonly runner: ProductDetailGenerationRunnerService,
     private readonly assets: ProductDetailAssetService,
-    private readonly storage: ProductImageStorageService
+    private readonly storage: ProductImageStorageService,
+    private readonly imageProcessing: ProductImageProcessingService
   ) {}
 
   @Get("operations/product-detail-generation")
@@ -171,6 +173,25 @@ export class ProductDetailGenerationController {
   ) {
     await requireAdminPermission(adminUserId, "action.product.edit");
     return this.assets.generateForProfile(profileId);
+  }
+
+  @Post("product-detail-profiles/:profileId/main-image")
+  async selectProfileMainImage(
+    @Param("profileId") profileId: string,
+    @Body() body: { imageId?: string },
+    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+  ) {
+    await requireAdminPermission(adminUserId, "action.product.edit");
+    const imageId = body.imageId?.trim();
+    if (!imageId) throw new BadRequestException("imageId is required");
+
+    const profile = await this.details.prepareMainImageChange(profileId);
+    const comparison = await this.imageProcessing.selectMainImage(
+      { productId: profile.productId, imageId },
+      { recordDetailSourceChange: false }
+    );
+    const generatedAssets = await this.assets.generateForProfile(profileId);
+    return { comparison, assets: generatedAssets };
   }
 
   @Get("product-detail-assets/:assetId/content")

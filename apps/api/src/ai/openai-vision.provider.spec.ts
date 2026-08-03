@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   HOODED_GARMENT_MEASUREMENT_RULES,
+  MEASUREMENT_GEOMETRY_RULES,
   PRODUCT_AUDIENCE_TITLE_RULES,
   PRODUCT_MATERIAL_TAG_RULES,
   SHOULDER_WIDTH_MEASUREMENT_RULES,
@@ -15,7 +16,7 @@ test("reserves the output budget for structured product fields", () => {
   assert.equal(settings.reasoning.effort, "none");
   assert.equal(settings.text.verbosity, "low");
   assert.equal(settings.text.format.type, "json_object");
-  assert.ok(settings.max_output_tokens >= 3000);
+  assert.ok(settings.max_output_tokens >= 5000);
 });
 
 test("keeps material and tags evidence-based", () => {
@@ -42,6 +43,15 @@ test("excludes the hood and neckline from shoulder and body measurements", () =>
   assert.match(shoulderRules, /left sleeve-attachment shoulder seam endpoint to the right/);
   assert.match(shoulderRules, /Never measure from the collar or neckline to one shoulder/);
   assert.match(shoulderRules, /return null instead of guessing shoulderWidthCm/);
+});
+
+test("asks for four-point board calibration and editable garment endpoints", () => {
+  const rules = MEASUREMENT_GEOMETRY_RULES.join(" ");
+  assert.match(rules, /four printed calibration marks/);
+  assert.match(rules, /OUTER corners/);
+  assert.match(rules, /image-relative percentages from 0 to 100/);
+  assert.match(rules, /both garment endpoints are visible/);
+  assert.match(rules, /never start at the collar/);
 });
 
 test("reads nested output text from a direct Responses API payload", () => {

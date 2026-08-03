@@ -285,7 +285,7 @@ export class ProductImageProcessingService {
   async selectMainImage(input: {
     productId: string;
     imageId: string;
-  }): Promise<ProductImageComparisonResponse> {
+  }, options: { recordDetailSourceChange?: boolean } = {}): Promise<ProductImageComparisonResponse> {
     const currentSelection = await prisma.productMainImageSelection.findUnique({
       where: { productId: input.productId },
       select: { selectedImageId: true }
@@ -335,7 +335,7 @@ export class ProductImageProcessingService {
         selectedAt: new Date()
       }
     });
-    if (currentSelection?.selectedImageId !== input.imageId) {
+    if (currentSelection?.selectedImageId !== input.imageId && options.recordDetailSourceChange !== false) {
       await this.details.recordSourceChange(input.productId, "MAIN_IMAGE_CHANGED");
     }
 

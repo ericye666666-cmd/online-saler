@@ -64,6 +64,7 @@ import { cutoutQualityWarning } from "./image-processing-quality";
 import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
 import { ManualMeasurementEditor } from "./manual-measurement-editor";
 import {
+  aiMeasurementSeed,
   calibrationLinePayload,
   manualMeasurementValueUpdates,
   type ManualMeasurementLine
@@ -220,14 +221,6 @@ async function runImageOperation(
   return completed;
 }
 
-async function selectMainImage(productId: string, imageId: string, adminUserId: string) {
-  return request<ProductImageComparisonResponse>(`/products/${productId}/main-image`, {
-    method: "POST",
-    headers: { "X-Admin-User-Id": adminUserId },
-    body: JSON.stringify({ imageId })
-  });
-}
-
 async function uploadManualCutout(
   productId: string,
   sourceImageId: string,
@@ -352,13 +345,11 @@ export function ProductBatchCalibrationPage({
       .then((value) => {
         setComparison(value);
         setActiveImage(
-          value.aiDisplayMain?.selectedAsMain
-            ? "ai-display"
-            : value.optimizedBalancedMain
-              ? "balanced"
-              : value.optimizedMain
-                ? "optimized"
-                : "original"
+          value.optimizedBalancedMain
+            ? "balanced"
+            : value.optimizedMain
+              ? "optimized"
+              : "original"
         );
       })
       .catch((caught) => setError(errorMessage(caught, "无法读取图片版本。")));
@@ -380,8 +371,8 @@ export function ProductBatchCalibrationPage({
   ) ?? null;
   const cutoutWarning = latestRemovalJob ? cutoutQualityWarning(latestRemovalJob) : null;
   const imageTabs = useMemo(
-    () => buildImageTabs(product, comparison, !cutoutWarning),
-    [comparison, cutoutWarning, product]
+    () => buildImageTabs(product, comparison),
+    [comparison, product]
   );
   const currentImage = imageTabs.find((item) => item.key === activeImage) ?? imageTabs[0] ?? null;
   const reasons = calibrationValidationReasons(form, {
@@ -459,6 +450,16 @@ export function ProductBatchCalibrationPage({
     ...field,
     ...aiMeasurementSuggestion(product, aiOutput, field.type, field.key)
   }));
+  const measurementKeySignature = measurementSuggestions.map((item) => item.key).join("|");
+  const measurementOriginalImageId = comparison?.original?.imageId ?? newestImage(product, "FRONT")?.id ?? "";
+  const aiMeasurement = useMemo(
+    () => aiMeasurementSeed(
+      aiOutput,
+      measurementOriginalImageId,
+      measurementKeySignature.split("|").filter(Boolean)
+    ),
+    [aiOutput, measurementKeySignature, measurementOriginalImageId]
+  );
   const hasAiMeasurements = measurementSuggestions.some((item) => Boolean(item.aiValue));
   const requiredMeasurementKeys = new Set(measurementRequirements(form).map((item) => item.key));
   const colorOptions = activeValues(taxonomy, "COLOR", AI_COLORS, form.color);
@@ -538,9 +539,12 @@ export function ProductBatchCalibrationPage({
     setNotice("草稿已保存在本机，可稍后继续。");
   }
 
-  function applyManualMeasurementLines(lines: ManualMeasurementLine[]) {
-    setManualMeasurementLines(lines);
-    const updates = manualMeasurementValueUpdates(lines, measurementSuggestions.map((item) => item.key));
+  function applyManualMeasurementLines(
+    manualLines: ManualMeasurementLine[],
+    resolvedLines: ManualMeasurementLine[]
+  ) {
+    setManualMeasurementLines(manualLines);
+    const updates = manualMeasurementValueUpdates(resolvedLines, measurementSuggestions.map((item) => item.key));
     setForm((current) => ({ ...current, ...updates }));
     setNotice("人工连线厘米值已写入尺寸字段，请检查后保存本件。");
   }
@@ -590,11 +594,6 @@ export function ProductBatchCalibrationPage({
     if (reasons.length) {
       setError(reasons.join(" "));
       focusValidationIssue(validationIssues[0], imagePanelRef.current);
-      return;
-    }
-    if (!comparison?.selectedMainImageId) {
-      setError("请选择原图、白底图、优化主图、均整版或 AI 陈列图作为商城主图。");
-      imagePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     const extractionId = stringValue(latestExtraction?.extractionId) || stringValue(latestExtraction?.id);
@@ -661,7 +660,7 @@ export function ProductBatchCalibrationPage({
       const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
       setActiveImage("balanced");
-      setNotice(`${mode === "rembg_birefnet" ? "已使用 BiRefNet" : "已使用 lightweight OpenCV"} 重新处理。请手动选择白底图、优化主图或均整版作为商城主图。`);
+      setNotice(`${mode === "rembg_birefnet" ? "已使用 BiRefNet" : "已使用 lightweight OpenCV"} 重新处理。请确认抠图边缘和白底结果；商城主图将在详情生成阶段选择。`);
     } catch (caught) {
       setError(errorMessage(caught, "图片处理失败。"));
     } finally {
@@ -688,36 +687,9 @@ export function ProductBatchCalibrationPage({
       );
       setComparison(await loadComparison(product.id, ids.adminUserId));
       setActiveImage("balanced");
-      setNotice("均整版已使用当前透明抠图重新生成。请检查袖口、衣摆和服装轮廓后再选择商城主图。");
+      setNotice("白底均整图已使用当前透明抠图重新生成。请检查袖口、衣摆和服装轮廓。");
     } catch (caught) {
       setError(errorMessage(caught, "无法重新生成均整版。"));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function generateAiDisplayMain() {
-    if (!product) return;
-    const sourceId = comparison?.cutoutWhite?.imageId;
-    if (!sourceId) {
-      setError("请先生成并确认白底图。");
-      return;
-    }
-    setBusy("ai-display");
-    setError("");
-    setNotice("");
-    try {
-      await runImageOperation(
-        product.id,
-        sourceId,
-        "GENERATE_AI_DISPLAY_MAIN_IMAGE",
-        ids.adminUserId
-      );
-      setComparison(await loadComparison(product.id, ids.adminUserId));
-      setActiveImage("ai-display");
-      setNotice("AI 陈列图已生成。它是生成式候选图，不会自动成为主图；请逐项对照原图后再手动选择。");
-    } catch (caught) {
-      setError(errorMessage(caught, "无法生成 AI 陈列图。"));
     } finally {
       setBusy("");
     }
@@ -746,7 +718,7 @@ export function ProductBatchCalibrationPage({
       setComparison(updated);
       setActiveImage("balanced");
       setManualEditorOpen(false);
-      setNotice("修正版已保存，并重新生成白底图与两版优化主图。请检查后手动选择商城主图。");
+      setNotice("修正版已保存，并重新生成白底图与两版白底优化图。请检查边缘和商品细节。");
     } catch (caught) {
       throw new Error(errorMessage(caught, "无法保存修正版抠图。"));
     } finally {
@@ -780,7 +752,7 @@ export function ProductBatchCalibrationPage({
       setComparison(updated);
       setActiveImage("balanced");
       setManualEditorOpen(false);
-      setNotice("已按员工点选轮廓重新抠图，并生成白底图与两版优化主图。请检查边缘并手动选择商城主图。");
+      setNotice("已按员工点选轮廓重新抠图，并生成白底图与两版白底优化图。请检查边缘和商品细节。");
     } catch (caught) {
       throw new Error(errorMessage(caught, "按轮廓自动抠图失败，请调整轮廓后重试。"));
     } finally {
@@ -812,21 +784,6 @@ export function ProductBatchCalibrationPage({
       setNotice("AI 商品识别与测量已更新，请对照尺寸示意确认。 ");
     } catch (caught) {
       setError(errorMessage(caught, "AI 测量失败。"));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function chooseMain(image: ImageTab) {
-    if (!product || !image.selectable || !image.imageId) return;
-    if (image.key === "ai-display" && !window.confirm("这是生成式 AI 陈列图。你是否已经对照原图确认所有商品细节和瑕疵完全一致？")) return;
-    setBusy(`main-${image.imageId}`);
-    setError("");
-    try {
-      setComparison(await selectMainImage(product.id, image.imageId, ids.adminUserId));
-      setNotice(`${image.label}已设为商城主图。`);
-    } catch (caught) {
-      setError(errorMessage(caught, "无法选择商城主图。"));
     } finally {
       setBusy("");
     }
@@ -890,16 +847,12 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">原图永久保留；均整版只调整原像素。AI 陈列图会生成规整展示候选，必须对照原图确认，系统不会自动选为主图。</p>
+              <p className="text-xs text-muted-foreground">原图永久保留；本步骤只确认抠图、白底结果与商品事实。AI 陈列图和最终商城主图统一在详情生成阶段处理。</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("rembg_birefnet")}><WandSparklesIcon data-icon="inline-start" />强制 BiRefNet</Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutTransparent?.imageId} onClick={() => void rerunBalancedMain()}><RefreshCwIcon data-icon="inline-start" />重做均整版</Button>
-              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutWhite?.imageId} onClick={() => void generateAiDisplayMain()}>
-                {busy === "ai-display" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <WandSparklesIcon data-icon="inline-start" />}
-                生成 AI 陈列图
-              </Button>
               <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.publicUrl} onClick={() => setManualEditorOpen(true)}><ScissorsIcon data-icon="inline-start" />手动抠图</Button>
             </div>
           </div>
@@ -917,7 +870,7 @@ export function ProductBatchCalibrationPage({
 
           <Tabs value={activeImage} onValueChange={setActiveImage}>
             <TabsList className="h-auto w-full justify-start overflow-x-auto">
-              {imageTabs.map((image) => <TabsTrigger key={image.key} value={image.key} className="shrink-0">{image.label}{image.selected ? " · 主图" : ""}</TabsTrigger>)}
+              {imageTabs.map((image) => <TabsTrigger key={image.key} value={image.key} className="shrink-0">{image.label}</TabsTrigger>)}
             </TabsList>
             {imageTabs.map((image) => (
               <TabsContent key={image.key} value={image.key}>
@@ -928,15 +881,7 @@ export function ProductBatchCalibrationPage({
             ))}
           </Tabs>
 
-          {currentImage?.key === "ai-display" ? (
-            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-              <p className="font-semibold">生成式候选图，必须人工核对</p>
-              <p className="mt-1 text-xs">请与原图逐项核对 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵。任何细节改变都不要设为商城主图。</p>
-            </div>
-          ) : null}
-
           <div className="flex flex-wrap gap-2">
-            {currentImage?.selectable ? <Button size="sm" disabled={Boolean(busy) || currentImage.selected} onClick={() => void chooseMain(currentImage)}>{currentImage.selected ? "已是商城主图" : "设为商城主图"}</Button> : null}
             <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />全屏</Button>
             {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
           </div>
@@ -1048,6 +993,7 @@ export function ProductBatchCalibrationPage({
               subcategory={form.subcategory}
               imageUrl={measurementGuideImage(imageTabs)}
               manualLines={manualMeasurementLines}
+              aiLines={aiMeasurement.lines}
               onManualCalibrate={measurementAction ? () => void openManualMeasurementCalibration() : undefined}
               manualCalibrateLabel={measurementAction === "REOPEN" ? "重新编辑测量线" : "手动定位尺寸"}
               manualCalibrateDisabled={Boolean(busy)}
@@ -1112,14 +1058,12 @@ export function ProductBatchCalibrationPage({
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 backdrop-blur lg:sticky lg:inset-auto lg:px-0">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           {!readOnly ? (
-            <p className={cn("text-xs", cutoutWarning || validationIssues.length || !comparison?.selectedMainImageId ? "font-medium text-destructive" : "text-emerald-700")}>
+            <p className={cn("text-xs", cutoutWarning || validationIssues.length ? "font-medium text-destructive" : "text-emerald-700")}>
               {cutoutWarning
                 ? "还差：修正抠图或标记重拍"
                 : validationIssues.length
                 ? `还差：${[...new Set(validationIssues.map((issue) => issue.label))].join("、")}`
-                : !comparison?.selectedMainImageId
-                  ? "还差：选择商城主图"
-                  : "必填信息已完整，可以保存并进入下一件。"}
+                : "必填信息已完整，可以保存并进入下一件。"}
             </p>
           ) : <span />}
           <div className="grid grid-cols-3 gap-2 lg:flex">
@@ -1156,6 +1100,8 @@ export function ProductBatchCalibrationPage({
           aiValue: item.aiValue
         }))}
         initialLines={manualMeasurementLines}
+        initialAiLines={aiMeasurement.lines}
+        initialBoardCalibration={aiMeasurement.calibration}
         onOpenChange={setManualMeasurementEditorOpen}
         onApply={applyManualMeasurementLines}
       />
@@ -1304,16 +1250,14 @@ function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; childre
 
 function buildImageTabs(
   product: ProductRecord | null,
-  comparison: ProductImageComparisonResponse | null,
-  derivedImagesUsable: boolean
+  comparison: ProductImageComparisonResponse | null
 ): ImageTab[] {
   const tabs: ImageTab[] = [
-    variantTab("original", "原图", comparison?.original ?? null, true),
+    variantTab("original", "原图", comparison?.original ?? null, false),
     variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, false, true),
-    variantTab("white", "白底图", comparison?.cutoutWhite ?? null, derivedImagesUsable),
-    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null, derivedImagesUsable),
-    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null, derivedImagesUsable),
-    variantTab("ai-display", "AI 陈列图", comparison?.aiDisplayMain ?? null, derivedImagesUsable),
+    variantTab("white", "白底图", comparison?.cutoutWhite ?? null, false),
+    variantTab("optimized", "白底优化图", comparison?.optimizedMain ?? null, false),
+    variantTab("balanced", "白底均整图", comparison?.optimizedBalancedMain ?? null, false),
     variantTab("back-original", "背面原图", comparison?.backOriginal ?? null, false),
     variantTab("back-transparent", "背面透明抠图", comparison?.backCutoutTransparent ?? null, false, true),
     variantTab("back-white", "背面白底", comparison?.backCutoutWhite ?? null, false)
@@ -1471,7 +1415,8 @@ function manualLinesFromProduct(
       x2: x2 * 100,
       y2: y2 * 100,
       labelX: (x1 + x2) * 50,
-      labelY: Math.max(0, (y1 + y2) * 50 - 3)
+      labelY: Math.max(0, (y1 + y2) * 50 - 3),
+      source: "MANUAL"
     }];
   });
 }
@@ -1488,7 +1433,9 @@ function parseManualMeasurementLines(value: string, fallback: ManualMeasurementL
           typeof coordinate === "number" && Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 100
         );
     });
-    return valid.length ? valid : fallback;
+    return valid.length
+      ? valid.map((line) => ({ ...line, source: "MANUAL" as const }))
+      : fallback;
   } catch {
     return fallback;
   }
