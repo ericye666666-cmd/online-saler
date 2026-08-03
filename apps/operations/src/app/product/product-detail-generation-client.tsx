@@ -36,6 +36,7 @@ import {
   detailProductStage,
   detailSellingPointsWithoutPrice,
   PRODUCT_DETAIL_ASSET_PLAN,
+  productDetailAssetProxyUrl,
   sortDetailBatches
 } from "./product-detail-page-plan";
 
@@ -92,6 +93,7 @@ type DetailAsset = {
   mimeType?: string | null;
   templateCode?: string | null;
   templateVersion?: string | null;
+  updatedAt?: string | null;
 };
 
 type DetailProfile = {
@@ -903,7 +905,7 @@ function EmptyImage({ compact = false }: { compact?: boolean } = {}) {
 
 function assetUrl(asset: DetailAsset) {
   if (asset.publicUrl) return asset.publicUrl.startsWith("http") ? asset.publicUrl : `${API_PROXY_URL}${asset.publicUrl}`;
-  return `${API_PROXY_URL}/product-detail-assets/${asset.id}/content`;
+  return productDetailAssetProxyUrl(API_PROXY_URL, asset);
 }
 
 function sourceImageUrl(productId: string, image: { id: string; publicUrl?: string | null }) {

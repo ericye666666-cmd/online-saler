@@ -8,6 +8,7 @@ import {
   detailProductStage,
   detailSellingPointsWithoutPrice,
   PRODUCT_DETAIL_ASSET_PLAN,
+  productDetailAssetProxyUrl,
   sortDetailBatches
 } from "./product-detail-page-plan";
 
@@ -19,6 +20,17 @@ test("tracks only commerce detail assets and marks missing photography as option
   assert.deepEqual(
     PRODUCT_DETAIL_ASSET_PLAN.filter((asset) => asset.optional).map((asset) => asset.type),
     ["BACK_MAIN", "DETAIL_GALLERY"]
+  );
+});
+
+test("cache-busts regenerated detail assets with their updated timestamp", () => {
+  assert.equal(
+    productDetailAssetProxyUrl("/api-proxy", { id: "asset-1", updatedAt: "2026-08-03T20:45:00.000Z" }),
+    "/api-proxy/product-detail-assets/asset-1/content?v=2026-08-03T20%3A45%3A00.000Z"
+  );
+  assert.equal(
+    productDetailAssetProxyUrl("/api-proxy", { id: "asset-2" }),
+    "/api-proxy/product-detail-assets/asset-2/content"
   );
 });
 

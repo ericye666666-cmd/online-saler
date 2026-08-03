@@ -203,7 +203,7 @@ export class ProductDetailGenerationController {
     }
     const stored = await this.storage.download(asset.storageUrl.slice(prefix.length));
     response.setHeader("Content-Type", asset.mimeType ?? stored.contentType);
-    response.setHeader("Cache-Control", "private, max-age=3600");
+    response.setHeader("Cache-Control", "private, no-cache, must-revalidate");
     return response.send(Buffer.from(stored.body));
   }
 }

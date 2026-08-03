@@ -5,6 +5,14 @@ export const PRODUCT_DETAIL_ASSET_PLAN = [
   { type: "DETAIL_GALLERY", title: "细节与瑕疵", shortTitle: "细节", optional: true }
 ] as const;
 
+export function productDetailAssetProxyUrl(
+  apiProxyUrl: string,
+  asset: { id: string; updatedAt?: string | null }
+) {
+  const cacheToken = asset.updatedAt ? `?v=${encodeURIComponent(asset.updatedAt)}` : "";
+  return `${apiProxyUrl}/product-detail-assets/${asset.id}/content${cacheToken}`;
+}
+
 export function detailGenerationButtonLabel(batch: {
   generationReady: boolean;
   calibrated: number;
