@@ -91,7 +91,7 @@ jobs:
             --image "gcr.io/cloud-sql-connectors/cloud-sql-proxy:${CLOUD_SQL_PROXY_VERSION}" \
             --cpu 1 \
             --memory 256Mi \
-            --args "--structured-logs,--lazy-refresh,--address=0.0.0.0,--port=5432,${CLOUD_SQL_INSTANCE}" \
+            --args="--structured-logs,--lazy-refresh,--address=0.0.0.0,--port=5432,${CLOUD_SQL_INSTANCE}" \
             --startup-probe "tcpSocket.port=5432,periodSeconds=1,timeoutSeconds=1,failureThreshold=60"
 
       - name: Verify Metabase health
