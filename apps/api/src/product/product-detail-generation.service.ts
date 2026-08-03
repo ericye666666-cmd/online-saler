@@ -20,14 +20,6 @@ const CALIBRATED_OR_LATER_STATUSES: ProductStatus[] = [
   ProductStatus.ARCHIVED
 ];
 const CALIBRATED_OR_LATER = new Set<ProductStatus>(CALIBRATED_OR_LATER_STATUSES);
-export const REQUIRED_DETAIL_ASSET_TYPES = [
-  ProductDetailAssetType.FRONT_MAIN,
-  ProductDetailAssetType.BACK_MAIN,
-  ProductDetailAssetType.MODEL_DISPLAY,
-  ProductDetailAssetType.MEASUREMENT_GUIDE,
-  ProductDetailAssetType.DETAIL_GALLERY,
-  ProductDetailAssetType.DELIVERY_GUIDE
-] as const;
 
 export type DetailBatchProduct = {
   status: ProductStatus;
@@ -454,15 +446,6 @@ export class ProductDetailGenerationService {
       throw new BadRequestException("Only ready product details can be approved");
     }
     const customerDescription = profile.customerDescription?.trim();
-    if (!customerDescription) throw new BadRequestException("Product description is required before detail approval");
-    const mainImage = await prisma.productMainImageSelection.findUnique({
-      where: { productId: profile.productId },
-      select: { selectedImageId: true }
-    });
-    if (!mainImage) throw new BadRequestException("Select the storefront main image before detail approval");
-    const readyTypes = new Set(profile.assets.filter((asset) => asset.status === ProductDetailStatus.READY).map((asset) => asset.type));
-    const missing = REQUIRED_DETAIL_ASSET_TYPES.filter((type) => !readyTypes.has(type));
-    if (missing.length) throw new BadRequestException(`Product detail assets are incomplete: ${missing.join(", ")}`);
     const approvedAt = new Date();
     return prisma.$transaction(async (transaction) => {
       const approved = await transaction.productDetailProfile.update({
@@ -473,10 +456,12 @@ export class ProductDetailGenerationService {
           approvedByEmployeeId: employeeId?.trim() || null
         }
       });
-      await transaction.product.update({
-        where: { id: profile.productId },
-        data: { description: customerDescription }
-      });
+      if (customerDescription) {
+        await transaction.product.update({
+          where: { id: profile.productId },
+          data: { description: customerDescription }
+        });
+      }
       return approved;
     });
   }
@@ -497,32 +482,14 @@ export class ProductDetailGenerationService {
       }
     });
     if (!batch) throw new NotFoundException("Product batch not found");
-    if (batch.products.length !== batch.targetCount) throw new BadRequestException("Product batch is incomplete");
-    const profiles = batch.products.map((product) => product.detailProfiles[0]).filter(Boolean);
-    if (profiles.length !== batch.targetCount) throw new BadRequestException("Every product must have generated details");
-    const mainImageSelections = await prisma.productMainImageSelection.findMany({
-      where: { productId: { in: profiles.map((profile) => profile.productId) } },
-      select: { productId: true }
+    const profiles = batch.products.flatMap((product) => {
+      const profile = product.detailProfiles[0];
+      if (!profile || profile.sourceDataVersion !== product.detailSourceVersion) return [];
+      return profile.status === ProductDetailStatus.READY || profile.status === ProductDetailStatus.APPROVED
+        ? [profile]
+        : [];
     });
-    const productsWithMainImages = new Set(mainImageSelections.map((selection) => selection.productId));
-    for (const profile of profiles) {
-      if (profile.sourceDataVersion !== batch.products.find((item) => item.id === profile.productId)?.detailSourceVersion) {
-        throw new BadRequestException("A product detail profile is outdated");
-      }
-      if (profile.status !== ProductDetailStatus.READY && profile.status !== ProductDetailStatus.APPROVED) {
-        throw new BadRequestException("Every product detail must be ready before batch approval");
-      }
-      const readyTypes = new Set(profile.assets.filter((asset) => asset.status === ProductDetailStatus.READY).map((asset) => asset.type));
-      if (REQUIRED_DETAIL_ASSET_TYPES.some((type) => !readyTypes.has(type))) {
-        throw new BadRequestException("Every product detail must have all required assets before batch approval");
-      }
-      if (!profile.customerDescription?.trim()) {
-        throw new BadRequestException("Every product detail must have a product description before batch approval");
-      }
-      if (!productsWithMainImages.has(profile.productId)) {
-        throw new BadRequestException("Every product detail must have a selected storefront main image before batch approval");
-      }
-    }
+    if (profiles.length === 0) return this.getBatchDetailStatus(batchId);
     const approvedAt = new Date();
     await prisma.$transaction(async (transaction) => {
       await transaction.productDetailProfile.updateMany({
@@ -534,10 +501,13 @@ export class ProductDetailGenerationService {
         }
       });
       for (const profile of profiles) {
-        await transaction.product.update({
-          where: { id: profile.productId },
-          data: { description: profile.customerDescription!.trim() }
-        });
+        const customerDescription = profile.customerDescription?.trim();
+        if (customerDescription) {
+          await transaction.product.update({
+            where: { id: profile.productId },
+            data: { description: customerDescription }
+          });
+        }
       }
     });
     return this.getBatchDetailStatus(batchId);

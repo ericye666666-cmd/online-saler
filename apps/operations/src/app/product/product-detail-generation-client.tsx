@@ -582,7 +582,6 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
           copy={copy}
           assets={assets}
           busy={Boolean(busy)}
-          mainImageSelected={hasSelectedMainImage}
           onApprove={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId })}
           onEdit={() => setViewMode("edit")}
         />
@@ -628,7 +627,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className={cn("text-xs", hasSelectedMainImage ? "text-emerald-700" : "font-medium text-amber-700")}>
-                {hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "批准详情前必须人工选择一张商城主图。"}
+                {hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "尚未选择商城主图；这不会阻碍详情批准或商品发布。"}
               </p>
               {currentMainImage?.selectable && currentMainImage.image ? (
                 <Button
@@ -711,7 +710,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("assets", `/product-detail-profiles/${profile.id}/assets/generate`, "固定详情素材已重新生成。") }><RefreshCwIcon data-icon="inline-start" />重生成素材</Button>
               <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("openai", `/product-detail-profiles/${profile.id}/regenerate-openai`, "OpenAI 文案和详情素材已重新生成。") }><SparklesIcon data-icon="inline-start" />重新调用 OpenAI</Button>
-              <Button disabled={Boolean(busy) || profile.status === "APPROVED" || !hasSelectedMainImage} onClick={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId }) }><CheckCircle2Icon data-icon="inline-start" />批准详情</Button>
+              <Button disabled={Boolean(busy) || profile.status === "APPROVED"} onClick={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId }) }><CheckCircle2Icon data-icon="inline-start" />批准现有详情</Button>
             </div>
             <div className="mt-4 border-t pt-4">
               <Field label="退回校准原因"><Textarea rows={2} placeholder="说明需要员工重新确认的商品事实。" value={recalibrationReason} onChange={(event) => setRecalibrationReason(event.target.value)} /></Field>
@@ -729,7 +728,6 @@ function ProductPublishPreview({
   copy,
   assets,
   busy,
-  mainImageSelected,
   onApprove,
   onEdit
 }: {
@@ -737,7 +735,6 @@ function ProductPublishPreview({
   copy: EditableCopy;
   assets: DetailAsset[];
   busy: boolean;
-  mainImageSelected: boolean;
   onApprove: () => void;
   onEdit: () => void;
 }) {
@@ -830,8 +827,8 @@ function ProductPublishPreview({
       ) : null}
 
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">详情只展示商品事实和衣物平铺实测，不提供身高、体重或年龄建议。</p>
-        <Button disabled={busy || profile.status === "APPROVED" || !mainImageSelected} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : mainImageSelected ? "确认预览并批准详情" : "请先选择商城主图"}</Button>
+        <p className="text-xs text-muted-foreground">现有详情可单独批准；缺少图片或文案不会阻碍商品发布。</p>
+        <Button disabled={busy || profile.status === "APPROVED"} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : "批准现有详情"}</Button>
       </div>
     </div>
   );

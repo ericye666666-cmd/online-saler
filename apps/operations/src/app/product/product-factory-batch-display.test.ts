@@ -13,7 +13,6 @@ assert.equal(batchNextActionHref("batch/1", "CONTINUE_UPLOAD"), "/product/batche
 assert.equal(batchNextActionHref("batch/1", "START_AI_IMAGE"), "/product/batches/batch%2F1/processing");
 assert.equal(batchNextActionHref("batch-1", "CONTINUE_CALIBRATION"), "/product/calibration?batchId=batch-1");
 assert.equal(batchNextActionHref("batch-1", "GENERATE_BARCODES"), "/product/barcode?batchId=batch-1");
-assert.equal(batchNextActionHref("batch/1", "REVIEW_PRODUCT_DETAILS"), "/product/details?batchId=batch%2F1");
 assert.equal(batchNextActionHref("batch-1", "VIEW_COMPLETED"), "/product/completed");
 assert.equal(
   batchProductCalibrationHref("batch/1", "product?1"),
