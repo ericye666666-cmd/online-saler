@@ -1,12 +1,11 @@
 import { BadRequestException } from "@nestjs/common";
 
-export const PRODUCT_DETAIL_PROMPT_VERSION = "product-detail-copy-v1";
+export const PRODUCT_DETAIL_PROMPT_VERSION = "product-detail-copy-v2";
 
 export type ProductDetailCopy = {
   title: string;
   sellingPoints: [string, string, string];
   shortDescription: string;
-  fitSummary: string;
   measurementSummary: string;
   conditionSummary: string;
   styleTags: string[];
@@ -41,23 +40,6 @@ export type ProductDetailFacts = {
     description: string;
     customerSafeDescription: string | null;
   }>;
-  fitRecommendation: {
-    bodyChestMinCm: number | null;
-    bodyChestMaxCm: number | null;
-    bodyWaistMinCm: number | null;
-    bodyWaistMaxCm: number | null;
-    bodyHipMinCm: number | null;
-    bodyHipMaxCm: number | null;
-    heightMinCm: number | null;
-    heightMaxCm: number | null;
-    weightMinKg: number | null;
-    weightMaxKg: number | null;
-    expectedFit: string | null;
-    confidence: number | null;
-    basis: unknown;
-    warnings: unknown;
-    disclaimer: string | null;
-  };
 };
 
 export const PRODUCT_DETAIL_COPY_SCHEMA = {
@@ -67,7 +49,6 @@ export const PRODUCT_DETAIL_COPY_SCHEMA = {
     "title",
     "sellingPoints",
     "shortDescription",
-    "fitSummary",
     "measurementSummary",
     "conditionSummary",
     "styleTags",
@@ -83,7 +64,6 @@ export const PRODUCT_DETAIL_COPY_SCHEMA = {
       items: { type: "string", maxLength: 160 }
     },
     shortDescription: { type: "string", maxLength: 500 },
-    fitSummary: { type: "string", maxLength: 300 },
     measurementSummary: { type: "string", maxLength: 400 },
     conditionSummary: { type: "string", maxLength: 300 },
     styleTags: {
@@ -116,7 +96,6 @@ export function normalizeProductDetailCopy(value: unknown): ProductDetailCopy {
     title: requiredString(value.title, "title", 120),
     sellingPoints: [sellingPoints[0]!, sellingPoints[1]!, sellingPoints[2]!],
     shortDescription: requiredString(value.shortDescription, "shortDescription", 500),
-    fitSummary: requiredString(value.fitSummary, "fitSummary", 300),
     measurementSummary: requiredString(value.measurementSummary, "measurementSummary", 400),
     conditionSummary: requiredString(value.conditionSummary, "conditionSummary", 300),
     styleTags: stringArray(value.styleTags, "styleTags", 8, 40),

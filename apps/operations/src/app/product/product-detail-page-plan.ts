@@ -1,10 +1,10 @@
 export const PRODUCT_DETAIL_PAGE_PLAN = [
   { type: "FRONT_MAIN", number: 1, title: "主图与购买信息", shortTitle: "主图" },
-  { type: "BACK_MAIN", number: 2, title: "背面实物", shortTitle: "背面" },
-  { type: "MEASUREMENT_GUIDE", number: 3, title: "实测尺寸", shortTitle: "尺寸" },
-  { type: "FIT_GUIDE", number: 4, title: "版型与尺码建议", shortTitle: "版型" },
-  { type: "CONDITION_GUIDE", number: 5, title: "成色与瑕疵", shortTitle: "成色" },
-  { type: "SHARE_CARD", number: 6, title: "分享图", shortTitle: "分享" }
+  { type: "BACK_MAIN", number: 2, title: "背面", shortTitle: "背面" },
+  { type: "MODEL_DISPLAY", number: 3, title: "模特图", shortTitle: "模特" },
+  { type: "MEASUREMENT_GUIDE", number: 4, title: "尺码说明", shortTitle: "尺码" },
+  { type: "DETAIL_GALLERY", number: 5, title: "细节图", shortTitle: "细节" },
+  { type: "DELIVERY_GUIDE", number: 6, title: "配送说明", shortTitle: "配送" }
 ] as const;
 
 export function detailGenerationButtonLabel(batch: {

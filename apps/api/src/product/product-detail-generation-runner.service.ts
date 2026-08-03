@@ -112,7 +112,7 @@ export class ProductDetailGenerationRunnerService {
             status: ProductDetailStatus.GENERATING,
             sellingPointsJson: copy.sellingPoints,
             customerDescription: copy.shortDescription,
-            fitSummary: copy.fitSummary,
+            fitSummary: null,
             measurementSummary: copy.measurementSummary,
             conditionSummary: copy.conditionSummary,
             styleTagsJson: copy.styleTags,
@@ -252,27 +252,11 @@ type SourceProduct = {
   }>;
 };
 
-type SourceProfile = {
-  bodyChestMinCm: unknown;
-  bodyChestMaxCm: unknown;
-  bodyWaistMinCm: unknown;
-  bodyWaistMaxCm: unknown;
-  bodyHipMinCm: unknown;
-  bodyHipMaxCm: unknown;
-  heightMinCm: unknown;
-  heightMaxCm: unknown;
-  weightMinKg: unknown;
-  weightMaxKg: unknown;
-  expectedFit: string | null;
-  recommendationConfidence: unknown;
-  recommendationBasis: unknown;
-  recommendationWarnings: unknown;
-  sizeDisclaimer: string | null;
-};
+type SourceProfile = Record<string, unknown>;
 
 export function buildProductDetailFacts(
   product: SourceProduct,
-  profile: SourceProfile,
+  _profile: SourceProfile,
   sourceDataVersion: number
 ): ProductDetailFacts {
   return {
@@ -305,31 +289,8 @@ export function buildProductDetailFacts(
       severity: String(defect.severity),
       description: defect.description,
       customerSafeDescription: defect.customerSafeDescription
-    })),
-    fitRecommendation: {
-      bodyChestMinCm: numberOrNull(profile.bodyChestMinCm),
-      bodyChestMaxCm: numberOrNull(profile.bodyChestMaxCm),
-      bodyWaistMinCm: numberOrNull(profile.bodyWaistMinCm),
-      bodyWaistMaxCm: numberOrNull(profile.bodyWaistMaxCm),
-      bodyHipMinCm: numberOrNull(profile.bodyHipMinCm),
-      bodyHipMaxCm: numberOrNull(profile.bodyHipMaxCm),
-      heightMinCm: numberOrNull(profile.heightMinCm),
-      heightMaxCm: numberOrNull(profile.heightMaxCm),
-      weightMinKg: numberOrNull(profile.weightMinKg),
-      weightMaxKg: numberOrNull(profile.weightMaxKg),
-      expectedFit: profile.expectedFit,
-      confidence: numberOrNull(profile.recommendationConfidence),
-      basis: profile.recommendationBasis,
-      warnings: profile.recommendationWarnings,
-      disclaimer: profile.sizeDisclaimer
-    }
+    }))
   };
-}
-
-function numberOrNull(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const result = Number(value);
-  return Number.isFinite(result) ? result : null;
 }
 
 function stringOrNull(value: unknown): string | null {

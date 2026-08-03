@@ -3,10 +3,13 @@ import { randomUUID } from "node:crypto";
 import {
   ProductDetailAssetType,
   ProductDetailStatus,
+  ImageProcessingStatus,
   ProductImageType,
   ProductImageVariant,
   prisma
 } from "@online-saler/database";
+import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
+import { ProductImageProcessingService } from "./product-image-processing.service";
 import { SelectedBackgroundRemovalProvider } from "./selected-background-removal.provider";
 import {
   PRODUCT_DETAIL_TEMPLATE_VERSION,
@@ -24,7 +27,9 @@ export class ProductDetailAssetService {
     private readonly renderer: ProductDetailCardRendererService,
     private readonly storage: ProductImageStorageService,
     private readonly backgroundRemoval: SelectedBackgroundRemovalProvider,
-    private readonly transformer: ProductImageTransformerService
+    private readonly transformer: ProductImageTransformerService,
+    private readonly imageProcessing: ProductImageProcessingService,
+    private readonly imageJobs: ProductImageJobRunnerService
   ) {}
 
   async generateForProfile(profileId: string) {
@@ -77,6 +82,19 @@ export class ProductDetailAssetService {
       assets.push(await this.generateBackMain(profile.id, profile.productId, profile.sourceDataVersion, back));
     }
 
+    const modelDisplay = await this.ensureModelDisplay(profile.productId);
+    assets.push(
+      await this.persistReference(
+        profile.id,
+        profile.productId,
+        profile.sourceDataVersion,
+        ProductDetailAssetType.MODEL_DISPLAY,
+        modelDisplay.storageUrl,
+        modelDisplay.publicUrl,
+        modelDisplay.mimeType
+      )
+    );
+
     assets.push(
       await this.persistRendered(
         profile.id,
@@ -91,20 +109,33 @@ export class ProductDetailAssetService {
       )
     );
 
+    const detailImage = profile.product.images.find((image) =>
+      image.type === ProductImageType.DETAIL || image.type === ProductImageType.DEFECT
+    );
     assets.push(
-      await this.persistRendered(
-        profile.id,
-        profile.productId,
-        profile.sourceDataVersion,
-        ProductDetailAssetType.FIT_GUIDE,
-        await this.renderer.informationCard({
-          eyebrow: "Fit guide",
-          title: stringValue(finalCopy.fitSummary) ?? "Fit and size guidance",
-          rows: fitRows(profile),
-          note: englishCardText(profile.sizeDisclaimer),
-          accent: "#1f6f5f"
-        })
-      )
+      detailImage
+        ? await this.persistReference(
+            profile.id,
+            profile.productId,
+            profile.sourceDataVersion,
+            ProductDetailAssetType.DETAIL_GALLERY,
+            detailImage.originalUrl,
+            detailImage.publicUrl,
+            mimeFromUrl(detailImage.originalUrl)
+          )
+        : await this.persistRendered(
+            profile.id,
+            profile.productId,
+            profile.sourceDataVersion,
+            ProductDetailAssetType.DETAIL_GALLERY,
+            await this.renderer.informationCard({
+              eyebrow: "Item details",
+              title: "No additional detail photos supplied",
+              rows: [],
+              note: "The front, back and measurement images remain available for review.",
+              accent: "#666666"
+            })
+          )
     );
 
     assets.push(
@@ -112,33 +143,17 @@ export class ProductDetailAssetService {
         profile.id,
         profile.productId,
         profile.sourceDataVersion,
-        ProductDetailAssetType.CONDITION_GUIDE,
+        ProductDetailAssetType.DELIVERY_GUIDE,
         await this.renderer.informationCard({
-          eyebrow: "Condition",
-          title: stringValue(finalCopy.conditionSummary) ?? "Condition and disclosed defects",
-          rows: conditionRows(profile.product.conditionGrade, profile.product.defects),
-          note: "Second-hand item. Review all original, detail and defect photos before purchase.",
-          accent: "#9a5d00"
-        })
-      )
-    );
-
-    assets.push(
-      await this.persistRendered(
-        profile.id,
-        profile.productId,
-        profile.sourceDataVersion,
-        ProductDetailAssetType.SHARE_CARD,
-        await this.renderer.informationCard({
-          eyebrow: "Second-hand, one item only",
-          title,
+          eyebrow: "Delivery information",
+          title: "Delivery and collection",
           rows: [
-            { label: "Platform size", value: profile.product.finalSizeLabel ?? "Not confirmed" },
-            { label: "Condition", value: profile.product.conditionGrade ?? "Not confirmed" },
-            { label: "Price", value: profile.product.priceKsh ? `KSh ${profile.product.priceKsh.toLocaleString("en-KE")}` : "Not set" }
+            { label: "Availability", value: "One unique second-hand item" },
+            { label: "Options", value: "Confirmed during checkout" },
+            { label: "Before purchase", value: "Review measurements and item photos" }
           ],
-          note: stringValue(finalCopy.shortDescription),
-          accent: "#b42318"
+          note: "Contact Direct Loop support promptly if the received item does not match the approved listing.",
+          accent: "#1f6f5f"
         })
       )
     );
@@ -184,6 +199,33 @@ export class ProductDetailAssetService {
     if (optimized) return { storageUrl: optimized.storageUrl, publicUrl: optimized.publicUrl, mimeType: optimized.mimeType };
     const front = images.find((image) => image.type === ProductImageType.FRONT);
     return front ? { storageUrl: front.originalUrl, publicUrl: front.publicUrl, mimeType: mimeFromUrl(front.originalUrl) } : null;
+  }
+
+  private async ensureModelDisplay(productId: string) {
+    const existing = await prisma.productImageVariantAsset.findFirst({
+      where: { productId, variant: ProductImageVariant.AI_DISPLAY_MAIN },
+      orderBy: { createdAt: "desc" }
+    });
+    if (existing) return existing;
+
+    const white = await prisma.productImageVariantAsset.findFirst({
+      where: { productId, variant: ProductImageVariant.CUTOUT_WHITE },
+      orderBy: { createdAt: "desc" }
+    });
+    if (!white) throw new BadRequestException("A white-background cutout is required before generating the model display image");
+
+    const job = await this.imageProcessing.start({
+      productId,
+      sourceImageId: white.id,
+      operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"
+    });
+    const completed = await this.imageJobs.run(job.id);
+    if (completed.status !== ImageProcessingStatus.SUCCEEDED || !completed.outputImageId) {
+      throw new BadRequestException(completed.errorMessage || "Model display image generation failed");
+    }
+    const generated = await prisma.productImageVariantAsset.findUnique({ where: { id: completed.outputImageId } });
+    if (!generated) throw new BadRequestException("Generated model display image was not saved");
+    return generated;
   }
 
   private async generateBackMain(
@@ -310,67 +352,12 @@ export class ProductDetailAssetService {
   }
 }
 
-function fitRows(profile: {
-  fitType: unknown;
-  stretchLevel: unknown;
-  fabricWeight: unknown;
-  bodyChestMinCm: unknown;
-  bodyChestMaxCm: unknown;
-  bodyWaistMinCm: unknown;
-  bodyWaistMaxCm: unknown;
-  bodyHipMinCm: unknown;
-  bodyHipMaxCm: unknown;
-  heightMinCm: unknown;
-  heightMaxCm: unknown;
-  weightMinKg: unknown;
-  weightMaxKg: unknown;
-  recommendationConfidence: unknown;
-}) {
-  return [
-    row("Fit", profile.fitType),
-    row("Stretch", profile.stretchLevel),
-    row("Fabric weight", profile.fabricWeight),
-    rangeRow("Suggested body chest", profile.bodyChestMinCm, profile.bodyChestMaxCm, "cm"),
-    rangeRow("Suggested body waist", profile.bodyWaistMinCm, profile.bodyWaistMaxCm, "cm"),
-    rangeRow("Suggested body hip", profile.bodyHipMinCm, profile.bodyHipMaxCm, "cm"),
-    rangeRow("Height reference", profile.heightMinCm, profile.heightMaxCm, "cm"),
-    rangeRow("Weight reference", profile.weightMinKg, profile.weightMaxKg, "kg"),
-    row("Confidence", profile.recommendationConfidence === null ? null : `${Math.round(Number(profile.recommendationConfidence) * 100)}%`)
-  ].filter((item): item is { label: string; value: string } => Boolean(item));
-}
-
-function conditionRows(condition: unknown, defects: Array<{ defectType: string; customerSafeDescription: string | null; description: string }>) {
-  const rows = [row("Condition grade", condition)];
-  for (const defect of defects.slice(0, 5)) {
-    rows.push({ label: defect.defectType, value: defect.customerSafeDescription ?? defect.description });
-  }
-  if (defects.length === 0) rows.push({ label: "Disclosed defects", value: "None recorded" });
-  return rows.filter((item): item is { label: string; value: string } => Boolean(item));
-}
-
-function row(label: string, value: unknown): { label: string; value: string } | null {
-  if (value === null || value === undefined || value === "") return null;
-  return { label, value: String(value).replaceAll("_", " ") };
-}
-
-function rangeRow(label: string, min: unknown, max: unknown, unit: string) {
-  if (min === null || min === undefined || max === null || max === undefined) return null;
-  return { label, value: `${Number(min)}-${Number(max)} ${unit}` };
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-export function englishCardText(value: string | null): string | null {
-  if (!value) return null;
-  const firstHanCharacter = value.search(/[\u3400-\u9fff]/u);
-  const english = (firstHanCharacter === -1 ? value : value.slice(0, firstHanCharacter)).trim();
-  return english || null;
 }
 
 function mimeFromUrl(url: string): string {

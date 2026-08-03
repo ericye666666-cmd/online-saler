@@ -10,7 +10,6 @@ describe("product detail copy", () => {
       title: "Black regular-fit cotton shirt",
       sellingPoints: ["Regular fit", "Four final measurements", "Good condition"],
       shortDescription: "A concise second-hand shirt description.",
-      fitSummary: "Regular fit with no recorded stretch.",
       measurementSummary: "Chest width 52 cm and length 70 cm.",
       conditionSummary: "Good condition with a small cuff mark.",
       styleTags: ["shirt", "black"],
@@ -29,7 +28,6 @@ describe("product detail copy", () => {
           title: "Shirt",
           sellingPoints: ["Only one"],
           shortDescription: "Description",
-          fitSummary: "Fit",
           measurementSummary: "Measurements",
           conditionSummary: "Condition",
           styleTags: [],
@@ -98,7 +96,7 @@ describe("product detail copy", () => {
     assert.equal(facts.fitType, "REGULAR");
     assert.equal(facts.material, "COTTON_BLEND");
     assert.deepEqual(facts.tags, ["COLLARED", "BUTTON_FRONT"]);
-    assert.equal(facts.fitRecommendation.bodyChestMaxCm, 102);
+    assert.equal("fitRecommendation" in facts, false);
     assert.equal(facts.sourceDataVersion, 4);
   });
 });

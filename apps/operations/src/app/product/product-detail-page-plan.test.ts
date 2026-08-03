@@ -11,7 +11,7 @@ import {
 test("keeps the six storefront detail pages in a fixed order", () => {
   assert.deepEqual(
     PRODUCT_DETAIL_PAGE_PLAN.map((page) => page.type),
-    ["FRONT_MAIN", "BACK_MAIN", "MEASUREMENT_GUIDE", "FIT_GUIDE", "CONDITION_GUIDE", "SHARE_CARD"]
+    ["FRONT_MAIN", "BACK_MAIN", "MODEL_DISPLAY", "MEASUREMENT_GUIDE", "DETAIL_GALLERY", "DELIVERY_GUIDE"]
   );
 });
 

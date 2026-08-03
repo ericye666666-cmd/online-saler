@@ -40,11 +40,11 @@ import {
 const API_PROXY_URL = "/api-proxy";
 const ASSET_LABELS: Record<string, string> = {
   FRONT_MAIN: "正面主图",
-  BACK_MAIN: "背面主图",
-  MEASUREMENT_GUIDE: "测量说明",
-  FIT_GUIDE: "版型建议",
-  CONDITION_GUIDE: "成色说明",
-  SHARE_CARD: "分享图"
+  BACK_MAIN: "背面实物",
+  MODEL_DISPLAY: "模特陈列图",
+  MEASUREMENT_GUIDE: "尺码说明",
+  DETAIL_GALLERY: "细节照片",
+  DELIVERY_GUIDE: "配送说明"
 };
 
 type BatchProduct = {
@@ -146,7 +146,6 @@ type EditableCopy = {
   title: string;
   sellingPoints: [string, string, string];
   shortDescription: string;
-  fitSummary: string;
   measurementSummary: string;
   conditionSummary: string;
   styleTags: string;
@@ -481,7 +480,6 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
           title: copy.title,
           sellingPoints: copy.sellingPoints,
           shortDescription: copy.shortDescription,
-          fitSummary: copy.fitSummary,
           measurementSummary: copy.measurementSummary,
           conditionSummary: copy.conditionSummary,
           styleTags: lines(copy.styleTags, ","),
@@ -674,23 +672,14 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               <Fact label="面料厚度" value={labelValue(profile.fabricWeight)} />
               <Fact label="成色" value={labelValue(profile.product.conditionGrade)} />
               <Fact label="价格" value={profile.product.priceKsh ? `KSh ${profile.product.priceKsh}` : null} />
-              <Fact label="预计穿着" value={profile.expectedFit} />
             </div>
           </section>
 
           <section className="rounded-md border p-4">
-            <h2 className="font-semibold">实测与推荐范围</h2>
+            <h2 className="font-semibold">平铺实测</h2>
+            <p className="mt-1 text-xs text-muted-foreground">只展示员工确认的衣物厘米数，不推断身高、体重、年龄或身体围度。</p>
             <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               {profile.product.measurements.map((item) => <Fact key={item.measurementType} label={measurementLabel(item.measurementType)} value={measurementValue(item.finalValueCm)} />)}
-              <Fact label="建议胸围" value={range(profile.bodyChestMinCm, profile.bodyChestMaxCm, "cm")} />
-              <Fact label="建议腰围" value={range(profile.bodyWaistMinCm, profile.bodyWaistMaxCm, "cm")} />
-              <Fact label="建议臀围" value={range(profile.bodyHipMinCm, profile.bodyHipMaxCm, "cm")} />
-              <Fact label="身高参考" value={range(profile.heightMinCm, profile.heightMaxCm, "cm")} />
-              <Fact label="体重参考" value={range(profile.weightMinKg, profile.weightMaxKg, "kg")} />
-              <Fact label="置信度" value={profile.recommendationConfidence == null ? null : `${Math.round(Number(profile.recommendationConfidence) * 100)}%`} />
-              <Fact label="判断依据" value={jsonText(profile.recommendationBasis)} wide />
-              <Fact label="警告" value={jsonText(profile.recommendationWarnings)} wide />
-              <Fact label="免责声明" value={profile.sizeDisclaimer} wide />
             </div>
           </section>
 
@@ -704,7 +693,6 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               <Field label="标题"><Input value={copy.title} maxLength={120} onChange={(event) => setCopy((current) => ({ ...current, title: event.target.value }))} /></Field>
               {copy.sellingPoints.map((point, index) => <Field key={index} label={`卖点 ${index + 1}`}><Input value={point} maxLength={160} onChange={(event) => setCopy((current) => ({ ...current, sellingPoints: current.sellingPoints.map((item, itemIndex) => itemIndex === index ? event.target.value : item) as EditableCopy["sellingPoints"] }))} /></Field>)}
               <Field label="商品描述"><Textarea rows={4} value={copy.shortDescription} onChange={(event) => setCopy((current) => ({ ...current, shortDescription: event.target.value }))} /></Field>
-              <Field label="版型摘要"><Textarea rows={2} value={copy.fitSummary} onChange={(event) => setCopy((current) => ({ ...current, fitSummary: event.target.value }))} /></Field>
               <Field label="尺寸摘要"><Textarea rows={2} value={copy.measurementSummary} onChange={(event) => setCopy((current) => ({ ...current, measurementSummary: event.target.value }))} /></Field>
               <Field label="成色摘要"><Textarea rows={2} value={copy.conditionSummary} onChange={(event) => setCopy((current) => ({ ...current, conditionSummary: event.target.value }))} /></Field>
               <Field label="风格标签（逗号分隔）"><Input value={copy.styleTags} onChange={(event) => setCopy((current) => ({ ...current, styleTags: event.target.value }))} /></Field>
@@ -717,7 +705,6 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
           <section className="rounded-md border p-4">
             <h2 className="font-semibold">详情操作</h2>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("fit", `/product-detail-profiles/${profile.id}/recalculate-fit`, "版型推荐和素材已重新计算。") }><RefreshCwIcon data-icon="inline-start" />重算版型</Button>
               <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("assets", `/product-detail-profiles/${profile.id}/assets/generate`, "固定详情素材已重新生成。") }><RefreshCwIcon data-icon="inline-start" />重生成素材</Button>
               <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("openai", `/product-detail-profiles/${profile.id}/regenerate-openai`, "OpenAI 文案和详情素材已重新生成。") }><SparklesIcon data-icon="inline-start" />重新调用 OpenAI</Button>
               <Button disabled={Boolean(busy) || profile.status === "APPROVED" || !hasSelectedMainImage} onClick={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId }) }><CheckCircle2Icon data-icon="inline-start" />批准详情</Button>
@@ -752,7 +739,7 @@ function ProductPublishPreview({
 }) {
   const assetByType = new Map(assets.map((asset) => [asset.type, asset]));
   const main = assetByType.get("FRONT_MAIN");
-  const evidence = profile.product.images.filter((image) => ["LABEL", "DETAIL", "DEFECT"].includes(image.type));
+  const evidence = profile.product.images.filter((image) => ["DETAIL", "DEFECT"].includes(image.type));
   const sellingPoints = copy.sellingPoints.filter(Boolean);
 
   return (
@@ -760,7 +747,7 @@ function ProductPublishPreview({
       <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2"><Badge>发布预览</Badge><span className="text-sm font-medium">顾客视角 · 尚未发布</span></div>
-          <p className="mt-1 text-xs text-muted-foreground">逐页确认图片、尺寸、版型、成色和商品文案。批准只确认详情草稿，不会发布商品。</p>
+          <p className="mt-1 text-xs text-muted-foreground">逐页确认首图、背面、模特图、平铺实测、细节照片和配送说明。批准只确认详情草稿，不会发布商品。</p>
         </div>
         <Button size="sm" variant="outline" onClick={onEdit}><PencilLineIcon data-icon="inline-start" />编辑内容</Button>
       </div>
@@ -785,7 +772,6 @@ function ProductPublishPreview({
             <PreviewFact label="适用人群" value={labelValue(profile.product.gender)} />
             <PreviewFact label="面料" value={profile.product.material} />
             <PreviewFact label="颜色" value={profile.product.color} />
-            <PreviewFact label="版型" value={labelValue(profile.fitType)} />
             <PreviewFact label="成色" value={labelValue(profile.product.conditionGrade)} />
           </dl>
         </div>
@@ -802,27 +788,25 @@ function ProductPublishPreview({
             return (
               <figure key={page.type} className="overflow-hidden rounded-md border">
                 <div className="flex items-center justify-between border-b px-3 py-2 text-sm"><span className="font-medium">第 {page.number} 页 · {page.title}</span><Badge variant="outline">{statusLabel(asset?.status)}</Badge></div>
-                <div className="flex aspect-square items-center justify-center bg-muted/10">{asset ? <SafeImage src={assetUrl(asset)} alt={page.title} /> : <EmptyImage compact />}</div>
+                <div className="flex aspect-square items-center justify-center bg-muted/10">
+                  {page.type === "DETAIL_GALLERY" && evidence.length ? (
+                    <div className="grid size-full grid-cols-2 gap-1 p-1">
+                      {evidence.slice(0, 4).map((image) => <SafeImage key={image.id} src={sourceImageUrl(profile.product.id, image)} alt={sourceImageLabel(image.type)} />)}
+                    </div>
+                  ) : asset ? <SafeImage src={assetUrl(asset)} alt={page.title} /> : <EmptyImage compact />}
+                </div>
               </figure>
             );
           })}
         </div>
       </section>
 
-      <section className="grid border-b md:grid-cols-3">
+      <section className="grid border-b md:grid-cols-2">
         <div className="border-b p-5 md:border-r md:border-b-0">
-          <h3 className="font-semibold">实测尺寸</h3>
+          <h3 className="font-semibold">平铺实测尺寸</h3>
           <p className="mt-1 text-sm text-muted-foreground">{copy.measurementSummary || "请核对每个测量点。"}</p>
           <dl className="mt-4 space-y-2 text-sm">{profile.product.measurements.map((item) => <PreviewFact key={item.measurementType} label={measurementLabel(item.measurementType)} value={measurementValue(item.finalValueCm)} row />)}</dl>
-        </div>
-        <div className="border-b p-5 md:border-r md:border-b-0">
-          <h3 className="font-semibold">版型与尺码建议</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{copy.fitSummary || profile.expectedFit || "版型建议尚未生成。"}</p>
-          <dl className="mt-4 space-y-2 text-sm">
-            <PreviewFact label="建议胸围" value={range(profile.bodyChestMinCm, profile.bodyChestMaxCm, "cm")} row />
-            <PreviewFact label="建议腰围" value={range(profile.bodyWaistMinCm, profile.bodyWaistMaxCm, "cm")} row />
-            <PreviewFact label="建议臀围" value={range(profile.bodyHipMinCm, profile.bodyHipMaxCm, "cm")} row />
-          </dl>
+          <p className="mt-4 text-xs text-muted-foreground">这是衣物平铺厘米数，不是身高、体重、年龄或身体尺寸建议。</p>
         </div>
         <div className="p-5">
           <h3 className="font-semibold">成色与瑕疵</h3>
@@ -833,8 +817,8 @@ function ProductPublishPreview({
 
       {evidence.length ? (
         <section className="border-b px-4 py-5 sm:px-6">
-          <p className="text-xs text-muted-foreground">原始凭证</p>
-          <h2 className="text-lg font-semibold">标签、细节与瑕疵图</h2>
+          <p className="text-xs text-muted-foreground">第 5 页</p>
+          <h2 className="text-lg font-semibold">员工拍摄的细节与瑕疵原图</h2>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {evidence.map((image) => <figure key={image.id} className="overflow-hidden rounded-md border"><div className="aspect-square bg-muted/10"><SafeImage src={sourceImageUrl(profile.product.id, image)} alt={sourceImageLabel(image.type)} /></div><figcaption className="border-t px-3 py-2 text-xs">{sourceImageLabel(image.type)}</figcaption></figure>)}
           </div>
@@ -842,7 +826,7 @@ function ProductPublishPreview({
       ) : null}
 
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">{profile.sizeDisclaimer || "尺码建议仅供参考，请以平铺实测数据为准。"}</p>
+        <p className="text-xs text-muted-foreground">详情只展示商品事实和衣物平铺实测，不提供身高、体重或年龄建议。</p>
         <Button disabled={busy || profile.status === "APPROVED" || !mainImageSelected} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : mainImageSelected ? "确认预览并批准详情" : "请先选择商城主图"}</Button>
       </div>
     </div>
@@ -920,7 +904,6 @@ function copyFromJson(value: unknown, fallbackTitle: string): EditableCopy {
     title: stringValue(record.title) || fallbackTitle,
     sellingPoints: [points[0] ?? "", points[1] ?? "", points[2] ?? ""],
     shortDescription: stringValue(record.shortDescription),
-    fitSummary: stringValue(record.fitSummary),
     measurementSummary: stringValue(record.measurementSummary),
     conditionSummary: stringValue(record.conditionSummary),
     styleTags: stringArray(record.styleTags).join(", "),
@@ -930,7 +913,7 @@ function copyFromJson(value: unknown, fallbackTitle: string): EditableCopy {
 }
 
 function emptyCopy(): EditableCopy {
-  return { title: "", sellingPoints: ["", "", ""], shortDescription: "", fitSummary: "", measurementSummary: "", conditionSummary: "", styleTags: "", missingInformation: "", warnings: "" };
+  return { title: "", sellingPoints: ["", "", ""], shortDescription: "", measurementSummary: "", conditionSummary: "", styleTags: "", missingInformation: "", warnings: "" };
 }
 
 function lines(value: string, separator = "\n") {
@@ -942,7 +925,7 @@ function statusLabel(value?: string | null) {
 }
 
 function assetOrder(type: string) {
-  return ["FRONT_MAIN", "BACK_MAIN", "MEASUREMENT_GUIDE", "FIT_GUIDE", "CONDITION_GUIDE", "SHARE_CARD"].indexOf(type);
+  return ["FRONT_MAIN", "BACK_MAIN", "MODEL_DISPLAY", "MEASUREMENT_GUIDE", "DETAIL_GALLERY", "DELIVERY_GUIDE"].indexOf(type);
 }
 
 function labelValue(value: unknown) { return typeof value === "string" ? value.replaceAll("_", " ") : ""; }
@@ -950,7 +933,5 @@ function stringValue(value: unknown) { return typeof value === "string" ? value 
 function stringArray(value: unknown) { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
 function errorMessage(value: unknown) { return value instanceof Error ? value.message : "操作失败。"; }
-function range(min: unknown, max: unknown, unit: string) { return min == null || max == null ? null : `${Number(min)}–${Number(max)} ${unit}`; }
 function measurementValue(value: unknown) { return value == null ? null : `${Number(value)} cm`; }
-function jsonText(value: unknown) { return Array.isArray(value) ? value.join("；") : value && typeof value === "object" ? JSON.stringify(value) : value; }
 function measurementLabel(value: string) { return ({ LENGTH: "衣长", CHEST_WIDTH: "胸宽", SHOULDER_WIDTH: "肩宽", SLEEVE_LENGTH: "袖长", WAIST: "腰宽", HIP: "臀宽", INSEAM: "内长", OUTSEAM: "裤长", LEG_OPENING: "裤脚宽", THIGH_WIDTH: "大腿宽" } as Record<string, string>)[value] ?? labelValue(value); }

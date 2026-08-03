@@ -6,14 +6,16 @@ import {
   selectMeasurementTemplate,
   type MeasurementTemplate
 } from "./product-detail-card-renderer.service";
-import { englishCardText } from "./product-detail-asset.service";
 
 describe("ProductDetailCardRendererService", () => {
   it("selects every fixed garment template and keeps a generic top fallback", () => {
     const cases: Array<[string | null, string | null, MeasurementTemplate]> = [
-      ["TOPS", "TSHIRT", "TOP_TEMPLATE"],
+      ["TOPS", "TSHIRT", "SHIRT_TEMPLATE"],
+      ["TOPS", "HOODIE", "HOODIE_TEMPLATE"],
       ["DRESSES", "DRESS", "DRESS_TEMPLATE"],
       ["PANTS", "JEANS", "PANTS_TEMPLATE"],
+      ["SHORTS", "CASUAL_SHORTS", "SHORTS_TEMPLATE"],
+      ["SKIRTS", "MIDI_SKIRT", "SKIRT_TEMPLATE"],
       ["JACKETS", "OUTDOOR_JACKET", "JACKET_TEMPLATE"],
       ["KIDS", "KIDS_TOP", "KIDS_TOP_TEMPLATE"],
       ["KIDS", "KIDS_PANTS", "KIDS_PANTS_TEMPLATE"],
@@ -38,10 +40,10 @@ describe("ProductDetailCardRendererService", () => {
 
   it("renders deterministic Satori information cards through Sharp", async () => {
     const body = await new ProductDetailCardRendererService().informationCard({
-      eyebrow: "Fit guide",
-      title: "Regular fit",
-      rows: [{ label: "Suggested chest", value: "96-102 cm" }],
-      note: "Compare with a garment you own."
+      eyebrow: "Delivery",
+      title: "Collection and delivery",
+      rows: [{ label: "Checkout", value: "Confirm the available option" }],
+      note: "Contact support if the received item differs from the approved listing."
     });
     const metadata = await sharp(body).metadata();
     assert.equal(metadata.format, "webp");
@@ -49,12 +51,4 @@ describe("ProductDetailCardRendererService", () => {
     assert.equal(metadata.height, 1200);
   });
 
-  it("keeps storefront card notes in the supported English locale", () => {
-    assert.equal(
-      englishCardText("Height and weight are reference only. 身高和体重仅供参考。"),
-      "Height and weight are reference only."
-    );
-    assert.equal(englishCardText("English only."), "English only.");
-    assert.equal(englishCardText(null), null);
-  });
 });
