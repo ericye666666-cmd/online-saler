@@ -13,6 +13,8 @@ import { testPublicDetail } from "./storefront-products.test-fixture";
 
 const product: PublicProduct = {
   id: "product-1",
+  productCode: "DL-0001",
+  barcode: "920260800001",
   title: "Coral Orange Graphic T-Shirt",
   category: "TOP",
   subcategory: "TSHIRT",

@@ -9,6 +9,11 @@ import {
   type PublicProduct
 } from "../app/storefront-products";
 import type { Product } from "../app/data/products";
+import {
+  normalizeProductTitle,
+  optionalDisplayValue,
+  publicProductCode
+} from "../app/product-detail-commerce";
 
 const categoryMap: Record<string, string> = {
   DRESS: "Dresses",
@@ -17,6 +22,11 @@ const categoryMap: Record<string, string> = {
   KNITWEAR: "Knitwear",
   TROUSER: "Trousers",
   TROUSERS: "Trousers",
+  PANTS: "Trousers",
+  SHORT: "Trousers",
+  TSHIRTS: "Tops",
+  SHIRTS: "Tops",
+  BLOUSES: "Tops",
   SKIRT: "Skirts",
   BAG: "Bags",
   BAGS: "Bags",
@@ -52,8 +62,11 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
   const color = display(product.color ?? "Unknown");
 
   return {
-    code: product.id,
-    title: product.detail.title?.trim() || product.title?.trim() || "Second-hand item",
+    code: publicProductCode(product),
+    title: normalizeProductTitle(
+      brand,
+      product.detail.title?.trim() || product.title?.trim() || "Second-hand item"
+    ),
     category,
     brand,
     price: product.priceKsh ?? 0,
@@ -74,12 +87,18 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
     ].filter(Boolean).join(", "),
     detail: {
       sellingPoints: product.detail.sellingPoints,
-      measurementSummary: product.detail.measurementSummary ?? "",
-      conditionSummary: product.detail.conditionSummary ?? "",
+      measurementSummary: optionalDisplayValue(product.detail.measurementSummary),
+      conditionSummary: optionalDisplayValue(product.detail.conditionSummary),
       styleTags: [...new Set([...product.tags.map(display), ...product.detail.styleTags])],
-      fitType: display(product.detail.fitType || product.fitType || "Not confirmed"),
-      stretchLevel: display(product.detail.stretchLevel || product.stretchLevel || "Not confirmed"),
-      fabricWeight: display(product.detail.fabricWeight || product.fabricWeight || "Not confirmed"),
+      fitType: optionalDisplayValue(product.detail.fitType || product.fitType)
+        ? display(product.detail.fitType || product.fitType || "")
+        : null,
+      stretchLevel: optionalDisplayValue(product.detail.stretchLevel || product.stretchLevel)
+        ? display(product.detail.stretchLevel || product.stretchLevel || "")
+        : null,
+      fabricWeight: optionalDisplayValue(product.detail.fabricWeight || product.fabricWeight)
+        ? display(product.detail.fabricWeight || product.fabricWeight || "")
+        : null,
       measurements: product.measurements,
       defects: product.defects,
       assets: product.detail.assets.map((asset) => ({ ...asset, image: detailAssetSrc(asset) })),

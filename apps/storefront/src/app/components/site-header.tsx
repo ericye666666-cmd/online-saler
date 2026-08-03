@@ -32,6 +32,7 @@ type SiteHeaderProps = {
   selectedCategory?: CatalogCategory;
   onSelectCategory?: (category: CatalogCategory) => void;
   onSelectBrowse?: (selection: BrowseSelection) => void;
+  productDetail?: boolean;
 };
 
 type MenuItem = BrowseSelection & { label: string };
@@ -219,6 +220,7 @@ export function SiteHeader({
   selectedCategory = "All",
   onSelectCategory,
   onSelectBrowse,
+  productDetail = false,
 }: SiteHeaderProps) {
   const [localSearch, setLocalSearch] = useState("");
   const [desktopMenuId, setDesktopMenuId] = useState<string | null>(null);
@@ -227,6 +229,7 @@ export function SiteHeader({
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const value = searchValue ?? localSearch;
+  const homeHref = sellerRef ? `/?ref=${encodeURIComponent(sellerRef)}` : "/";
   const activeDesktopGroup = useMemo(
     () => navigationGroups.find((group) => group.id === desktopMenuId),
     [desktopMenuId],
@@ -305,20 +308,32 @@ export function SiteHeader({
     onSearchChange?.(nextValue);
   }
 
+  function handleMobileBack() {
+    if (window.history.length > 1) window.history.back();
+    else window.location.assign(homeHref);
+  }
+
   return (
     <header className="siteHeader depopHeader" ref={headerRef}>
-      <div className="depopHeaderMain">
-        <button
-          className="depopMobileMenuButton"
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          aria-label="Open menu"
-        >
-          <Menu size={25} />
-        </button>
+      <div className={`depopHeaderMain ${productDetail ? "productDetailHeaderMain" : ""}`}>
+        <div className="depopMobileNavLeft">
+          {productDetail ? (
+            <button type="button" onClick={handleMobileBack} aria-label="Go back">
+              <ArrowLeft size={24} />
+            </button>
+          ) : null}
+          <button
+            className="depopMobileMenuButton"
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open menu"
+          >
+            <Menu size={24} />
+          </button>
+        </div>
 
         <Link
-          href={sellerRef ? `/?ref=${encodeURIComponent(sellerRef)}` : "/"}
+          href={homeHref}
           className="wordmark depopWordmark"
           aria-label="Direct Loop home"
         >
@@ -346,16 +361,20 @@ export function SiteHeader({
           <SellerHeaderAction />
         </div>
 
-        <button
-          className="depopMobileSearchButton"
-          type="button"
-          onClick={() => setMobileSearchOpen((current) => !current)}
-          aria-label="Search"
-          aria-expanded={mobileSearchOpen}
-        >
-          <Search size={23} />
-        </button>
-        <SellerHeaderAction variant="mobile-compact" />
+        <div className="depopMobileNavRight">
+          <button
+            className="depopMobileSearchButton"
+            type="button"
+            onClick={() => setMobileSearchOpen((current) => !current)}
+            aria-label="Search"
+            aria-expanded={mobileSearchOpen}
+          >
+            <Search size={23} />
+          </button>
+          <Link href="/cart" aria-label="Open cart">
+            <ShoppingBag size={23} />
+          </Link>
+        </div>
       </div>
 
       {mobileSearchOpen ? (
