@@ -87,7 +87,6 @@ export type ProductSourceImage = {
 
 export type ProductDetail = {
   sellingPoints: string[];
-  fitSummary: string;
   measurementSummary: string;
   conditionSummary: string;
   styleTags: string[];
@@ -96,18 +95,6 @@ export type ProductDetail = {
   fitType: string;
   stretchLevel: string;
   fabricWeight: string;
-  expectedFit: string;
-  recommendationConfidence: number | null;
-  recommendationBasis: unknown;
-  recommendationWarnings: unknown;
-  bodyRanges: {
-    chest: { min: number | null; max: number | null };
-    waist: { min: number | null; max: number | null };
-    hip: { min: number | null; max: number | null };
-    height: { min: number | null; max: number | null };
-    weight: { min: number | null; max: number | null };
-  };
-  sizeDisclaimer: string;
   measurements: Array<{ type: string; valueCm: string | null }>;
   defects: Array<{ type: string; severity: string; description: string | null }>;
   assets: ProductDetailAsset[];

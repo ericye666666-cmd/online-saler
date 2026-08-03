@@ -26,7 +26,6 @@ export type PublicProductDetail = {
   title: string | null;
   sellingPoints: string[];
   shortDescription: string | null;
-  fitSummary: string | null;
   measurementSummary: string | null;
   conditionSummary: string | null;
   styleTags: string[];
@@ -35,18 +34,6 @@ export type PublicProductDetail = {
   fitType: string | null;
   stretchLevel: string | null;
   fabricWeight: string | null;
-  bodyRanges: {
-    chest: { min: number | null; max: number | null };
-    waist: { min: number | null; max: number | null };
-    hip: { min: number | null; max: number | null };
-    height: { min: number | null; max: number | null };
-    weight: { min: number | null; max: number | null };
-  };
-  expectedFit: string | null;
-  recommendationConfidence: number | null;
-  recommendationBasis: unknown;
-  recommendationWarnings: unknown;
-  sizeDisclaimer: string | null;
   assets: PublicProductDetailAsset[];
 };
 

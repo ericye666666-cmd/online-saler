@@ -1599,6 +1599,155 @@ select:focus-visible {
   line-height: 1.55;
 }
 
+.simpleDetailPages {
+  display: grid;
+  gap: 0;
+}
+
+.simpleDetailPage {
+  border-top: 1px solid var(--line);
+  padding: 40px 0;
+}
+
+.simpleDetailPage > header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.simpleDetailPage > header > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: #151916;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.simpleDetailPage > header p,
+.simpleDetailPage > header h3 {
+  margin: 0;
+}
+
+.simpleDetailPage > header p {
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.simpleDetailPage > header h3 {
+  margin-top: 3px;
+  font-size: 22px;
+}
+
+.simpleDetailHero {
+  display: block;
+  width: min(100%, 820px);
+  max-height: 850px;
+  margin: 0 auto;
+  background: #fff;
+  object-fit: contain;
+}
+
+.measurementPageLayout,
+.deliveryPageLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 36px;
+  align-items: center;
+}
+
+.measurementPageLayout > img,
+.deliveryPageLayout > img {
+  display: block;
+  width: 100%;
+  max-height: 720px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.measurementPageLayout p,
+.deliveryPageLayout li,
+.defectSummary {
+  color: #555e59;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.measurementList {
+  margin: 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.measurementList > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 11px 0;
+}
+
+.measurementList dt {
+  color: var(--muted);
+}
+
+.measurementList dd {
+  margin: 0;
+  font-weight: 900;
+}
+
+.mobileDetailPhotoGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mobileDetailPhotoGrid figure {
+  min-width: 0;
+  margin: 0;
+}
+
+.mobileDetailPhotoGrid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7f7f7;
+  object-fit: contain;
+}
+
+.mobileDetailPhotoGrid figcaption {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.defectSummary {
+  margin-top: 22px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.defectSummary p,
+.defectSummary ul {
+  margin: 8px 0 0;
+}
+
+.deliveryPageLayout ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+}
+
 .catalogBuyBox {
   display: grid;
   gap: 9px;
@@ -2492,6 +2641,28 @@ select:focus-visible {
 
   .detailFactsGrid dl > div {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .simpleDetailPage {
+    padding: 30px 0;
+  }
+
+  .simpleDetailPage > header {
+    margin-bottom: 18px;
+  }
+
+  .simpleDetailPage > header h3 {
+    font-size: 19px;
+  }
+
+  .measurementPageLayout,
+  .deliveryPageLayout {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  .mobileDetailPhotoGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

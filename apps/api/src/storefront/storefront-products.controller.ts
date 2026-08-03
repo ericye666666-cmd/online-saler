@@ -286,7 +286,6 @@ export function publicDetail(profile: ProductWithPublicRelations["detailProfiles
     title: stringValue(output.title),
     sellingPoints: stringArray(output.sellingPoints),
     shortDescription: stringValue(output.shortDescription),
-    fitSummary: stringValue(output.fitSummary),
     measurementSummary: stringValue(output.measurementSummary),
     conditionSummary: stringValue(output.conditionSummary),
     styleTags: stringArray(output.styleTags),
@@ -295,18 +294,6 @@ export function publicDetail(profile: ProductWithPublicRelations["detailProfiles
     fitType: profile.fitType,
     stretchLevel: profile.stretchLevel,
     fabricWeight: profile.fabricWeight,
-    bodyRanges: {
-      chest: numericRange(profile.bodyChestMinCm, profile.bodyChestMaxCm),
-      waist: numericRange(profile.bodyWaistMinCm, profile.bodyWaistMaxCm),
-      hip: numericRange(profile.bodyHipMinCm, profile.bodyHipMaxCm),
-      height: numericRange(profile.heightMinCm, profile.heightMaxCm),
-      weight: numericRange(profile.weightMinKg, profile.weightMaxKg)
-    },
-    expectedFit: profile.expectedFit,
-    recommendationConfidence: numberValue(profile.recommendationConfidence),
-    recommendationBasis: profile.recommendationBasis,
-    recommendationWarnings: profile.recommendationWarnings,
-    sizeDisclaimer: profile.sizeDisclaimer,
     assets: profile.assets.map((asset) => ({
       id: asset.id,
       type: asset.type,
@@ -325,14 +312,4 @@ function stringValue(value: unknown): string | null {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
-}
-
-function numberValue(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function numericRange(min: unknown, max: unknown) {
-  return { min: numberValue(min), max: numberValue(max) };
 }

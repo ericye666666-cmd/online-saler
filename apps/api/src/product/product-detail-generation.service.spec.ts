@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
-  ProductDetailAssetType,
   ProductDetailStatus,
   ProductFabricWeight,
   ProductFitType,
@@ -12,6 +11,7 @@ import {
 import {
   isBatchReadyForDetailGeneration,
   ProductDetailGenerationService,
+  REQUIRED_DETAIL_ASSET_TYPES,
   summarizeDetailBatch
 } from "./product-detail-generation.service";
 
@@ -146,9 +146,8 @@ describe("ProductDetailGenerationService", () => {
     assert.equal(profileInputs.length, 10);
     assert.equal(jobInputs.length, 10);
     assert.equal(profileInputs[0]?.sourceDataVersion, 1);
-    assert.equal(profileInputs[0]?.bodyChestMaxCm, 103);
-    assert.match(String(profileInputs[0]?.sizeDisclaimer), /Height and weight are reference only/);
-    assert.match(String(profileInputs[0]?.sizeDisclaimer), /身高和体重仅供参考/);
+    assert.equal(profileInputs[0]?.bodyChestMaxCm, undefined);
+    assert.equal(profileInputs[0]?.sizeDisclaimer, undefined);
     assert.equal(jobInputs[9]?.sourceDataVersion, 10);
     assert.ok(jobInputs.every((input) => input.status === ProductDetailStatus.PENDING));
   });
@@ -203,7 +202,7 @@ describe("ProductDetailGenerationService", () => {
       sourceDataVersion: 2,
       customerDescription: "  Approved storefront description.  ",
       product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
-      assets: Object.values(ProductDetailAssetType).map((type) => ({
+      assets: REQUIRED_DETAIL_ASSET_TYPES.map((type) => ({
         id: `asset-${type}`,
         type,
         status: ProductDetailStatus.READY
@@ -242,7 +241,7 @@ describe("ProductDetailGenerationService", () => {
       sourceDataVersion: 2,
       customerDescription: null,
       product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
-      assets: Object.values(ProductDetailAssetType).map((type) => ({
+      assets: REQUIRED_DETAIL_ASSET_TYPES.map((type) => ({
         id: `asset-${type}`,
         type,
         status: ProductDetailStatus.READY
@@ -263,7 +262,7 @@ describe("ProductDetailGenerationService", () => {
       sourceDataVersion: 2,
       customerDescription: "Complete description.",
       product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
-      assets: Object.values(ProductDetailAssetType).map((type) => ({
+      assets: REQUIRED_DETAIL_ASSET_TYPES.map((type) => ({
         id: `asset-${type}`,
         type,
         status: ProductDetailStatus.READY
@@ -302,7 +301,7 @@ describe("ProductDetailGenerationService", () => {
   });
 
   it("publishes every approved batch description to its product", async () => {
-    const assets = Object.values(ProductDetailAssetType).map((type) => ({
+    const assets = REQUIRED_DETAIL_ASSET_TYPES.map((type) => ({
       id: `asset-${type}`,
       type,
       status: ProductDetailStatus.READY

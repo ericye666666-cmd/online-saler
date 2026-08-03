@@ -7,10 +7,6 @@ import {
   Prisma,
   prisma
 } from "@online-saler/database";
-import {
-  calculateGarmentFitRecommendation,
-  type GarmentFitRecommendation
-} from "@online-saler/business-rules";
 import { normalizeProductDetailCopy } from "./product-detail-copy";
 
 const CALIBRATED_OR_LATER_STATUSES: ProductStatus[] = [
@@ -24,7 +20,14 @@ const CALIBRATED_OR_LATER_STATUSES: ProductStatus[] = [
   ProductStatus.ARCHIVED
 ];
 const CALIBRATED_OR_LATER = new Set<ProductStatus>(CALIBRATED_OR_LATER_STATUSES);
-const REQUIRED_DETAIL_ASSET_TYPES = Object.values(ProductDetailAssetType);
+export const REQUIRED_DETAIL_ASSET_TYPES = [
+  ProductDetailAssetType.FRONT_MAIN,
+  ProductDetailAssetType.BACK_MAIN,
+  ProductDetailAssetType.MODEL_DISPLAY,
+  ProductDetailAssetType.MEASUREMENT_GUIDE,
+  ProductDetailAssetType.DETAIL_GALLERY,
+  ProductDetailAssetType.DELIVERY_GUIDE
+] as const;
 
 export type DetailBatchProduct = {
   status: ProductStatus;
@@ -210,22 +213,6 @@ export class ProductDetailGenerationService {
     const jobs = await prisma.$transaction(async (transaction) => {
       const result = [];
       for (const product of batch.products) {
-        const recommendation = calculateGarmentFitRecommendation({
-          category: product.category,
-          subcategory: product.subcategory,
-          gender: product.gender,
-          platformSize: product.finalSizeLabel,
-          fitType: product.fitType,
-          stretchLevel: product.stretchLevel,
-          fabricWeight: product.fabricWeight,
-          measurements: Object.fromEntries(
-            product.measurements.map((measurement) => [
-              measurement.measurementType,
-              measurement.finalValueCm ? Number(measurement.finalValueCm) : null
-            ])
-          )
-        });
-        const fitData = profileFitData(recommendation);
         const profile = await transaction.productDetailProfile.upsert({
           where: {
             productId_sourceDataVersion: {
@@ -239,14 +226,27 @@ export class ProductDetailGenerationService {
             fitType: product.fitType,
             stretchLevel: product.stretchLevel,
             fabricWeight: product.fabricWeight,
-            sourceDataVersion: product.detailSourceVersion,
-            ...fitData
+            sourceDataVersion: product.detailSourceVersion
           },
           update: {
             fitType: product.fitType,
             stretchLevel: product.stretchLevel,
             fabricWeight: product.fabricWeight,
-            ...fitData
+            bodyChestMinCm: null,
+            bodyChestMaxCm: null,
+            bodyWaistMinCm: null,
+            bodyWaistMaxCm: null,
+            bodyHipMinCm: null,
+            bodyHipMaxCm: null,
+            heightMinCm: null,
+            heightMaxCm: null,
+            weightMinKg: null,
+            weightMaxKg: null,
+            expectedFit: null,
+            recommendationConfidence: null,
+            recommendationBasis: [],
+            recommendationWarnings: [],
+            sizeDisclaimer: null
           }
         });
         const job = await transaction.productDetailGenerationJob.upsert({
@@ -351,7 +351,7 @@ export class ProductDetailGenerationService {
         status: ProductDetailStatus.READY,
         sellingPointsJson: copy.sellingPoints,
         customerDescription: copy.shortDescription,
-        fitSummary: copy.fitSummary,
+        fitSummary: null,
         measurementSummary: copy.measurementSummary,
         conditionSummary: copy.conditionSummary,
         styleTagsJson: copy.styleTags,
@@ -380,22 +380,7 @@ export class ProductDetailGenerationService {
   }
 
   async recalculateFit(profileId: string) {
-    const profile = await this.requireCurrentProfile(profileId, true);
-    const recommendation = calculateGarmentFitRecommendation({
-      category: profile.product.category,
-      subcategory: profile.product.subcategory,
-      gender: profile.product.gender,
-      platformSize: profile.product.finalSizeLabel,
-      fitType: profile.product.fitType,
-      stretchLevel: profile.product.stretchLevel,
-      fabricWeight: profile.product.fabricWeight,
-      measurements: Object.fromEntries(
-        profile.product.measurements.map((measurement) => [
-          measurement.measurementType,
-          measurement.finalValueCm === null ? null : Number(measurement.finalValueCm)
-        ])
-      )
-    });
+    const profile = await this.requireCurrentProfile(profileId);
     return prisma.productDetailProfile.update({
       where: { id: profile.id },
       data: {
@@ -403,7 +388,21 @@ export class ProductDetailGenerationService {
         fitType: profile.product.fitType,
         stretchLevel: profile.product.stretchLevel,
         fabricWeight: profile.product.fabricWeight,
-        ...profileFitData(recommendation),
+        bodyChestMinCm: null,
+        bodyChestMaxCm: null,
+        bodyWaistMinCm: null,
+        bodyWaistMaxCm: null,
+        bodyHipMinCm: null,
+        bodyHipMaxCm: null,
+        heightMinCm: null,
+        heightMaxCm: null,
+        weightMinKg: null,
+        weightMaxKg: null,
+        expectedFit: null,
+        recommendationConfidence: null,
+        recommendationBasis: [],
+        recommendationWarnings: [],
+        sizeDisclaimer: null,
         approvedAt: null,
         approvedByEmployeeId: null
       }
@@ -626,24 +625,4 @@ export class ProductDetailGenerationService {
       })
     ]);
   }
-}
-
-function profileFitData(recommendation: GarmentFitRecommendation) {
-  return {
-    bodyChestMinCm: recommendation.bodyChestMinCm,
-    bodyChestMaxCm: recommendation.bodyChestMaxCm,
-    bodyWaistMinCm: recommendation.bodyWaistMinCm,
-    bodyWaistMaxCm: recommendation.bodyWaistMaxCm,
-    bodyHipMinCm: recommendation.bodyHipMinCm,
-    bodyHipMaxCm: recommendation.bodyHipMaxCm,
-    heightMinCm: recommendation.heightMinCm,
-    heightMaxCm: recommendation.heightMaxCm,
-    weightMinKg: recommendation.weightMinKg,
-    weightMaxKg: recommendation.weightMaxKg,
-    expectedFit: recommendation.expectedFit,
-    recommendationConfidence: recommendation.confidence,
-    recommendationBasis: recommendation.basis,
-    recommendationWarnings: recommendation.warnings,
-    sizeDisclaimer: `${recommendation.disclaimer}\n${recommendation.disclaimerZh}`
-  };
 }

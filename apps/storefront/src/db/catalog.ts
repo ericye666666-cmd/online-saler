@@ -46,7 +46,6 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
   const category = mapValue(categoryMap, product.category, "Tops");
   const brand = product.brand?.trim() || "Unbranded";
   const frontAsset = detailAsset(product, "FRONT_MAIN");
-  const shareAsset = detailAsset(product, "SHARE_CARD");
   const image = frontAsset ? detailAssetSrc(frontAsset) : productImageSrc(product) || "/products/920260718001.webp";
   const condition = mapValue(conditionMap, product.conditionGrade, "Good");
   const size = product.size?.trim() || product.kidsAgeRange?.trim() || "M";
@@ -65,7 +64,7 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
     status: "Available",
     condition: condition as Product["condition"],
     image,
-    ogImage: shareAsset ? detailAssetSrc(shareAsset) : image,
+    ogImage: image,
     description: product.detail.shortDescription?.trim() || [
       brand === "Unbranded" ? null : brand,
       category,
@@ -75,7 +74,6 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
     ].filter(Boolean).join(", "),
     detail: {
       sellingPoints: product.detail.sellingPoints,
-      fitSummary: product.detail.fitSummary ?? "",
       measurementSummary: product.detail.measurementSummary ?? "",
       conditionSummary: product.detail.conditionSummary ?? "",
       styleTags: [...new Set([...product.tags.map(display), ...product.detail.styleTags])],
@@ -84,12 +82,6 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
       fitType: display(product.detail.fitType || product.fitType || "Not confirmed"),
       stretchLevel: display(product.detail.stretchLevel || product.stretchLevel || "Not confirmed"),
       fabricWeight: display(product.detail.fabricWeight || product.fabricWeight || "Not confirmed"),
-      expectedFit: product.detail.expectedFit ?? "",
-      recommendationConfidence: product.detail.recommendationConfidence,
-      recommendationBasis: product.detail.recommendationBasis,
-      recommendationWarnings: product.detail.recommendationWarnings,
-      bodyRanges: product.detail.bodyRanges,
-      sizeDisclaimer: product.detail.sizeDisclaimer ?? "",
       measurements: product.measurements,
       defects: product.defects,
       assets: product.detail.assets.map((asset) => ({ ...asset, image: detailAssetSrc(asset) })),

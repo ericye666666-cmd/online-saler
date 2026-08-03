@@ -67,9 +67,10 @@ export class ProductDetailOpenAIProvider {
             content: [
               "You write concise second-hand clothing catalog copy for a Kenyan mobile storefront.",
               "Use only the supplied employee-confirmed facts and original product photos.",
-              "Never change or invent measurements, material composition, stretch, condition, defects, body ranges, height or weight.",
+              "Never change or invent measurements, material composition, stretch, condition or defects.",
               "Never infer a missing factual value. Put missing facts in missingInformation.",
-              "Measurements and fit recommendations are immutable source facts; summarize them without recalculating.",
+              "Summarize only flat garment measurements. Never recommend a wearer height, weight, age, body range or who the item should fit.",
+              "Never describe an adult garment as childrenswear unless the employee-confirmed category explicitly says KIDS.",
               "Do not claim waterproofing, authenticity or performance unless explicitly supplied.",
               "Return only the requested structured JSON."
             ].join(" ")
@@ -93,7 +94,7 @@ export class ProductDetailOpenAIProvider {
             schema: PRODUCT_DETAIL_COPY_SCHEMA
           }
         },
-        max_output_tokens: 1200
+        max_output_tokens: 1000
       })
     });
 
