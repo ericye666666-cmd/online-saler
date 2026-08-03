@@ -1,10 +1,8 @@
-export const PRODUCT_DETAIL_PAGE_PLAN = [
-  { type: "FRONT_MAIN", number: 1, title: "主图与购买信息", shortTitle: "主图" },
-  { type: "BACK_MAIN", number: 2, title: "背面", shortTitle: "背面" },
-  { type: "MODEL_DISPLAY", number: 3, title: "模特图", shortTitle: "模特" },
-  { type: "MEASUREMENT_GUIDE", number: 4, title: "尺码说明", shortTitle: "尺码" },
-  { type: "DETAIL_GALLERY", number: 5, title: "细节图", shortTitle: "细节" },
-  { type: "DELIVERY_GUIDE", number: 6, title: "配送说明", shortTitle: "配送" }
+export const PRODUCT_DETAIL_ASSET_PLAN = [
+  { type: "FRONT_MAIN", title: "正面主图", shortTitle: "主图", optional: false },
+  { type: "BACK_MAIN", title: "背面实物", shortTitle: "背面", optional: true },
+  { type: "MEASUREMENT_GUIDE", title: "尺码指南", shortTitle: "尺码", optional: false },
+  { type: "DETAIL_GALLERY", title: "细节与瑕疵", shortTitle: "细节", optional: true }
 ] as const;
 
 export function detailGenerationButtonLabel(batch: {
