@@ -24,6 +24,9 @@ env:
   IMAGE_NAME: metabase
   SERVICE_NAME: online-saler-metabase-staging
   METABASE_VERSION: v0.63.2
+  CLOUD_SQL_PROXY_VERSION: 2.22.0
+  CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
+  RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
 
 jobs:
   deploy:
@@ -64,32 +67,39 @@ jobs:
           docker push "${IMAGE_URI}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
 
-      - name: Deploy Metabase Cloud Run service
-        id: deploy
-        uses: google-github-actions/deploy-cloudrun@v3
-        with:
-          service: ${{ env.SERVICE_NAME }}
-          region: ${{ vars.GCP_REGION }}
-          image: ${{ env.IMAGE_URI }}
-          flags: >-
-            --allow-unauthenticated
-            --port=3000
-            --memory=2Gi
-            --cpu=1
-            --min-instances=0
-            --max-instances=1
-            --concurrency=20
-            --timeout=300s
-          env_vars: |
-            MB_DB_TYPE=postgres
-            JAVA_TIMEZONE=Africa/Nairobi
-          secrets: |
-            MB_DB_CONNECTION_URI=METABASE_DB_CONNECTION_URI_STAGING:latest
-            MB_ENCRYPTION_SECRET_KEY=METABASE_ENCRYPTION_SECRET_KEY_STAGING:latest
+      - name: Deploy Metabase with Cloud SQL Auth Proxy
+        run: |
+          gcloud run deploy "${SERVICE_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --execution-environment gen2 \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 1 \
+            --concurrency 20 \
+            --timeout 300s \
+            --container metabase \
+            --image "${IMAGE_URI}" \
+            --port 3000 \
+            --cpu 1 \
+            --memory 2Gi \
+            --depends-on cloud-sql-proxy \
+            --set-env-vars MB_DB_TYPE=postgres,JAVA_TIMEZONE=Africa/Nairobi \
+            --set-secrets MB_DB_CONNECTION_URI=METABASE_DB_CONNECTION_URI_STAGING:latest,MB_ENCRYPTION_SECRET_KEY=METABASE_ENCRYPTION_SECRET_KEY_STAGING:latest \
+            --container cloud-sql-proxy \
+            --image "gcr.io/cloud-sql-connectors/cloud-sql-proxy:${CLOUD_SQL_PROXY_VERSION}" \
+            --cpu 1 \
+            --memory 256Mi \
+            --args "--structured-logs,--lazy-refresh,--address=0.0.0.0,--port=5432,${CLOUD_SQL_INSTANCE}" \
+            --startup-probe "tcpSocket.port=5432,periodSeconds=1,timeoutSeconds=1,failureThreshold=60"
 
       - name: Verify Metabase health
         run: |
-          METABASE_URL="${{ steps.deploy.outputs.url }}"
+          METABASE_URL="$(gcloud run services describe "${SERVICE_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --format='value(status.url)')"
           echo "METABASE_URL=${METABASE_URL}" >> "${GITHUB_ENV}"
           curl \
             --fail \

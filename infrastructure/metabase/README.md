@@ -34,10 +34,12 @@ node scripts/bootstrap-metabase-bi.mjs
 
 The manual staging workflow expects these Google Secret Manager secrets:
 
-- `METABASE_DB_CONNECTION_URI_STAGING`: a JDBC-style PostgreSQL URI for a dedicated Metabase application database, for example `jdbc:postgresql://host:5432/metabase`.
+- `METABASE_DB_CONNECTION_URI_STAGING`: a JDBC-style PostgreSQL URI for the dedicated Metabase application database through the Cloud SQL Auth Proxy sidecar, for example `jdbc:postgresql://127.0.0.1:5432/metabase?user=metabase&password=...`.
 - `METABASE_ENCRYPTION_SECRET_KEY_STAGING`: at least 16 random characters.
 
 Metabase does not create its application database. Create the empty `metabase` database before the first workflow run and keep it separate from the Online Saler warehouse database.
+
+The staging service runs Metabase and a pinned Cloud SQL Auth Proxy sidecar in the same Cloud Run instance. Metabase connects to the proxy over `127.0.0.1:5432`; the database is not exposed directly to Cloud Run over the public internet. The runtime service account must retain `Cloud SQL Client` and `Secret Manager Secret Accessor`.
 
 After the first deployment:
 

@@ -49,11 +49,18 @@ test("grants Metabase access only to BI views", () => {
   assert.doesNotMatch(grants, /GRANT (INSERT|UPDATE|DELETE)/i);
 });
 
-test("pins Metabase and limits automatic staging deployment to BI changes on develop", () => {
+test("pins Metabase, Cloud SQL proxy, and limits automatic staging deployment", () => {
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /push:[\s\S]*branches:[\s\S]*- develop/);
   assert.match(workflow, /paths:[\s\S]*infrastructure\/metabase\/\*\*/);
   assert.match(workflow, /paths:[\s\S]*scripts\/bootstrap-metabase-bi\.mjs/);
   assert.match(workflow, /METABASE_VERSION: v0\.63\.2/);
+  assert.match(workflow, /CLOUD_SQL_PROXY_VERSION: 2\.22\.0/);
+  assert.match(workflow, /--service-account "\$\{RUNTIME_SERVICE_ACCOUNT\}"/);
+  assert.match(workflow, /--depends-on cloud-sql-proxy/);
+  assert.match(
+    workflow,
+    /gcr\.io\/cloud-sql-connectors\/cloud-sql-proxy:\$\{CLOUD_SQL_PROXY_VERSION\}/,
+  );
   assert.match(workflow, /METABASE_DB_CONNECTION_URI_STAGING/);
 });
