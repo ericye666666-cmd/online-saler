@@ -126,12 +126,12 @@ export class OperationsProductBatchService {
         prisma.product.count({ where: { ...whereOperator, status: ProductStatus.DRAFT } }),
         prisma.product.count({ where: { ...whereOperator, status: { in: [ProductStatus.PHOTOGRAPHED, ProductStatus.AI_PROCESSING] } } }),
         prisma.product.count({ where: { ...whereOperator, status: { in: [ProductStatus.AI_PROCESSED, ProductStatus.CALIBRATION_PENDING] } } }),
-        prisma.product.count({ where: { ...whereOperator, status: ProductStatus.BARCODE_ASSIGNED, labelAppliedAt: null } }),
+        prisma.product.count({ where: { ...whereOperator, status: ProductStatus.BARCODE_ASSIGNED, labelPrintedAt: null } }),
         prisma.product.count({
           where: {
             ...whereOperator,
             OR: [
-              { status: ProductStatus.BARCODE_ASSIGNED, labelAppliedAt: { not: null } },
+              { status: ProductStatus.BARCODE_ASSIGNED, labelPrintedAt: { not: null } },
               { status: ProductStatus.REVIEW_PENDING }
             ]
           }
@@ -365,8 +365,9 @@ export class OperationsProductBatchService {
       throw new BadRequestException(`All ${batch.targetCount} products must be calibrated before generating barcodes.`);
     }
     const generated = [];
+    const generatedAt = new Date();
     for (const product of products) {
-      generated.push(await this.barcodes.generate(product.id, employeeId));
+      generated.push(await this.barcodes.generate(product.id, employeeId, generatedAt));
     }
     return { batchId, generated };
   }
@@ -383,44 +384,6 @@ export class OperationsProductBatchService {
       employeeId: input.employeeId,
       productIds: products.map((product) => product.id)
     });
-  }
-
-  async confirmAppliedLabel(batchId: string, input: { adminUserId?: string; employeeId?: string; barcode?: string }) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
-    await this.requireBatch(batchId);
-    const barcode = input.barcode?.trim().toUpperCase();
-    if (!barcode) throw new BadRequestException("Barcode is required.");
-    const product = await prisma.product.findFirst({ where: { batchId, barcode } });
-    if (!product) {
-      const existsElsewhere = await prisma.product.findUnique({ where: { barcode } });
-      throw new BadRequestException(existsElsewhere ? "Barcode belongs to another batch." : "Barcode does not match this batch.");
-    }
-    if (!product.labelPrintedAt) throw new BadRequestException("Print the label before confirming application.");
-    if (product.labelAppliedAt) throw new BadRequestException("Barcode was already confirmed for this batch.");
-
-    const appliedAt = new Date();
-    await prisma.$transaction(async (transaction) => {
-      const updated = await transaction.product.updateMany({
-        where: { id: product.id, labelAppliedAt: null },
-        data: { labelAppliedAt: appliedAt }
-      });
-      if (updated.count !== 1) throw new BadRequestException("Barcode was already confirmed for this batch.");
-      await transaction.auditLog.create({
-        data: {
-          actorType: ActorType.EMPLOYEE,
-          actorId: employeeId,
-          sourceApp: SourceApp.OPERATIONS,
-          module: "PRODUCT_FACTORY",
-          entityType: "Product",
-          entityId: product.id,
-          action: "PRODUCT_LABEL_APPLIED",
-          beforeJson: { labelAppliedAt: null },
-          afterJson: { labelAppliedAt: appliedAt.toISOString(), barcode }
-        }
-      });
-    });
-    return prisma.product.findUnique({ where: { id: product.id }, include: this.productInclude() });
   }
 
   async stockInBatch(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
@@ -513,8 +476,8 @@ export class OperationsProductBatchService {
 
     let product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new NotFoundException("Product not found.");
-    if ((product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING) && !product.labelAppliedAt) {
-      throw new BadRequestException("Confirm the applied label before reviewing the product.");
+    if ((product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING) && !product.labelPrintedAt) {
+      throw new BadRequestException("Print the label before reviewing the product.");
     }
 
     const actor = { actorType: ActorType.EMPLOYEE, actorId: employeeId, sourceApp: SourceApp.OPERATIONS };
