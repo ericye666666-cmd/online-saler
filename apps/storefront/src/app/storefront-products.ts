@@ -29,8 +29,6 @@ export type PublicProductDetail = {
   measurementSummary: string | null;
   conditionSummary: string | null;
   styleTags: string[];
-  missingInformation: string[];
-  warnings: string[];
   fitType: string | null;
   stretchLevel: string | null;
   fabricWeight: string | null;

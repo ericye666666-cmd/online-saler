@@ -78,9 +78,23 @@ export class ProductDetailAssetService {
     }
 
     const back = profile.product.images.find((image) => image.type === ProductImageType.BACK);
-    if (back) {
-      assets.push(await this.generateBackMain(profile.id, profile.productId, profile.sourceDataVersion, back));
-    }
+    assets.push(
+      back
+        ? await this.generateBackMain(profile.id, profile.productId, profile.sourceDataVersion, back)
+        : await this.persistRendered(
+            profile.id,
+            profile.productId,
+            profile.sourceDataVersion,
+            ProductDetailAssetType.BACK_MAIN,
+            await this.renderer.informationCard({
+              eyebrow: "Back photo",
+              title: "Back photo not supplied",
+              rows: [],
+              note: "Upload a back photo before publication when the reverse differs from the front.",
+              accent: "#666666"
+            })
+          )
+    );
 
     const modelDisplay = await this.ensureModelDisplay(profile.productId);
     assets.push(
@@ -157,6 +171,24 @@ export class ProductDetailAssetService {
         })
       )
     );
+
+    await prisma.productDetailAsset.updateMany({
+      where: {
+        detailProfileId: profile.id,
+        type: {
+          in: [
+            ProductDetailAssetType.FIT_GUIDE,
+            ProductDetailAssetType.CONDITION_GUIDE,
+            ProductDetailAssetType.SHARE_CARD
+          ]
+        }
+      },
+      data: {
+        status: ProductDetailStatus.OUTDATED,
+        outdatedReason: "REPLACED_BY_SIMPLE_SIX_PAGE_TEMPLATE",
+        outdatedAt: new Date()
+      }
+    });
 
     const current = await prisma.product.findUnique({
       where: { id: profile.productId },

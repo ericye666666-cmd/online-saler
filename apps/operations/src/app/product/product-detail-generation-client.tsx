@@ -46,6 +46,7 @@ const ASSET_LABELS: Record<string, string> = {
   DETAIL_GALLERY: "细节照片",
   DELIVERY_GUIDE: "配送说明"
 };
+const CURRENT_DETAIL_ASSET_TYPES = new Set<string>(PRODUCT_DETAIL_PAGE_PLAN.map((page) => page.type));
 
 type BatchProduct = {
   id: string;
@@ -441,7 +442,10 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     setProfile(next);
     setComparison(nextComparison);
     setCopy(copyFromJson(next.finalOutputJson, next.product.title ?? ""));
-    if (!next.assets.some((asset) => asset.type === activeAsset)) setActiveAsset(next.assets[0]?.type ?? "FRONT_MAIN");
+    const currentAssets = next.assets.filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type));
+    if (!currentAssets.some((asset) => asset.type === activeAsset)) {
+      setActiveAsset(currentAssets[0]?.type ?? "FRONT_MAIN");
+    }
     const choices = detailMainImageChoices(nextComparison);
     setActiveMainImage((current) => {
       if (choices.some((choice) => choice.key === current && choice.image)) return current;
@@ -483,8 +487,8 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
           measurementSummary: copy.measurementSummary,
           conditionSummary: copy.conditionSummary,
           styleTags: lines(copy.styleTags, ","),
-          missingInformation: lines(copy.missingInformation),
-          warnings: lines(copy.warnings)
+          missingInformation: [],
+          warnings: []
         })
       });
       await load();
@@ -538,7 +542,9 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
   }
 
   if (!profile) return <Status tone={error ? "danger" : "neutral"}>{error || "正在读取商品详情…"}</Status>;
-  const assets = [...profile.assets].sort((left, right) => assetOrder(left.type) - assetOrder(right.type));
+  const assets = profile.assets
+    .filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type))
+    .sort((left, right) => assetOrder(left.type) - assetOrder(right.type));
   const selectedAsset = assets.find((asset) => asset.type === activeAsset) ?? assets[0];
   const latestJob = profile.generationJobs[0];
   const mainImageChoices = detailMainImageChoices(comparison);
@@ -696,8 +702,6 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               <Field label="尺寸摘要"><Textarea rows={2} value={copy.measurementSummary} onChange={(event) => setCopy((current) => ({ ...current, measurementSummary: event.target.value }))} /></Field>
               <Field label="成色摘要"><Textarea rows={2} value={copy.conditionSummary} onChange={(event) => setCopy((current) => ({ ...current, conditionSummary: event.target.value }))} /></Field>
               <Field label="风格标签（逗号分隔）"><Input value={copy.styleTags} onChange={(event) => setCopy((current) => ({ ...current, styleTags: event.target.value }))} /></Field>
-              <Field label="缺失信息（每行一项）"><Textarea rows={2} value={copy.missingInformation} onChange={(event) => setCopy((current) => ({ ...current, missingInformation: event.target.value }))} /></Field>
-              <Field label="警告（每行一项）"><Textarea rows={2} value={copy.warnings} onChange={(event) => setCopy((current) => ({ ...current, warnings: event.target.value }))} /></Field>
               <Button className="w-full sm:w-auto" disabled={Boolean(busy)} onClick={() => void saveCopy()}>{busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <FileTextIcon data-icon="inline-start" />}保存文案并重生成素材</Button>
             </div>
           </section>

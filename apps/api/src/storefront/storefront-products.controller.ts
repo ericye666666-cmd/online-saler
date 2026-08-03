@@ -2,6 +2,7 @@ import { Controller, Get, NotFoundException, Param, Query } from "@nestjs/common
 import {
   InventoryItemStatus,
   Prisma,
+  ProductDetailAssetType,
   ProductDetailStatus,
   ProductGender,
   ProductStatus,
@@ -102,7 +103,19 @@ function productInclude() {
       take: 1,
       include: {
         assets: {
-          where: { status: ProductDetailStatus.READY },
+          where: {
+            status: ProductDetailStatus.READY,
+            type: {
+              in: [
+                ProductDetailAssetType.FRONT_MAIN,
+                ProductDetailAssetType.BACK_MAIN,
+                ProductDetailAssetType.MODEL_DISPLAY,
+                ProductDetailAssetType.MEASUREMENT_GUIDE,
+                ProductDetailAssetType.DETAIL_GALLERY,
+                ProductDetailAssetType.DELIVERY_GUIDE
+              ]
+            }
+          },
           orderBy: { type: "asc" as const }
         }
       }
@@ -289,8 +302,6 @@ export function publicDetail(profile: ProductWithPublicRelations["detailProfiles
     measurementSummary: stringValue(output.measurementSummary),
     conditionSummary: stringValue(output.conditionSummary),
     styleTags: stringArray(output.styleTags),
-    missingInformation: stringArray(output.missingInformation),
-    warnings: stringArray(output.warnings),
     fitType: profile.fitType,
     stretchLevel: profile.stretchLevel,
     fabricWeight: profile.fabricWeight,

@@ -8,8 +8,6 @@ export const testPublicDetail: PublicProductDetail = {
   measurementSummary: "Chest width 48 cm.",
   conditionSummary: "Good condition.",
   styleTags: ["casual"],
-  missingInformation: [],
-  warnings: [],
   fitType: "REGULAR",
   stretchLevel: "LOW",
   fabricWeight: "REGULAR",

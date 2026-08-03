@@ -77,8 +77,6 @@ function toCatalogProduct(product: PublicProduct & { detail: NonNullable<PublicP
       measurementSummary: product.detail.measurementSummary ?? "",
       conditionSummary: product.detail.conditionSummary ?? "",
       styleTags: [...new Set([...product.tags.map(display), ...product.detail.styleTags])],
-      missingInformation: product.detail.missingInformation,
-      warnings: product.detail.warnings,
       fitType: display(product.detail.fitType || product.fitType || "Not confirmed"),
       stretchLevel: display(product.detail.stretchLevel || product.stretchLevel || "Not confirmed"),
       fabricWeight: display(product.detail.fabricWeight || product.fabricWeight || "Not confirmed"),
