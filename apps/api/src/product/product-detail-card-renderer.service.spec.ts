@@ -10,16 +10,19 @@ import {
 describe("ProductDetailCardRendererService", () => {
   it("selects every fixed garment template and keeps a generic top fallback", () => {
     const cases: Array<[string | null, string | null, MeasurementTemplate]> = [
-      ["TOPS", "TSHIRT", "SHIRT_TEMPLATE"],
-      ["TOPS", "HOODIE", "HOODIE_TEMPLATE"],
-      ["DRESSES", "DRESS", "DRESS_TEMPLATE"],
-      ["PANTS", "JEANS", "PANTS_TEMPLATE"],
-      ["SHORTS", "CASUAL_SHORTS", "SHORTS_TEMPLATE"],
-      ["SKIRTS", "MIDI_SKIRT", "SKIRT_TEMPLATE"],
-      ["JACKETS", "OUTDOOR_JACKET", "JACKET_TEMPLATE"],
-      ["KIDS", "KIDS_TOP", "KIDS_TOP_TEMPLATE"],
-      ["KIDS", "KIDS_PANTS", "KIDS_PANTS_TEMPLATE"],
-      ["OTHER", null, "TOP_TEMPLATE"]
+      ["TSHIRTS", "TSHIRT", "T_SHIRT"],
+      ["TOPS", "SHIRT", "SHIRT"],
+      ["LADY_TOPS", "BLOUSE", "BLOUSE"],
+      ["TOPS", "HOODIE", "HOODIE"],
+      ["TOPS", "SWEATER", "SWEATER"],
+      ["DRESSES", "DRESS", "DRESS"],
+      ["PANTS", "JEANS", "PANTS"],
+      ["SHORT", "CASUAL_SHORTS", "SHORTS"],
+      ["SKIRTS", "MIDI_SKIRT", "SKIRT"],
+      ["JACKETS", "OUTDOOR_JACKET", "OUTERWEAR"],
+      ["KIDS", "KIDS_TOP", "KIDS_TOP"],
+      ["SETS", "TWO_PIECE_SET", "TWO_PIECE_SET"],
+      ["OTHER", null, "GENERIC_GARMENT"]
     ];
     for (const [category, subcategory, expected] of cases) {
       assert.equal(selectMeasurementTemplate(category, subcategory), expected);
@@ -28,7 +31,7 @@ describe("ProductDetailCardRendererService", () => {
 
   it("renders a separate 1200px measurement guide without a product photo", async () => {
     const body = await new ProductDetailCardRendererService().measurementCard({
-      template: "TOP_TEMPLATE",
+      template: "T_SHIRT",
       title: "Black shirt",
       measurements: { LENGTH: 70, CHEST_WIDTH: 52, SHOULDER_WIDTH: 44, SLEEVE_LENGTH: 61 }
     });

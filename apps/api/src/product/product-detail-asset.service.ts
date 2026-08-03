@@ -1,20 +1,21 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  PRODUCT_DETAIL_MEASUREMENT_TEMPLATES,
+  selectProductDetailMeasurementTemplate,
+  type ProductDetailMeasurementTemplate
+} from "@online-saler/business-rules";
 import { randomUUID } from "node:crypto";
 import {
   ProductDetailAssetType,
   ProductDetailStatus,
-  ImageProcessingStatus,
   ProductImageType,
   ProductImageVariant,
+  Prisma,
   prisma
 } from "@online-saler/database";
-import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
-import { ProductImageProcessingService } from "./product-image-processing.service";
 import { SelectedBackgroundRemovalProvider } from "./selected-background-removal.provider";
 import {
-  PRODUCT_DETAIL_TEMPLATE_VERSION,
-  ProductDetailCardRendererService,
-  selectMeasurementTemplate
+  ProductDetailCardRendererService
 } from "./product-detail-card-renderer.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
 import { ProductImageTransformerService } from "./product-image-transformer.service";
@@ -27,9 +28,7 @@ export class ProductDetailAssetService {
     private readonly renderer: ProductDetailCardRendererService,
     private readonly storage: ProductImageStorageService,
     private readonly backgroundRemoval: SelectedBackgroundRemovalProvider,
-    private readonly transformer: ProductImageTransformerService,
-    private readonly imageProcessing: ProductImageProcessingService,
-    private readonly imageJobs: ProductImageJobRunnerService
+    private readonly transformer: ProductImageTransformerService
   ) {}
 
   async generateForProfile(profileId: string) {
@@ -60,6 +59,11 @@ export class ProductDetailAssetService {
     );
     const finalCopy = asRecord(profile.finalOutputJson);
     const title = stringValue(finalCopy.title) ?? profile.product.title ?? "Product details";
+    const measurementTemplate = selectProductDetailMeasurementTemplate(
+      profile.product.category,
+      profile.product.subcategory
+    );
+    await this.syncMeasurementTemplates(profile.id, measurementTemplate);
     const assets = [];
 
     const front = await this.resolveFrontMain(profile.productId, profile.product.images);
@@ -75,39 +79,16 @@ export class ProductDetailAssetService {
           front.mimeType
         )
       );
+    } else {
+      await this.markUnavailable(profile.id, ProductDetailAssetType.FRONT_MAIN, "FRONT_IMAGE_NOT_AVAILABLE");
     }
 
     const back = profile.product.images.find((image) => image.type === ProductImageType.BACK);
-    assets.push(
-      back
-        ? await this.generateBackMain(profile.id, profile.productId, profile.sourceDataVersion, back)
-        : await this.persistRendered(
-            profile.id,
-            profile.productId,
-            profile.sourceDataVersion,
-            ProductDetailAssetType.BACK_MAIN,
-            await this.renderer.informationCard({
-              eyebrow: "Back photo",
-              title: "Back photo not supplied",
-              rows: [],
-              note: "Upload a back photo before publication when the reverse differs from the front.",
-              accent: "#666666"
-            })
-          )
-    );
-
-    const modelDisplay = await this.ensureModelDisplay(profile.productId);
-    assets.push(
-      await this.persistReference(
-        profile.id,
-        profile.productId,
-        profile.sourceDataVersion,
-        ProductDetailAssetType.MODEL_DISPLAY,
-        modelDisplay.storageUrl,
-        modelDisplay.publicUrl,
-        modelDisplay.mimeType
-      )
-    );
+    if (back) {
+      assets.push(await this.generateBackMain(profile.id, profile.productId, profile.sourceDataVersion, back));
+    } else {
+      await this.markUnavailable(profile.id, ProductDetailAssetType.BACK_MAIN, "BACK_IMAGE_NOT_AVAILABLE");
+    }
 
     assets.push(
       await this.persistRendered(
@@ -116,67 +97,43 @@ export class ProductDetailAssetService {
         profile.sourceDataVersion,
         ProductDetailAssetType.MEASUREMENT_GUIDE,
         await this.renderer.measurementCard({
-          template: selectMeasurementTemplate(profile.product.category, profile.product.subcategory),
+          template: measurementTemplate.code,
           title,
           measurements
-        })
+        }),
+        "image/webp",
+        1200,
+        1200,
+        { code: measurementTemplate.code, version: measurementTemplate.version }
       )
     );
 
     const detailImage = profile.product.images.find((image) =>
       image.type === ProductImageType.DETAIL || image.type === ProductImageType.DEFECT
     );
-    assets.push(
-      detailImage
-        ? await this.persistReference(
-            profile.id,
-            profile.productId,
-            profile.sourceDataVersion,
-            ProductDetailAssetType.DETAIL_GALLERY,
-            detailImage.originalUrl,
-            detailImage.publicUrl,
-            mimeFromUrl(detailImage.originalUrl)
-          )
-        : await this.persistRendered(
-            profile.id,
-            profile.productId,
-            profile.sourceDataVersion,
-            ProductDetailAssetType.DETAIL_GALLERY,
-            await this.renderer.informationCard({
-              eyebrow: "Item details",
-              title: "No additional detail photos supplied",
-              rows: [],
-              note: "The front, back and measurement images remain available for review.",
-              accent: "#666666"
-            })
-          )
-    );
-
-    assets.push(
-      await this.persistRendered(
-        profile.id,
-        profile.productId,
-        profile.sourceDataVersion,
-        ProductDetailAssetType.DELIVERY_GUIDE,
-        await this.renderer.informationCard({
-          eyebrow: "Delivery information",
-          title: "Delivery and collection",
-          rows: [
-            { label: "Availability", value: "One unique second-hand item" },
-            { label: "Options", value: "Confirmed during checkout" },
-            { label: "Before purchase", value: "Review measurements and item photos" }
-          ],
-          note: "Contact Direct Loop support promptly if the received item does not match the approved listing.",
-          accent: "#1f6f5f"
-        })
-      )
-    );
+    if (detailImage) {
+      assets.push(
+        await this.persistReference(
+          profile.id,
+          profile.productId,
+          profile.sourceDataVersion,
+          ProductDetailAssetType.DETAIL_GALLERY,
+          detailImage.originalUrl,
+          detailImage.publicUrl,
+          mimeFromUrl(detailImage.originalUrl)
+        )
+      );
+    } else {
+      await this.markUnavailable(profile.id, ProductDetailAssetType.DETAIL_GALLERY, "DETAIL_IMAGE_NOT_AVAILABLE");
+    }
 
     await prisma.productDetailAsset.updateMany({
       where: {
         detailProfileId: profile.id,
         type: {
           in: [
+            ProductDetailAssetType.MODEL_DISPLAY,
+            ProductDetailAssetType.DELIVERY_GUIDE,
             ProductDetailAssetType.FIT_GUIDE,
             ProductDetailAssetType.CONDITION_GUIDE,
             ProductDetailAssetType.SHARE_CARD
@@ -185,7 +142,7 @@ export class ProductDetailAssetService {
       },
       data: {
         status: ProductDetailStatus.OUTDATED,
-        outdatedReason: "REPLACED_BY_SIMPLE_SIX_PAGE_TEMPLATE",
+        outdatedReason: "REMOVED_FROM_COMMERCE_PRODUCT_DETAIL",
         outdatedAt: new Date()
       }
     });
@@ -233,33 +190,6 @@ export class ProductDetailAssetService {
     return front ? { storageUrl: front.originalUrl, publicUrl: front.publicUrl, mimeType: mimeFromUrl(front.originalUrl) } : null;
   }
 
-  private async ensureModelDisplay(productId: string) {
-    const existing = await prisma.productImageVariantAsset.findFirst({
-      where: { productId, variant: ProductImageVariant.AI_DISPLAY_MAIN },
-      orderBy: { createdAt: "desc" }
-    });
-    if (existing) return existing;
-
-    const white = await prisma.productImageVariantAsset.findFirst({
-      where: { productId, variant: ProductImageVariant.CUTOUT_WHITE },
-      orderBy: { createdAt: "desc" }
-    });
-    if (!white) throw new BadRequestException("A white-background cutout is required before generating the model display image");
-
-    const job = await this.imageProcessing.start({
-      productId,
-      sourceImageId: white.id,
-      operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"
-    });
-    const completed = await this.imageJobs.run(job.id);
-    if (completed.status !== ImageProcessingStatus.SUCCEEDED || !completed.outputImageId) {
-      throw new BadRequestException(completed.errorMessage || "Model display image generation failed");
-    }
-    const generated = await prisma.productImageVariantAsset.findUnique({ where: { id: completed.outputImageId } });
-    if (!generated) throw new BadRequestException("Generated model display image was not saved");
-    return generated;
-  }
-
   private async generateBackMain(
     profileId: string,
     productId: string,
@@ -294,7 +224,8 @@ export class ProductDetailAssetService {
     body: Buffer,
     mimeType = "image/webp",
     widthPx = 1200,
-    heightPx = 1200
+    heightPx = 1200,
+    template?: { code: string; version: string }
   ) {
     const existing = await prisma.productDetailAsset.findUnique({
       where: { detailProfileId_type_locale: { detailProfileId: profileId, type, locale: DETAIL_LOCALE } }
@@ -320,7 +251,9 @@ export class ProductDetailAssetService {
         widthPx,
         heightPx,
         locale: DETAIL_LOCALE,
-        templateVersion: PRODUCT_DETAIL_TEMPLATE_VERSION,
+        templateCode: template?.code,
+        templateVersion: template?.version,
+        storageKey: storageObject,
         sourceDataVersion
       },
       update: {
@@ -329,7 +262,9 @@ export class ProductDetailAssetService {
         mimeType,
         widthPx,
         heightPx,
-        templateVersion: PRODUCT_DETAIL_TEMPLATE_VERSION,
+        templateCode: template?.code ?? null,
+        templateVersion: template?.version ?? null,
+        storageKey: storageObject,
         sourceDataVersion,
         failureCode: null,
         errorMessage: null,
@@ -359,7 +294,9 @@ export class ProductDetailAssetService {
         publicUrl,
         mimeType,
         locale: DETAIL_LOCALE,
-        templateVersion: PRODUCT_DETAIL_TEMPLATE_VERSION,
+        templateCode: null,
+        templateVersion: null,
+        storageKey: storageKey(storageUrl, this.storage.bucket),
         sourceDataVersion
       },
       update: {
@@ -367,7 +304,9 @@ export class ProductDetailAssetService {
         storageUrl,
         publicUrl,
         mimeType,
-        templateVersion: PRODUCT_DETAIL_TEMPLATE_VERSION,
+        templateCode: null,
+        templateVersion: null,
+        storageKey: storageKey(storageUrl, this.storage.bucket),
         sourceDataVersion,
         failureCode: null,
         errorMessage: null,
@@ -377,11 +316,69 @@ export class ProductDetailAssetService {
     });
   }
 
+  private async syncMeasurementTemplates(
+    profileId: string,
+    selectedTemplate: ProductDetailMeasurementTemplate
+  ) {
+    await prisma.$transaction(Object.values(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES).map((template) =>
+      prisma.productDetailTemplate.upsert({
+        where: { code: template.code },
+        create: {
+          code: template.code,
+          name: template.name,
+          garmentType: template.garmentType,
+          version: template.version,
+          svgSource: template.svgSource,
+          measurementFieldsJson: template.measurementFields as unknown as Prisma.InputJsonValue,
+          isActive: true
+        },
+        update: {
+          name: template.name,
+          garmentType: template.garmentType,
+          version: template.version,
+          svgSource: template.svgSource,
+          measurementFieldsJson: template.measurementFields as unknown as Prisma.InputJsonValue,
+          isActive: true
+        }
+      })
+    ));
+    await prisma.productDetailAsset.updateMany({
+      where: {
+        detailProfileId: profileId,
+        type: ProductDetailAssetType.MEASUREMENT_GUIDE,
+        status: { not: ProductDetailStatus.OUTDATED },
+        OR: [
+          { templateCode: null },
+          { templateCode: { not: selectedTemplate.code } },
+          { templateVersion: null },
+          { templateVersion: { not: selectedTemplate.version } }
+        ]
+      },
+      data: {
+        status: ProductDetailStatus.OUTDATED,
+        outdatedReason: "MEASUREMENT_TEMPLATE_CHANGED",
+        outdatedAt: new Date()
+      }
+    });
+  }
+
+  private async markUnavailable(profileId: string, type: ProductDetailAssetType, reason: string) {
+    await prisma.productDetailAsset.updateMany({
+      where: { detailProfileId: profileId, type, status: { not: ProductDetailStatus.OUTDATED } },
+      data: { status: ProductDetailStatus.OUTDATED, outdatedReason: reason, outdatedAt: new Date() }
+    });
+  }
+
   private objectName(url: string): string {
     const prefix = `gs://${this.storage.bucket}/`;
     if (!url.startsWith(prefix)) throw new BadRequestException("Original image is not available in product storage");
     return url.slice(prefix.length);
   }
+}
+
+function storageKey(storageUrl: string, bucket: string): string | null {
+  const prefix = `gs://${bucket}/`;
+  return storageUrl.startsWith(prefix) ? storageUrl.slice(prefix.length) : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
