@@ -390,9 +390,18 @@ export class OperationsProductBatchService {
     await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const batch = await this.requireBatch(batchId);
     const products = await prisma.product.findMany({
-      where: { batchId: batch.id, status: { in: [ProductStatus.READY_FOR_STORAGE, ProductStatus.PUBLISHED] } },
+      where: { batchId: batch.id },
+      include: { inventoryItem: true },
       orderBy: { batchItemNumber: "asc" }
     });
+    if (products.length !== batch.targetCount || products.some((product) =>
+      product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED
+    )) {
+      throw new BadRequestException(`All ${batch.targetCount} products must be ready for storage.`);
+    }
+    if (products.some((product) => !product.inventoryItem?.locationId)) {
+      throw new BadRequestException(`All ${batch.targetCount} products must have assigned shelf locations.`);
+    }
     const stocked = [];
     for (const product of products) {
       stocked.push(await this.productControl.confirmPlaced(product.id, input));
@@ -411,24 +420,11 @@ export class OperationsProductBatchService {
       throw new BadRequestException(`All ${batch.targetCount} products must be approved before preparing storage.`);
     }
     const prepared = [];
-    for (const product of products) prepared.push(await this.productControl.prepareForStorage(product.id, input));
-    return { batchId, prepared };
-  }
-
-  async confirmBatchStorage(
-    batchId: string,
-    input: { adminUserId?: string; employeeId?: string; barcode?: string; locationCode?: string }
-  ) {
-    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
-    await this.requireBatch(batchId);
-    const barcode = input.barcode?.trim().toUpperCase();
-    if (!barcode) throw new BadRequestException("Barcode is required.");
-    const product = await prisma.product.findFirst({ where: { batchId, barcode } });
-    if (!product) {
-      const existsElsewhere = await prisma.product.findUnique({ where: { barcode } });
-      throw new BadRequestException(existsElsewhere ? "Barcode belongs to another batch." : "Barcode does not match this batch.");
+    for (const product of products) {
+      await this.productControl.prepareForStorage(product.id, input);
+      prepared.push(await this.productControl.assignRandomLocation(product.id, input));
     }
-    return this.productControl.confirmPlacedAtLocation(product.id, input);
+    return { batchId, prepared };
   }
 
   async publishBatch(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
@@ -450,7 +446,7 @@ export class OperationsProductBatchService {
       product.inventoryItem?.status !== "AVAILABLE" ||
       !product.inventoryItem.locationId
     )) {
-      throw new BadRequestException(`All ${batch.targetCount} products must be scanned into storage before publishing.`);
+      throw new BadRequestException(`All ${batch.targetCount} products must complete storage before publishing.`);
     }
     if (products.some((product) => !product.detailProfiles.some(
       (profile) => profile.sourceDataVersion === product.detailSourceVersion

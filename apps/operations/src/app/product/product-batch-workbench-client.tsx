@@ -252,7 +252,7 @@ export function ProductWorkbenchPage() {
           <TaskRow label="人工校准" value={tasks?.calibration ?? 0} href="/product/calibration" />
           <TaskRow label="打印并贴码" value={tasks?.labelApply ?? 0} href="/product/barcode" />
           <TaskRow label="商品审核" value={tasks?.review ?? 0} href="/product/review" />
-          <TaskRow label="扫码入仓" value={tasks?.storage ?? 0} href="/product/review" />
+          <TaskRow label="货架入库" value={tasks?.storage ?? 0} href="/product/review" />
         </CardContent>
       </Card>
     </div>

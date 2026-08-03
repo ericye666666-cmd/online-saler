@@ -16,7 +16,7 @@ export const PRODUCT_FACTORY_STAGE_LABELS: Record<string, string> = {
   BARCODE: "生成 Barcode",
   LABEL_APPLY: "打印并贴码",
   REVIEW: "商品审核",
-  STORAGE: "扫码入仓",
+  STORAGE: "货架入库",
   PUBLISH: "发布商品",
   EXCEPTION: "处理异常",
   COMPLETE: "批次已完成"
@@ -31,7 +31,7 @@ export function batchNextActionHref(batchId: string, nextAction: string): string
     GENERATE_BARCODES: `/product/barcode?batchId=${encodedBatchId}`,
     PRINT_AND_APPLY_LABELS: `/product/barcode?batchId=${encodedBatchId}`,
     CONTINUE_REVIEW: `/product/review?batchId=${encodedBatchId}`,
-    SCAN_INTO_STORAGE: `/product/review?batchId=${encodedBatchId}`,
+    COMPLETE_STORAGE: `/product/review?batchId=${encodedBatchId}`,
     REVIEW_PRODUCT_DETAILS: `/product/details?batchId=${encodedBatchId}`,
     PUBLISH_PRODUCTS: `/product/review?batchId=${encodedBatchId}`,
     RESOLVE_EXCEPTION: `/product/exceptions?batchId=${encodedBatchId}`,

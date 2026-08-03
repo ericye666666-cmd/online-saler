@@ -21,11 +21,6 @@ type RetakeBody = AdminEmployeeBody & {
   reason?: string;
 };
 
-type ConfirmStorageBody = AdminEmployeeBody & {
-  barcode?: string;
-  locationCode?: string;
-};
-
 @Controller("operations/product-batches")
 export class OperationsProductBatchController {
   constructor(private readonly batches: OperationsProductBatchService) {}
@@ -104,11 +99,6 @@ export class OperationsProductBatchController {
   @Post(":id/prepare-storage")
   prepareStorage(@Param("id") id: string, @Body() body: AdminEmployeeBody) {
     return this.batches.prepareBatchStorage(id, body);
-  }
-
-  @Post(":id/confirm-storage")
-  confirmStorage(@Param("id") id: string, @Body() body: ConfirmStorageBody) {
-    return this.batches.confirmBatchStorage(id, body);
   }
 
   @Post(":id/publish")
