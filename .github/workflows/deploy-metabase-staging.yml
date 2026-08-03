@@ -105,7 +105,8 @@ jobs:
             --fail \
             --show-error \
             --silent \
-            --retry 30 \
+            --max-time 5 \
+            --retry 180 \
             --retry-all-errors \
             --retry-delay 10 \
             "${METABASE_URL}/api/health"

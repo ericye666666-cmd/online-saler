@@ -64,4 +64,8 @@ test("pins Metabase, Cloud SQL proxy, and limits automatic staging deployment", 
   );
   assert.match(workflow, /--args="--structured-logs,[^"]+\$\{CLOUD_SQL_INSTANCE\}"/);
   assert.match(workflow, /METABASE_DB_CONNECTION_URI_STAGING/);
+  assert.match(
+    workflow,
+    /--max-time 5[\s\\]*--retry 180[\s\\]*--retry-all-errors/,
+  );
 });
