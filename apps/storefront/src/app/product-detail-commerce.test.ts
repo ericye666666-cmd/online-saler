@@ -4,7 +4,9 @@ import {
   formatMeasurement,
   normalizeProductTitle,
   optionalDisplayValue,
+  productCopyWithoutPrice,
   publicProductCode,
+  sellingPointsWithoutPrice,
   visibleMeasurements,
 } from "./product-detail-commerce";
 import type { Product } from "./data/products";
@@ -17,6 +19,14 @@ assert.equal(normalizeProductTitle("Nike", "Air Max 90"), "Nike Air Max 90");
 assert.equal(normalizeProductTitle("Unbranded", "Striped shirt"), "Striped shirt");
 assert.equal(optionalDisplayValue("Not confirmed"), null);
 assert.equal(optionalDisplayValue("  Regular  "), "Regular");
+assert.equal(
+  productCopyWithoutPrice("Heavy denim with low stretch. KSh 500."),
+  "Heavy denim with low stretch.",
+);
+assert.deepEqual(
+  sellingPointsWithoutPrice(["KSh 700", "Faded wash", "Zip-front design"]),
+  ["Faded wash", "Zip-front design"],
+);
 assert.equal(publicProductCode({ id: "uuid", productCode: "DL-1", barcode: "920260800001" }), "920260800001");
 assert.equal(publicProductCode({ id: "uuid", productCode: "DL-1", barcode: null }), "DL-1");
 

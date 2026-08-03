@@ -3928,10 +3928,14 @@ select:focus-visible {
   }
 
   .depopMobileNavLeft {
+    grid-row: 1;
+    grid-column: 1;
     justify-content: flex-start;
   }
 
   .depopMobileNavRight {
+    grid-row: 1;
+    grid-column: 3;
     justify-content: flex-end;
   }
 
@@ -3958,6 +3962,7 @@ select:focus-visible {
   }
 
   .depopWordmark {
+    grid-row: 1;
     grid-column: 2;
     justify-self: center;
     font-size: 24px;
