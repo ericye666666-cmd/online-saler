@@ -71,7 +71,7 @@ export class StorefrontProductsController {
     const product = await prisma.product.findFirst({
       where: {
         ...basePublicWhere(),
-        id
+        OR: [{ id }, { productCode: id }, { barcode: id }]
       },
       include: productInclude()
     });
@@ -124,6 +124,7 @@ function productInclude() {
 function basePublicWhere(): Prisma.ProductWhereInput {
   return {
     status: ProductStatus.PUBLISHED,
+    priceKsh: { gt: 0 },
     inventoryItem: {
       is: {
         status: InventoryItemStatus.AVAILABLE
@@ -254,6 +255,8 @@ export function publicProduct(product: ProductWithPublicRelations) {
 
   return {
     id: product.id,
+    productCode: product.productCode,
+    barcode: product.barcode,
     title: product.title,
     description: product.description,
     category: product.category,

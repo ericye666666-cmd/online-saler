@@ -6,6 +6,8 @@ import { publicDetail, publicProduct } from "./storefront-products.controller";
 test("public product remains available when no approved detail exists", () => {
   const product = publicProduct({
     id: "product-1",
+    productCode: "DL-0001",
+    barcode: "920260800001",
     title: "Basic published item",
     description: null,
     category: "TOPS",
@@ -32,6 +34,8 @@ test("public product remains available when no approved detail exists", () => {
   } as never);
 
   assert.equal(product.id, "product-1");
+  assert.equal(product.productCode, "DL-0001");
+  assert.equal(product.barcode, "920260800001");
   assert.equal(product.detail, null);
   assert.equal(product.images[0]?.url, "https://example.test/front.jpg");
 });

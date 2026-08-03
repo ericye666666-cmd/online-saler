@@ -37,6 +37,8 @@ export type PublicProductDetail = {
 
 export type PublicProduct = {
   id: string;
+  productCode: string;
+  barcode: string | null;
   title: string | null;
   category: string | null;
   subcategory: string | null;

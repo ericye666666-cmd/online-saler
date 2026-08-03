@@ -67,6 +67,13 @@ describe("Product domain service", () => {
       (error) => hasCode(error, "STATE_CONFLICT")
     );
 
+    await assert.rejects(
+      () => transition(service, product.id, ProductStatus.PUBLISHED, { inventoryAvailable: true }),
+      (error) => hasCode(error, "STATE_CONFLICT")
+    );
+
+    product.priceKsh = 500;
+
     const published = await transition(service, product.id, ProductStatus.PUBLISHED, {
       inventoryAvailable: true
     });

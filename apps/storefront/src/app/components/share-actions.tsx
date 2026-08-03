@@ -1,95 +1,61 @@
 "use client";
 
-import { Check, Copy, ExternalLink, Headphones, MessageCircle } from "lucide-react";
-import { useState } from "react";
+import { Check, Copy, MessageCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
-  customerServiceUrl,
   Product,
+  productPath,
   productUrl,
-  whatsappShareUrl,
 } from "../data/products";
-import { recordClientEvent } from "../lib/client-events";
-import { ProductCardShareButton } from "./product-card-share-button";
 
 type ShareActionsProps = {
   product: Product;
   sellerRef?: string;
-  supportPhone?: string;
 };
 
-export function ShareActions({ product, sellerRef, supportPhone = "" }: ShareActionsProps) {
+export function ShareActions({ product, sellerRef }: ShareActionsProps) {
   const [copied, setCopied] = useState(false);
-  const directUrl = productUrl(product.code, sellerRef);
-  const supportUrl = customerServiceUrl(product, sellerRef, supportPhone);
+  const [directUrl, setDirectUrl] = useState(() => productUrl(product.code, sellerRef));
+
+  useEffect(() => {
+    setDirectUrl(new URL(productPath(product.code, sellerRef), window.location.origin).toString());
+  }, [product.code, sellerRef]);
 
   async function copyLink() {
-    await navigator.clipboard.writeText(directUrl);
+    try {
+      await navigator.clipboard.writeText(directUrl);
+    } catch {
+      const field = document.createElement("textarea");
+      field.value = directUrl;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.append(field);
+      field.select();
+      document.execCommand("copy");
+      field.remove();
+    }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   }
 
   return (
-    <div className="shareActions">
-      <ProductCardShareButton
-        product={product}
-        sellerRef={sellerRef}
-        className="primaryWhatsappButton"
-      />
-
+    <div className="shareActions" aria-label="Share this item">
       <a
         className="whatsappTextButton"
-        href={whatsappShareUrl(product, sellerRef)}
+        href={`https://wa.me/?text=${encodeURIComponent(new URL(productPath(product.code, sellerRef, { source: "whatsapp" }), directUrl).toString())}`}
         target="_blank"
         rel="noreferrer"
       >
         <MessageCircle size={19} fill="currentColor" />
-        Share link on WhatsApp
-        <ExternalLink size={17} />
+        WhatsApp
       </a>
 
       <button className="copyLinkButton" type="button" onClick={copyLink}>
         {copied ? <Check size={18} /> : <Copy size={18} />}
-        {copied ? "Link copied" : "Copy product link"}
+        {copied ? "Copied" : "Copy link"}
       </button>
-
-      {supportUrl ? (
-        <a
-          className="customerServiceButton"
-          href={supportUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() =>
-            recordClientEvent({
-              eventType: "contact_click",
-              productCode: product.code,
-              sellerRef,
-            })
-          }
-        >
-          <Headphones size={19} />
-          Contact Direct Loop customer service
-          <ExternalLink size={17} />
-        </a>
-      ) : null}
-
-      <p className="shareFallbackNotice" aria-live="polite">
-        WhatsApp turns this product link into a clickable image card. No extra product text is added.
-      </p>
-
-      <div className="sharePreview">
-        <span className="sharePreviewLabel">Product card that will be shared</span>
-        <img
-          className="shareCardImage"
-          src={product.ogImage}
-          alt={`${product.title} WhatsApp product card preview`}
-          width={1200}
-          height={630}
-        />
-        <div className="shareCardLinkRow">
-          <a href={directUrl}>{directUrl}</a>
-          {sellerRef ? <small>Seller ref: {sellerRef}</small> : null}
-        </div>
-      </div>
+      <span className="srOnly" aria-live="polite">{copied ? "Product link copied" : ""}</span>
     </div>
   );
 }

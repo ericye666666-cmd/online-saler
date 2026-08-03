@@ -52,6 +52,13 @@ export class ProductApplicationService {
       inventoryAvailable: command.inventoryAvailable
     });
 
+    if (command.toStatus === ProductStatus.PUBLISHED && (!product.priceKsh || product.priceKsh <= 0)) {
+      throw stateConflict("Publishing requires a positive product price.", {
+        productId: product.id,
+        priceKsh: product.priceKsh
+      });
+    }
+
     if (command.toStatus === ProductStatus.BARCODE_ASSIGNED) {
       await this.assertBarcodeIsAvailable(product.id, command.barcode?.trim() ?? "");
     }

@@ -87,12 +87,12 @@ export type ProductSourceImage = {
 
 export type ProductDetail = {
   sellingPoints: string[];
-  measurementSummary: string;
-  conditionSummary: string;
+  measurementSummary: string | null;
+  conditionSummary: string | null;
   styleTags: string[];
-  fitType: string;
-  stretchLevel: string;
-  fabricWeight: string;
+  fitType: string | null;
+  stretchLevel: string | null;
+  fabricWeight: string | null;
   measurements: Array<{ type: string; valueCm: string | null }>;
   defects: Array<{ type: string; severity: string; description: string | null }>;
   assets: ProductDetailAsset[];
@@ -358,8 +358,13 @@ export function storeUrl(sellerRef?: string, tracking?: ShareTrackingParams) {
 }
 
 export function productUrl(code: string, sellerRef?: string, tracking?: ShareTrackingParams) {
+  return `${SITE_URL}${productPath(code, sellerRef, tracking)}`;
+}
+
+export function productPath(code: string, sellerRef?: string, tracking?: ShareTrackingParams) {
   const query = trackingQuery(sellerRef, tracking);
-  return `${SITE_URL}/p/${code}?${query.toString()}`;
+  const suffix = query.toString();
+  return `/p/${code}${suffix ? `?${suffix}` : ""}`;
 }
 
 export function whatsappShareMessage(
