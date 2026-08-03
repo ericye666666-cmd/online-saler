@@ -1,15 +1,13 @@
 import { BadRequestException } from "@nestjs/common";
 
-export const PRODUCT_DETAIL_PROMPT_VERSION = "product-detail-copy-v2";
+export const PRODUCT_DETAIL_PROMPT_VERSION = "product-detail-copy-v3";
 
 export type ProductDetailCopy = {
   title: string;
   sellingPoints: [string, string, string];
   shortDescription: string;
-  measurementSummary: string;
+  fitSummary: string;
   conditionSummary: string;
-  styleTags: string[];
-  missingInformation: string[];
   warnings: string[];
 };
 
@@ -49,10 +47,8 @@ export const PRODUCT_DETAIL_COPY_SCHEMA = {
     "title",
     "sellingPoints",
     "shortDescription",
-    "measurementSummary",
+    "fitSummary",
     "conditionSummary",
-    "styleTags",
-    "missingInformation",
     "warnings"
   ],
   properties: {
@@ -64,18 +60,8 @@ export const PRODUCT_DETAIL_COPY_SCHEMA = {
       items: { type: "string", maxLength: 160 }
     },
     shortDescription: { type: "string", maxLength: 500 },
-    measurementSummary: { type: "string", maxLength: 400 },
+    fitSummary: { type: "string", maxLength: 300 },
     conditionSummary: { type: "string", maxLength: 300 },
-    styleTags: {
-      type: "array",
-      maxItems: 8,
-      items: { type: "string", maxLength: 40 }
-    },
-    missingInformation: {
-      type: "array",
-      maxItems: 10,
-      items: { type: "string", maxLength: 120 }
-    },
     warnings: {
       type: "array",
       maxItems: 10,
@@ -96,10 +82,8 @@ export function normalizeProductDetailCopy(value: unknown): ProductDetailCopy {
     title: requiredString(value.title, "title", 120),
     sellingPoints: [sellingPoints[0]!, sellingPoints[1]!, sellingPoints[2]!],
     shortDescription: requiredString(value.shortDescription, "shortDescription", 500),
-    measurementSummary: requiredString(value.measurementSummary, "measurementSummary", 400),
+    fitSummary: requiredString(value.fitSummary, "fitSummary", 300),
     conditionSummary: requiredString(value.conditionSummary, "conditionSummary", 300),
-    styleTags: stringArray(value.styleTags, "styleTags", 8, 40),
-    missingInformation: stringArray(value.missingInformation, "missingInformation", 10, 120),
     warnings: stringArray(value.warnings, "warnings", 10, 160)
   };
 }

@@ -68,8 +68,12 @@ export class ProductDetailOpenAIProvider {
               "You write concise second-hand clothing catalog copy for a Kenyan mobile storefront.",
               "Use only the supplied employee-confirmed facts and original product photos.",
               "Never change or invent measurements, material composition, stretch, condition or defects.",
-              "Never infer a missing factual value. Put missing facts in missingInformation.",
+              "Never infer a missing factual value. Add a concise warning only when a missing fact materially affects purchase review.",
               "Summarize only flat garment measurements. Never recommend a wearer height, weight, age, body range or who the item should fit.",
+              "Keep the short description to one or two sentences and selling points to three concise facts.",
+              "Do not repeat the price, brand, or a full attribute list in the description or selling points.",
+              "Do not exaggerate condition or invent material composition, stretch, or a size range.",
+              "An empty confirmed defect list is not proof that there are no defects; never claim no defects unless an employee-confirmed fact says so.",
               "Never describe an adult garment as childrenswear unless the employee-confirmed category explicitly says KIDS.",
               "Do not claim waterproofing, authenticity or performance unless explicitly supplied.",
               "Return only the requested structured JSON."

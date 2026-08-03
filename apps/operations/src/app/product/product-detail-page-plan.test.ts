@@ -4,14 +4,18 @@ import {
   detailBatchStageLabel,
   detailGenerationButtonLabel,
   detailProductStage,
-  PRODUCT_DETAIL_PAGE_PLAN,
+  PRODUCT_DETAIL_ASSET_PLAN,
   sortDetailBatches
 } from "./product-detail-page-plan";
 
-test("keeps the six storefront detail pages in a fixed order", () => {
+test("tracks only commerce detail assets and marks missing photography as optional", () => {
   assert.deepEqual(
-    PRODUCT_DETAIL_PAGE_PLAN.map((page) => page.type),
-    ["FRONT_MAIN", "BACK_MAIN", "MODEL_DISPLAY", "MEASUREMENT_GUIDE", "DETAIL_GALLERY", "DELIVERY_GUIDE"]
+    PRODUCT_DETAIL_ASSET_PLAN.map((asset) => asset.type),
+    ["FRONT_MAIN", "BACK_MAIN", "MEASUREMENT_GUIDE", "DETAIL_GALLERY"]
+  );
+  assert.deepEqual(
+    PRODUCT_DETAIL_ASSET_PLAN.filter((asset) => asset.optional).map((asset) => asset.type),
+    ["BACK_MAIN", "DETAIL_GALLERY"]
   );
 });
 
