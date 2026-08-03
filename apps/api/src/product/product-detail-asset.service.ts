@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, type OnModuleInit } from "@nestjs/common";
 import {
   PRODUCT_DETAIL_MEASUREMENT_TEMPLATES,
   selectProductDetailMeasurementTemplate,
@@ -23,13 +23,17 @@ import { ProductImageTransformerService } from "./product-image-transformer.serv
 const DETAIL_LOCALE = "en";
 
 @Injectable()
-export class ProductDetailAssetService {
+export class ProductDetailAssetService implements OnModuleInit {
   constructor(
     private readonly renderer: ProductDetailCardRendererService,
     private readonly storage: ProductImageStorageService,
     private readonly backgroundRemoval: SelectedBackgroundRemovalProvider,
     private readonly transformer: ProductImageTransformerService
   ) {}
+
+  async onModuleInit() {
+    await this.syncTemplateCatalog();
+  }
 
   async generateForProfile(profileId: string) {
     const profile = await prisma.productDetailProfile.findUnique({
@@ -320,6 +324,28 @@ export class ProductDetailAssetService {
     profileId: string,
     selectedTemplate: ProductDetailMeasurementTemplate
   ) {
+    await this.syncTemplateCatalog();
+    await prisma.productDetailAsset.updateMany({
+      where: {
+        detailProfileId: profileId,
+        type: ProductDetailAssetType.MEASUREMENT_GUIDE,
+        status: { not: ProductDetailStatus.OUTDATED },
+        OR: [
+          { templateCode: null },
+          { templateCode: { not: selectedTemplate.code } },
+          { templateVersion: null },
+          { templateVersion: { not: selectedTemplate.version } }
+        ]
+      },
+      data: {
+        status: ProductDetailStatus.OUTDATED,
+        outdatedReason: "MEASUREMENT_TEMPLATE_CHANGED",
+        outdatedAt: new Date()
+      }
+    });
+  }
+
+  private async syncTemplateCatalog() {
     await prisma.$transaction(Object.values(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES).map((template) =>
       prisma.productDetailTemplate.upsert({
         where: { code: template.code },
@@ -342,24 +368,6 @@ export class ProductDetailAssetService {
         }
       })
     ));
-    await prisma.productDetailAsset.updateMany({
-      where: {
-        detailProfileId: profileId,
-        type: ProductDetailAssetType.MEASUREMENT_GUIDE,
-        status: { not: ProductDetailStatus.OUTDATED },
-        OR: [
-          { templateCode: null },
-          { templateCode: { not: selectedTemplate.code } },
-          { templateVersion: null },
-          { templateVersion: { not: selectedTemplate.version } }
-        ]
-      },
-      data: {
-        status: ProductDetailStatus.OUTDATED,
-        outdatedReason: "MEASUREMENT_TEMPLATE_CHANGED",
-        outdatedAt: new Date()
-      }
-    });
   }
 
   private async markUnavailable(profileId: string, type: ProductDetailAssetType, reason: string) {
