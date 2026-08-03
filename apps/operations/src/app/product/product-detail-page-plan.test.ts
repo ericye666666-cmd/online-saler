@@ -66,4 +66,19 @@ test("summarizes the selected batch state for employees", () => {
     outdated: 0,
     approved: 0
   }), "待生成 8 件");
+
+  assert.equal(detailBatchStageLabel({
+    id: "partially-approved",
+    batchCode: "BATCH-2",
+    createdAt: "2026-08-03T10:00:00Z",
+    targetCount: 10,
+    calibrated: 10,
+    generationReady: true,
+    pending: 0,
+    generating: 0,
+    succeeded: 4,
+    failed: 0,
+    outdated: 0,
+    approved: 6
+  }), "待检查 4 件");
 });
