@@ -50,7 +50,7 @@ export function detailBatchStageLabel(batch: DetailBatchSelectionSummary) {
   if (batch.failed > 0) return `失败 ${batch.failed} 件`;
   if (batch.outdated > 0) return `待重生成 ${batch.outdated} 件`;
   if (batch.approved >= batch.targetCount) return "详情已批准";
-  if (batch.succeeded > 0) return `待检查 ${batch.succeeded - batch.approved} 件`;
+  if (batch.succeeded > 0) return `待检查 ${batch.succeeded} 件`;
   return "等待生成";
 }
 
@@ -66,7 +66,7 @@ function detailBatchPriority(batch: DetailBatchSelectionSummary) {
   if (batch.generating > 0) return 0;
   if (batch.generationReady && batch.pending > 0) return 1;
   if (batch.failed > 0 || batch.outdated > 0) return 2;
-  if (batch.succeeded > batch.approved) return 3;
+  if (batch.succeeded > 0) return 3;
   if (!batch.generationReady) return 4;
   return 5;
 }
