@@ -165,7 +165,7 @@ jobs:
             --memory=16Gi
             --cpu=4
             --min-instances=0
-            --max-instances=1
+            --max-instances=2
             --concurrency=1
             --timeout=600s
             --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
