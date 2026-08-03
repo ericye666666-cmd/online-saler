@@ -168,6 +168,8 @@ export const operationsModules: ModuleNav[] = [
     icon: BarChart3Icon,
     permission: "module.analytics",
     items: [
+      { label: "仓库经营 BI", href: "/analytics/warehouse-bi", icon: BoxesIcon, permission: "action.analytics.view" },
+      { label: "搜索关键词 BI", href: "/analytics/search-bi", icon: SearchIcon, permission: "action.analytics.view" },
       { label: "销售概览", href: "/analytics", icon: BarChart3Icon, permission: "action.analytics.view" },
       { label: "商品漏斗", href: "/analytics/product-funnel", icon: LayoutDashboardIcon, permission: "action.analytics.view" },
       { label: "支付转化", href: "/analytics/payment-conversion", icon: CircleDollarSignIcon, permission: "action.analytics.view" },

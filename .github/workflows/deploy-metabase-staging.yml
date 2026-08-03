@@ -1,0 +1,121 @@
+name: Deploy Metabase to Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      bootstrap_dashboards:
+        description: Refresh the two Online Saler BI dashboards after deployment
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE_NAME: metabase
+  SERVICE_NAME: online-saler-metabase-staging
+  METABASE_VERSION: v0.63.2
+
+jobs:
+  deploy:
+    name: Deploy Metabase and refresh dashboards
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify Metabase runtime secrets
+        run: |
+          for SECRET in METABASE_DB_CONNECTION_URI_STAGING METABASE_ENCRYPTION_SECRET_KEY_STAGING; do
+            gcloud secrets describe "${SECRET}" --project "${{ vars.GCP_PROJECT_ID }}" >/dev/null
+          done
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker \
+            "${{ vars.GCP_REGION }}-docker.pkg.dev" \
+            --quiet
+
+      - name: Mirror pinned Metabase image
+        run: |
+          IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${IMAGE_NAME}:${METABASE_VERSION}"
+          docker pull "metabase/metabase:${METABASE_VERSION}"
+          docker tag "metabase/metabase:${METABASE_VERSION}" "${IMAGE_URI}"
+          docker push "${IMAGE_URI}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
+
+      - name: Deploy Metabase Cloud Run service
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ env.IMAGE_URI }}
+          flags: >-
+            --allow-unauthenticated
+            --port=3000
+            --memory=2Gi
+            --cpu=1
+            --min-instances=0
+            --max-instances=1
+            --concurrency=20
+            --timeout=300s
+          env_vars: |
+            MB_DB_TYPE=postgres
+            JAVA_TIMEZONE=Africa/Nairobi
+          secrets: |
+            MB_DB_CONNECTION_URI=METABASE_DB_CONNECTION_URI_STAGING:latest
+            MB_ENCRYPTION_SECRET_KEY=METABASE_ENCRYPTION_SECRET_KEY_STAGING:latest
+
+      - name: Verify Metabase health
+        run: |
+          METABASE_URL="${{ steps.deploy.outputs.url }}"
+          echo "METABASE_URL=${METABASE_URL}" >> "${GITHUB_ENV}"
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 30 \
+            --retry-all-errors \
+            --retry-delay 10 \
+            "${METABASE_URL}/api/health"
+
+      - name: Check dashboard bootstrap configuration
+        if: ${{ inputs.bootstrap_dashboards }}
+        id: bootstrap_config
+        run: |
+          if [ -z "${{ vars.METABASE_WAREHOUSE_DATABASE_ID_STAGING }}" ]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "Skipping dashboard bootstrap until METABASE_WAREHOUSE_DATABASE_ID_STAGING is configured."
+            exit 0
+          fi
+          if ! gcloud secrets describe METABASE_API_KEY_STAGING --project "${{ vars.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "Skipping dashboard bootstrap until METABASE_API_KEY_STAGING is configured."
+            exit 0
+          fi
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Refresh warehouse and search dashboards
+        if: ${{ inputs.bootstrap_dashboards && steps.bootstrap_config.outputs.configured == 'true' }}
+        env:
+          METABASE_WAREHOUSE_DATABASE_ID: ${{ vars.METABASE_WAREHOUSE_DATABASE_ID_STAGING }}
+        run: |
+          METABASE_API_KEY="$(gcloud secrets versions access latest \
+            --secret METABASE_API_KEY_STAGING \
+            --project "${{ vars.GCP_PROJECT_ID }}")"
+          export METABASE_API_KEY
+          node scripts/bootstrap-metabase-bi.mjs
