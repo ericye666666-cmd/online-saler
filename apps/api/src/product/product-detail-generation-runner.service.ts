@@ -17,6 +17,8 @@ const DETAIL_IMAGE_TYPES = new Set<ProductImageType>([
   ProductImageType.DEFECT
 ]);
 
+export const DETAIL_GENERATION_BATCH_CONCURRENCY = 3;
+
 @Injectable()
 export class ProductDetailGenerationRunnerService {
   constructor(
@@ -188,17 +190,21 @@ export class ProductDetailGenerationRunnerService {
       select: { id: true }
     });
     const results = [];
-    for (const job of jobs) {
-      try {
-        const result = await this.run(job.id);
-        results.push({ jobId: job.id, status: ProductDetailStatus.READY, result });
-      } catch (error) {
-        results.push({
-          jobId: job.id,
-          status: ProductDetailStatus.FAILED,
-          error: error instanceof Error ? error.message : String(error)
-        });
-      }
+    for (let index = 0; index < jobs.length; index += DETAIL_GENERATION_BATCH_CONCURRENCY) {
+      const group = jobs.slice(index, index + DETAIL_GENERATION_BATCH_CONCURRENCY);
+      const groupResults = await Promise.all(group.map(async (job) => {
+        try {
+          const result = await this.run(job.id);
+          return { jobId: job.id, status: ProductDetailStatus.READY, result };
+        } catch (error) {
+          return {
+            jobId: job.id,
+            status: ProductDetailStatus.FAILED,
+            error: error instanceof Error ? error.message : String(error)
+          };
+        }
+      }));
+      results.push(...groupResults);
     }
     return { batchId, processed: results.length, results };
   }
