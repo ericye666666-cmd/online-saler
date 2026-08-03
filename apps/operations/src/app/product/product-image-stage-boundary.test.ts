@@ -21,9 +21,10 @@ assert.equal(
   false,
   "Calibration must not select the storefront main image."
 );
-assert.ok(
+assert.equal(
   detailSource.includes('operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
-  "Detail generation must own AI display image generation."
+  false,
+  "Commerce detail review must not create model-view images."
 );
 assert.ok(
   detailSource.includes("设为商城主图"),
@@ -35,6 +36,6 @@ assert.equal(
   "Detail approval must not require a storefront main image."
 );
 assert.ok(
-  detailSource.includes("不会阻碍详情批准或商品发布"),
-  "Detail approval must explain that incomplete details never block publication."
+  detailSource.includes("商品发布仍由价格、库存、状态和商品控制规则共同决定"),
+  "Detail approval must preserve the product publication gates."
 );

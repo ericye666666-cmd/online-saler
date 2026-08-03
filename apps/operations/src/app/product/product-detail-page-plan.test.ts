@@ -2,17 +2,37 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   detailBatchStageLabel,
+  detailConditionSummary,
+  detailCopyWithoutPrice,
   detailGenerationButtonLabel,
   detailProductStage,
-  PRODUCT_DETAIL_PAGE_PLAN,
+  detailSellingPointsWithoutPrice,
+  PRODUCT_DETAIL_ASSET_PLAN,
   sortDetailBatches
 } from "./product-detail-page-plan";
 
-test("keeps the six storefront detail pages in a fixed order", () => {
+test("tracks only commerce detail assets and marks missing photography as optional", () => {
   assert.deepEqual(
-    PRODUCT_DETAIL_PAGE_PLAN.map((page) => page.type),
-    ["FRONT_MAIN", "BACK_MAIN", "MODEL_DISPLAY", "MEASUREMENT_GUIDE", "DETAIL_GALLERY", "DELIVERY_GUIDE"]
+    PRODUCT_DETAIL_ASSET_PLAN.map((asset) => asset.type),
+    ["FRONT_MAIN", "BACK_MAIN", "MEASUREMENT_GUIDE", "DETAIL_GALLERY"]
   );
+  assert.deepEqual(
+    PRODUCT_DETAIL_ASSET_PLAN.filter((asset) => asset.optional).map((asset) => asset.type),
+    ["BACK_MAIN", "DETAIL_GALLERY"]
+  );
+});
+
+test("keeps legacy price and unconfirmed defect claims out of the customer preview", () => {
+  assert.equal(
+    detailCopyWithoutPrice("Heavy denim with low stretch. KSh 500."),
+    "Heavy denim with low stretch."
+  );
+  assert.deepEqual(
+    detailSellingPointsWithoutPrice(["KSh 700", "Faded wash", "Zip-front design"]),
+    ["Faded wash", "Zip-front design"]
+  );
+  assert.equal(detailConditionSummary("Good condition with no confirmed defects.", 0), "");
+  assert.equal(detailConditionSummary("Small cuff mark.", 1), "Small cuff mark.");
 });
 
 test("blocks detail generation until the complete batch is calibrated", () => {

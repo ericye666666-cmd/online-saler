@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
-  ImageProcessingJobRecord,
   ProductImageComparisonResponse,
   ProductImageVariantRecord
 } from "@online-saler/shared-types";
@@ -31,9 +30,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   detailBatchStageLabel,
+  detailConditionSummary,
+  detailCopyWithoutPrice,
   detailGenerationButtonLabel,
   detailProductStage,
-  PRODUCT_DETAIL_PAGE_PLAN,
+  detailSellingPointsWithoutPrice,
+  PRODUCT_DETAIL_ASSET_PLAN,
   sortDetailBatches
 } from "./product-detail-page-plan";
 
@@ -41,12 +43,10 @@ const API_PROXY_URL = "/api-proxy";
 const ASSET_LABELS: Record<string, string> = {
   FRONT_MAIN: "正面主图",
   BACK_MAIN: "背面实物",
-  MODEL_DISPLAY: "模特陈列图",
   MEASUREMENT_GUIDE: "尺码说明",
-  DETAIL_GALLERY: "细节照片",
-  DELIVERY_GUIDE: "配送说明"
+  DETAIL_GALLERY: "细节照片"
 };
-const CURRENT_DETAIL_ASSET_TYPES = new Set<string>(PRODUCT_DETAIL_PAGE_PLAN.map((page) => page.type));
+const CURRENT_DETAIL_ASSET_TYPES = new Set<string>(PRODUCT_DETAIL_ASSET_PLAN.map((asset) => asset.type));
 
 type BatchProduct = {
   id: string;
@@ -90,6 +90,8 @@ type DetailAsset = {
   status: string;
   publicUrl?: string | null;
   mimeType?: string | null;
+  templateCode?: string | null;
+  templateVersion?: string | null;
 };
 
 type DetailProfile = {
@@ -147,19 +149,16 @@ type EditableCopy = {
   title: string;
   sellingPoints: [string, string, string];
   shortDescription: string;
-  measurementSummary: string;
+  fitSummary: string;
   conditionSummary: string;
-  styleTags: string;
-  missingInformation: string;
   warnings: string;
 };
 
 type DetailMainImageChoice = {
-  key: "original" | "white" | "optimized" | "balanced" | "ai-display";
+  key: "original" | "white" | "optimized" | "balanced";
   label: string;
   image: ProductImageVariantRecord | null;
   selectable: boolean;
-  generated: boolean;
 };
 
 async function request<T>(path: string, adminUserId: string, options?: RequestInit): Promise<T> {
@@ -181,30 +180,6 @@ async function request<T>(path: string, adminUserId: string, options?: RequestIn
     throw new Error(message);
   }
   return body as T;
-}
-
-async function generateAiDisplayImage(
-  productId: string,
-  sourceImageId: string,
-  adminUserId: string
-): Promise<ImageProcessingJobRecord> {
-  const job = await request<ImageProcessingJobRecord>(
-    `/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(sourceImageId)}/processing-jobs`,
-    adminUserId,
-    {
-      method: "POST",
-      body: JSON.stringify({ operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" })
-    }
-  );
-  const completed = await request<ImageProcessingJobRecord>(
-    `/image-processing-jobs/${encodeURIComponent(job.id)}/run`,
-    adminUserId,
-    { method: "POST", body: JSON.stringify({}) }
-  );
-  if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
-    throw new Error(completed.errorMessage || "AI 陈列图生成失败。");
-  }
-  return completed;
 }
 
 function useOperationIds() {
@@ -291,7 +266,7 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
         <div>
           <p className="text-sm text-muted-foreground">商品中心</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-normal">详情生成</h1>
-          <p className="mt-1 text-sm text-muted-foreground">按批次统一生成六页详情草稿，再检查发布预览并批准。</p>
+          <p className="mt-1 text-sm text-muted-foreground">按批次生成销售详情草稿，再按顾客购买顺序检查并批准。</p>
         </div>
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => void load()}>
           <RefreshCwIcon data-icon="inline-start" />刷新
@@ -370,14 +345,8 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
               </div>
 
               <div className="border-b px-4 py-3">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                  {PRODUCT_DETAIL_PAGE_PLAN.map((page) => (
-                    <div key={page.type} className="border-l-2 pl-3">
-                      <div className="text-xs text-muted-foreground">第 {page.number} 页</div>
-                      <div className="mt-0.5 text-sm font-medium">{page.title}</div>
-                    </div>
-                  ))}
-                </div>
+                <p className="text-sm font-medium">销售详情由商品事实、可用照片、实测尺寸、成色和配送规则自动组成。</p>
+                <p className="mt-1 text-xs text-muted-foreground">背面或细节照片不存在时不会生成空白素材，也不会在顾客页面显示缺失提示。</p>
               </div>
 
               <div className="divide-y">
@@ -396,10 +365,9 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                         <div className="mt-1 truncate font-medium">{product.title || product.productCode}</div>
                         <div className="mt-1 text-xs text-muted-foreground">{labelValue(product.category) || "分类待确认"} · {product.finalSizeLabel || "尺码待确认"} · {product.productCode}</div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {PRODUCT_DETAIL_PAGE_PLAN.map((page) => {
-                            const asset = product.assets.find((item) => item.type === page.type);
-                            return <span key={page.type} className={cn("rounded-sm border px-1.5 py-0.5 text-[11px]", asset?.status === "READY" || asset?.status === "APPROVED" ? "border-emerald-600/30 bg-emerald-600/5 text-emerald-700" : "text-muted-foreground")}>{page.shortTitle}</span>;
-                          })}
+                          {product.assets
+                            .filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type) && (asset.status === "READY" || asset.status === "APPROVED"))
+                            .map((asset) => <span key={asset.id} className="rounded-sm border border-emerald-600/30 bg-emerald-600/5 px-1.5 py-0.5 text-[11px] text-emerald-700">{assetShortTitle(asset.type)}</span>)}
                         </div>
                       </div>
                       {product.profileId ? (
@@ -441,8 +409,10 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     );
     setProfile(next);
     setComparison(nextComparison);
-    setCopy(copyFromJson(next.finalOutputJson, next.product.title ?? ""));
-    const currentAssets = next.assets.filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type));
+    setCopy(copyFromJson(next.finalOutputJson, next.product.title ?? "", next.product.defects.length));
+    const currentAssets = next.assets.filter((asset) =>
+      CURRENT_DETAIL_ASSET_TYPES.has(asset.type) && (asset.status === "READY" || asset.status === "APPROVED")
+    );
     if (!currentAssets.some((asset) => asset.type === activeAsset)) {
       setActiveAsset(currentAssets[0]?.type ?? "FRONT_MAIN");
     }
@@ -450,7 +420,6 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     setActiveMainImage((current) => {
       if (choices.some((choice) => choice.key === current && choice.image)) return current;
       return choices.find((choice) => choice.image?.selectedAsMain)?.key
-        ?? choices.find((choice) => choice.key === "ai-display" && choice.image)?.key
         ?? choices.find((choice) => choice.image)?.key
         ?? "white";
     });
@@ -484,11 +453,9 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
           title: copy.title,
           sellingPoints: copy.sellingPoints,
           shortDescription: copy.shortDescription,
-          measurementSummary: copy.measurementSummary,
+          fitSummary: copy.fitSummary,
           conditionSummary: copy.conditionSummary,
-          styleTags: lines(copy.styleTags, ","),
-          missingInformation: [],
-          warnings: []
+          warnings: lines(copy.warnings)
         })
       });
       await load();
@@ -500,29 +467,8 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     }
   }
 
-  async function generateDisplayImage() {
-    if (!profile || !comparison?.cutoutWhite?.imageId) {
-      setError("缺少已确认的白底图，请先返回人工校准完成抠图和白底处理。");
-      return;
-    }
-    setBusy("ai-display");
-    setError("");
-    setNotice("");
-    try {
-      await generateAiDisplayImage(profile.product.id, comparison.cutoutWhite.imageId, ids.adminUserId);
-      await load();
-      setActiveMainImage("ai-display");
-      setNotice("AI 陈列图候选已生成。请与原图逐项核对后，再决定是否选为商城主图。");
-    } catch (caught) {
-      setError(errorMessage(caught));
-    } finally {
-      setBusy("");
-    }
-  }
-
   async function chooseStorefrontMain(choice: DetailMainImageChoice) {
     if (!profile || !choice.selectable || !choice.image) return;
-    if (choice.generated && !window.confirm("这是生成式 AI 陈列图。请确认 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵均与原图一致。继续设为商城主图吗？")) return;
     setBusy(`main-${choice.image.imageId}`);
     setError("");
     setNotice("");
@@ -543,7 +489,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
 
   if (!profile) return <Status tone={error ? "danger" : "neutral"}>{error || "正在读取商品详情…"}</Status>;
   const assets = profile.assets
-    .filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type))
+    .filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type) && (asset.status === "READY" || asset.status === "APPROVED"))
     .sort((left, right) => assetOrder(left.type) - assetOrder(right.type));
   const selectedAsset = assets.find((asset) => asset.type === activeAsset) ?? assets[0];
   const latestJob = profile.generationJobs[0];
@@ -588,15 +534,9 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
       ) : <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,.95fr)]">
         <div className="min-w-0 space-y-6">
           <section className="min-w-0 space-y-3" aria-label="商城主图确认">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="font-semibold">陈列主图</h2>
-                <p className="mt-1 text-xs text-muted-foreground">在详情生成阶段对照原图，人工选择白底图、白底优化图、白底均整图或 AI 陈列图。系统不会自动选择生成式图片。</p>
-              </div>
-              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutWhite?.imageId} onClick={() => void generateDisplayImage()}>
-                {busy === "ai-display" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                {comparison?.aiDisplayMain ? "重新生成 AI 陈列图" : "生成 AI 陈列图"}
-              </Button>
+            <div>
+              <h2 className="font-semibold">商城主图</h2>
+              <p className="mt-1 text-xs text-muted-foreground">对照原图，人工选择白底图、白底优化图或白底均整图。原图始终保留，不使用生成式图片制作尺码指南。</p>
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -618,16 +558,9 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               {currentMainImage?.image ? <SafeImage src={variantImageUrl(currentMainImage.image)} alt={currentMainImage.label} /> : <EmptyImage />}
             </div>
 
-            {currentMainImage?.generated ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-                <p className="font-semibold">生成式候选图，必须与原图人工核对</p>
-                <p className="mt-1 text-xs">重点检查 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵。任何商品事实改变都不能选为商城主图。</p>
-              </div>
-            ) : null}
-
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className={cn("text-xs", hasSelectedMainImage ? "text-emerald-700" : "font-medium text-amber-700")}>
-                {hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "尚未选择商城主图；这不会阻碍详情批准或商品发布。"}
+                {hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "尚未选择商城主图；商品发布时仍会执行正式主图与准备度规则。"}
               </p>
               {currentMainImage?.selectable && currentMainImage.image ? (
                 <Button
@@ -698,9 +631,9 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               <Field label="标题"><Input value={copy.title} maxLength={120} onChange={(event) => setCopy((current) => ({ ...current, title: event.target.value }))} /></Field>
               {copy.sellingPoints.map((point, index) => <Field key={index} label={`卖点 ${index + 1}`}><Input value={point} maxLength={160} onChange={(event) => setCopy((current) => ({ ...current, sellingPoints: current.sellingPoints.map((item, itemIndex) => itemIndex === index ? event.target.value : item) as EditableCopy["sellingPoints"] }))} /></Field>)}
               <Field label="商品描述"><Textarea rows={4} value={copy.shortDescription} onChange={(event) => setCopy((current) => ({ ...current, shortDescription: event.target.value }))} /></Field>
-              <Field label="尺寸摘要"><Textarea rows={2} value={copy.measurementSummary} onChange={(event) => setCopy((current) => ({ ...current, measurementSummary: event.target.value }))} /></Field>
+              <Field label="版型摘要"><Textarea rows={2} value={copy.fitSummary} onChange={(event) => setCopy((current) => ({ ...current, fitSummary: event.target.value }))} /></Field>
               <Field label="成色摘要"><Textarea rows={2} value={copy.conditionSummary} onChange={(event) => setCopy((current) => ({ ...current, conditionSummary: event.target.value }))} /></Field>
-              <Field label="风格标签（逗号分隔）"><Input value={copy.styleTags} onChange={(event) => setCopy((current) => ({ ...current, styleTags: event.target.value }))} /></Field>
+              <Field label="审核提醒（每行一条）"><Textarea rows={2} value={copy.warnings} onChange={(event) => setCopy((current) => ({ ...current, warnings: event.target.value }))} /></Field>
               <Button className="w-full sm:w-auto" disabled={Boolean(busy)} onClick={() => void saveCopy()}>{busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <FileTextIcon data-icon="inline-start" />}保存文案并重生成素材</Button>
             </div>
           </section>
@@ -740,15 +673,19 @@ function ProductPublishPreview({
 }) {
   const assetByType = new Map(assets.map((asset) => [asset.type, asset]));
   const main = assetByType.get("FRONT_MAIN");
+  const back = assetByType.get("BACK_MAIN");
+  const measurementGuide = assetByType.get("MEASUREMENT_GUIDE");
   const evidence = profile.product.images.filter((image) => ["DETAIL", "DEFECT"].includes(image.type));
-  const sellingPoints = copy.sellingPoints.filter(Boolean);
+  const sellingPoints = detailSellingPointsWithoutPrice(copy.sellingPoints);
+  const shortDescription = detailCopyWithoutPrice(copy.shortDescription);
+  const conditionSummary = detailConditionSummary(copy.conditionSummary, profile.product.defects.length);
 
   return (
     <div className="overflow-hidden rounded-md border bg-background">
       <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2"><Badge>发布预览</Badge><span className="text-sm font-medium">顾客视角 · 尚未发布</span></div>
-          <p className="mt-1 text-xs text-muted-foreground">逐页确认首图、背面、模特图、平铺实测、细节照片和配送说明。批准只确认详情草稿，不会发布商品。</p>
+          <p className="mt-1 text-xs text-muted-foreground">按顾客购买顺序核对图片、标题、价格、尺码、版型、成色、瑕疵和配送说明。批准只确认详情草稿，不会发布商品。</p>
         </div>
         <Button size="sm" variant="outline" onClick={onEdit}><PencilLineIcon data-icon="inline-start" />编辑内容</Button>
       </div>
@@ -758,76 +695,75 @@ function ProductPublishPreview({
           {main ? <SafeImage src={assetUrl(main)} alt={`${copy.title || profile.product.productCode} 主图`} /> : <EmptyImage />}
         </div>
         <div className="p-5 sm:p-7">
-          <p className="text-xs font-medium uppercase text-muted-foreground">{profile.product.brand || "Unbranded"}</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-normal">{copy.title || profile.product.title || profile.product.productCode}</h2>
+          <h2 className="text-2xl font-semibold tracking-normal">{normalizedProductTitle(copy.title || profile.product.title || "", profile.product.brand) || profile.product.productCode}</h2>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <span className="text-xl font-semibold">{priceLabel(profile.product.priceKsh)}</span>
             <Badge variant="outline">一物一件</Badge>
           </div>
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{copy.shortDescription || "商品描述尚未生成，请进入编辑与素材补充。"}</p>
+          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{shortDescription || "商品描述尚未生成，请进入编辑与素材补充。"}</p>
           {sellingPoints.length ? <ul className="mt-4 space-y-2 text-sm">{sellingPoints.map((point) => <li key={point} className="border-l-2 pl-3">{point}</li>)}</ul> : null}
           <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-3 border-t pt-4 text-sm">
-            <PreviewFact label="平台尺码" value={profile.product.finalSizeLabel} />
-            <PreviewFact label="英码" value={profile.product.ukSizeLabel} />
-            <PreviewFact label="分类" value={labelValue(profile.product.subcategory || profile.product.category)} />
-            <PreviewFact label="适用人群" value={labelValue(profile.product.gender)} />
-            <PreviewFact label="面料" value={profile.product.material} />
-            <PreviewFact label="颜色" value={profile.product.color} />
-            <PreviewFact label="成色" value={labelValue(profile.product.conditionGrade)} />
+            <OptionalPreviewFact label="平台尺码" value={profile.product.finalSizeLabel} />
+            <OptionalPreviewFact label="英码" value={profile.product.ukSizeLabel} />
+            <OptionalPreviewFact label="分类" value={labelValue(profile.product.subcategory || profile.product.category)} />
+            <OptionalPreviewFact label="适用人群" value={labelValue(profile.product.gender)} />
+            <OptionalPreviewFact label="面料" value={profile.product.material} />
+            <OptionalPreviewFact label="颜色" value={profile.product.color} />
+            <OptionalPreviewFact label="成色" value={labelValue(profile.product.conditionGrade)} />
           </dl>
         </div>
       </section>
 
-      <section className="border-b px-4 py-5 sm:px-6">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div><p className="text-xs text-muted-foreground">六页详情</p><h2 className="text-lg font-semibold">商品发布内容</h2></div>
-          <span className="text-xs text-muted-foreground">平铺实测 · 原商品像素保留</span>
+      {back || evidence.length ? (
+        <section className="border-b px-4 py-5 sm:px-6">
+          <h2 className="text-lg font-semibold">可用商品图片</h2>
+          <p className="mt-1 text-xs text-muted-foreground">仅显示实际存在的背面、细节和瑕疵照片；缺少的图片不会生成占位卡。</p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {back ? <figure className="overflow-hidden rounded-md border"><div className="aspect-square bg-white"><SafeImage src={assetUrl(back)} alt="背面实物" /></div><figcaption className="border-t px-3 py-2 text-xs">背面实物</figcaption></figure> : null}
+            {evidence.map((image) => <figure key={image.id} className="overflow-hidden rounded-md border"><div className="aspect-square bg-white"><SafeImage src={sourceImageUrl(profile.product.id, image)} alt={sourceImageLabel(image.type)} /></div><figcaption className="border-t px-3 py-2 text-xs">{sourceImageLabel(image.type)}</figcaption></figure>)}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="grid border-b md:grid-cols-2">
+        <div className="border-b p-5 md:border-r md:border-b-0">
+          <h3 className="font-semibold">平铺实测尺寸</h3>
+          {measurementGuide ? <div className="mt-4 aspect-square overflow-hidden rounded-md border bg-white"><SafeImage src={assetUrl(measurementGuide)} alt="尺码指南" /></div> : null}
+          {measurementGuide?.templateCode ? <p className="mt-2 text-xs text-muted-foreground">模板 {measurementGuide.templateCode} · {measurementGuide.templateVersion}</p> : null}
+          <dl className="mt-4 space-y-2 text-sm">{profile.product.measurements.filter((item) => item.finalValueCm != null).map((item) => <PreviewFact key={item.measurementType} label={measurementLabel(item.measurementType)} value={measurementValue(item.finalValueCm)} row />)}</dl>
+          <p className="mt-4 text-xs text-muted-foreground">Flat garment measurements in centimetres. Compare with a similar item you own.</p>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {PRODUCT_DETAIL_PAGE_PLAN.map((page) => {
-            const asset = assetByType.get(page.type);
-            return (
-              <figure key={page.type} className="overflow-hidden rounded-md border">
-                <div className="flex items-center justify-between border-b px-3 py-2 text-sm"><span className="font-medium">第 {page.number} 页 · {page.title}</span><Badge variant="outline">{statusLabel(asset?.status)}</Badge></div>
-                <div className="flex aspect-square items-center justify-center bg-muted/10">
-                  {page.type === "DETAIL_GALLERY" && evidence.length ? (
-                    <div className="grid size-full grid-cols-2 gap-1 p-1">
-                      {evidence.slice(0, 4).map((image) => <SafeImage key={image.id} src={sourceImageUrl(profile.product.id, image)} alt={sourceImageLabel(image.type)} />)}
-                    </div>
-                  ) : asset ? <SafeImage src={assetUrl(asset)} alt={page.title} /> : <EmptyImage compact />}
-                </div>
-              </figure>
-            );
-          })}
+        <div className="p-5">
+          <h3 className="font-semibold">成色与瑕疵</h3>
+          <OptionalPreviewFact label="成色" value={labelValue(profile.product.conditionGrade)} />
+          {conditionSummary ? <p className="mt-3 text-sm text-muted-foreground">{conditionSummary}</p> : null}
+          {profile.product.defects.length ? <ul className="mt-4 space-y-2 text-sm">{profile.product.defects.map((defect) => <li key={`${defect.defectType}-${defect.description}`} className="border-l-2 pl-3">{defect.customerSafeDescription || defect.description}</li>)}</ul> : null}
         </div>
       </section>
 
       <section className="grid border-b md:grid-cols-2">
         <div className="border-b p-5 md:border-r md:border-b-0">
-          <h3 className="font-semibold">平铺实测尺寸</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{copy.measurementSummary || "请核对每个测量点。"}</p>
-          <dl className="mt-4 space-y-2 text-sm">{profile.product.measurements.map((item) => <PreviewFact key={item.measurementType} label={measurementLabel(item.measurementType)} value={measurementValue(item.finalValueCm)} row />)}</dl>
-          <p className="mt-4 text-xs text-muted-foreground">这是衣物平铺厘米数，不是身高、体重、年龄或身体尺寸建议。</p>
+          <h3 className="font-semibold">版型建议</h3>
+          <dl className="mt-3 grid grid-cols-3 gap-3 text-sm">
+            <OptionalPreviewFact label="版型" value={labelValue(profile.fitType)} />
+            <OptionalPreviewFact label="弹性" value={labelValue(profile.stretchLevel)} />
+            <OptionalPreviewFact label="面料厚度" value={labelValue(profile.fabricWeight)} />
+          </dl>
+          {copy.fitSummary ? <p className="mt-4 text-sm text-muted-foreground">{copy.fitSummary}</p> : null}
+          <p className="mt-4 text-xs text-muted-foreground">Fit recommendations are approximate. Please compare the garment measurements with an item that fits you well.</p>
         </div>
         <div className="p-5">
-          <h3 className="font-semibold">成色与瑕疵</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{copy.conditionSummary || "成色说明尚未生成。"}</p>
-          {profile.product.defects.length ? <ul className="mt-4 space-y-2 text-sm">{profile.product.defects.map((defect) => <li key={`${defect.defectType}-${defect.description}`} className="border-l-2 pl-3">{defect.customerSafeDescription || defect.description}</li>)}</ul> : <p className="mt-4 text-sm">校准时未记录明显瑕疵。</p>}
+          <h3 className="font-semibold">配送与支持</h3>
+          <div className="mt-3 space-y-4 text-sm">
+            <div><p className="font-medium">Collection</p><p className="mt-1 text-muted-foreground">Pickup available in Kikuyu. Exact collection details are confirmed after order.</p></div>
+            <div><p className="font-medium">Local delivery</p><p className="mt-1 text-muted-foreground">Delivery options and fees are shown at checkout based on your area.</p></div>
+            <div><p className="font-medium">Support</p><p className="mt-1 text-muted-foreground">Review the original photos and measurements before purchase. Contact Direct Loop support if the received item does not match the approved listing.</p></div>
+          </div>
         </div>
       </section>
 
-      {evidence.length ? (
-        <section className="border-b px-4 py-5 sm:px-6">
-          <p className="text-xs text-muted-foreground">第 5 页</p>
-          <h2 className="text-lg font-semibold">员工拍摄的细节与瑕疵原图</h2>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {evidence.map((image) => <figure key={image.id} className="overflow-hidden rounded-md border"><div className="aspect-square bg-muted/10"><SafeImage src={sourceImageUrl(profile.product.id, image)} alt={sourceImageLabel(image.type)} /></div><figcaption className="border-t px-3 py-2 text-xs">{sourceImageLabel(image.type)}</figcaption></figure>)}
-          </div>
-        </section>
-      ) : null}
-
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">现有详情可单独批准；缺少图片或文案不会阻碍商品发布。</p>
+        <p className="text-xs text-muted-foreground">详情批准只确认当前草稿；商品发布仍由价格、库存、状态和商品控制规则共同决定。</p>
         <Button disabled={busy || profile.status === "APPROVED"} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : "批准现有详情"}</Button>
       </div>
     </div>
@@ -836,6 +772,11 @@ function ProductPublishPreview({
 
 function PreviewFact({ label, value, row = false }: { label: string; value: unknown; row?: boolean }) {
   return <div className={row ? "flex items-start justify-between gap-3 border-b pb-2 last:border-0" : ""}><dt className="text-xs text-muted-foreground">{label}</dt><dd className={cn("mt-0.5 break-words", row && "mt-0 text-right")}>{value == null || value === "" ? "-" : String(value)}</dd></div>;
+}
+
+function OptionalPreviewFact({ label, value }: { label: string; value: unknown }) {
+  if (value == null || value === "") return null;
+  return <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-0.5 break-words">{String(value)}</dd></div>;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
@@ -863,11 +804,10 @@ function SafeImage({ src, alt }: { src: string; alt: string }) {
 
 function detailMainImageChoices(comparison: ProductImageComparisonResponse | null): DetailMainImageChoice[] {
   return [
-    { key: "original", label: "原图（对照）", image: comparison?.original ?? null, selectable: false, generated: false },
-    { key: "white", label: "白底图", image: comparison?.cutoutWhite ?? null, selectable: true, generated: false },
-    { key: "optimized", label: "白底优化图", image: comparison?.optimizedMain ?? null, selectable: true, generated: false },
-    { key: "balanced", label: "白底均整图", image: comparison?.optimizedBalancedMain ?? null, selectable: true, generated: false },
-    { key: "ai-display", label: "AI 陈列图", image: comparison?.aiDisplayMain ?? null, selectable: true, generated: true }
+    { key: "original", label: "原图（对照）", image: comparison?.original ?? null, selectable: false },
+    { key: "white", label: "白底图", image: comparison?.cutoutWhite ?? null, selectable: true },
+    { key: "optimized", label: "白底优化图", image: comparison?.optimizedMain ?? null, selectable: true },
+    { key: "balanced", label: "白底均整图", image: comparison?.optimizedBalancedMain ?? null, selectable: true }
   ];
 }
 
@@ -898,23 +838,21 @@ function priceLabel(value?: number | null) {
   return value == null ? "价格待确认" : `KSh ${new Intl.NumberFormat("en-KE").format(value)}`;
 }
 
-function copyFromJson(value: unknown, fallbackTitle: string): EditableCopy {
+function copyFromJson(value: unknown, fallbackTitle: string, confirmedDefectCount = 0): EditableCopy {
   const record = isRecord(value) ? value : {};
-  const points = stringArray(record.sellingPoints);
+  const points = detailSellingPointsWithoutPrice(stringArray(record.sellingPoints));
   return {
     title: stringValue(record.title) || fallbackTitle,
     sellingPoints: [points[0] ?? "", points[1] ?? "", points[2] ?? ""],
-    shortDescription: stringValue(record.shortDescription),
-    measurementSummary: stringValue(record.measurementSummary),
-    conditionSummary: stringValue(record.conditionSummary),
-    styleTags: stringArray(record.styleTags).join(", "),
-    missingInformation: stringArray(record.missingInformation).join("\n"),
+    shortDescription: detailCopyWithoutPrice(stringValue(record.shortDescription)),
+    fitSummary: stringValue(record.fitSummary),
+    conditionSummary: detailConditionSummary(stringValue(record.conditionSummary), confirmedDefectCount),
     warnings: stringArray(record.warnings).join("\n")
   };
 }
 
 function emptyCopy(): EditableCopy {
-  return { title: "", sellingPoints: ["", "", ""], shortDescription: "", measurementSummary: "", conditionSummary: "", styleTags: "", missingInformation: "", warnings: "" };
+  return { title: "", sellingPoints: ["", "", ""], shortDescription: "", fitSummary: "", conditionSummary: "", warnings: "" };
 }
 
 function lines(value: string, separator = "\n") {
@@ -926,7 +864,24 @@ function statusLabel(value?: string | null) {
 }
 
 function assetOrder(type: string) {
-  return ["FRONT_MAIN", "BACK_MAIN", "MODEL_DISPLAY", "MEASUREMENT_GUIDE", "DETAIL_GALLERY", "DELIVERY_GUIDE"].indexOf(type);
+  return PRODUCT_DETAIL_ASSET_PLAN.findIndex((asset) => asset.type === type);
+}
+
+function assetShortTitle(type: string) {
+  return PRODUCT_DETAIL_ASSET_PLAN.find((asset) => asset.type === type)?.shortTitle ?? labelValue(type);
+}
+
+function normalizedProductTitle(title: string, brand?: string | null) {
+  const cleanTitle = title.trim().replace(/\s+/g, " ");
+  const cleanBrand = brand?.trim().replace(/\s+/g, " ") ?? "";
+  if (!cleanBrand) return cleanTitle;
+  const brandPrefix = new RegExp(`^(?:${escapeRegExp(cleanBrand)}\\s+)+`, "i");
+  const withoutRepeatedBrand = cleanTitle.replace(brandPrefix, "").trim();
+  return `${cleanBrand}${withoutRepeatedBrand ? ` ${withoutRepeatedBrand}` : ""}`;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function labelValue(value: unknown) { return typeof value === "string" ? value.replaceAll("_", " ") : ""; }

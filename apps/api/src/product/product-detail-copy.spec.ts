@@ -10,10 +10,8 @@ describe("product detail copy", () => {
       title: "Black regular-fit cotton shirt",
       sellingPoints: ["Regular fit", "Four final measurements", "Good condition"],
       shortDescription: "A concise second-hand shirt description.",
-      measurementSummary: "Chest width 52 cm and length 70 cm.",
+      fitSummary: "Regular fit with no stretch.",
       conditionSummary: "Good condition with a small cuff mark.",
-      styleTags: ["shirt", "black"],
-      missingInformation: [],
       warnings: ["Compare the flat measurements with a garment you own."]
     });
 
@@ -28,10 +26,8 @@ describe("product detail copy", () => {
           title: "Shirt",
           sellingPoints: ["Only one"],
           shortDescription: "Description",
-          measurementSummary: "Measurements",
+          fitSummary: "Regular fit",
           conditionSummary: "Condition",
-          styleTags: [],
-          missingInformation: [],
           warnings: []
         }),
       BadRequestException
