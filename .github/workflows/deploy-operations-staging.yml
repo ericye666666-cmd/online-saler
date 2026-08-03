@@ -94,6 +94,8 @@ jobs:
             NODE_ENV=staging
             STAGING_PILOT_BATCH_ENABLED=true
             API_URL=${{ env.API_URL }}
+            METABASE_WAREHOUSE_DASHBOARD_URL=${{ vars.METABASE_WAREHOUSE_DASHBOARD_URL_STAGING }}
+            METABASE_SEARCH_DASHBOARD_URL=${{ vars.METABASE_SEARCH_DASHBOARD_URL_STAGING }}
 
       - name: Verify Operations page
         run: |

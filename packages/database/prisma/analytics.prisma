@@ -1,0 +1,11 @@
+model StorefrontSearchEvent {
+  id          String   @id @default(uuid())
+  keyword     String
+  resultCount Int
+  category    String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([keyword, createdAt])
+  @@index([category, createdAt])
+}

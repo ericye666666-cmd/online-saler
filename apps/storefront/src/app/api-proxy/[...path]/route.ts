@@ -48,11 +48,17 @@ function responseHeaders(headers: Headers): Headers {
 
 async function proxy(request: Request, context: RouteContext): Promise<Response> {
   const { path = [] } = await context.params;
-  const response = await fetch(targetUrl(request, path), {
+  const init: RequestInit = {
     method: request.method,
     headers: requestHeaders(request),
     redirect: "manual"
-  });
+  };
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    init.body = await request.arrayBuffer();
+  }
+
+  const response = await fetch(targetUrl(request, path), init);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -61,5 +67,9 @@ async function proxy(request: Request, context: RouteContext): Promise<Response>
 }
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
+  return proxy(request, context);
+}
+
+export async function POST(request: Request, context: RouteContext): Promise<Response> {
   return proxy(request, context);
 }

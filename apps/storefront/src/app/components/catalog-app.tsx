@@ -314,6 +314,22 @@ export function CatalogApp({
     });
   }
 
+  function recordSearch(submittedQuery: string) {
+    const normalizedQuery = submittedQuery.trim();
+    if (normalizedQuery.length < 2) return;
+
+    void fetch("/api-proxy/public/analytics/searches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: normalizedQuery,
+        resultCount: filteredProducts.length,
+        category: category === "All" ? undefined : category
+      }),
+      keepalive: true
+    }).catch(() => undefined);
+  }
+
   function filterLabel(type: Exclude<FilterMenu, null>) {
     if (type === "subcategory") {
       const selected = category === "Shoes" ? shoeType : category === "Bags" ? bagType : textileType;
@@ -379,6 +395,7 @@ export function CatalogApp({
       <SiteHeader
         searchValue={query}
         onSearchChange={setQuery}
+        onSearchSubmit={recordSearch}
         sellerRef={sellerRef}
         selectedCategory={category}
         onSelectCategory={selectCategory}

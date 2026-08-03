@@ -27,6 +27,7 @@ export type BrowseSelection = {
 type SiteHeaderProps = {
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  onSearchSubmit?: (value: string) => void;
   sellerRef?: string;
   selectedCategory?: CatalogCategory;
   onSelectCategory?: (category: CatalogCategory) => void;
@@ -213,6 +214,7 @@ function groupForCategory(category: CatalogCategory) {
 export function SiteHeader({
   searchValue,
   onSearchChange,
+  onSearchSubmit,
   sellerRef,
   selectedCategory = "All",
   onSelectCategory,
@@ -275,6 +277,7 @@ export function SiteHeader({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     if (!onSearchChange) return;
     event.preventDefault();
+    onSearchSubmit?.(value);
     document.querySelector("#catalog")?.scrollIntoView({ behavior: "smooth" });
   }
 
