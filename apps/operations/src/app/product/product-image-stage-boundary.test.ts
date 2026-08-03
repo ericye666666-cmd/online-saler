@@ -29,7 +29,12 @@ assert.ok(
   detailSource.includes("设为商城主图"),
   "Detail generation must own storefront main-image selection."
 );
-assert.ok(
+assert.equal(
   detailSource.includes("请先选择商城主图"),
-  "Detail approval must explain its main-image gate."
+  false,
+  "Detail approval must not require a storefront main image."
+);
+assert.ok(
+  detailSource.includes("不会阻碍详情批准或商品发布"),
+  "Detail approval must explain that incomplete details never block publication."
 );

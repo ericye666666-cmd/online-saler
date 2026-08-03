@@ -11,7 +11,6 @@ import {
 import {
   isBatchReadyForDetailGeneration,
   ProductDetailGenerationService,
-  REQUIRED_DETAIL_ASSET_TYPES,
   summarizeDetailBatch
 } from "./product-detail-generation.service";
 
@@ -19,8 +18,6 @@ const originals = {
   batchFindUnique: prisma.productBatch.findUnique,
   profileFindUnique: prisma.productDetailProfile.findUnique,
   profileUpdate: prisma.productDetailProfile.update,
-  mainImageFindUnique: prisma.productMainImageSelection.findUnique,
-  mainImageFindMany: prisma.productMainImageSelection.findMany,
   transaction: prisma.$transaction
 };
 
@@ -28,8 +25,6 @@ afterEach(() => {
   prisma.productBatch.findUnique = originals.batchFindUnique;
   prisma.productDetailProfile.findUnique = originals.profileFindUnique;
   prisma.productDetailProfile.update = originals.profileUpdate;
-  prisma.productMainImageSelection.findUnique = originals.mainImageFindUnique;
-  prisma.productMainImageSelection.findMany = originals.mainImageFindMany;
   prisma.$transaction = originals.transaction;
 });
 
@@ -202,13 +197,8 @@ describe("ProductDetailGenerationService", () => {
       sourceDataVersion: 2,
       customerDescription: "  Approved storefront description.  ",
       product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
-      assets: REQUIRED_DETAIL_ASSET_TYPES.map((type) => ({
-        id: `asset-${type}`,
-        type,
-        status: ProductDetailStatus.READY
-      }))
+      assets: []
     })) as never;
-    prisma.productMainImageSelection.findUnique = (async () => ({ selectedImageId: "main-1" })) as never;
 
     const updates: Array<{ target: string; data: Record<string, unknown> }> = [];
     prisma.$transaction = (async (callback: (transaction: unknown) => Promise<unknown>) =>
@@ -233,7 +223,7 @@ describe("ProductDetailGenerationService", () => {
     assert.equal(updates.find((item) => item.target === "product")?.data.description, "Approved storefront description.");
   });
 
-  it("blocks detail approval when the product description is missing", async () => {
+  it("approves an incomplete detail without a description or selected main image", async () => {
     prisma.productDetailProfile.findUnique = (async () => ({
       id: "profile-1",
       productId: "product-1",
@@ -241,39 +231,28 @@ describe("ProductDetailGenerationService", () => {
       sourceDataVersion: 2,
       customerDescription: null,
       product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
-      assets: REQUIRED_DETAIL_ASSET_TYPES.map((type) => ({
-        id: `asset-${type}`,
-        type,
-        status: ProductDetailStatus.READY
-      }))
+      assets: []
     })) as never;
+    const updates: string[] = [];
+    prisma.$transaction = (async (callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        productDetailProfile: {
+          update: async () => {
+            updates.push("profile");
+            return { id: "profile-1", status: ProductDetailStatus.APPROVED };
+          }
+        },
+        product: {
+          update: async () => {
+            updates.push("product");
+            return { id: "product-1" };
+          }
+        }
+      })) as never;
 
-    await assert.rejects(
-      () => new ProductDetailGenerationService().approveProfile("profile-1", "employee-1"),
-      /Product description is required/
-    );
-  });
+    await new ProductDetailGenerationService().approveProfile("profile-1", "employee-1");
 
-  it("blocks detail approval until an employee selects the storefront main image", async () => {
-    prisma.productDetailProfile.findUnique = (async () => ({
-      id: "profile-1",
-      productId: "product-1",
-      status: ProductDetailStatus.READY,
-      sourceDataVersion: 2,
-      customerDescription: "Complete description.",
-      product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
-      assets: REQUIRED_DETAIL_ASSET_TYPES.map((type) => ({
-        id: `asset-${type}`,
-        type,
-        status: ProductDetailStatus.READY
-      }))
-    })) as never;
-    prisma.productMainImageSelection.findUnique = (async () => null) as never;
-
-    await assert.rejects(
-      () => new ProductDetailGenerationService().approveProfile("profile-1", "employee-1"),
-      /Select the storefront main image/
-    );
+    assert.deepEqual(updates, ["profile"]);
   });
 
   it("unapproves the current detail before changing its storefront main image", async () => {
@@ -301,11 +280,6 @@ describe("ProductDetailGenerationService", () => {
   });
 
   it("publishes every approved batch description to its product", async () => {
-    const assets = REQUIRED_DETAIL_ASSET_TYPES.map((type) => ({
-      id: `asset-${type}`,
-      type,
-      status: ProductDetailStatus.READY
-    }));
     prisma.productBatch.findUnique = (async () => ({
       id: "batch-1",
       batchCode: "BATCH-1",
@@ -324,14 +298,10 @@ describe("ProductDetailGenerationService", () => {
           sourceDataVersion: 1,
           updatedAt: new Date("2026-08-02T00:00:00Z"),
           customerDescription: ` Description ${index}. `,
-          assets
+          assets: []
         }]
       }))
     })) as never;
-    prisma.productMainImageSelection.findMany = (async () => [
-      { productId: "product-1" },
-      { productId: "product-2" }
-    ]) as never;
 
     const productDescriptions: string[] = [];
     prisma.$transaction = (async (callback: (transaction: unknown) => Promise<unknown>) =>

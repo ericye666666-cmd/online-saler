@@ -31,7 +31,7 @@ export class StorefrontProductsController {
       take: 60
     });
 
-    return products.map(publicProduct).filter(Boolean);
+    return products.map(publicProduct);
   }
 
   @Get("filters")
@@ -80,9 +80,7 @@ export class StorefrontProductsController {
       throw new NotFoundException("Product is not available.");
     }
 
-    const result = publicProduct(product);
-    if (!result) throw new NotFoundException("Product details are not approved for publication.");
-    return result;
+    return publicProduct(product);
   }
 }
 
@@ -130,9 +128,6 @@ function basePublicWhere(): Prisma.ProductWhereInput {
       is: {
         status: InventoryItemStatus.AVAILABLE
       }
-    },
-    detailProfiles: {
-      some: { status: ProductDetailStatus.APPROVED }
     }
   };
 }
@@ -245,11 +240,10 @@ type ProductWithPublicRelations = Awaited<ReturnType<typeof prisma.product.findM
   }>;
 };
 
-function publicProduct(product: ProductWithPublicRelations) {
+export function publicProduct(product: ProductWithPublicRelations) {
   const detailProfile = product.detailProfiles.find(
     (profile) => profile.sourceDataVersion === product.detailSourceVersion
   );
-  if (!detailProfile) return null;
   const images = product.images
     .filter((image) => image.publicUrl)
     .map((image) => ({
@@ -288,7 +282,7 @@ function publicProduct(product: ProductWithPublicRelations) {
       severity: defect.severity,
       description: defect.customerSafeDescription ?? defect.description
     })),
-    detail: publicDetail(detailProfile)
+    detail: detailProfile ? publicDetail(detailProfile) : null
   };
 }
 

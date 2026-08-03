@@ -22,7 +22,6 @@ export type ProductFactoryBatchNextAction =
   | "PRINT_AND_APPLY_LABELS"
   | "CONTINUE_REVIEW"
   | "COMPLETE_STORAGE"
-  | "REVIEW_PRODUCT_DETAILS"
   | "PUBLISH_PRODUCTS"
   | "RESOLVE_EXCEPTION"
   | "VIEW_COMPLETED";
@@ -89,7 +88,6 @@ const ACTION_LABELS: Record<ProductFactoryBatchNextAction, string> = {
   PRINT_AND_APPLY_LABELS: "打印并贴码",
   CONTINUE_REVIEW: "继续审核",
   COMPLETE_STORAGE: "确认全部入库",
-  REVIEW_PRODUCT_DETAILS: "检查并批准商品详情",
   PUBLISH_PRODUCTS: "发布本批商品",
   RESOLVE_EXCEPTION: "处理异常商品",
   VIEW_COMPLETED: "查看已完成批次"
@@ -124,7 +122,7 @@ export function deriveProductFactoryBatchFlow(products: BatchFlowProduct[]): Pro
   const stage = earliestIncompleteStage(products);
   const stageIndex = PRODUCT_FACTORY_BATCH_STAGES.indexOf(stage);
   const stageCompletedCount = products.filter((product) => productStageRank(product) > stageIndex).length;
-  const flow = result(stage, nextActionFor(stage, products), stageCompletedCount, 0, products);
+  const flow = result(stage, nextActionFor(stage), stageCompletedCount, 0, products);
   if (stage === "CALIBRATION") {
     flow.nextActionLabel = stageCompletedCount === 0
       ? "开始人工校准"
@@ -148,7 +146,7 @@ export function summarizeProductFactoryDetailProgress(
     failedCount: count("FAILED"),
     outdatedCount: count("OUTDATED"),
     approvedCount,
-    readyForPublish: products.length > 0 && eligible.length === products.length && approvedCount === products.length
+    readyForPublish: products.length > 0
   };
 }
 
@@ -185,12 +183,8 @@ function isTerminal(product: BatchFlowProduct): boolean {
 }
 
 function nextActionFor(
-  stage: (typeof PRODUCT_FACTORY_BATCH_STAGES)[number],
-  products: BatchFlowProduct[]
+  stage: (typeof PRODUCT_FACTORY_BATCH_STAGES)[number]
 ): ProductFactoryBatchNextAction {
-  if (stage === "PUBLISH" && !summarizeProductFactoryDetailProgress(products).readyForPublish) {
-    return "REVIEW_PRODUCT_DETAILS";
-  }
   const actions: Record<(typeof PRODUCT_FACTORY_BATCH_STAGES)[number], ProductFactoryBatchNextAction> = {
     UPLOAD: "CONTINUE_UPLOAD",
     AI_IMAGE: "START_AI_IMAGE",

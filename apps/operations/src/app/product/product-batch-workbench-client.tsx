@@ -415,7 +415,6 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
 
   const nextHref = batchNextActionHref(batch.id, batch.nextAction);
   const followingStageLabel = batchFollowingStageLabel(batch.stage);
-  const detailReviewRequired = batch.nextAction === "REVIEW_PRODUCT_DETAILS";
   const canReviewDetails = hasPermission("page.product.details");
 
   return (
@@ -445,11 +444,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
                 <span className="block">完成后下一步：{followingStageLabel}</span>
               </CardDescription>
             </div>
-            {detailReviewRequired && !canReviewDetails ? (
-              <Button className="w-full sm:w-auto" disabled>等待主管批准详情</Button>
-            ) : (
-              <Button asChild className="w-full sm:w-auto"><Link href={nextHref}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
-            )}
+            <Button asChild className="w-full sm:w-auto"><Link href={nextHref}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -464,7 +459,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
               <div>
                 <CardTitle>后台商品详情</CardTitle>
                 <CardDescription className="mt-1">
-                  校准完成后系统创建详情任务，不影响 Barcode；发布前需由主管批准当前版本。
+                  详情生成和批准均为可选项，不影响 Barcode、入库或商品发布。
                 </CardDescription>
               </div>
               {canReviewDetails ? (

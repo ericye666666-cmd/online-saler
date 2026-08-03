@@ -22,8 +22,6 @@ test("derives the eight legal stages in order", () => {
     [products("BARCODE_ASSIGNED", 10, { labelPrintedAt: new Date() }), "REVIEW", "CONTINUE_REVIEW"],
     [products("READY_FOR_STORAGE"), "STORAGE", "COMPLETE_STORAGE"],
     [products("READY_FOR_STORAGE", 10, {
-      detailSourceVersion: 2,
-      detailProfiles: [{ status: "APPROVED", sourceDataVersion: 2 }],
       inventoryItem: { locationId: "loc", checkedInAt: new Date() }
     }), "PUBLISH", "PUBLISH_PRODUCTS"]
   ];
@@ -36,19 +34,19 @@ test("derives the eight legal stages in order", () => {
   assert.equal(PRODUCT_FACTORY_BATCH_STAGES.length, 8);
 });
 
-test("requires current detail approval only at the publish step", () => {
+test("keeps detail generation optional at the publish step", () => {
   const calibrated = deriveProductFactoryBatchFlow(products("CALIBRATED"));
   assert.equal(calibrated.stage, "BARCODE");
   assert.equal(calibrated.nextAction, "GENERATE_BARCODES");
 
-  const waitingForDetails = deriveProductFactoryBatchFlow(products("READY_FOR_STORAGE", 10, {
+  const publishableWithoutDetails = deriveProductFactoryBatchFlow(products("READY_FOR_STORAGE", 10, {
     detailSourceVersion: 3,
     detailProfiles: [{ status: "READY", sourceDataVersion: 3 }],
     inventoryItem: { locationId: "loc", checkedInAt: new Date() }
   }));
-  assert.equal(waitingForDetails.stage, "PUBLISH");
-  assert.equal(waitingForDetails.nextAction, "REVIEW_PRODUCT_DETAILS");
-  assert.equal(waitingForDetails.nextActionLabel, "检查并批准商品详情");
+  assert.equal(publishableWithoutDetails.stage, "PUBLISH");
+  assert.equal(publishableWithoutDetails.nextAction, "PUBLISH_PRODUCTS");
+  assert.equal(publishableWithoutDetails.detailGeneration.readyForPublish, true);
 });
 
 test("counts only current detail versions as publish-ready", () => {
@@ -66,7 +64,7 @@ test("counts only current detail versions as publish-ready", () => {
   ]);
   assert.equal(progress.pendingCount, 1);
   assert.equal(progress.approvedCount, 1);
-  assert.equal(progress.readyForPublish, false);
+  assert.equal(progress.readyForPublish, true);
 });
 
 test("keeps a mixed batch at its earliest incomplete stage", () => {

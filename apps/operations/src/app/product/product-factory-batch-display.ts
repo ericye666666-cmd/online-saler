@@ -32,7 +32,6 @@ export function batchNextActionHref(batchId: string, nextAction: string): string
     PRINT_AND_APPLY_LABELS: `/product/barcode?batchId=${encodedBatchId}`,
     CONTINUE_REVIEW: `/product/review?batchId=${encodedBatchId}`,
     COMPLETE_STORAGE: `/product/review?batchId=${encodedBatchId}`,
-    REVIEW_PRODUCT_DETAILS: `/product/details?batchId=${encodedBatchId}`,
     PUBLISH_PRODUCTS: `/product/review?batchId=${encodedBatchId}`,
     RESOLVE_EXCEPTION: `/product/exceptions?batchId=${encodedBatchId}`,
     VIEW_COMPLETED: `/product/completed`

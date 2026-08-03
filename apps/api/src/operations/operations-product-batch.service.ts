@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import {
   ActorType,
-  ProductDetailStatus,
   ProductBatchStatus,
   ProductStatus,
   ReviewResult,
@@ -432,13 +431,7 @@ export class OperationsProductBatchService {
     const batch = await this.requireBatch(batchId);
     const products = await prisma.product.findMany({
       where: { batchId },
-      include: {
-        ...this.productInclude(),
-        detailProfiles: {
-          where: { status: ProductDetailStatus.APPROVED },
-          select: { sourceDataVersion: true }
-        }
-      },
+      include: this.productInclude(),
       orderBy: { batchItemNumber: "asc" }
     });
     if (products.length !== batch.targetCount || products.some((product) =>
@@ -447,11 +440,6 @@ export class OperationsProductBatchService {
       !product.inventoryItem.locationId
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must complete storage before publishing.`);
-    }
-    if (products.some((product) => !product.detailProfiles.some(
-      (profile) => profile.sourceDataVersion === product.detailSourceVersion
-    ))) {
-      throw new BadRequestException(`All ${batch.targetCount} products must have approved current detail pages before publishing.`);
     }
     const published = [];
     for (const product of products) published.push(await this.productControl.publish(product.id, input));
