@@ -4,7 +4,7 @@ import { join } from "node:path";
 import satori from "satori";
 import sharp from "sharp";
 
-export const PRODUCT_DETAIL_TEMPLATE_VERSION = "product-detail-cards-v3";
+export const PRODUCT_DETAIL_TEMPLATE_VERSION = "product-detail-cards-v4";
 
 type CardRow = { label: string; value: string };
 

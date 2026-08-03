@@ -43,5 +43,7 @@ test("public detail exposes persisted copy, factual measurements and asset URLs 
   assert.equal("bodyRanges" in detail, false);
   assert.equal("fitSummary" in detail, false);
   assert.equal("sizeDisclaimer" in detail, false);
+  assert.equal("missingInformation" in detail, false);
+  assert.equal("warnings" in detail, false);
   assert.equal(detail.assets[0]?.url, "/product-detail-assets/asset-1/content");
 });

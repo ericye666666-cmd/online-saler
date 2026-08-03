@@ -90,8 +90,6 @@ export type ProductDetail = {
   measurementSummary: string;
   conditionSummary: string;
   styleTags: string[];
-  missingInformation: string[];
-  warnings: string[];
   fitType: string;
   stretchLevel: string;
   fabricWeight: string;
