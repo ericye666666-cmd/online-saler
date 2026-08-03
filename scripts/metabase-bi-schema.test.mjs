@@ -62,5 +62,6 @@ test("pins Metabase, Cloud SQL proxy, and limits automatic staging deployment", 
     workflow,
     /gcr\.io\/cloud-sql-connectors\/cloud-sql-proxy:\$\{CLOUD_SQL_PROXY_VERSION\}/,
   );
+  assert.match(workflow, /--args="--structured-logs,[^"]+\$\{CLOUD_SQL_INSTANCE\}"/);
   assert.match(workflow, /METABASE_DB_CONNECTION_URI_STAGING/);
 });
