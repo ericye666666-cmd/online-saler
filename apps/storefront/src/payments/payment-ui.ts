@@ -37,7 +37,7 @@ export function paymentBody(input: {
   resultDescription?: string | null;
 }): string {
   if (paymentSucceeded(input.orderStatus, input.paymentStatus)) {
-    return input.receiptNumber ? `Receipt ${input.receiptNumber}` : "Payment received. Your order is confirmed.";
+    return input.receiptNumber ? `Receipt ${input.receiptNumber}` : "Payment received. Customer service will confirm pickup or delivery.";
   }
   if (input.paymentStatus === "MANUAL_REVIEW") {
     return "We received a payment result that needs staff review before the order can move forward.";
