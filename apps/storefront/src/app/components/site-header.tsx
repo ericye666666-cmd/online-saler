@@ -13,6 +13,7 @@ import {
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { categories } from "../data/products";
 import { SellerHeaderAction } from "./seller-header-action";
+import { CART_STORAGE_KEY, CART_UPDATED_EVENT, cartItemCount, parseCartSnapshot } from "../storefront-cart";
 
 type CatalogCategory = (typeof categories)[number];
 
@@ -227,6 +228,7 @@ export function SiteHeader({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobilePanelId, setMobilePanelId] = useState<string | null>(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
   const headerRef = useRef<HTMLElement>(null);
   const value = searchValue ?? localSearch;
   const homeHref = sellerRef ? `/?ref=${encodeURIComponent(sellerRef)}` : "/";
@@ -276,6 +278,19 @@ export function SiteHeader({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [mobileOpen, mobilePanelId]);
+
+  useEffect(() => {
+    function refreshCartCount() {
+      setCartCount(cartItemCount(parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY))));
+    }
+    refreshCartCount();
+    window.addEventListener(CART_UPDATED_EVENT, refreshCartCount);
+    window.addEventListener("storage", refreshCartCount);
+    return () => {
+      window.removeEventListener(CART_UPDATED_EVENT, refreshCartCount);
+      window.removeEventListener("storage", refreshCartCount);
+    };
+  }, []);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     if (!onSearchChange) return;
@@ -355,8 +370,10 @@ export function SiteHeader({
           <button className="depopIconButton" type="button" aria-label="Saved items">
             <Heart size={24} />
           </button>
-          <Link className="depopIconButton" href="/cart" aria-label="Open cart">
+          <Link className="depopIconButton depopCartIcon" href="/cart" aria-label={`Open cart${cartCount ? `, ${cartCount} items` : ""}`}>
             <ShoppingBag size={23} />
+            {cartCount ? <span>{cartCount}</span> : null}
+            <small className="depopMiniCart">Cart has {cartCount} {cartCount === 1 ? "item" : "items"}. Review before payment.</small>
           </Link>
           <SellerHeaderAction />
         </div>
@@ -371,8 +388,9 @@ export function SiteHeader({
           >
             <Search size={23} />
           </button>
-          <Link href="/cart" aria-label="Open cart">
+          <Link className="depopCartIcon mobile" href="/cart" aria-label={`Open cart${cartCount ? `, ${cartCount} items` : ""}`}>
             <ShoppingBag size={23} />
+            {cartCount ? <span>{cartCount}</span> : null}
           </Link>
         </div>
       </div>

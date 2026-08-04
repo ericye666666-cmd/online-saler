@@ -7,7 +7,11 @@ export async function GET(request: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const baseUrl = process.env.STOREFRONT_PUBLIC_URL?.trim();
   if (!clientId || !baseUrl) {
-    return NextResponse.json({ error: "Google login is not configured." }, { status: 503 });
+    const returnTo = safeReturnTo(request.nextUrl.searchParams.get("returnTo"));
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("error", "configuration");
+    loginUrl.searchParams.set("returnTo", returnTo);
+    return NextResponse.redirect(loginUrl);
   }
 
   const state = newOAuthState();

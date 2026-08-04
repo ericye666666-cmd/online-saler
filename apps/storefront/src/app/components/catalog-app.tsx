@@ -7,6 +7,7 @@ import {
   Heart,
   MapPin,
   RotateCcw,
+  ShoppingBag,
   SlidersHorizontal,
   X,
 } from "lucide-react";
@@ -29,6 +30,13 @@ import {
 import { ProductCardShareButton } from "./product-card-share-button";
 import { ReferralTracker } from "./referral-tracker";
 import { BrowseSelection, SiteHeader } from "./site-header";
+import {
+  CART_STORAGE_KEY,
+  addCartItem,
+  catalogProductToCartItem,
+  notifyCartUpdated,
+  parseCartSnapshot
+} from "../storefront-cart";
 
 type CatalogCategory = (typeof categories)[number];
 type FilterMenu = "category" | "subcategory" | "brand" | "price" | "size" | "color" | "material" | "condition" | "store" | null;
@@ -52,6 +60,17 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, priority = fa
   const detailHref = sellerRef
     ? `/p/${product.code}?ref=${encodeURIComponent(sellerRef)}`
     : `/p/${product.code}`;
+  const [cartMessage, setCartMessage] = useState("");
+
+  function addToCart() {
+    if (product.status !== "Available") return;
+    const snapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
+    const nextSnapshot = addCartItem(snapshot, catalogProductToCartItem(product));
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
+    notifyCartUpdated();
+    setCartMessage(nextSnapshot.items.length === snapshot?.items.length ? "In cart" : "Added");
+    window.setTimeout(() => setCartMessage(""), 1200);
+  }
 
   return (
     <article className={`marketCard depopProductCard ${product.status !== "Available" ? "unavailable" : ""}`}>
@@ -86,6 +105,16 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, priority = fa
         <strong className="depopProductPrice">{formatPrice(product.price)}</strong>
         <div className="depopProductBottom">
           <span className="depopProductLocation"><MapPin size={13} strokeWidth={1.6} /> {product.store}</span>
+          <button
+            className="depopCartButton"
+            disabled={product.status !== "Available"}
+            type="button"
+            onClick={addToCart}
+            aria-label={`Add ${product.title} to cart`}
+          >
+            <ShoppingBag size={16} />
+            <span>{cartMessage || "Cart"}</span>
+          </button>
           <ProductCardShareButton
             className="whatsappIconButton depopShareButton"
             product={product}

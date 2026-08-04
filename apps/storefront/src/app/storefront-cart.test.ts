@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import {
   CART_STORAGE_VERSION,
+  addCartItem,
+  cartItemCount,
+  cartProductIds,
   cartSubtotalKsh,
   catalogProductToCartItem,
   createCartSnapshot,
+  removeCartItem,
   parseCartSnapshot,
   productToCartItem
 } from "./storefront-cart";
@@ -39,9 +43,7 @@ const product: PublicProduct = {
 
 const item = productToCartItem(product);
 assert.equal(item.productId, "product-1");
-assert.equal(item.title, "Coral Orange Graphic T-Shirt");
-assert.equal(item.priceKsh, 450);
-assert.equal(item.meta, "TOP / ORANGE / M");
+assert.ok(item.addedAt);
 
 const catalogProduct: CatalogProduct = {
   code: "catalog-1",
@@ -61,18 +63,22 @@ const catalogProduct: CatalogProduct = {
 };
 const catalogItem = catalogProductToCartItem(catalogProduct);
 assert.equal(catalogItem.productId, "catalog-1");
-assert.equal(catalogItem.title, "Coral button-front midi dress");
-assert.equal(catalogItem.priceKsh, 650);
-assert.equal(catalogItem.imageUrl, "/products/920260718001.webp");
-assert.equal(catalogItem.meta, "Dresses / Coral / M");
+assert.ok(catalogItem.addedAt);
 
 const snapshot = createCartSnapshot(item, "2026-07-30T00:00:00.000Z");
 assert.equal(snapshot.version, CART_STORAGE_VERSION);
-assert.equal(cartSubtotalKsh(snapshot), 450);
+assert.deepEqual(cartProductIds(snapshot), ["product-1"]);
+assert.equal(cartItemCount(snapshot), 1);
+assert.equal(cartSubtotalKsh([{ priceKsh: 450, canCheckout: true }, { priceKsh: 650, canCheckout: false }]), 450);
 assert.equal(cartSubtotalKsh(null), 0);
 assert.deepEqual(parseCartSnapshot(JSON.stringify(snapshot)), snapshot);
+assert.deepEqual(parseCartSnapshot(JSON.stringify({ version: CART_STORAGE_VERSION, item: catalogItem, updatedAt: "2026-07-30T00:00:00.000Z" }))?.items[0]?.productId, "catalog-1");
 assert.equal(parseCartSnapshot(null), null);
 assert.equal(parseCartSnapshot("{bad json"), null);
 assert.equal(parseCartSnapshot(JSON.stringify({ version: 0, item })), null);
+
+const withDuplicate = addCartItem(addCartItem(snapshot, catalogItem, "2026-07-30T00:00:01.000Z"), catalogItem, "2026-07-30T00:00:02.000Z");
+assert.deepEqual(cartProductIds(withDuplicate), ["product-1", "catalog-1"]);
+assert.deepEqual(cartProductIds(removeCartItem(withDuplicate, "product-1")), ["catalog-1"]);
 
 console.log("Storefront cart helper tests passed");

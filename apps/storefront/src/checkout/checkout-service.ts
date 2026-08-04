@@ -8,7 +8,12 @@ import {
   ProductStatus,
   prisma
 } from "@online-saler/database";
-import { KIKUYU_DELIVERY_FEE_KSH, RESERVATION_MINUTES, calculateOrderAmounts } from "@online-saler/business-rules";
+import {
+  KIKUYU_DELIVERY_FEE_KSH,
+  MAX_ACTIVE_RESERVATIONS_PER_PHONE,
+  RESERVATION_MINUTES,
+  calculateOrderAmounts
+} from "@online-saler/business-rules";
 import {
   createAttributionForOrder,
   resolveCheckoutAttribution,
@@ -17,7 +22,7 @@ import {
 
 export type StartCheckoutInput = {
   customerId: string;
-  productId: string;
+  productIds: string[];
   phone: string;
   fulfillmentMethod: FulfillmentMethod;
   deliveryAddress?: string | null;
@@ -38,24 +43,71 @@ export function normalizeKenyaPhone(value: string): string {
 
 export async function startCheckout(input: StartCheckoutInput) {
   const phone = normalizeKenyaPhone(input.phone);
+  const requestedProductIds = normalizeProductIds(input.productIds);
   const deliveryAddress = input.deliveryAddress?.trim() || null;
   const deliveryNote = input.deliveryNote?.trim() || null;
 
+  if (!requestedProductIds.length) {
+    throw new CheckoutValidationError("Choose at least one item before payment.");
+  }
   if (input.fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY && !deliveryAddress) {
     throw new CheckoutValidationError("Delivery address is required for local delivery.");
   }
 
   return prisma.$transaction(async (tx) => {
     const now = new Date();
-    const existing = await tx.checkoutDraft.findFirst({
+    const products = await tx.product.findMany({
+      where: {
+        OR: [
+          { id: { in: requestedProductIds } },
+          { productCode: { in: requestedProductIds } },
+          { barcode: { in: requestedProductIds } }
+        ]
+      },
+      include: {
+        images: { orderBy: { sortOrder: "asc" }, take: 1 },
+        measurements: true,
+        defects: true,
+        inventoryItem: true
+      }
+    });
+
+    const resolvedProducts = requestedProductIds.map((productId) =>
+      products.find((product) => product.id === productId || product.productCode === productId || product.barcode === productId)
+    );
+    if (resolvedProducts.some((product) => !product)) {
+      throw new CheckoutConflictError("One or more cart items are no longer available.");
+    }
+    const uniqueProducts = dedupeProducts(resolvedProducts.filter(Boolean) as typeof products);
+    if (uniqueProducts.length !== resolvedProducts.length) {
+      throw new CheckoutValidationError("A one-of-one item cannot appear twice in the same order.");
+    }
+
+    const invalidProducts = uniqueProducts.filter((product) => (
+      product.status !== ProductStatus.PUBLISHED ||
+      !product.priceKsh ||
+      product.priceKsh <= 0 ||
+      !product.inventoryItem ||
+      product.inventoryItem.status !== InventoryItemStatus.AVAILABLE
+    ));
+    if (invalidProducts.length) {
+      throw new CheckoutConflictError("One or more cart items changed before payment. Refresh the cart and try again.");
+    }
+
+    const productIds = uniqueProducts.map((product) => product.id);
+    const existingDrafts = await tx.checkoutDraft.findMany({
       where: {
         customerId: input.customerId,
         status: CheckoutDraftStatus.ACTIVE,
-        expiresAt: { gt: now },
-        convertedOrder: { is: { items: { some: { productId: input.productId } } } }
+        expiresAt: { gt: now }
       },
-      include: { convertedOrder: true },
-      orderBy: { createdAt: "desc" }
+      include: { convertedOrder: { include: { items: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 5
+    });
+    const existing = existingDrafts.find((draft) => {
+      const existingProductIds = draft.convertedOrder?.items.map((item) => item.productId) ?? [];
+      return sameProductSet(existingProductIds, productIds);
     });
 
     if (existing?.convertedOrder) {
@@ -69,50 +121,45 @@ export async function startCheckout(input: StartCheckoutInput) {
         itemSubtotalKsh: existing.itemSubtotalKsh,
         deliveryFeeKsh: existing.deliveryFeeKsh,
         totalKsh: existing.totalKsh,
-        currency: existing.currency
+        currency: existing.currency,
+        items: existing.convertedOrder.items.map((item) => ({ productId: item.productId }))
       };
     }
 
-    const product = await tx.product.findFirst({
+    const activeReservedItems = await tx.orderItem.count({
       where: {
-        id: input.productId,
-        status: ProductStatus.PUBLISHED,
-        priceKsh: { gt: 0 },
-        inventoryItem: { is: { status: InventoryItemStatus.AVAILABLE } }
-      },
-      include: {
-        images: { orderBy: { sortOrder: "asc" }, take: 1 },
-        measurements: true,
-        defects: true,
-        inventoryItem: true
+        order: {
+          sourceDraft: {
+            is: {
+              status: CheckoutDraftStatus.ACTIVE,
+              expiresAt: { gt: now },
+              customer: { is: { phone } }
+            }
+          }
+        }
       }
     });
-
-    if (!product?.inventoryItem || !product.priceKsh) {
-      throw new CheckoutConflictError("This item is no longer available.");
-    }
-
-    const activeReservations = await tx.checkoutDraft.count({
-      where: {
-        status: CheckoutDraftStatus.ACTIVE,
-        expiresAt: { gt: now },
-        customer: { is: { phone } }
-      }
-    });
-    if (activeReservations >= 5) {
+    if (activeReservedItems + uniqueProducts.length > MAX_ACTIVE_RESERVATIONS_PER_PHONE) {
       throw new CheckoutConflictError("This phone number already has five active payment reservations.");
     }
 
-    const locked = await tx.inventoryItem.updateMany({
-      where: { id: product.inventoryItem.id, status: InventoryItemStatus.AVAILABLE },
-      data: { status: InventoryItemStatus.RESERVED }
-    });
-    if (locked.count !== 1) throw new CheckoutConflictError("Another customer has just reserved this item.");
+    for (const product of uniqueProducts) {
+      const locked = await tx.inventoryItem.updateMany({
+        where: { id: product.inventoryItem!.id, status: InventoryItemStatus.AVAILABLE },
+        data: { status: InventoryItemStatus.RESERVED }
+      });
+      if (locked.count !== 1) {
+        throw new CheckoutConflictError("Another customer has just reserved one of these items.");
+      }
+    }
 
     const deliveryFeeKsh = input.fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY
       ? KIKUYU_DELIVERY_FEE_KSH
       : 0;
-    const amounts = calculateOrderAmounts([{ productId: product.id, unitPriceKsh: product.priceKsh }], deliveryFeeKsh);
+    const amounts = calculateOrderAmounts(
+      uniqueProducts.map((product) => ({ productId: product.id, unitPriceKsh: product.priceKsh! })),
+      deliveryFeeKsh
+    );
     const expiresAt = new Date(now.getTime() + RESERVATION_MINUTES * 60_000);
     const orderNumber = `DL-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(4).toString("hex").toUpperCase()}`;
     const attribution = await resolveCheckoutAttribution(tx, input.customerId, input.attribution, now);
@@ -141,11 +188,11 @@ export async function startCheckout(input: StartCheckoutInput) {
         affiliateSource: attribution?.source ?? null,
         affiliateCampaign: attribution?.campaign ?? null,
         items: {
-          create: {
+          create: uniqueProducts.map((product) => ({
             productId: product.id,
-            unitPriceKsh: product.priceKsh,
+            unitPriceKsh: product.priceKsh!,
             quantity: 1,
-            lineTotalKsh: product.priceKsh,
+            lineTotalKsh: product.priceKsh!,
             snapshot: {
               create: {
                 productCode: product.productCode,
@@ -167,10 +214,10 @@ export async function startCheckout(input: StartCheckoutInput) {
                   severity: item.severity,
                   description: item.customerSafeDescription || item.description
                 })),
-                unitPriceKsh: product.priceKsh
+                unitPriceKsh: product.priceKsh!
               }
             }
-          }
+          }))
         }
       }
     });
@@ -205,9 +252,44 @@ export async function startCheckout(input: StartCheckoutInput) {
       phone,
       expiresAt: expiresAt.toISOString(),
       reservationMinutes: RESERVATION_MINUTES,
-      ...amounts
+      ...amounts,
+      items: uniqueProducts.map((product) => ({
+        productId: product.id,
+        title: product.title || "Second-hand item",
+        unitPriceKsh: product.priceKsh!
+      }))
     };
   }, { isolationLevel: "Serializable" });
+}
+
+function normalizeProductIds(productIds: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const raw of productIds) {
+    const productId = raw.trim();
+    if (!productId || seen.has(productId)) continue;
+    seen.add(productId);
+    normalized.push(productId);
+  }
+  return normalized;
+}
+
+function dedupeProducts<T extends { id: string }>(products: T[]): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const product of products) {
+    if (seen.has(product.id)) continue;
+    seen.add(product.id);
+    deduped.push(product);
+  }
+  return deduped;
+}
+
+function sameProductSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.every((value, index) => value === sortedRight[index]);
 }
 
 export async function releaseExpiredReservations(now = new Date()) {

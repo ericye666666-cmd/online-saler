@@ -167,10 +167,7 @@ export async function initiateMpesaPayment(
           completedAt: new Date()
         }
       });
-      await tx.order.updateMany({
-        where: { id: order.id, status: OrderStatus.PAYMENT_PROCESSING },
-        data: { status: OrderStatus.PENDING_PAYMENT }
-      });
+      await releaseOrderReservation(tx, order.id, CheckoutDraftStatus.ABANDONED, OrderStatus.CANCELLED);
     });
     throw error;
   }
@@ -235,6 +232,12 @@ export async function handleMpesaCallback(body: unknown) {
 
   if (callback.resultCode !== 0) {
     const failedStatus = classifyMpesaFailure(callback.resultCode);
+    const draftStatus = failedStatus === PaymentStatus.TIMEOUT
+      ? CheckoutDraftStatus.EXPIRED
+      : CheckoutDraftStatus.ABANDONED;
+    const orderStatus = failedStatus === PaymentStatus.TIMEOUT
+      ? OrderStatus.EXPIRED
+      : OrderStatus.CANCELLED;
     await prisma.$transaction(async (tx) => {
       await tx.mpesaCallback.create({
         data: callbackData(callback, payment.id, payment.orderId, MpesaCallbackProcessingStatus.APPLIED, body)
@@ -249,10 +252,7 @@ export async function handleMpesaCallback(body: unknown) {
           completedAt: new Date()
         }
       });
-      await tx.order.updateMany({
-        where: { id: payment.orderId, status: OrderStatus.PAYMENT_PROCESSING },
-        data: { status: OrderStatus.PENDING_PAYMENT }
-      });
+      await releaseOrderReservation(tx, payment.orderId, draftStatus, orderStatus);
     });
     return { ok: true, status: failedStatus };
   }
@@ -391,6 +391,32 @@ async function phoneForOrder(tx: Pick<Prisma.TransactionClient, "checkoutDraft">
   });
   if (!draft?.customer.phone) throw new PaymentValidationError("M-Pesa phone is missing for this order.");
   return draft.customer.phone;
+}
+
+async function releaseOrderReservation(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  draftStatus: CheckoutDraftStatus,
+  orderStatus: OrderStatus
+) {
+  await tx.checkoutDraft.updateMany({
+    where: { convertedOrderId: orderId, status: CheckoutDraftStatus.ACTIVE },
+    data: { status: draftStatus }
+  });
+  await tx.order.updateMany({
+    where: { id: orderId, status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] } },
+    data: { status: orderStatus }
+  });
+  const items = await tx.orderItem.findMany({
+    where: { orderId },
+    select: { productId: true }
+  });
+  for (const item of items) {
+    await tx.inventoryItem.updateMany({
+      where: { productId: item.productId, status: InventoryItemStatus.RESERVED },
+      data: { status: InventoryItemStatus.AVAILABLE }
+    });
+  }
 }
 
 function callbackData(

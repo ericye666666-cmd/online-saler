@@ -18,16 +18,18 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json() as {
-      productId?: string;
+      productIds?: string[];
       phone?: string;
       fulfillmentMethod?: string;
       deliveryAddress?: string | null;
       deliveryNote?: string | null;
     };
-    const productId = body.productId?.trim();
+    const productIds = Array.isArray(body.productIds)
+      ? body.productIds.filter((productId) => typeof productId === "string").map((productId) => productId.trim()).filter(Boolean)
+      : [];
     const phone = body.phone?.trim();
-    if (!productId || !phone) {
-      throw new CheckoutValidationError("Product and M-Pesa phone are required.");
+    if (!productIds.length || !phone) {
+      throw new CheckoutValidationError("Cart items and M-Pesa phone are required.");
     }
     if (!Object.values(FulfillmentMethod).includes(body.fulfillmentMethod as FulfillmentMethod)) {
       throw new CheckoutValidationError("Choose Kikuyu pickup or local delivery.");
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
     const attribution = parseAffiliateCookie(cookieStore.get(AFFILIATE_ATTRIBUTION_COOKIE)?.value);
     const result = await startCheckout({
       customerId: session.customerId,
-      productId,
+      productIds,
       phone,
       fulfillmentMethod: body.fulfillmentMethod as FulfillmentMethod,
       deliveryAddress: body.deliveryAddress,
