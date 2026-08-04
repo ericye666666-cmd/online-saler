@@ -177,13 +177,15 @@ export function ProductWorkbenchPage() {
   const metrics = summary?.metrics;
   const tasks = summary?.tasks;
   const continueBatch = summary?.continueBatch;
+  const continueWorkflowIndex = continueBatch ? productFactoryWorkflowStageIndex(continueBatch.stage) : 0;
+  const continueWorkflowStage = continueBatch ? productFactoryWorkflowStage(continueBatch.stage) : "CAPTURE";
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         eyebrow="商品工厂"
         title="今日工作"
-        description="按批次完成商品上传、AI、校准、贴码、审核、入仓和发布。"
+        description="三段完成上品：批量采集、AI 自动处理、异常确认并发布。"
         action={
           <Button asChild disabled={!hasPermission("action.product.create")}>
             <Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />新建批次</Link>
@@ -210,12 +212,12 @@ export function ProductWorkbenchPage() {
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-semibold">{continueBatch.batchCode}</span>
-                    <StageBadge stage={continueBatch.stage} label={continueBatch.stageLabel} />
+                    <StageBadge stage={continueBatch.stage} label={PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[continueWorkflowStage]} />
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    当前步骤 {continueBatch.stageCompletedCount}/{continueBatch.targetCount}，下一步：{continueBatch.nextActionLabel}
+                    当前阶段 {Math.min(continueWorkflowIndex + 1, 3)}/3，当前任务：{continueBatch.nextActionLabel}
                   </p>
-                  <ProgressBar value={continueBatch.stageCompletedCount} max={continueBatch.targetCount} />
+                  <ProgressBar value={Math.min(continueWorkflowIndex + 1, 3)} max={3} />
                 </div>
                 <Button asChild className="w-full shrink-0 sm:w-auto">
                   <Link href={`/product/batches/${continueBatch.id}`}>继续本批次<ArrowRightIcon data-icon="inline-end" /></Link>
@@ -433,7 +435,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric title="批次商品" value={batch.targetCount} />
-        <Metric title="当前步骤完成" value={batch.stageCompletedCount} suffix={`/ ${batch.targetCount}`} />
+        <Metric title="当前阶段" value={Math.min(workflowStageIndex + 1, 3)} suffix="/ 3" />
         <Metric title="已发布/归档" value={batch.completedCount} suffix={`/ ${batch.targetCount}`} />
         <Metric title="异常" value={batch.exceptionCount} tone={batch.exceptionCount ? "danger" : "default"} />
       </section>
