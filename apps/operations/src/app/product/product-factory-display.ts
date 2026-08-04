@@ -21,6 +21,8 @@ export const IMAGE_ISSUE_LABELS: Record<string, string> = {
   SUBJECT_TOUCHES_EDGE: "主体触碰边缘",
   SUBJECT_TOUCHES_FRAME: "主体触碰边缘",
   EDGE_FRAGMENTED: "边缘破碎",
+  MULTIPLE_FOREGROUND_COMPONENTS: "保留了多个非商品区域",
+  BOARD_RESIDUE_SUSPECTED: "疑似保留测量板",
   MASK_HAS_LARGE_HOLES: "主体存在异常缺口"
 };
 

@@ -1,7 +1,12 @@
 import type { ImageProcessingJobRecord, ProductImageComparisonResponse } from "@online-saler/shared-types";
 
 const MINIMUM_LIGHTWEIGHT_QUALITY_SCORE = 0.75;
-const BLOCKING_LIGHTWEIGHT_ISSUES = new Set(["SUBJECT_TOUCHES_EDGE", "EDGE_FRAGMENTED"]);
+const BLOCKING_LIGHTWEIGHT_ISSUES = new Set([
+  "SUBJECT_TOUCHES_EDGE",
+  "EDGE_FRAGMENTED",
+  "MULTIPLE_FOREGROUND_COMPONENTS",
+  "BOARD_RESIDUE_SUSPECTED"
+]);
 
 export function cutoutQualityWarning(job: ImageProcessingJobRecord): string | null {
   if (job.provider === "manual-cutout-editor") return null;

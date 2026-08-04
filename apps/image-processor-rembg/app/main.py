@@ -5,12 +5,14 @@ import os
 from functools import lru_cache
 from threading import Lock
 
+import cv2
+import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from PIL import Image, UnidentifiedImageError
 from rembg import new_session, remove
 
-PROCESSOR_VERSION = "rembg-birefnet-v2"
+PROCESSOR_VERSION = "rembg-birefnet-v3-board-quality"
 DEFAULT_MODEL = "birefnet-general"
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
 
@@ -47,10 +49,11 @@ def process_image(raw: bytes) -> bytes:
 def analyze_cutout(output: bytes) -> tuple[float, tuple[str, ...]]:
     with Image.open(io.BytesIO(output)) as image:
         rgba = image.convert("RGBA")
-        alpha = rgba.getchannel("A")
+        pixels = np.asarray(rgba)
+        alpha = pixels[:, :, 3]
         width, height = rgba.size
-        histogram = alpha.histogram()
-        foreground_pixels = sum(histogram[16:])
+        mask = np.where(alpha > 16, 255, 0).astype(np.uint8)
+        foreground_pixels = int(np.count_nonzero(mask))
         area_ratio = foreground_pixels / max(1, width * height)
         issues: list[str] = []
 
@@ -59,19 +62,68 @@ def analyze_cutout(output: bytes) -> tuple[float, tuple[str, ...]]:
         if area_ratio > 0.82:
             issues.append("SUBJECT_TOO_LARGE")
 
-        edge_pixels = list(alpha.crop((0, 0, width, 1)).getdata())
-        edge_pixels += list(alpha.crop((0, height - 1, width, height)).getdata())
-        edge_pixels += list(alpha.crop((0, 0, 1, height)).getdata())
-        edge_pixels += list(alpha.crop((width - 1, 0, width, height)).getdata())
-        edge_ratio = sum(1 for value in edge_pixels if value > 16) / max(1, len(edge_pixels))
+        edge_pixels = np.concatenate([mask[0], mask[-1], mask[:, 0], mask[:, -1]])
+        edge_ratio = float(np.count_nonzero(edge_pixels)) / max(1, edge_pixels.size)
         if edge_ratio > 0.04:
             issues.append("SUBJECT_TOUCHES_EDGE")
+
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        minimum_component_area = max(width * height * 0.0015, foreground_pixels * 0.015)
+        significant_labels = [
+            label
+            for label in range(1, count)
+            if stats[label, cv2.CC_STAT_AREA] >= minimum_component_area
+        ]
+        component_count = len(significant_labels)
+        if component_count > 6:
+            issues.append("EDGE_FRAGMENTED")
+        if component_count > 2:
+            issues.append("MULTIPLE_FOREGROUND_COMPONENTS")
+        if _has_bright_secondary_component(pixels[:, :, :3], labels, stats, significant_labels):
+            issues.append("BOARD_RESIDUE_SUSPECTED")
 
         score = 1.0
         score -= min(abs(area_ratio - 0.34), 0.34) * 0.45
         score -= min(edge_ratio, 0.2) * 1.5
-        score -= len(issues) * 0.08
+        score -= max(0, component_count - 3) * 0.04
+        score -= len(issues) * 0.13
         return round(max(0.0, min(1.0, score)), 3), tuple(issues)
+
+
+def _has_bright_secondary_component(
+    rgb: np.ndarray,
+    labels: np.ndarray,
+    stats: np.ndarray,
+    significant_labels: list[int],
+) -> bool:
+    if len(significant_labels) < 2:
+        return False
+
+    primary = max(significant_labels, key=lambda label: stats[label, cv2.CC_STAT_AREA])
+    hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+    primary_pixels = hsv[labels == primary]
+    if primary_pixels.size == 0:
+        return False
+    primary_saturation = float(np.median(primary_pixels[:, 1]))
+    primary_value = float(np.median(primary_pixels[:, 2]))
+    foreground_area = sum(float(stats[label, cv2.CC_STAT_AREA]) for label in significant_labels)
+
+    for label in significant_labels:
+        if label == primary:
+            continue
+        area_share = float(stats[label, cv2.CC_STAT_AREA]) / max(1.0, foreground_area)
+        if area_share < 0.04:
+            continue
+        pixels = hsv[labels == label]
+        if pixels.size == 0:
+            continue
+        saturation = float(np.median(pixels[:, 1]))
+        value = float(np.median(pixels[:, 2]))
+        looks_like_board = saturation <= 42 and value >= 205
+        differs_from_primary = value >= primary_value + 15 or saturation + 20 <= primary_saturation
+        if looks_like_board and differs_from_primary:
+            return True
+    return False
 
 
 @app.on_event("startup")

@@ -70,4 +70,15 @@ describe("Product image processing rules", () => {
       reason: "QUALITY_SCORE_BELOW_THRESHOLD:0.47<0.75"
     });
   });
+
+  it("blocks disconnected foreground and suspected measurement-board residue", () => {
+    assert.deepEqual(
+      evaluateCutoutImageQuality({ qualityScore: 0.92, qualityIssues: ["MULTIPLE_FOREGROUND_COMPONENTS"] }),
+      { pass: false, reason: "QUALITY_ISSUE:MULTIPLE_FOREGROUND_COMPONENTS" }
+    );
+    assert.deepEqual(
+      evaluateCutoutImageQuality({ qualityScore: 0.93, qualityIssues: ["BOARD_RESIDUE_SUSPECTED"] }),
+      { pass: false, reason: "QUALITY_ISSUE:BOARD_RESIDUE_SUSPECTED" }
+    );
+  });
 });

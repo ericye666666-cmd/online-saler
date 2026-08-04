@@ -685,7 +685,12 @@ export function ProductBatchCalibrationPage({
       const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
       setActiveImage("balanced");
-      setNotice(`${mode === "rembg_birefnet" ? "已使用 BiRefNet" : "已使用 lightweight OpenCV"} 重新处理。请确认抠图边缘和白底结果；商城主图将在详情生成阶段选择。`);
+      const modeLabel = mode === "auto"
+        ? "自动抠图链路"
+        : mode === "rembg_birefnet"
+          ? "BiRefNet"
+          : "lightweight OpenCV";
+      setNotice(`已使用${modeLabel}重新处理。请确认抠图边缘和白底结果；商城主图将在详情生成阶段选择。`);
     } catch (caught) {
       setError(errorMessage(caught, "图片处理失败。"));
     } finally {
@@ -883,6 +888,9 @@ export function ProductBatchCalibrationPage({
               <p className="font-semibold">抠图未通过，已禁止继续使用这张处理图</p>
               <p className="mt-1 text-xs">{cutoutWarning}</p>
               <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => void processImages("auto")} disabled={Boolean(busy) || readOnly}>
+                  {busy === "auto" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}自动重试抠图
+                </Button>
                 <Button size="sm" onClick={() => setManualEditorOpen(true)} disabled={Boolean(busy) || !comparison?.original?.publicUrl}><ScissorsIcon data-icon="inline-start" />点选轮廓重新抠图</Button>
                 <Button size="sm" variant="outline" onClick={() => void markRetake()} disabled={Boolean(busy) || readOnly}><RotateCcwIcon data-icon="inline-start" />无法修复，标记重拍</Button>
               </div>
@@ -905,6 +913,11 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />全屏</Button>
             {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
+            {!readOnly && comparison?.original?.publicUrl ? (
+              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => setManualEditorOpen(true)}>
+                <ScissorsIcon data-icon="inline-start" />抠图不对，手动修正
+              </Button>
+            ) : null}
           </div>
 
           {latestRemovalJob ? <ProcessingSummary job={latestRemovalJob} warning={cutoutWarning} /> : <StatusMessage tone="neutral">还没有图片处理记录。</StatusMessage>}
@@ -1015,8 +1028,12 @@ export function ProductBatchCalibrationPage({
               imageUrl={measurementGuideImage(imageTabs)}
               manualLines={manualMeasurementLines}
               aiLines={aiMeasurement.lines}
-              onManualCalibrate={measurementAction && manualMeasurementLines.length > 0 ? () => void openManualMeasurementCalibration() : undefined}
-              manualCalibrateLabel="修正已有测量线"
+              onManualCalibrate={measurementAction ? () => void openManualMeasurementCalibration() : undefined}
+              manualCalibrateLabel={manualMeasurementLines.length > 0
+                ? "修正已有测量线"
+                : aiMeasurement.lines.length > 0
+                  ? "校正 AI 测量线"
+                  : "打开测量板测量"}
               manualCalibrateDisabled={Boolean(busy)}
               measurements={measurementSuggestions.map((item) => ({
                 key: item.key,
@@ -1027,7 +1044,7 @@ export function ProductBatchCalibrationPage({
             />
             {!hasAiMeasurements && !readOnly ? (
               <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                AI 没有给出可靠厘米值。请直接用软尺实测并填写下方字段；系统不会再要求点击定位板或按像素估算距离。
+                AI 没有给出可靠厘米值。可直接用软尺实测并填写下方字段，也可打开测量板连接起点和终点，由系统按板面换算厘米。
               </div>
             ) : null}
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">

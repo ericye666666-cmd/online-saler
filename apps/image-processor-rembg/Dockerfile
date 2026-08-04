@@ -19,6 +19,8 @@ RUN mkdir -p ${U2NET_HOME} \
     && python -c "from rembg import new_session; new_session('birefnet-general')"
 
 COPY app ./app
+COPY tests ./tests
+RUN python -m unittest discover -s tests -p "test_*.py"
 
 RUN useradd --create-home --uid 10001 processor \
     && chown -R processor:processor /service ${U2NET_HOME}

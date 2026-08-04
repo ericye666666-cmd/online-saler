@@ -24,6 +24,18 @@ assert.equal(
   false,
   "Calibration must not generate AI display images."
 );
+assert.ok(
+  calibrationSource.includes("onManualCalibrate={measurementAction ?"),
+  "Every calibratable product with an original image must expose the measurement-board editor."
+);
+assert.ok(
+  calibrationSource.includes("打开测量板测量"),
+  "A new item without existing manual lines must still expose the measurement-board action."
+);
+assert.ok(
+  calibrationSource.includes("抠图不对，手动修正"),
+  "Staff must be able to override a visually wrong cutout even when automatic scoring passes."
+);
 assert.equal(
   calibrationSource.includes("设为商城主图"),
   false,

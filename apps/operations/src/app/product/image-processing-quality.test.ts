@@ -75,6 +75,13 @@ describe("lightweight cutout storefront quality", () => {
     );
   });
 
+  it("blocks a high-scoring automatic result that still contains measurement-board residue", () => {
+    assert.match(
+      cutoutQualityWarning(job({ provider: "rembg-birefnet", qualityScore: 0.97, qualityIssues: ["BOARD_RESIDUE_SUSPECTED"] })) ?? "",
+      /BOARD_RESIDUE_SUSPECTED.*手工修边/
+    );
+  });
+
   it("allows a passing lightweight cutout", () => {
     assert.equal(lightweightCutoutWarning(job()), null);
   });

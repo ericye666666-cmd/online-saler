@@ -25,9 +25,9 @@ describe("batch product processing concurrency", () => {
     assert.deepEqual([...completed].sort((left, right) => left - right), [1, 2, 3, 4, 5]);
   });
 
-  it("starts all ten product images in one batch while keeping OpenAI separately limited", async () => {
+  it("keeps image processing within downstream capacity while keeping OpenAI separately limited", async () => {
     assert.equal(PRODUCT_UPLOAD_BATCH_CONCURRENCY, 10);
-    assert.equal(PRODUCT_IMAGE_BATCH_CONCURRENCY, 10);
+    assert.equal(PRODUCT_IMAGE_BATCH_CONCURRENCY, 4);
     assert.equal(PRODUCT_AI_BATCH_CONCURRENCY, 3);
 
     let active = 0;
@@ -36,15 +36,15 @@ describe("batch product processing concurrency", () => {
     const batchStarted = new Promise<void>((resolve) => { releaseBatch = resolve; });
     let started = 0;
 
-    await runWithConcurrency(Array.from({ length: 10 }, (_, index) => index), PRODUCT_IMAGE_BATCH_CONCURRENCY, async () => {
+    await runWithConcurrency(Array.from({ length: 4 }, (_, index) => index), PRODUCT_IMAGE_BATCH_CONCURRENCY, async () => {
       active += 1;
       started += 1;
       maximumActive = Math.max(maximumActive, active);
-      if (started === 10) releaseBatch?.();
+      if (started === 4) releaseBatch?.();
       await batchStarted;
       active -= 1;
     });
 
-    assert.equal(maximumActive, 10);
+    assert.equal(maximumActive, 4);
   });
 });
