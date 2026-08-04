@@ -20,6 +20,7 @@ from app.main import (
     analyze_cutout,
     choose_preferred_cutout,
     cleanup_measurement_board_residue,
+    retain_dominant_high_confidence_component,
 )
 
 
@@ -127,15 +128,31 @@ class AnalyzeCutoutTests(unittest.TestCase):
         )
         fallback = ProcessedCutout(
             b"fallback",
-            "u2net_cloth_seg",
+            "isnet-general-use",
             0.84,
             (),
         )
 
         selected = choose_preferred_cutout(primary, fallback)
 
-        self.assertEqual(selected.model, "u2net_cloth_seg")
+        self.assertEqual(selected.model, "isnet-general-use")
         self.assertEqual(selected.output, b"fallback")
+
+    def test_keeps_centered_soft_subject_and_removes_board_frame(self) -> None:
+        alpha = np.zeros((400, 300), dtype=np.uint8)
+        alpha[20:28, 20:280] = 220
+        alpha[372:380, 20:280] = 220
+        alpha[20:380, 20:28] = 220
+        alpha[20:380, 272:280] = 220
+        alpha[70:350, 85:215] = 240
+        alpha[68:352, 83:217] = np.maximum(alpha[68:352, 83:217], 72)
+
+        recovered = retain_dominant_high_confidence_component(alpha)
+
+        self.assertEqual(int(recovered[24, 150]), 0)
+        self.assertEqual(int(recovered[200, 24]), 0)
+        self.assertEqual(int(recovered[200, 150]), 240)
+        self.assertEqual(int(recovered[68, 150]), 72)
 
 
 if __name__ == "__main__":

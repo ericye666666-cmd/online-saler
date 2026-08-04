@@ -10,12 +10,12 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from rembg import new_session, remove
 
-PROCESSOR_VERSION = "rembg-birefnet-v5-cloth-fallback"
+PROCESSOR_VERSION = "rembg-birefnet-v6-isnet-board-crop"
 DEFAULT_MODEL = "birefnet-general"
-FALLBACK_MODEL = "u2net_cloth_seg"
+FALLBACK_MODEL = "isnet-general-use"
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
 MINIMUM_QUALITY_SCORE = 0.75
 BLOCKING_ISSUES = {
@@ -56,7 +56,7 @@ def process_image(raw: bytes) -> ProcessedCutout:
         return primary
 
     try:
-        fallback = _process_with_model(raw, FALLBACK_MODEL)
+        fallback = _process_board_cropped_fallback(raw, FALLBACK_MODEL)
     except Exception:
         # The primary candidate remains quality-blocked, so returning it is
         # safer than turning a recoverable segmentation miss into a 500.
@@ -78,6 +78,96 @@ def _process_with_model(raw: bytes, model_name: str) -> ProcessedCutout:
     cleaned = cleanup_measurement_board_residue(raw, bytes(output))
     quality_score, quality_issues = analyze_cutout(cleaned)
     return ProcessedCutout(cleaned, model_name, quality_score, quality_issues)
+
+
+def _process_board_cropped_fallback(raw: bytes, model_name: str) -> ProcessedCutout:
+    """Run the fallback only inside the measurement board's usable area.
+
+    Pale garments have very little contrast against the white board. Running a
+    second model against the whole photograph encourages it to retain ruler
+    marks and the printed alignment label. The board layout is fixed, so crop
+    only its outer measurement frame for segmentation, recover the dominant
+    high-confidence central component, then place that alpha back on the
+    EXIF-aligned original canvas.
+    """
+    with Image.open(io.BytesIO(raw)) as source_image:
+        source = ImageOps.exif_transpose(source_image).convert("RGB")
+
+    width, height = source.size
+    crop_box = (
+        int(round(width * 0.05)),
+        int(round(height * 0.08)),
+        int(round(width * 0.95)),
+        int(round(height * 0.90)),
+    )
+    cropped = source.crop(crop_box)
+    cropped_buffer = io.BytesIO()
+    cropped.save(cropped_buffer, format="PNG")
+
+    with _session_lock:
+        output = remove(
+            cropped_buffer.getvalue(),
+            session=get_session(model_name),
+            force_return_bytes=True,
+            post_process_mask=False,
+        )
+    if not isinstance(output, (bytes, bytearray)):
+        raise RuntimeError("rembg did not return image bytes")
+
+    with Image.open(io.BytesIO(bytes(output))) as cutout_image:
+        fallback_rgba = np.asarray(cutout_image.convert("RGBA"))
+    if fallback_rgba.shape[:2] != (cropped.height, cropped.width):
+        raise RuntimeError("fallback output dimensions do not match board crop")
+
+    recovered_alpha = retain_dominant_high_confidence_component(fallback_rgba[:, :, 3])
+    cropped_rgb = np.asarray(cropped)
+    composed_crop = np.dstack((cropped_rgb, recovered_alpha)).astype(np.uint8)
+    full_rgba = np.zeros((height, width, 4), dtype=np.uint8)
+    left, top, right, bottom = crop_box
+    full_rgba[top:bottom, left:right] = composed_crop
+
+    encoded = io.BytesIO()
+    Image.fromarray(full_rgba, mode="RGBA").save(encoded, format="PNG", optimize=True)
+    cleaned = encoded.getvalue()
+    quality_score, quality_issues = analyze_cutout(cleaned)
+    return ProcessedCutout(cleaned, model_name, quality_score, quality_issues)
+
+
+def retain_dominant_high_confidence_component(alpha: np.ndarray) -> np.ndarray:
+    """Keep the main soft-alpha subject while dropping disconnected board ink."""
+    if alpha.ndim != 2:
+        raise ValueError("alpha must be a two-dimensional channel")
+
+    height, width = alpha.shape
+    confident = np.where(alpha >= 128, 255, 0).astype(np.uint8)
+    eroded = cv2.erode(
+        confident,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+        iterations=1,
+    )
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(eroded, connectivity=8)
+    minimum_area = height * width * 0.005
+    image_center = np.array([width / 2.0, height / 2.0])
+    candidates: list[tuple[float, int]] = []
+    for label in range(1, count):
+        area = float(stats[label, cv2.CC_STAT_AREA])
+        if area < minimum_area:
+            continue
+        center_distance = np.linalg.norm(centroids[label] - image_center) / max(height, width)
+        candidates.append((area * (1.0 - min(center_distance, 0.75)), label))
+    if not candidates:
+        # Preserve the model output so normal quality gates can block it. An
+        # empty image would hide the original segmentation failure.
+        return alpha.copy()
+
+    _, subject_label = max(candidates)
+    subject_core = np.where(labels == subject_label, 255, 0).astype(np.uint8)
+    nearby = cv2.dilate(
+        subject_core,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
+        iterations=1,
+    )
+    return np.where(nearby > 0, alpha, 0).astype(np.uint8)
 
 
 def _requires_fallback(candidate: ProcessedCutout) -> bool:
@@ -108,7 +198,7 @@ def cleanup_measurement_board_residue(raw: bytes, output: bytes) -> bytes:
     color model and retain only the dominant non-board subject component.
     """
     with Image.open(io.BytesIO(raw)) as source_image, Image.open(io.BytesIO(output)) as cutout_image:
-        source_rgb = np.asarray(source_image.convert("RGB"))
+        source_rgb = np.asarray(ImageOps.exif_transpose(source_image).convert("RGB"))
         rgba = np.asarray(cutout_image.convert("RGBA")).copy()
 
     if source_rgb.shape[:2] != rgba.shape[:2]:
