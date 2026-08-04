@@ -9,6 +9,7 @@ import {
 } from "@online-saler/database";
 import { ProductApplicationService } from "../product/product-application.service";
 import { OperationsAccessService } from "./operations-access.service";
+import { canReserveStorageLocation } from "./product-storage-reservation";
 import { missingPublishMeasurementTypes } from "./operations-product-publish-readiness";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
 
@@ -207,8 +208,8 @@ export class OperationsProductControlService {
     if (!product.barcode) {
       throw new BadRequestException("Generate barcode before assigning a warehouse location.");
     }
-    if (product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED) {
-      throw new BadRequestException("Set the price and mark the item ready for storage first.");
+    if (!canReserveStorageLocation(product.status, product.barcode)) {
+      throw new BadRequestException("Generate the formal barcode before reserving a warehouse location.");
     }
 
     await this.ensureDefaultLocations();
@@ -254,7 +255,7 @@ export class OperationsProductControlService {
           movementType: InventoryMovementType.LOCATION_ASSIGNED,
           toLocationId: randomLocation.id,
           employeeId,
-          reason: "Random stock-in location assigned"
+          reason: "Warehouse location reserved at barcode generation"
         }
       });
     });

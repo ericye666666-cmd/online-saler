@@ -157,7 +157,7 @@ type EditableCopy = {
 };
 
 type DetailMainImageChoice = {
-  key: "original" | "white" | "optimized" | "balanced" | "ai-display";
+  key: "white" | "back-white" | "ai-display";
   label: string;
   image: ProductImageVariantRecord | null;
   selectable: boolean;
@@ -886,10 +886,8 @@ function SafeImage({ src, alt }: { src: string; alt: string }) {
 
 function detailMainImageChoices(comparison: ProductImageComparisonResponse | null): DetailMainImageChoice[] {
   return [
-    { key: "original", label: "原图（对照）", image: comparison?.original ?? null, selectable: false, generated: false },
-    { key: "white", label: "白底图", image: comparison?.cutoutWhite ?? null, selectable: true, generated: false },
-    { key: "optimized", label: "白底优化图", image: comparison?.optimizedMain ?? null, selectable: true, generated: false },
-    { key: "balanced", label: "白底均整图", image: comparison?.optimizedBalancedMain ?? null, selectable: true, generated: false },
+    { key: "white", label: "白底正面", image: comparison?.cutoutWhite ?? null, selectable: true, generated: false },
+    { key: "back-white", label: "白底背面", image: comparison?.backCutoutWhite ?? null, selectable: false, generated: false },
     { key: "ai-display", label: "AI 陈列图", image: comparison?.aiDisplayMain ?? null, selectable: true, generated: true }
   ];
 }

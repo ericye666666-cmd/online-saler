@@ -52,6 +52,11 @@ export type RuntimeProductTaxonomy = {
   tags?: string[];
 };
 
+export type MeasurementBoardOverride = {
+  corners: AIMeasurementBoardCorners;
+  confidence: number;
+};
+
 const CATEGORY_SET = new Set<string>(AI_PRODUCT_CATEGORIES);
 const SUBCATEGORY_SET = new Set<string>(PRODUCT_SUBCATEGORY_OPTIONS);
 const COLOR_SET = new Set<string>(AI_COLORS);
@@ -138,7 +143,8 @@ export function normalizeOpenAIVisionOutput(
   raw: unknown,
   evidenceImageIds: string[],
   runtimeTaxonomy: RuntimeProductTaxonomy = {},
-  measurementImageId = evidenceImageIds[0] ?? null
+  measurementImageId = evidenceImageIds[0] ?? null,
+  measurementBoardOverride: MeasurementBoardOverride | null = null
 ): AIExtractionNormalizedOutput {
   const record = asRecord(raw);
   const categorySet = runtimeSet(runtimeTaxonomy.categories, CATEGORY_SET);
@@ -200,7 +206,7 @@ export function normalizeOpenAIVisionOutput(
     legOpeningCm: numberField(record, ["legOpeningCm", "leg_opening_cm"], evidenceImageIds),
     inseamCm: numberField(record, ["inseamCm", "inseam_cm"], evidenceImageIds)
   };
-  const geometry = normalizeMeasurementGeometry(record, measurementImageId);
+  const geometry = normalizeMeasurementGeometry(record, measurementImageId, measurementBoardOverride);
   output.measurementGeometry = geometry;
   if (geometry.boardCorners) {
     for (const { field } of AI_MEASUREMENT_FIELDS) {
@@ -208,6 +214,7 @@ export function normalizeOpenAIVisionOutput(
       if (!line) continue;
       const value = measurementLengthCm(geometry.boardCorners, line.start, line.end);
       if (value === null) continue;
+      if (!measurementBoardOverride && !measurementValuesAgree(output[field].value, value)) continue;
       output[field] = {
         value,
         confidence: Math.min(geometry.boardConfidence, line.confidence),
@@ -220,11 +227,14 @@ export function normalizeOpenAIVisionOutput(
 
 function normalizeMeasurementGeometry(
   record: RawExtraction,
-  measurementImageId: string | null
+  measurementImageId: string | null,
+  measurementBoardOverride: MeasurementBoardOverride | null
 ): AIMeasurementGeometry {
   const geometry = asRecord(record.measurementGeometry);
   const boardField = firstField(geometry, ["boardCorners", "boardCalibration", "calibrationPoints"]);
-  const boardCorners = measurementBoardCorners(boardField.value);
+  const overrideCorners = measurementBoardCorners(measurementBoardOverride?.corners);
+  const modelCorners = measurementBoardCorners(boardField.value);
+  const boardCorners = overrideCorners ?? (modelCorners && completeBoardFraming(modelCorners) ? modelCorners : null);
   const linesRecord = asRecord(geometry.lines ?? geometry.measurementLines);
   const lines: Partial<Record<AIMeasurementField, AIMeasurementLine>> = {};
   for (const { field } of AI_MEASUREMENT_FIELDS) {
@@ -234,9 +244,26 @@ function normalizeMeasurementGeometry(
   return {
     imageId: measurementImageId,
     boardCorners,
-    boardConfidence: boardCorners ? confidence(boardField.confidence) : 0,
+    boardConfidence: boardCorners
+      ? overrideCorners
+        ? confidence(measurementBoardOverride?.confidence)
+        : confidence(boardField.confidence)
+      : 0,
     lines
   };
+}
+
+function completeBoardFraming(corners: AIMeasurementBoardCorners): boolean {
+  const topY = (corners.topLeft.y + corners.topRight.y) / 2;
+  const bottomY = (corners.bottomLeft.y + corners.bottomRight.y) / 2;
+  const leftX = (corners.topLeft.x + corners.bottomLeft.x) / 2;
+  const rightX = (corners.topRight.x + corners.bottomRight.x) / 2;
+  return topY <= 20 && bottomY >= 80 && leftX <= 25 && rightX >= 75;
+}
+
+function measurementValuesAgree(directValue: number | null, geometryValue: number): boolean {
+  if (directValue === null) return true;
+  return Math.abs(directValue - geometryValue) <= Math.max(4, directValue * 0.12);
 }
 
 function measurementBoardCorners(value: unknown): AIMeasurementBoardCorners | null {

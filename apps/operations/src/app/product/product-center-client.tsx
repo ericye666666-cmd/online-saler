@@ -158,9 +158,7 @@ async function uploadProductImage(productId: string, employeeId: string, adminUs
   if (imageId) {
     const cutout = await runImageOperation(productId, imageId, "REMOVE_BACKGROUND", adminUserId, "auto");
     const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", adminUserId);
-    await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", adminUserId);
-    const balanced = await runImageOperation(productId, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", adminUserId);
-    await selectProductMainImage(productId, balanced.outputImageId!, adminUserId);
+    await selectProductMainImage(productId, white.outputImageId!, adminUserId);
   }
   return body;
 }
@@ -816,14 +814,8 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       const cutout = await runImageOperation(productId, sourceId, "REMOVE_BACKGROUND", props.ids.adminUserId, mode);
       const cutoutWarning = lightweightCutoutWarning(cutout);
       if (cutoutWarning) throw new Error(cutoutWarning);
-      await Promise.all([
-        (async () => {
-          const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", props.ids.adminUserId);
-          await runImageOperation(productId, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", props.ids.adminUserId);
-        })(),
-        runImageOperation(productId, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", props.ids.adminUserId)
-      ]);
-      await loadComparison();
+      const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", props.ids.adminUserId);
+      setComparison(await selectProductMainImage(productId, white.outputImageId!, props.ids.adminUserId));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "图片处理失败。");
     } finally {
@@ -930,15 +922,9 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ImageVariantTile label="原图" asset={comparison?.original ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="透明抠图" asset={comparison?.cutoutTransparent ?? null} transparent busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="白底图" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="优化主图" asset={comparison?.optimizedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="优化主图 2（均整版）" asset={comparison?.optimizedBalancedMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="AI 陈列图（生成式，需核对）" asset={comparison?.aiDisplayMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="背面原图" asset={comparison?.backOriginal ?? null} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="背面透明抠图" asset={comparison?.backCutoutTransparent ?? null} transparent busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="背面白底" asset={comparison?.backCutoutWhite ?? null} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="白底正面" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="白底背面" asset={comparison?.backCutoutWhite ?? null} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="AI 陈列图" asset={comparison?.aiDisplayMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
             </div>
             {latestRemovalJob ? (
               <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-muted/30 p-3 text-xs">

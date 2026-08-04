@@ -219,7 +219,7 @@ async function runProductImagePipeline(
       transparentId = cutout.outputImageId!;
     }
 
-    const whiteAndOptimized = async () => {
+    const composeWhiteBackground = async () => {
       let whiteId = comparison.cutoutWhite?.sourceImageId === transparentId
         ? comparison.cutoutWhite.imageId
         : "";
@@ -231,23 +231,8 @@ async function runProductImagePipeline(
           adminUserId
         )).outputImageId!;
       }
-      const optimizedId = comparison.optimizedMain?.sourceImageId === whiteId
-        ? comparison.optimizedMain.imageId
-        : "";
-      if (!optimizedId || mode !== "auto") {
-        await runImageOperation(product.id, whiteId, "OPTIMIZE_MAIN_IMAGE", adminUserId);
-      }
     };
-
-    const balancedId = comparison.optimizedBalancedMain?.sourceImageId === transparentId
-      ? comparison.optimizedBalancedMain.imageId
-      : "";
-    await Promise.all([
-      whiteAndOptimized(),
-      balancedId && mode === "auto"
-        ? Promise.resolve()
-        : runImageOperation(product.id, transparentId, "OPTIMIZE_BALANCED_MAIN_IMAGE", adminUserId)
-    ]);
+    await composeWhiteBackground();
   };
 
   const processBack = async () => {
@@ -948,10 +933,7 @@ function hasSucceededAi(product: ProductRecord) {
 function stateFromProduct(product: ProductRecord, comparison: ProductImageComparisonResponse): ProcessingState {
   const persistedWarning = persistedFrontCutoutWarning(comparison);
   if (persistedWarning) return { status: "FAILED", comparison, message: persistedWarning };
-  const frontReady = Boolean(
-    comparison.cutoutWhite &&
-    (comparison.optimizedBalancedMain || comparison.optimizedMain)
-  );
+  const frontReady = Boolean(comparison.cutoutWhite);
   const backReady = !comparison.backOriginal || Boolean(comparison.backCutoutWhite);
   const imageReady = frontReady && backReady;
   const aiReady = hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status);

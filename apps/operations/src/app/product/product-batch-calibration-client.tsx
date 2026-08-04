@@ -272,7 +272,7 @@ export function ProductBatchCalibrationPage({
   const [form, setForm] = useState<WorkspaceForm>(() => formFromProductAndAi(null, null));
   const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
   const [taxonomy, setTaxonomy] = useState<ProductTaxonomy | null>(null);
-  const [activeImage, setActiveImage] = useState("optimized");
+  const [activeImage, setActiveImage] = useState("white");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -344,13 +344,7 @@ export function ProductBatchCalibrationPage({
     void loadComparison(product.id, ids.adminUserId)
       .then((value) => {
         setComparison(value);
-        setActiveImage(
-          value.optimizedBalancedMain
-            ? "balanced"
-            : value.optimizedMain
-              ? "optimized"
-              : "original"
-        );
+        setActiveImage(value.cutoutWhite ? "white" : "back-white");
       })
       .catch((caught) => setError(errorMessage(caught, "无法读取图片版本。")));
   }, [ids.adminUserId, latestExtraction, product]);
@@ -371,8 +365,8 @@ export function ProductBatchCalibrationPage({
   ) ?? null;
   const cutoutWarning = latestRemovalJob ? cutoutQualityWarning(latestRemovalJob) : null;
   const imageTabs = useMemo(
-    () => buildImageTabs(product, comparison),
-    [comparison, product]
+    () => buildImageTabs(comparison),
+    [comparison]
   );
   const currentImage = imageTabs.find((item) => item.key === activeImage) ?? imageTabs[0] ?? null;
   const reasons = calibrationValidationReasons(form, {
@@ -672,19 +666,13 @@ export function ProductBatchCalibrationPage({
       const warning = cutoutQualityWarning(cutout);
       if (warning) {
         setComparison(await loadComparison(product.id, ids.adminUserId));
-        setActiveImage("transparent");
+        setActiveImage("white");
         throw new Error(warning);
       }
-      await Promise.all([
-        (async () => {
-          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-        })(),
-        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
-      ]);
+      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
       const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
-      setActiveImage("balanced");
+      setActiveImage("white");
       const modeLabel = mode === "auto"
         ? "自动抠图链路"
         : mode === "rembg_birefnet"
@@ -693,33 +681,6 @@ export function ProductBatchCalibrationPage({
       setNotice(`已使用${modeLabel}重新处理。请确认抠图边缘和白底结果；商城主图将在详情生成阶段选择。`);
     } catch (caught) {
       setError(errorMessage(caught, "图片处理失败。"));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function rerunBalancedMain() {
-    if (!product) return;
-    const sourceId = comparison?.cutoutTransparent?.imageId;
-    if (!sourceId) {
-      setError("请先生成并确认透明抠图。");
-      return;
-    }
-    setBusy("balanced-main");
-    setError("");
-    setNotice("");
-    try {
-      await runImageOperation(
-        product.id,
-        sourceId,
-        "OPTIMIZE_BALANCED_MAIN_IMAGE",
-        ids.adminUserId
-      );
-      setComparison(await loadComparison(product.id, ids.adminUserId));
-      setActiveImage("balanced");
-      setNotice("白底均整图已使用当前透明抠图重新生成。请检查袖口、衣摆和服装轮廓。");
-    } catch (caught) {
-      setError(errorMessage(caught, "无法重新生成均整版。"));
     } finally {
       setBusy("");
     }
@@ -737,18 +698,12 @@ export function ProductBatchCalibrationPage({
         image,
         ids.adminUserId
       );
-      await Promise.all([
-        (async () => {
-          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-        })(),
-        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
-      ]);
+      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
       const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
-      setActiveImage("balanced");
+      setActiveImage("white");
       setManualEditorOpen(false);
-      setNotice("修正版已保存，并重新生成白底图与两版白底优化图。请检查边缘和商品细节。");
+      setNotice("修正版已保存，并重新生成白底正面图。请检查边缘和商品细节。");
     } catch (caught) {
       throw new Error(errorMessage(caught, "无法保存修正版抠图。"));
     } finally {
@@ -771,18 +726,12 @@ export function ProductBatchCalibrationPage({
       if (cutout.status !== "SUCCEEDED" || !cutout.outputImageId) {
         throw new Error(cutout.errorMessage || "按轮廓自动抠图失败。");
       }
-      await Promise.all([
-        (async () => {
-          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-        })(),
-        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
-      ]);
+      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
       const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
-      setActiveImage("balanced");
+      setActiveImage("white");
       setManualEditorOpen(false);
-      setNotice("已按员工点选轮廓重新抠图，并生成白底图与两版白底优化图。请检查边缘和商品细节。");
+      setNotice("已按员工点选轮廓重新抠图，并生成白底正面图。请检查边缘和商品细节。");
     } catch (caught) {
       throw new Error(errorMessage(caught, "按轮廓自动抠图失败，请调整轮廓后重试。"));
     } finally {
@@ -1291,24 +1240,11 @@ function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; childre
   return <div className={cn("rounded-md border px-4 py-3 text-sm", tone === "danger" ? "border-destructive/40 bg-destructive/5 text-destructive" : "bg-muted/40 text-muted-foreground")}>{children}</div>;
 }
 
-function buildImageTabs(
-  product: ProductRecord | null,
-  comparison: ProductImageComparisonResponse | null
-): ImageTab[] {
+function buildImageTabs(comparison: ProductImageComparisonResponse | null): ImageTab[] {
   const tabs: ImageTab[] = [
-    variantTab("original", "原图", comparison?.original ?? null, false),
-    variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, false, true),
-    variantTab("white", "白底图", comparison?.cutoutWhite ?? null, false),
-    variantTab("optimized", "白底优化图", comparison?.optimizedMain ?? null, false),
-    variantTab("balanced", "白底均整图", comparison?.optimizedBalancedMain ?? null, false),
-    variantTab("back-original", "背面原图", comparison?.backOriginal ?? null, false),
-    variantTab("back-transparent", "背面透明抠图", comparison?.backCutoutTransparent ?? null, false, true),
+    variantTab("white", "白底正面", comparison?.cutoutWhite ?? null, false),
     variantTab("back-white", "背面白底", comparison?.backCutoutWhite ?? null, false)
-  ];
-  for (const [type, label] of [["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
-    const image = newestImage(product, type);
-    if (image) tabs.push({ key: type.toLowerCase(), label, url: image.publicUrl ? `${API_PROXY_URL}${image.publicUrl}` : "", imageId: image.id, selectable: false, selected: false });
-  }
+  ].filter((tab) => tab.key === "white" || Boolean(tab.url));
   return tabs;
 }
 
@@ -1428,11 +1364,7 @@ function aiMeasurementSuggestion(
 }
 
 function measurementGuideImage(tabs: ImageTab[]) {
-  return tabs.find((tab) => tab.key === "transparent" && tab.url)?.url ??
-    tabs.find((tab) => tab.key === "balanced" && tab.url)?.url ??
-    tabs.find((tab) => tab.key === "optimized" && tab.url)?.url ??
-    tabs.find((tab) => tab.key === "white" && tab.url)?.url ??
-    tabs.find((tab) => tab.key === "original" && tab.url)?.url ?? "";
+  return tabs.find((tab) => tab.key === "white" && tab.url)?.url ?? "";
 }
 
 function manualLinesFromProduct(

@@ -88,7 +88,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
   const [batchComparisons, setBatchComparisons] = useState<Record<string, ProductImageComparisonResponse>>({});
-  const [activeImage, setActiveImage] = useState("original");
+  const [activeImage, setActiveImage] = useState("white");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -127,7 +127,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
 
   const product = batch?.products[currentIndex] ?? null;
   useEffect(() => {
-    setActiveImage("original");
+    setActiveImage("white");
     setComparison(null);
     if (!product || !ids.adminUserId) return;
     void request<ProductImageComparisonResponse>(`/products/${product.id}/image-comparison`, {
@@ -461,22 +461,19 @@ function isReviewable(status: string) { return status === "BARCODE_ASSIGNED" || 
 
 function buildImageTabs(product: ProductRecord, comparison: ProductImageComparisonResponse | null): ImageTab[] {
   const tabs = [
-    variantTab("original", "原图", comparison?.original ?? null),
-    variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, true),
-    variantTab("white", "白底图", comparison?.cutoutWhite ?? null),
-    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null),
-    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null),
-    variantTab("ai-display", "AI 陈列图（生成式）", comparison?.aiDisplayMain ?? null)
+    variantTab("white", "白底正面", comparison?.cutoutWhite ?? null),
+    variantTab("back-white", "白底背面", comparison?.backCutoutWhite ?? null),
+    variantTab("ai-display", "AI 陈列图", comparison?.aiDisplayMain ?? null)
   ].filter((tab) => tab.url);
-  for (const [type, label] of [["BACK", "背面"], ["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
+  for (const [type, label] of [["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
     const image = product.images?.find((candidate) => candidate.type === type);
     if (image?.publicUrl) tabs.push({ key: type.toLowerCase(), label, url: `${API_PROXY_URL}${image.publicUrl}` });
   }
   return tabs.length ? tabs : [{ key: "missing", label: "图片", url: "" }];
 }
 
-function variantTab(key: string, label: string, asset: ProductImageVariantRecord | null, transparent = false): ImageTab {
-  return { key, label, url: asset?.publicUrl ? `${API_PROXY_URL}${asset.publicUrl}` : "", transparent, selected: Boolean(asset?.selectedAsMain) };
+function variantTab(key: string, label: string, asset: ProductImageVariantRecord | null): ImageTab {
+  return { key, label, url: asset?.publicUrl ? `${API_PROXY_URL}${asset.publicUrl}` : "", selected: Boolean(asset?.selectedAsMain) };
 }
 
 function comparisonImageUrl(asset?: ProductImageVariantRecord | null) {
