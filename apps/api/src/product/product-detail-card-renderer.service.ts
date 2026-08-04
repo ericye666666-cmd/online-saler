@@ -20,16 +20,19 @@ export type MeasurementTemplate = ProductDetailMeasurementTemplateCode;
 @Injectable()
 export class ProductDetailCardRendererService {
   private fontPromise?: Promise<ArrayBuffer>;
+  private readonly measurementDiagramPromises = new Map<MeasurementTemplate, Promise<string>>();
 
   async measurementCard(input: {
     template: MeasurementTemplate;
     title: string;
     measurements: Record<string, number>;
   }): Promise<Buffer> {
+    const diagramImageDataUri = await this.measurementDiagram(input.template);
     const svg = renderProductDetailMeasurementGuideSvg({
       template: PRODUCT_DETAIL_MEASUREMENT_TEMPLATES[input.template],
       title: input.title,
-      measurements: input.measurements
+      measurements: input.measurements,
+      diagramImageDataUri
     });
     return sharp(Buffer.from(svg)).webp({ quality: 92 }).toBuffer();
   }
@@ -123,6 +126,15 @@ export class ProductDetailCardRendererService {
       )
     ).then((buffer) => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
     return this.fontPromise;
+  }
+
+  private measurementDiagram(template: MeasurementTemplate): Promise<string> {
+    const existing = this.measurementDiagramPromises.get(template);
+    if (existing) return existing;
+    const promise = readFile(join(__dirname, "measurement-guide-assets", `${template}.png`))
+      .then((buffer) => `data:image/png;base64,${buffer.toString("base64")}`);
+    this.measurementDiagramPromises.set(template, promise);
+    return promise;
   }
 }
 

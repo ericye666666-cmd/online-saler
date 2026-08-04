@@ -1,4 +1,4 @@
-export const PRODUCT_DETAIL_MEASUREMENT_TEMPLATE_VERSION = "measurement-guides-v3.0.0";
+export const PRODUCT_DETAIL_MEASUREMENT_TEMPLATE_VERSION = "measurement-guides-v4.0.0";
 
 export type ProductDetailMeasurementTemplateCode =
   | "TOP_SLEEVELESS"
@@ -396,48 +396,83 @@ export function renderProductDetailMeasurementGuideSvg(input: {
   title: string;
   measurements: Readonly<Record<string, number | null | undefined>>;
   locale?: "en" | "sw" | "zh";
+  diagramImageDataUri?: string;
 }): string {
   const locale = input.locale ?? "en";
+  const diagramOriginX = 100;
+  const diagramOriginY = 230;
+  const diagramScaleX = 0.93;
+  const diagramScaleY = 1.4;
   const displayTitle = formatMeasurementGuideDisplayTitle(input.title, input.template.name);
-  const values = resolveProductDetailMeasurements(input.template, input.measurements);
+  const resolvedValues = resolveProductDetailMeasurements(input.template, input.measurements);
+  const embeddedDiagram = isSafeEmbeddedDiagram(input.diagramImageDataUri) ? input.diagramImageDataUri : null;
+  const values = embeddedDiagram
+    ? input.template.measurementFields.map((measurementField) => {
+        const resolved = resolvedValues.find((value) => value.key === measurementField.key);
+        return resolved ?? { ...measurementField, sourceKey: "", valueCm: null };
+      })
+    : resolvedValues;
+  const rowGap = values.length <= 5 ? 120 : Math.max(82, Math.floor(574 / Math.max(1, values.length - 1)));
   const missingRequired = input.template.measurementFields.some((measurementField) =>
-    measurementField.required && !values.some((value) => value.key === measurementField.key)
+    measurementField.required && !resolvedValues.some((value) => value.key === measurementField.key)
   );
   const rows = values.map((value, index) => `
-      <g transform="translate(0 ${index * 66})">
-        <circle cx="24" cy="0" r="17" fill="#2f766d"/>
-        <text x="24" y="7" text-anchor="middle" class="marker">${String.fromCharCode(65 + index)}</text>
-        <text x="58" y="7" class="row">${escapeXml(value.label)}</text>
-        <text x="418" y="7" text-anchor="end" class="value">${formatCentimetres(value.valueCm)} cm</text>
-        <line x1="0" y1="31" x2="418" y2="31" class="separator"/>
+      <g transform="translate(0 ${index * rowGap})">
+        <circle cx="20" cy="0" r="18" class="measure-badge"/>
+        <text x="20" y="7" text-anchor="middle" class="marker">${String.fromCharCode(65 + index)}</text>
+        <text x="72" y="7" class="row">${escapeXml(formatMeasurementLabel(value.label))}</text>
+        <text x="420" y="7" text-anchor="end" class="value">${value.valueCm === null ? "—" : formatCentimetres(value.valueCm)}</text>
+        <line x1="0" y1="36" x2="420" y2="36" class="separator"/>
       </g>`).join("");
-  const diagramGuides = values.map((value, index) => {
+  const diagramGuideLines = resolvedValues.map((value) => {
+    const guide = input.template.measurementGuides[value.key];
+    if (!guide) return "";
+    return `<path d="${guide.path}" class="measure-line" marker-start="url(#measure-arrow)" marker-end="url(#measure-arrow)"/>`;
+  }).join("");
+  const diagramGuideMarkers = resolvedValues.map((value, index) => {
     const guide = input.template.measurementGuides[value.key];
     if (!guide) return "";
     const marker = String.fromCharCode(65 + index);
-    return `<path d="${guide.path}" class="measure-line"/><circle cx="${guide.markerX}" cy="${guide.markerY}" r="17" class="measure-badge"/><text x="${guide.markerX}" y="${guide.markerY + 6}" text-anchor="middle" class="diagram-marker">${marker}</text>`;
+    const markerX = diagramOriginX + guide.markerX * diagramScaleX;
+    const markerY = diagramOriginY + guide.markerY * diagramScaleY;
+    return `<circle cx="${markerX}" cy="${markerY}" r="17" class="measure-badge"/><text x="${markerX}" y="${markerY + 6}" text-anchor="middle" class="diagram-marker">${marker}</text>`;
   }).join("");
   const note = missingRequired
-    ? `<text x="700" y="970" class="note">Some measurements are not available.</text>`
+    ? `<text x="720" y="1038" class="note">Some measurements are not available.</text>`
     : "";
+  const diagram = embeddedDiagram
+    ? `<image x="35" y="190" width="620" height="930" preserveAspectRatio="xMidYMid meet" href="${embeddedDiagram}"/>`
+    : `<g class="outline" transform="translate(${diagramOriginX} ${diagramOriginY}) scale(${diagramScaleX} ${diagramScaleY})">${input.template.svgSource}</g>
+  <g transform="translate(${diagramOriginX} ${diagramOriginY}) scale(${diagramScaleX} ${diagramScaleY})">${diagramGuideLines}</g>
+  ${diagramGuideMarkers}`;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" lang="${locale}" data-template-code="${input.template.code}" data-template-version="${input.template.version}" data-measurement-count="${values.length}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" lang="${locale}" data-template-code="${input.template.code}" data-template-version="${input.template.version}" data-measurement-count="${resolvedValues.length}" data-row-count="${values.length}">
   <title>${escapeXml(input.template.name)} measurement guide</title>
+  <desc>${escapeXml(displayTitle)}</desc>
+  <defs>
+    <marker id="measure-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10z" fill="#e84c35"/>
+    </marker>
+  </defs>
   <style>
-    .outline{fill:#faf9f6;stroke:#5f5f5f;stroke-width:4;stroke-linejoin:round;stroke-linecap:round}.outline .detail{fill:none;stroke:#777;stroke-width:3}.measure-line{fill:none;stroke:#2f766d;stroke-width:3;stroke-dasharray:9 8}.measure-badge{fill:#2f766d;stroke:none}.heading,.row,.value,.note,.meta,.marker,.diagram-marker,.table-heading{font-family:Arial,Helvetica,sans-serif}.heading{font-size:40px;font-weight:500;fill:#171717}.eyebrow{font:700 20px Arial,Helvetica,sans-serif;letter-spacing:2px;fill:#2f766d}.table-heading{font-size:18px;font-weight:700;letter-spacing:1.5px;fill:#2f766d}.row{font-size:24px;fill:#555}.value{font-size:24px;font-weight:600;fill:#171717}.marker,.diagram-marker{font-size:17px;font-weight:700;fill:#fff;stroke:none}.note,.meta{font-size:20px;fill:#707070}.separator{stroke:#e4e4e4;stroke-width:1}
+    .outline{fill:#fcfbfa;stroke:#1f1b18;stroke-width:3;stroke-linejoin:round;stroke-linecap:round}.outline .detail{fill:none;stroke:#746d66;stroke-width:1.6}.measure-line{fill:none;stroke:#e84c35;stroke-width:2.2;stroke-dasharray:8 7}.measure-badge{fill:#e84c35;stroke:none}.studio,.row,.value,.note,.meta,.marker,.diagram-marker,.table-heading,.column-heading{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}.studio{font-size:43px;font-weight:700;letter-spacing:1.5px;fill:#1f1b18}.eyebrow{font:700 25px "Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:2px;fill:#e84c35}.table-heading{font-size:25px;font-weight:700;letter-spacing:1.5px;fill:#e84c35}.column-heading{font-size:15px;font-weight:700;letter-spacing:1px;fill:#1f1b18}.row{font-size:23px;font-weight:500;fill:#1f1b18}.value{font-size:23px;font-weight:600;fill:#1f1b18}.marker,.diagram-marker{font-size:18px;font-weight:700;fill:#fff;stroke:none}.note,.meta{font-size:17px;fill:#746d66}.separator,.divider{stroke:#e5ddd4;stroke-width:1}
   </style>
   <rect width="1200" height="1200" fill="#fff"/>
-  <rect x="24" y="24" width="1152" height="1152" rx="16" fill="none" stroke="#e1e1e1" stroke-width="2"/>
-  <text x="72" y="82" class="eyebrow">MEASUREMENT GUIDE</text>
-  <text x="72" y="145" class="heading">${escapeXml(displayTitle)}</text>
-  <text x="72" y="188" class="meta">${escapeXml(input.template.name)} · flat garment measurements</text>
-  <text x="700" y="246" class="table-heading">MEASUREMENTS</text>
-  <line x1="700" y1="262" x2="1118" y2="262" class="separator"/>
-  <g class="outline" transform="translate(70 260) scale(.93)">${input.template.svgSource}${diagramGuides}</g>
-  <g transform="translate(700 292)">${rows}</g>
+  <rect x="1" y="1" width="1198" height="1198" rx="10" fill="none" stroke="#e5ddd4" stroke-width="2"/>
+  <text x="58" y="82" class="studio">MEASUREMENT STUDIO</text>
+  <text x="58" y="137" class="eyebrow">${escapeXml(input.template.name.toUpperCase())}</text>
+  <line x1="58" y1="170" x2="1142" y2="170" class="separator"/>
+  <line x1="680" y1="198" x2="680" y2="1138" class="divider"/>
+  <text x="720" y="240" class="table-heading">MEASUREMENT GUIDE</text>
+  <text x="720" y="302" class="column-heading">CODE</text>
+  <text x="792" y="302" class="column-heading">MEASUREMENT</text>
+  <text x="1140" y="302" text-anchor="end" class="column-heading">cm</text>
+  <line x1="720" y1="330" x2="1140" y2="330" class="separator"/>
+  ${diagram}
+  <g transform="translate(720 420)">${rows}</g>
   ${note}
-  <text x="700" y="1030" class="note">Flat garment measurements in centimetres.</text>
-  <text x="700" y="1066" class="note">Compare with a similar item you own.</text>
+  <text x="720" y="1090" class="note">Flat garment measurements in centimetres.</text>
+  <text x="720" y="1120" class="note">Compare with a similar item you own.</text>
 </svg>`;
 }
 
@@ -450,7 +485,15 @@ function token(value?: string | null): string {
 }
 
 function formatCentimetres(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+  return value.toFixed(1);
+}
+
+function formatMeasurementLabel(value: string): string {
+  return value.replace(/ width$/i, "");
+}
+
+function isSafeEmbeddedDiagram(value?: string): value is string {
+  return Boolean(value && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value));
 }
 
 function formatMeasurementGuideDisplayTitle(title: string, templateName: string): string {
