@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   MpesaClient,
+  MpesaConfigurationError,
   mpesaAccountReference,
   mpesaCallbackUrl,
   mpesaConfigFromEnv,
@@ -26,6 +27,47 @@ assert.equal(productionConfig.transactionType, "CustomerBuyGoodsOnline");
 assert.equal(productionConfig.oauthUrl, "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials");
 assert.equal(productionConfig.stkPushUrl, "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest");
 assert.equal(mpesaCallbackUrl(productionConfig), "https://shop.example.com/api/payments/mpesa/callback");
+
+assert.throws(
+  () => mpesaConfigFromEnv({
+    NODE_ENV: "test",
+    MPESA_ENV: "prod",
+    MPESA_CONSUMER_KEY: "live-key",
+    MPESA_CONSUMER_SECRET: "live-secret",
+    MPESA_SHORTCODE: "123456",
+    MPESA_PASSKEY: "live-passkey",
+    MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
+  }),
+  MpesaConfigurationError
+);
+
+assert.throws(
+  () => mpesaConfigFromEnv({
+    NODE_ENV: "test",
+    MPESA_ENV: "production",
+    MPESA_CONSUMER_KEY: "live-key",
+    MPESA_CONSUMER_SECRET: "live-secret",
+    MPESA_SHORTCODE: "123456",
+    MPESA_PASSKEY: "live-passkey",
+    MPESA_TRANSACTION_TYPE: "CustomerPayBillOnline",
+    MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
+  }),
+  MpesaConfigurationError
+);
+
+assert.throws(
+  () => mpesaConfigFromEnv({
+    NODE_ENV: "test",
+    MPESA_ENV: "production",
+    MPESA_CONSUMER_KEY: "live-key",
+    MPESA_CONSUMER_SECRET: "live-secret",
+    MPESA_SHORTCODE: "123456",
+    MPESA_PASSKEY: "live-passkey",
+    MPESA_TRANSACTION_TYPE: "CustomerBuyGoodsOnline",
+    MPESA_CALLBACK_URL: "http://shop.example.com/api/payments/mpesa/callback"
+  }),
+  MpesaConfigurationError
+);
 
 const calls: Array<{ url: string; init?: RequestInit }> = [];
 const fetchMock = (async (url: string | URL | Request, init?: RequestInit) => {

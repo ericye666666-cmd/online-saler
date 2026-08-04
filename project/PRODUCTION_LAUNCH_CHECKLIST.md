@@ -52,6 +52,14 @@ MPESA_ENABLE_SANDBOX_SIMULATOR=false
 
 Do not switch `MPESA_PRODUCTION_LAUNCH_MODE` to `live` until the 1 KSh Till test is signed off.
 
+The production Storefront deployment workflow now blocks deployment when:
+
+- Any required Google Secret Manager secret is missing or has no latest version.
+- `MPESA_CALLBACK_URL_PRODUCTION` is missing.
+- `MPESA_CALLBACK_URL_PRODUCTION` is not an HTTPS `/api/payments/mpesa/callback` URL.
+- `mpesa_launch_mode=one_ksh` is selected but `PRODUCTION_MPESA_TEST_PHONE_WHITELIST` is empty.
+- The deployed callback endpoint cannot reject malformed callback payloads with HTTP 400.
+
 ## Cloud Scheduler
 
 The reservation cleanup endpoint is:
@@ -77,6 +85,8 @@ Expired CheckoutDraft rows become EXPIRED.
 Pending payments become EXPIRED.
 Reserved inventory returns to AVAILABLE.
 ```
+
+The production Storefront deployment workflow configures this scheduler automatically after each successful deployment. A production deploy should be considered failed if scheduler configuration fails.
 
 ## 1 KSh Safaricom Till test
 
