@@ -419,6 +419,23 @@ def _has_inset_frame_residue(mask: np.ndarray) -> bool:
     """Catch a retained ruler/board frame even when the garment is pale."""
     foreground = mask > 0
     height, width = foreground.shape
+    ys, xs = np.where(foreground)
+    if ys.size:
+        box_height = (int(np.max(ys)) - int(np.min(ys)) + 1) / height
+        box_width = (int(np.max(xs)) - int(np.min(xs)) + 1) / width
+        box_area = max(
+            1,
+            (int(np.max(ys)) - int(np.min(ys)) + 1)
+            * (int(np.max(xs)) - int(np.min(xs)) + 1),
+        )
+        box_fill = float(ys.size) / box_area
+        # A broken measurement-board mask can form one giant, hollow component:
+        # a top ruler strip joined to tall side/bottom fragments. It does not
+        # necessarily satisfy the complete-frame rule below, but no garment
+        # should span nearly the whole canvas in both axes with so little fill.
+        if box_width >= 0.78 and box_height >= 0.75 and box_fill <= 0.55:
+            return True
+
     top_end = max(1, int(round(height * 0.12)))
     bottom_start = min(height - 1, int(round(height * 0.88)))
     left_end = max(1, int(round(width * 0.12)))

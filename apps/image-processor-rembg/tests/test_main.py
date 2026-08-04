@@ -111,6 +111,28 @@ class AnalyzeCutoutTests(unittest.TestCase):
         self.assertIn("BOARD_RESIDUE_SUSPECTED", issues)
         self.assertLess(score, 0.75)
 
+    def test_blocks_a_large_hollow_partial_measurement_board(self) -> None:
+        pixels = np.zeros((400, 300, 4), dtype=np.uint8)
+        pixels[10:55, 25:275, :3] = (225, 225, 225)
+        pixels[10:380, 25:65, :3] = (225, 225, 225)
+        pixels[10:380, 235:275, :3] = (225, 225, 225)
+        pixels[330:380, 25:120, :3] = (225, 225, 225)
+        pixels[330:380, 180:275, :3] = (225, 225, 225)
+        pixels[10:55, 25:275, 3] = 255
+        pixels[10:380, 25:65, 3] = 255
+        pixels[10:380, 235:275, 3] = 255
+        pixels[330:380, 25:120, 3] = 255
+        pixels[330:380, 180:275, 3] = 255
+        pixels[70:260, 85:215, :3] = (235, 235, 235)
+        pixels[70:260, 85:215, 3] = 255
+        output = io.BytesIO()
+        Image.fromarray(pixels, mode="RGBA").save(output, format="PNG")
+
+        score, issues = analyze_cutout(output.getvalue())
+
+        self.assertIn("BOARD_RESIDUE_SUSPECTED", issues)
+        self.assertLess(score, 0.75)
+
     def test_blocks_a_top_ruler_strip_when_the_garment_is_missing(self) -> None:
         output = png_with_components([(20, 20, 280, 70, (225, 225, 225))])
 
