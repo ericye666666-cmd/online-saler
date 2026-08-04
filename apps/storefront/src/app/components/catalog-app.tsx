@@ -27,7 +27,7 @@ import {
   shoeTypes,
   textileTypes,
 } from "../data/products";
-import { ProductCardShareButton } from "./product-card-share-button";
+import { ProductCollectionButton, ProductShareSheet } from "./product-share-sheet";
 import { ReferralTracker } from "./referral-tracker";
 import { BrowseSelection, SiteHeader } from "./site-header";
 import {
@@ -53,12 +53,15 @@ type ProductCardProps = {
   isSaved: boolean;
   onToggleSaved: (code: string) => void;
   sellerRef?: string;
+  source?: string;
+  placement?: string;
+  campaign?: string;
   priority?: boolean;
 };
 
-function ProductCard({ product, isSaved, onToggleSaved, sellerRef, priority = false }: ProductCardProps) {
+function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, placement, campaign, priority = false }: ProductCardProps) {
   const detailHref = sellerRef
-    ? `/p/${product.code}?ref=${encodeURIComponent(sellerRef)}`
+    ? `/p/${product.code}?${new URLSearchParams({ ref: sellerRef, ...(source ? { source } : {}), ...(placement ? { placement } : {}), ...(campaign ? { campaign } : {}) }).toString()}`
     : `/p/${product.code}`;
   const [cartMessage, setCartMessage] = useState("");
 
@@ -74,7 +77,7 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, priority = fa
 
   return (
     <article className={`marketCard depopProductCard ${product.status !== "Available" ? "unavailable" : ""}`}>
-      <div className="marketImageWrap depopProductImage">
+      <div className="marketImageWrap depopProductImage group relative">
         <Link href={detailHref} aria-label={`View ${product.title}`}>
           <img
             src={product.image}
@@ -85,6 +88,7 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, priority = fa
           />
         </Link>
         {product.status !== "Available" ? <span className="depopSoldLabel">{product.status}</span> : null}
+        <ProductCollectionButton product={product} />
       </div>
 
       <div className="marketCardBody depopProductBody">
@@ -115,10 +119,9 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, priority = fa
             <ShoppingBag size={16} />
             <span>{cartMessage || "Cart"}</span>
           </button>
-          <ProductCardShareButton
+          <ProductShareSheet
             className="whatsappIconButton depopShareButton"
             product={product}
-            sellerRef={sellerRef}
             compact
           />
         </div>
@@ -141,12 +144,14 @@ export function CatalogApp({
   initialCategory = "All",
   sellerRef,
   source,
+  placement,
   campaign,
 }: {
   initialProducts: Product[];
   initialCategory?: CatalogCategory;
   sellerRef?: string;
   source?: string;
+  placement?: string;
   campaign?: string;
 }) {
   const [query, setQuery] = useState("");
@@ -420,7 +425,7 @@ export function CatalogApp({
 
   return (
     <main className="catalogPage depopCatalogPage">
-      <ReferralTracker sellerRef={sellerRef} source={source} campaign={campaign} />
+      <ReferralTracker sellerRef={sellerRef} source={source} placement={placement} campaign={campaign} />
       <SiteHeader
         searchValue={query}
         onSearchChange={setQuery}
@@ -515,7 +520,7 @@ export function CatalogApp({
           {filteredProducts.length > 0 ? (
             <div className="marketGrid depopProductGrid">
               {filteredProducts.map((product, index) => (
-                <ProductCard product={product} key={product.code} isSaved={saved.has(product.code)} onToggleSaved={toggleSaved} sellerRef={sellerRef} priority={index < 6} />
+                <ProductCard product={product} key={product.code} isSaved={saved.has(product.code)} onToggleSaved={toggleSaved} sellerRef={sellerRef} source={source} placement={placement} campaign={campaign} priority={index < 6} />
               ))}
             </div>
           ) : (

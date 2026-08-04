@@ -25,7 +25,9 @@ type LinkBody = {
   type?: AffiliateLinkType;
   productId?: string;
   productCode?: string;
+  collectionId?: string;
   source?: string;
+  placement?: string;
   campaign?: string;
   landingPath?: string;
 };

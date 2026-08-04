@@ -337,6 +337,7 @@ export function normalizeTrackingParam(value?: string | null) {
 
 export type ShareTrackingParams = {
   source?: string;
+  placement?: string;
   campaign?: string;
 };
 
@@ -345,8 +346,10 @@ function trackingQuery(sellerRef?: string, tracking?: ShareTrackingParams) {
   const query = new URLSearchParams();
   if (normalizedRef) query.set("ref", normalizedRef);
   const source = normalizeTrackingParam(tracking?.source);
+  const placement = normalizeTrackingParam(tracking?.placement);
   const campaign = normalizeTrackingParam(tracking?.campaign);
   if (source) query.set("source", source);
+  if (placement) query.set("placement", placement);
   if (campaign) query.set("campaign", campaign);
   query.set("card", SHARE_CARD_VERSION);
   return query;

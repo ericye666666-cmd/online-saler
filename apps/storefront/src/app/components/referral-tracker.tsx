@@ -6,12 +6,16 @@ import { recordClientEvent } from "../lib/client-events";
 export function ReferralTracker({
   sellerRef,
   productCode,
+  collectionSlug,
   source,
+  placement,
   campaign,
 }: {
   sellerRef?: string;
   productCode?: string;
+  collectionSlug?: string;
   source?: string;
+  placement?: string;
   campaign?: string;
 }) {
   useEffect(() => {
@@ -28,13 +32,15 @@ export function ReferralTracker({
       body: JSON.stringify({
         sellerRef,
         productCode,
+        collectionSlug,
         source,
+        placement,
         campaign,
         sessionId,
         landingPath: window.location.pathname
       })
     }).catch(() => undefined);
-  }, [campaign, productCode, sellerRef, source]);
+  }, [campaign, collectionSlug, placement, productCode, sellerRef, source]);
 
   return null;
 }

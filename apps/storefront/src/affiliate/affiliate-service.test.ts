@@ -32,10 +32,12 @@ const encoded = encodeAffiliateCookie({
   affiliateCode: "DL-AFF-001",
   clickId: "click-1",
   source: "whatsapp",
+  placement: "direct-message",
   campaign: "staging",
   expiresAt: new Date(Date.now() + 60_000).toISOString()
 });
 assert.deepEqual(parseAffiliateCookie(encoded)?.affiliateCode, "DL-AFF-001");
+assert.equal(parseAffiliateCookie(encoded)?.placement, "direct-message");
 assert.equal(parseAffiliateCookie("not-a-cookie"), null);
 
 console.log("Affiliate service tests passed");
