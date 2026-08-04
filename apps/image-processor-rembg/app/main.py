@@ -230,9 +230,6 @@ def cleanup_measurement_board_residue(raw: bytes, output: bytes) -> bytes:
         & (hsv[:, :, 2] >= 145)
     )
     board_share = float(np.count_nonzero(board_like)) / max(1, foreground_pixels)
-    if board_share < 0.18:
-        return output
-
     # Use only confidently dark or chromatic pixels as subject seeds. Using
     # every pixel that merely differs from the median board color allows ruler
     # marks and board lighting gradients to form a ring connected around the
@@ -240,6 +237,34 @@ def cleanup_measurement_board_residue(raw: bytes, output: bytes) -> bytes:
     confident_subject = foreground & (
         (hsv[:, :, 2] <= 170) | (hsv[:, :, 1] >= 55)
     )
+    confident_share = float(np.count_nonzero(confident_subject)) / max(1, foreground_pixels)
+    if board_share < 0.18:
+        # Dark garments sometimes retain one- or two-pixel white board slivers
+        # inside narrow sleeve/body gaps. Remove only thin board-colored
+        # components near those slivers; preserve larger light garment details
+        # such as care labels, buttons and embroidery.
+        if board_share >= 0.0002 and confident_share >= 0.85:
+            thin_board = _thin_board_residue_mask(board_like)
+            if np.any(thin_board):
+                nearby = cv2.dilate(
+                    thin_board,
+                    cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+                    iterations=1,
+                ) > 0
+                removable = (
+                    foreground
+                    & nearby
+                    & (board_distance <= 38.0)
+                    & (hsv[:, :, 1] <= 85)
+                    & (hsv[:, :, 2] >= 135)
+                )
+                if np.count_nonzero(removable) >= 4:
+                    rgba[:, :, 3] = np.where(removable, 0, alpha).astype(np.uint8)
+                    encoded = io.BytesIO()
+                    Image.fromarray(rgba, mode="RGBA").save(encoded, format="PNG", optimize=True)
+                    return encoded.getvalue()
+        return output
+
     subject_seed = np.where(confident_subject, 255, 0).astype(np.uint8)
     count, labels, stats, centroids = cv2.connectedComponentsWithStats(subject_seed, connectivity=8)
     minimum_seed_area = max(height * width * 0.004, foreground_pixels * 0.08)
@@ -279,6 +304,22 @@ def cleanup_measurement_board_residue(raw: bytes, output: bytes) -> bytes:
     encoded = io.BytesIO()
     Image.fromarray(rgba, mode="RGBA").save(encoded, format="PNG", optimize=True)
     return encoded.getvalue()
+
+
+def _thin_board_residue_mask(board_like: np.ndarray) -> np.ndarray:
+    height, width = board_like.shape
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        board_like.astype(np.uint8),
+        connectivity=8,
+    )
+    maximum_thickness = max(2, int(round(min(height, width) * 0.004)))
+    thin = np.zeros((height, width), dtype=np.uint8)
+    for label in range(1, count):
+        component_width = int(stats[label, cv2.CC_STAT_WIDTH])
+        component_height = int(stats[label, cv2.CC_STAT_HEIGHT])
+        if min(component_width, component_height) <= maximum_thickness:
+            thin[labels == label] = 255
+    return thin
 
 
 def analyze_cutout(output: bytes) -> tuple[float, tuple[str, ...]]:

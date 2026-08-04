@@ -91,6 +91,29 @@ class AnalyzeCutoutTests(unittest.TestCase):
         self.assertNotIn("BOARD_RESIDUE_SUSPECTED", issues)
         self.assertGreaterEqual(score, 0.75)
 
+    def test_cleans_thin_board_sliver_but_preserves_a_light_label(self) -> None:
+        source = np.full((400, 300, 3), 220, dtype=np.uint8)
+        source[60:330, 70:230] = (45, 45, 45)
+        source[80:115, 140:165] = (220, 220, 220)
+        source[150:230, 68:70] = (220, 220, 220)
+        source_buffer = io.BytesIO()
+        Image.fromarray(source, mode="RGB").save(source_buffer, format="PNG")
+
+        output = np.zeros((400, 300, 4), dtype=np.uint8)
+        output[60:330, 70:230, :3] = source[60:330, 70:230]
+        output[60:330, 70:230, 3] = 255
+        output[80:115, 140:165, :3] = (220, 220, 220)
+        output[150:230, 68:70, :3] = (220, 220, 220)
+        output[150:230, 68:70, 3] = 255
+        output_buffer = io.BytesIO()
+        Image.fromarray(output, mode="RGBA").save(output_buffer, format="PNG")
+
+        cleaned = cleanup_measurement_board_residue(source_buffer.getvalue(), output_buffer.getvalue())
+        cleaned_alpha = np.asarray(Image.open(io.BytesIO(cleaned)).convert("RGBA"))[:, :, 3]
+
+        self.assertEqual(int(cleaned_alpha[190, 69]), 0)
+        self.assertEqual(int(cleaned_alpha[95, 150]), 255)
+
     def test_blocks_an_inset_measurement_board_frame(self) -> None:
         pixels = np.zeros((400, 300, 4), dtype=np.uint8)
         pixels[20:30, 20:280, :3] = (220, 220, 220)
