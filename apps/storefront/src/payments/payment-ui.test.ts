@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded } from "./payment-ui";
+import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded, paymentTone } from "./payment-ui";
 
 assert.equal(paymentSucceeded("PAID", "PENDING"), true);
 assert.equal(paymentSucceeded("PAYMENT_PROCESSING", "SUCCESS"), true);
@@ -17,6 +17,12 @@ assert.equal(canRetryPayment("CANCELLED", 120), true);
 assert.equal(canRetryPayment("TIMEOUT", 120), true);
 assert.equal(canRetryPayment("MANUAL_REVIEW", 120), false);
 assert.equal(canRetryPayment("FAILED", 0), false);
+
+assert.equal(paymentTone({ orderStatus: "PAID", paymentStatus: "PENDING", paymentLoading: false }), "success");
+assert.equal(paymentTone({ paymentStatus: "PENDING", paymentLoading: true }), "pending");
+assert.equal(paymentTone({ paymentStatus: "FAILED", paymentLoading: false }), "failed");
+assert.equal(paymentTone({ paymentStatus: "EXPIRED", paymentLoading: false }), "expired");
+assert.equal(paymentTone({ paymentStatus: "MANUAL_REVIEW", paymentLoading: false }), "review");
 
 assert.equal(paymentHeading({ orderStatus: "PAID", paymentStatus: "SUCCESS", paymentLoading: false }), "Payment confirmed");
 assert.equal(paymentHeading({ paymentStatus: "MANUAL_REVIEW", paymentLoading: false }), "Payment is being checked");

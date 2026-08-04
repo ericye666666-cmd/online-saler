@@ -784,11 +784,27 @@
 
 .reservationCard {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   border: 1px solid #b9d9ca;
   border-radius: 8px;
   background: #f2fbf6;
   padding: 18px;
+}
+
+.reservationCard.success {
+  border-color: #86c99e;
+  background: #f0fff5;
+}
+
+.reservationCard.failed,
+.reservationCard.expired {
+  border-color: #efb0a8;
+  background: #fff6f4;
+}
+
+.reservationCard.review {
+  border-color: #d8c8a7;
+  background: #fffaf0;
 }
 
 .reservationTimer {
@@ -818,23 +834,67 @@
   line-height: 1.5;
 }
 
-.paymentStatusCard {
+.paymentReviewGrid {
   display: grid;
-  gap: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.paymentReviewGrid div {
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 78%);
+  padding: 12px;
+}
+
+.paymentReviewGrid span {
+  display: block;
+  color: #6e786f;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.paymentReviewGrid strong {
+  display: block;
+  margin-top: 5px;
+  color: #151515;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.paymentStatusCard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
   border: 1px solid #d6eadf;
   border-radius: 8px;
   background: #fff;
-  padding: 13px;
+  padding: 15px;
+}
+
+.paymentStatusIcon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  background: #eefaf3;
+  color: #147d43;
 }
 
 .paymentStatusCard b {
   color: #174d31;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .paymentStatusCard span {
+  display: block;
+  margin-top: 4px;
   color: #4a6354;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.45;
 }
@@ -844,9 +904,99 @@
   background: #edfff4;
 }
 
-.paymentStatusCard.failed {
+.paymentStatusCard.failed,
+.paymentStatusCard.expired {
   border-color: #efb0a8;
   background: #fff1ef;
+}
+
+.paymentStatusCard.failed .paymentStatusIcon,
+.paymentStatusCard.expired .paymentStatusIcon {
+  background: #fff1ef;
+  color: #b7382b;
+}
+
+.paymentStatusCard.failed b,
+.paymentStatusCard.expired b {
+  color: #7e2b22;
+}
+
+.paymentStatusCard.failed span,
+.paymentStatusCard.expired span {
+  color: #7b463f;
+}
+
+.paymentStatusCard.review {
+  border-color: #eadab9;
+  background: #fffaf0;
+}
+
+.paymentStatusCard.review .paymentStatusIcon {
+  background: #fff4d8;
+  color: #8d5a00;
+}
+
+.mpesaInstructionCard {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid #d6eadf;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 72%);
+  color: #205f3c;
+  padding: 13px;
+}
+
+.mpesaInstructionCard strong {
+  display: block;
+  color: #174d31;
+  font-size: 13px;
+}
+
+.mpesaInstructionCard span {
+  display: block;
+  margin-top: 3px;
+  color: #4c6756;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.paymentTimeline {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.paymentTimeline div {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #d6d0c8;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 65%);
+  color: #807771;
+  padding: 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.paymentTimeline .done {
+  border-color: #bee3cd;
+  background: #edfff4;
+  color: #147d43;
+}
+
+.paymentTimeline .current {
+  border-color: #151515;
+  background: #151515;
+  color: #fff;
+}
+
+.paymentTimeline .failed {
+  border-color: #efb0a8;
+  background: #fff1ef;
+  color: #9d2d20;
 }
 
 .paymentHandoffNotice {
@@ -922,6 +1072,11 @@
   }
 
   .checkoutServiceStrip {
+    grid-template-columns: 1fr;
+  }
+
+  .paymentReviewGrid,
+  .paymentTimeline {
     grid-template-columns: 1fr;
   }
 
