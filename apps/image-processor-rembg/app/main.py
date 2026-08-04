@@ -13,7 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from PIL import Image, ImageOps, UnidentifiedImageError
 from rembg import new_session, remove
 
-PROCESSOR_VERSION = "rembg-birefnet-v6-isnet-board-crop"
+PROCESSOR_VERSION = "rembg-birefnet-v7-internal-hole-repair"
 DEFAULT_MODEL = "birefnet-general"
 FALLBACK_MODEL = "isnet-general-use"
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
@@ -76,8 +76,9 @@ def _process_with_model(raw: bytes, model_name: str) -> ProcessedCutout:
     if not isinstance(output, (bytes, bytearray)):
         raise RuntimeError("rembg did not return image bytes")
     cleaned = cleanup_measurement_board_residue(raw, bytes(output))
-    quality_score, quality_issues = analyze_cutout(cleaned)
-    return ProcessedCutout(cleaned, model_name, quality_score, quality_issues)
+    repaired = repair_small_internal_alpha_holes(raw, cleaned)
+    quality_score, quality_issues = analyze_cutout(repaired)
+    return ProcessedCutout(repaired, model_name, quality_score, quality_issues)
 
 
 def _process_board_cropped_fallback(raw: bytes, model_name: str) -> ProcessedCutout:
@@ -125,6 +126,7 @@ def _process_board_cropped_fallback(raw: bytes, model_name: str) -> ProcessedCut
     full_rgba = np.zeros((height, width, 4), dtype=np.uint8)
     left, top, right, bottom = crop_box
     full_rgba[top:bottom, left:right] = composed_crop
+    full_rgba = repair_small_internal_alpha_holes_array(np.asarray(source), full_rgba)
 
     encoded = io.BytesIO()
     Image.fromarray(full_rgba, mode="RGBA").save(encoded, format="PNG", optimize=True)
@@ -304,6 +306,140 @@ def cleanup_measurement_board_residue(raw: bytes, output: bytes) -> bytes:
     encoded = io.BytesIO()
     Image.fromarray(rgba, mode="RGBA").save(encoded, format="PNG", optimize=True)
     return encoded.getvalue()
+
+
+def repair_small_internal_alpha_holes(raw: bytes, output: bytes) -> bytes:
+    """Repair small mask dropouts without closing real garment openings.
+
+    Reflective denim and other dark, glossy fabrics can produce isolated
+    transparent islands inside an otherwise solid segmentation mask. They
+    become pure-white spots when the cutout is flattened. Only enclosed,
+    compact holes are repaired; any transparent region connected to the image
+    edge, or large enough to be a neck/cutout opening, remains untouched.
+    """
+    with Image.open(io.BytesIO(raw)) as source_image, Image.open(io.BytesIO(output)) as cutout_image:
+        source_rgb = np.asarray(ImageOps.exif_transpose(source_image).convert("RGB"))
+        rgba = np.asarray(cutout_image.convert("RGBA")).copy()
+
+    if source_rgb.shape[:2] != rgba.shape[:2]:
+        return output
+
+    repaired = repair_small_internal_alpha_holes_array(source_rgb, rgba)
+    if np.array_equal(repaired[:, :, 3], rgba[:, :, 3]):
+        return output
+
+    encoded = io.BytesIO()
+    Image.fromarray(repaired, mode="RGBA").save(encoded, format="PNG", optimize=True)
+    return encoded.getvalue()
+
+
+def repair_small_internal_alpha_holes_array(source_rgb: np.ndarray, rgba: np.ndarray) -> np.ndarray:
+    if source_rgb.shape[:2] != rgba.shape[:2] or rgba.ndim != 3 or rgba.shape[2] != 4:
+        return rgba
+
+    repaired = _repair_enclosed_alpha_holes(source_rgb, rgba)
+    repaired = _repair_source_confirmed_edge_dropouts(source_rgb, repaired)
+    return _repair_enclosed_alpha_holes(source_rgb, repaired)
+
+
+def _repair_enclosed_alpha_holes(source_rgb: np.ndarray, rgba: np.ndarray) -> np.ndarray:
+    repaired = rgba.copy()
+    alpha = repaired[:, :, 3]
+    height, width = alpha.shape
+    foreground = alpha >= 96
+    foreground_area = int(np.count_nonzero(foreground))
+    if foreground_area == 0:
+        return repaired
+
+    low_alpha = (alpha < 96).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(low_alpha, connectivity=8)
+    edge_labels = set(np.unique(np.concatenate((labels[0], labels[-1], labels[:, 0], labels[:, -1]))).tolist())
+    maximum_area = max(12, int(round(foreground_area * 0.008)))
+    maximum_span = max(4, int(round(min(height, width) * 0.06)))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+
+    for label in range(1, count):
+        if label in edge_labels:
+            continue
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        component_width = int(stats[label, cv2.CC_STAT_WIDTH])
+        component_height = int(stats[label, cv2.CC_STAT_HEIGHT])
+        if area > maximum_area or max(component_width, component_height) > maximum_span:
+            continue
+
+        component = labels == label
+        ring = (cv2.dilate(component.astype(np.uint8), kernel, iterations=1) > 0) & (~component)
+        ring_alpha = alpha[ring]
+        if ring_alpha.size == 0 or float(np.mean(ring_alpha >= 128)) < 0.72:
+            continue
+
+        repaired[component, :3] = source_rgb[component]
+        repaired[component, 3] = 255
+
+    return repaired
+
+
+def _repair_source_confirmed_edge_dropouts(source_rgb: np.ndarray, rgba: np.ndarray) -> np.ndarray:
+    """Restore garment-colored mask gaps that narrowly connect to the exterior."""
+    repaired = rgba.copy()
+    alpha = repaired[:, :, 3]
+    height, width = alpha.shape
+    foreground = alpha >= 96
+    foreground_area = int(np.count_nonzero(foreground))
+    if foreground_area == 0:
+        return repaired
+
+    hsv = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2HSV)
+    known_board = (alpha < 16) & (hsv[:, :, 1] <= 55) & (hsv[:, :, 2] >= 150)
+    if np.count_nonzero(known_board) < height * width * 0.04:
+        return repaired
+
+    lab = cv2.cvtColor(source_rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+    board_color = np.median(lab[known_board], axis=0)
+    board_distance = np.linalg.norm(lab - board_color, axis=2)
+    source_looks_like_subject = (
+        (board_distance > 24.0)
+        | (hsv[:, :, 1] >= 70)
+        | (hsv[:, :, 2] <= 175)
+    )
+    search_radius = max(3, int(round(min(height, width) * 0.025)))
+    closed_foreground = cv2.morphologyEx(
+        foreground.astype(np.uint8),
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (search_radius * 2 + 1, search_radius * 2 + 1)),
+        iterations=1,
+    ) > 0
+    candidates = ((alpha < 96) & source_looks_like_subject & closed_foreground).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(candidates, connectivity=8)
+    maximum_area = max(12, int(round(foreground_area * 0.012)))
+    maximum_span = max(5, int(round(min(height, width) * 0.10)))
+    ring_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+
+    for label in range(1, count):
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        component_width = int(stats[label, cv2.CC_STAT_WIDTH])
+        component_height = int(stats[label, cv2.CC_STAT_HEIGHT])
+        if area > maximum_area or max(component_width, component_height) > maximum_span:
+            continue
+
+        component = labels == label
+        ring = (cv2.dilate(component.astype(np.uint8), ring_kernel, iterations=1) > 0) & (~component)
+        ring_alpha = alpha[ring]
+        if ring_alpha.size == 0 or float(np.mean(ring_alpha >= 128)) < 0.45:
+            continue
+
+        foreground_ring = ring & (alpha >= 128)
+        if not np.any(foreground_ring):
+            continue
+        component_color = np.median(lab[component], axis=0)
+        neighboring_garment_color = np.median(lab[foreground_ring], axis=0)
+        if float(np.linalg.norm(component_color - neighboring_garment_color)) > 32.0:
+            continue
+
+        repaired[component, :3] = source_rgb[component]
+        repaired[component, 3] = 255
+
+    return repaired
 
 
 def _thin_board_residue_mask(board_like: np.ndarray) -> np.ndarray:

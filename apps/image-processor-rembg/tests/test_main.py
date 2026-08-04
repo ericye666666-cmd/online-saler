@@ -20,6 +20,7 @@ from app.main import (
     analyze_cutout,
     choose_preferred_cutout,
     cleanup_measurement_board_residue,
+    repair_small_internal_alpha_holes,
     retain_dominant_high_confidence_component,
 )
 
@@ -113,6 +114,103 @@ class AnalyzeCutoutTests(unittest.TestCase):
 
         self.assertEqual(int(cleaned_alpha[190, 69]), 0)
         self.assertEqual(int(cleaned_alpha[95, 150]), 255)
+
+    def test_repairs_small_enclosed_mask_dropouts_using_original_pixels(self) -> None:
+        source = np.full((400, 300, 3), 235, dtype=np.uint8)
+        source[60:340, 70:230] = (42, 48, 56)
+        source_buffer = io.BytesIO()
+        Image.fromarray(source, mode="RGB").save(source_buffer, format="PNG")
+
+        output = np.zeros((400, 300, 4), dtype=np.uint8)
+        output[60:340, 70:230, :3] = source[60:340, 70:230]
+        output[60:340, 70:230, 3] = 255
+        output[180:188, 145:154, 3] = 0
+        output_buffer = io.BytesIO()
+        Image.fromarray(output, mode="RGBA").save(output_buffer, format="PNG")
+
+        repaired = repair_small_internal_alpha_holes(source_buffer.getvalue(), output_buffer.getvalue())
+        repaired_pixels = np.asarray(Image.open(io.BytesIO(repaired)).convert("RGBA"))
+
+        self.assertEqual(int(repaired_pixels[184, 149, 3]), 255)
+        self.assertTupleEqual(tuple(repaired_pixels[184, 149, :3]), (42, 48, 56))
+
+    def test_preserves_large_or_edge_connected_transparent_openings(self) -> None:
+        source = np.full((400, 300, 3), 45, dtype=np.uint8)
+        source_buffer = io.BytesIO()
+        Image.fromarray(source, mode="RGB").save(source_buffer, format="PNG")
+
+        output = np.zeros((400, 300, 4), dtype=np.uint8)
+        output[40:360, 50:250, :3] = source[40:360, 50:250]
+        output[40:360, 50:250, 3] = 255
+        output[70:120, 125:175, 3] = 0
+        output[250:400, 145:155, 3] = 0
+        output_buffer = io.BytesIO()
+        Image.fromarray(output, mode="RGBA").save(output_buffer, format="PNG")
+
+        repaired = repair_small_internal_alpha_holes(source_buffer.getvalue(), output_buffer.getvalue())
+        repaired_alpha = np.asarray(Image.open(io.BytesIO(repaired)).convert("RGBA"))[:, :, 3]
+
+        self.assertEqual(int(repaired_alpha[95, 150]), 0)
+        self.assertEqual(int(repaired_alpha[300, 150]), 0)
+
+    def test_repairs_a_narrow_edge_connected_dropout_when_source_confirms_garment(self) -> None:
+        source = np.full((400, 300, 3), 230, dtype=np.uint8)
+        source[60:340, 70:230] = (45, 52, 62)
+        source[180, 80] = (210, 210, 210)
+        source_buffer = io.BytesIO()
+        Image.fromarray(source, mode="RGB").save(source_buffer, format="PNG")
+
+        output = np.zeros((400, 300, 4), dtype=np.uint8)
+        output[60:340, 70:230, :3] = source[60:340, 70:230]
+        output[60:340, 70:230, 3] = 255
+        output[175:185, 60:95, 3] = 0
+        output_buffer = io.BytesIO()
+        Image.fromarray(output, mode="RGBA").save(output_buffer, format="PNG")
+
+        repaired = repair_small_internal_alpha_holes(source_buffer.getvalue(), output_buffer.getvalue())
+        repaired_alpha = np.asarray(Image.open(io.BytesIO(repaired)).convert("RGBA"))[:, :, 3]
+
+        self.assertEqual(int(repaired_alpha[180, 80]), 255)
+        self.assertEqual(int(repaired_alpha[180, 65]), 0)
+
+    def test_does_not_restore_a_dark_board_mark_near_the_garment(self) -> None:
+        source = np.full((400, 300, 3), 230, dtype=np.uint8)
+        source[60:340, 90:230] = (45, 52, 62)
+        source[194:206, 80:84] = (35, 35, 35)
+        source_buffer = io.BytesIO()
+        Image.fromarray(source, mode="RGB").save(source_buffer, format="PNG")
+
+        output = np.zeros((400, 300, 4), dtype=np.uint8)
+        output[60:340, 90:230, :3] = source[60:340, 90:230]
+        output[60:340, 90:230, 3] = 255
+        output_buffer = io.BytesIO()
+        Image.fromarray(output, mode="RGBA").save(output_buffer, format="PNG")
+
+        repaired = repair_small_internal_alpha_holes(source_buffer.getvalue(), output_buffer.getvalue())
+        repaired_alpha = np.asarray(Image.open(io.BytesIO(repaired)).convert("RGBA"))[:, :, 3]
+
+        self.assertEqual(int(repaired_alpha[200, 82]), 0)
+
+    def test_does_not_restore_light_board_visible_between_dark_pant_legs(self) -> None:
+        source = np.full((400, 300, 3), 235, dtype=np.uint8)
+        source[40:120, 70:230] = (45, 50, 58)
+        source[120:360, 70:145] = (45, 50, 58)
+        source[120:360, 155:230] = (45, 50, 58)
+        source[120:250, 145:155] = (205, 185, 150)
+        source_buffer = io.BytesIO()
+        Image.fromarray(source, mode="RGB").save(source_buffer, format="PNG")
+
+        output = np.zeros((400, 300, 4), dtype=np.uint8)
+        garment = np.all(source == (45, 50, 58), axis=2)
+        output[garment, :3] = source[garment]
+        output[garment, 3] = 255
+        output_buffer = io.BytesIO()
+        Image.fromarray(output, mode="RGBA").save(output_buffer, format="PNG")
+
+        repaired = repair_small_internal_alpha_holes(source_buffer.getvalue(), output_buffer.getvalue())
+        repaired_alpha = np.asarray(Image.open(io.BytesIO(repaired)).convert("RGBA"))[:, :, 3]
+
+        self.assertEqual(int(repaired_alpha[130, 150]), 0)
 
     def test_blocks_an_inset_measurement_board_frame(self) -> None:
         pixels = np.zeros((400, 300, 4), dtype=np.uint8)
