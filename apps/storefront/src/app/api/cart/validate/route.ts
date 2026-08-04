@@ -6,7 +6,8 @@ import {
   ProductImageType,
   ProductImageVariant,
   ProductStatus,
-  prisma
+  prisma,
+  releaseExpiredReservations
 } from "@online-saler/database";
 import { CART_MAX_ITEMS } from "../../../storefront-cart";
 import type {
@@ -26,6 +27,8 @@ export async function POST(request: Request) {
     if (!productIds.length) {
       return NextResponse.json(emptyResponse(), { headers: { "cache-control": "no-store" } });
     }
+
+    await releaseExpiredReservations();
 
     const products = await fetchCartProducts(productIds);
     const productsByInput = new Map<string, ProductForCart>();
@@ -199,7 +202,7 @@ function cartAvailability(product: ProductForCart): CartAvailabilityStatus {
 function statusMessage(status: CartAvailabilityStatus, priceKsh: number | null): string {
   if (status === "AVAILABLE" && (!priceKsh || priceKsh <= 0)) return "Price is not ready yet.";
   if (status === "AVAILABLE") return "Available for checkout.";
-  if (status === "TEMPORARILY_RESERVED") return "Temporarily reserved by another customer. Keep it here and check again soon.";
+  if (status === "TEMPORARILY_RESERVED") return "Temporarily locked for payment. Refresh after the timer expires, or release your unpaid lock if you started it.";
   if (status === "SOLD") return "Sold. This one-of-one item can no longer be purchased.";
   if (status === "UNPUBLISHED") return "No longer listed for sale.";
   if (status === "REMOVED") return "Removed from the catalog.";

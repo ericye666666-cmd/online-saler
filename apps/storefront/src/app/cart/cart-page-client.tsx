@@ -22,6 +22,8 @@ export function CartPageClient() {
   const [validation, setValidation] = useState<CartValidationResponse | null>(null);
   const [state, setState] = useState<CartState>("loading");
   const [refreshing, setRefreshing] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const [releaseError, setReleaseError] = useState("");
 
   useEffect(() => {
     void loadAndValidate();
@@ -78,8 +80,31 @@ export function CartPageClient() {
     void loadAndValidate(false);
   }
 
+  async function releaseMyPaymentLock() {
+    if (!snapshot?.items.length || releasing) return;
+    setReleasing(true);
+    setReleaseError("");
+    try {
+      const response = await fetch("/api/checkout/release", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ productIds: cartProductIds(snapshot) })
+      });
+      const result = await response.json().catch(() => ({})) as { releasedItems?: number; error?: string };
+      if (!response.ok) throw new Error(result.error || "Payment lock could not be released.");
+      await loadAndValidate(false);
+    } catch (error) {
+      setReleaseError(error instanceof Error ? error.message : "Payment lock could not be released.");
+    } finally {
+      setReleasing(false);
+    }
+  }
+
   const checkoutableItems = useMemo(() => validation?.items.filter((item) => item.canCheckout) ?? [], [validation]);
   const unavailableItems = useMemo(() => validation?.items.filter((item) => !item.canCheckout) ?? [], [validation]);
+  const hasReservedItems = useMemo(() => (
+    unavailableItems.some((item) => item.availability === "TEMPORARILY_RESERVED")
+  ), [unavailableItems]);
 
   if (state === "loading") {
     return <CheckoutEmpty title="Your cart" body="Checking your items against live stock..." />;
@@ -130,6 +155,19 @@ export function CartPageClient() {
                 <RefreshCw size={16} /> {refreshing ? "Refreshing..." : "Refresh"}
               </button>
             </div>
+            {hasReservedItems ? (
+              <div className="checkoutSupportNotice">
+                <Clock3 size={17} />
+                <div>
+                  <strong>Recently started payment?</strong>
+                  <p>If these pieces were locked by your unpaid M-Pesa attempt, release the lock and refresh the cart.</p>
+                </div>
+                <button className="commerceSecondaryButton" type="button" disabled={releasing} onClick={releaseMyPaymentLock}>
+                  {releasing ? "Releasing..." : "Release my lock"}
+                </button>
+              </div>
+            ) : null}
+            {releaseError ? <p className="checkoutError" role="alert">{releaseError}</p> : null}
 
             <div className="cartLineList">
               {validation.items.map((item) => (

@@ -760,6 +760,15 @@
   padding: 13px;
 }
 
+.checkoutSupportNotice > div {
+  flex: 1;
+}
+
+.checkoutSupportNotice .commerceSecondaryButton {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .checkoutSupportNotice strong,
 .paymentHandoffNotice strong,
 .checkoutSummaryHandoff strong {
