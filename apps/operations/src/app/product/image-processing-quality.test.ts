@@ -75,6 +75,13 @@ describe("lightweight cutout storefront quality", () => {
     );
   });
 
+  it("blocks an automatic cutout when the garment subject was lost", () => {
+    assert.match(
+      cutoutQualityWarning(job({ provider: "rembg-birefnet", qualityIssues: ["SUBJECT_OFF_CENTER"] })) ?? "",
+      /SUBJECT_OFF_CENTER/
+    );
+  });
+
   it("blocks a high-scoring automatic result that still contains measurement-board residue", () => {
     assert.match(
       cutoutQualityWarning(job({ provider: "rembg-birefnet", qualityScore: 0.97, qualityIssues: ["BOARD_RESIDUE_SUSPECTED"] })) ?? "",

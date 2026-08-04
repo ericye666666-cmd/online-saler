@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+from dataclasses import dataclass
 from functools import lru_cache
 from threading import Lock
 
@@ -12,38 +13,88 @@ from fastapi.concurrency import run_in_threadpool
 from PIL import Image, UnidentifiedImageError
 from rembg import new_session, remove
 
-PROCESSOR_VERSION = "rembg-birefnet-v4-board-cleanup"
+PROCESSOR_VERSION = "rembg-birefnet-v5-cloth-fallback"
 DEFAULT_MODEL = "birefnet-general"
+FALLBACK_MODEL = "u2net_cloth_seg"
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
+MINIMUM_QUALITY_SCORE = 0.75
+BLOCKING_ISSUES = {
+    "SUBJECT_TOUCHES_EDGE",
+    "SUBJECT_OFF_CENTER",
+    "EDGE_FRAGMENTED",
+    "MULTIPLE_FOREGROUND_COMPONENTS",
+    "BOARD_RESIDUE_SUSPECTED",
+}
 
 app = FastAPI(title="Online Saler rembg BiRefNet Processor", version=PROCESSOR_VERSION)
 _session_lock = Lock()
 
 
-@lru_cache(maxsize=1)
-def get_session():
-    model_name = os.getenv("REMBG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+@dataclass(frozen=True)
+class ProcessedCutout:
+    output: bytes
+    model: str
+    quality_score: float
+    quality_issues: tuple[str, ...]
+
+
+@lru_cache(maxsize=2)
+def get_session(model_name: str):
     return new_session(model_name)
 
 
-def process_image(raw: bytes) -> bytes:
+def process_image(raw: bytes) -> ProcessedCutout:
     try:
         with Image.open(io.BytesIO(raw)) as image:
             image.verify()
     except (UnidentifiedImageError, OSError, ValueError) as error:
         raise ValueError("Unsupported or corrupt image") from error
 
+    primary_model = os.getenv("REMBG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    primary = _process_with_model(raw, primary_model)
+    if not _requires_fallback(primary):
+        return primary
+
+    try:
+        fallback = _process_with_model(raw, FALLBACK_MODEL)
+    except Exception:
+        # The primary candidate remains quality-blocked, so returning it is
+        # safer than turning a recoverable segmentation miss into a 500.
+        return primary
+    return choose_preferred_cutout(primary, fallback)
+
+
+def _process_with_model(raw: bytes, model_name: str) -> ProcessedCutout:
     with _session_lock:
         output = remove(
             raw,
-            session=get_session(),
+            session=get_session(model_name),
             force_return_bytes=True,
             post_process_mask=True,
         )
 
     if not isinstance(output, (bytes, bytearray)):
         raise RuntimeError("rembg did not return image bytes")
-    return cleanup_measurement_board_residue(raw, bytes(output))
+    cleaned = cleanup_measurement_board_residue(raw, bytes(output))
+    quality_score, quality_issues = analyze_cutout(cleaned)
+    return ProcessedCutout(cleaned, model_name, quality_score, quality_issues)
+
+
+def _requires_fallback(candidate: ProcessedCutout) -> bool:
+    return (
+        candidate.quality_score < MINIMUM_QUALITY_SCORE
+        or any(issue in BLOCKING_ISSUES for issue in candidate.quality_issues)
+    )
+
+
+def choose_preferred_cutout(primary: ProcessedCutout, fallback: ProcessedCutout) -> ProcessedCutout:
+    """Prefer a clean segmentation over a confident but visibly invalid one."""
+    return max((primary, fallback), key=_candidate_rank)
+
+
+def _candidate_rank(candidate: ProcessedCutout) -> tuple[int, float]:
+    blocking_count = sum(issue in BLOCKING_ISSUES for issue in candidate.quality_issues)
+    return -blocking_count, candidate.quality_score
 
 
 def cleanup_measurement_board_residue(raw: bytes, output: bytes) -> bytes:
@@ -155,6 +206,8 @@ def analyze_cutout(output: bytes) -> tuple[float, tuple[str, ...]]:
             issues.append("SUBJECT_TOO_SMALL")
         if area_ratio > 0.82:
             issues.append("SUBJECT_TOO_LARGE")
+        if _is_subject_missing_or_off_center(mask):
+            issues.append("SUBJECT_OFF_CENTER")
 
         edge_pixels = np.concatenate([mask[0], mask[-1], mask[:, 0], mask[:, -1]])
         edge_ratio = float(np.count_nonzero(edge_pixels)) / max(1, edge_pixels.size)
@@ -187,7 +240,32 @@ def analyze_cutout(output: bytes) -> tuple[float, tuple[str, ...]]:
         score -= len(issues) * 0.13
         if "BOARD_RESIDUE_SUSPECTED" in issues:
             score = min(score, 0.6)
+        if "SUBJECT_OFF_CENTER" in issues:
+            score = min(score, 0.6)
         return round(max(0.0, min(1.0, score)), 3), tuple(issues)
+
+
+def _is_subject_missing_or_off_center(mask: np.ndarray) -> bool:
+    """Reject masks that retain only a ruler strip or a displaced fragment."""
+    foreground = mask > 0
+    height, width = foreground.shape
+    ys, xs = np.where(foreground)
+    if ys.size == 0:
+        return True
+
+    box_height = (int(np.max(ys)) - int(np.min(ys)) + 1) / height
+    box_width = (int(np.max(xs)) - int(np.min(xs)) + 1) / width
+    center_x = float(np.mean(xs)) / width
+    center_y = float(np.mean(ys)) / height
+    foreground_pixels = ys.size
+    top_share = float(np.count_nonzero(foreground[: max(1, int(height * 0.28))])) / foreground_pixels
+    lower_half_share = float(np.count_nonzero(foreground[int(height * 0.5) :])) / foreground_pixels
+
+    if box_height < 0.30 or box_width < 0.16:
+        return True
+    if top_share >= 0.70 and lower_half_share <= 0.08:
+        return True
+    return (center_x < 0.24 or center_x > 0.76) and center_y < 0.72
 
 
 def _has_bright_secondary_component(
@@ -258,18 +336,20 @@ def _has_inset_frame_residue(mask: np.ndarray) -> bool:
     row_occupancy = np.mean(foreground, axis=1)
     column_occupancy = np.mean(foreground, axis=0)
     return (
-        float(np.max(row_occupancy[:top_end])) >= 0.55
+        float(np.max(row_occupancy[:top_end])) >= 0.45
         and float(np.max(row_occupancy[bottom_start:])) >= 0.55
         and max(
             float(np.max(column_occupancy[:left_end])),
             float(np.max(column_occupancy[right_start:])),
-        ) >= 0.40
+        ) >= 0.25
     )
 
 
 @app.on_event("startup")
 def preload_model() -> None:
-    get_session()
+    primary_model = os.getenv("REMBG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    get_session(primary_model)
+    get_session(FALLBACK_MODEL)
 
 
 @app.get("/health")
@@ -278,6 +358,7 @@ def health() -> dict[str, str]:
         "status": "ok",
         "processor": PROCESSOR_VERSION,
         "model": os.getenv("REMBG_MODEL", DEFAULT_MODEL),
+        "fallbackModel": FALLBACK_MODEL,
     }
 
 
@@ -290,20 +371,19 @@ async def remove_background(request: Request) -> Response:
         raise HTTPException(status_code=413, detail="Image exceeds MAX_IMAGE_BYTES")
 
     try:
-        output = await run_in_threadpool(process_image, raw)
-        quality_score, quality_issues = await run_in_threadpool(analyze_cutout, output)
+        processed = await run_in_threadpool(process_image, raw)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except Exception as error:
         raise HTTPException(status_code=500, detail="Background removal failed") from error
 
     return Response(
-        content=output,
+        content=processed.output,
         media_type="image/png",
         headers={
-            "X-Processor-Version": PROCESSOR_VERSION,
-            "X-Processor-Model": os.getenv("REMBG_MODEL", DEFAULT_MODEL),
-            "X-Quality-Score": str(quality_score),
-            "X-Quality-Issues": ",".join(quality_issues),
+            "X-Processor-Version": f"{PROCESSOR_VERSION}:{processed.model}",
+            "X-Processor-Model": processed.model,
+            "X-Quality-Score": str(processed.quality_score),
+            "X-Quality-Issues": ",".join(processed.quality_issues),
         },
     )

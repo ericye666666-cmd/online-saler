@@ -59,6 +59,16 @@ class GuidedCutoutTests(unittest.TestCase):
         self.assertIn("BOARD_RESIDUE_SUSPECTED", issues)
         self.assertLess(score, 0.75)
 
+    def test_quality_blocks_a_top_ruler_strip_when_the_garment_is_missing(self) -> None:
+        image = np.full((400, 300, 3), 225, dtype=np.uint8)
+        mask = np.zeros((400, 300), dtype=np.uint8)
+        cv2.rectangle(mask, (20, 20), (280, 70), 255, -1)
+
+        score, issues = _quality(mask, image)
+
+        self.assertIn("SUBJECT_OFF_CENTER", issues)
+        self.assertLess(score, 0.75)
+
     def test_polygon_excludes_measurement_board_frame(self) -> None:
         image = np.full((420, 320, 3), 245, dtype=np.uint8)
         cv2.rectangle(image, (3, 3), (316, 416), (70, 70, 70), 8)

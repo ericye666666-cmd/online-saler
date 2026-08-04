@@ -9,4 +9,6 @@ assert.equal(imageIssueLabel("SUBJECT_TOUCHES_FRAME"), "主体触碰边缘");
 assert.equal(imageIssueLabel("BOARD_RESIDUE_SUSPECTED"), "疑似保留测量板");
 assert.equal(imageIssueLabel("MULTIPLE_FOREGROUND_COMPONENTS"), "保留了多个非商品区域");
 
+assert.equal(imageIssueLabel("SUBJECT_OFF_CENTER"), "主体丢失或严重偏离");
+
 console.log("Product factory display tests passed");

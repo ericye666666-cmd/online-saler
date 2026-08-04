@@ -16,6 +16,7 @@ export const PRODUCT_STATUS_LABELS: Record<string, string> = {
 };
 
 export const IMAGE_ISSUE_LABELS: Record<string, string> = {
+  SUBJECT_OFF_CENTER: "主体丢失或严重偏离",
   SUBJECT_TOO_SMALL: "主体过小",
   SUBJECT_TOO_LARGE: "主体过大",
   SUBJECT_TOUCHES_EDGE: "主体触碰边缘",

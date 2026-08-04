@@ -223,6 +223,8 @@ def _quality(mask: np.ndarray, image: np.ndarray) -> tuple[float, list[str]]:
         issues.append("SUBJECT_TOO_SMALL")
     if area_ratio > 0.82:
         issues.append("SUBJECT_TOO_LARGE")
+    if _is_subject_missing_or_off_center(mask):
+        issues.append("SUBJECT_OFF_CENTER")
 
     edge_pixels = np.concatenate([mask[0], mask[-1], mask[:, 0], mask[:, -1]])
     edge_ratio = float(np.count_nonzero(edge_pixels)) / float(edge_pixels.size)
@@ -255,7 +257,31 @@ def _quality(mask: np.ndarray, image: np.ndarray) -> tuple[float, list[str]]:
     score -= len(issues) * 0.13
     if "BOARD_RESIDUE_SUSPECTED" in issues:
         score = min(score, 0.6)
+    if "SUBJECT_OFF_CENTER" in issues:
+        score = min(score, 0.6)
     return round(float(np.clip(score, 0.0, 1.0)), 3), issues
+
+
+def _is_subject_missing_or_off_center(mask: np.ndarray) -> bool:
+    foreground = mask > 0
+    height, width = foreground.shape
+    ys, xs = np.where(foreground)
+    if ys.size == 0:
+        return True
+
+    box_height = (int(np.max(ys)) - int(np.min(ys)) + 1) / height
+    box_width = (int(np.max(xs)) - int(np.min(xs)) + 1) / width
+    center_x = float(np.mean(xs)) / width
+    center_y = float(np.mean(ys)) / height
+    foreground_pixels = ys.size
+    top_share = float(np.count_nonzero(foreground[: max(1, int(height * 0.28))])) / foreground_pixels
+    lower_half_share = float(np.count_nonzero(foreground[int(height * 0.5) :])) / foreground_pixels
+
+    if box_height < 0.30 or box_width < 0.16:
+        return True
+    if top_share >= 0.70 and lower_half_share <= 0.08:
+        return True
+    return (center_x < 0.24 or center_x > 0.76) and center_y < 0.72
 
 
 def _has_bright_secondary_component(
@@ -324,10 +350,10 @@ def _has_inset_frame_residue(mask: np.ndarray) -> bool:
     row_occupancy = np.mean(foreground, axis=1)
     column_occupancy = np.mean(foreground, axis=0)
     return (
-        float(np.max(row_occupancy[:top_end])) >= 0.55
+        float(np.max(row_occupancy[:top_end])) >= 0.45
         and float(np.max(row_occupancy[bottom_start:])) >= 0.55
         and max(
             float(np.max(column_occupancy[:left_end])),
             float(np.max(column_occupancy[right_start:])),
-        ) >= 0.40
+        ) >= 0.25
     )

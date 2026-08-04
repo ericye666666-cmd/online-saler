@@ -81,4 +81,11 @@ describe("Product image processing rules", () => {
       { pass: false, reason: "QUALITY_ISSUE:BOARD_RESIDUE_SUSPECTED" }
     );
   });
+
+  it("blocks an automatic result when the subject was lost or displaced", () => {
+    assert.deepEqual(
+      evaluateCutoutImageQuality({ qualityScore: 0.9, qualityIssues: ["SUBJECT_OFF_CENTER"] }),
+      { pass: false, reason: "QUALITY_ISSUE:SUBJECT_OFF_CENTER" }
+    );
+  });
 });

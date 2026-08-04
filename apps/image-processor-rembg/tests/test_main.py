@@ -1,12 +1,26 @@
 from __future__ import annotations
 
 import io
+import importlib.util
+import sys
+import types
 import unittest
 
 import numpy as np
 from PIL import Image
 
-from app.main import analyze_cutout, cleanup_measurement_board_residue
+if importlib.util.find_spec("rembg") is None:
+    rembg_stub = types.ModuleType("rembg")
+    rembg_stub.new_session = lambda model_name: model_name
+    rembg_stub.remove = lambda *_args, **_kwargs: b""
+    sys.modules["rembg"] = rembg_stub
+
+from app.main import (
+    ProcessedCutout,
+    analyze_cutout,
+    choose_preferred_cutout,
+    cleanup_measurement_board_residue,
+)
 
 
 def png_with_components(components: list[tuple[int, int, int, int, tuple[int, int, int]]]) -> bytes:
@@ -95,6 +109,33 @@ class AnalyzeCutoutTests(unittest.TestCase):
 
         self.assertIn("BOARD_RESIDUE_SUSPECTED", issues)
         self.assertLess(score, 0.75)
+
+    def test_blocks_a_top_ruler_strip_when_the_garment_is_missing(self) -> None:
+        output = png_with_components([(20, 20, 280, 70, (225, 225, 225))])
+
+        score, issues = analyze_cutout(output)
+
+        self.assertIn("SUBJECT_OFF_CENTER", issues)
+        self.assertLess(score, 0.75)
+
+    def test_prefers_clean_clothing_fallback_over_invalid_primary(self) -> None:
+        primary = ProcessedCutout(
+            b"primary",
+            "birefnet-general",
+            0.6,
+            ("SUBJECT_OFF_CENTER",),
+        )
+        fallback = ProcessedCutout(
+            b"fallback",
+            "u2net_cloth_seg",
+            0.84,
+            (),
+        )
+
+        selected = choose_preferred_cutout(primary, fallback)
+
+        self.assertEqual(selected.model, "u2net_cloth_seg")
+        self.assertEqual(selected.output, b"fallback")
 
 
 if __name__ == "__main__":
