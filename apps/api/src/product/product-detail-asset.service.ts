@@ -349,29 +349,10 @@ export class ProductDetailAssetService implements OnModuleInit {
   private async syncTemplateCatalog() {
     const templates = Object.values(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES);
     const activeCodes = templates.map((template) => template.code);
-    const version = templates[0]?.version;
-    const outdatedAt = new Date();
     await prisma.$transaction([
       prisma.productDetailTemplate.updateMany({
         where: { code: { notIn: activeCodes } },
         data: { isActive: false }
-      }),
-      prisma.productDetailAsset.updateMany({
-        where: {
-          type: ProductDetailAssetType.MEASUREMENT_GUIDE,
-          status: { not: ProductDetailStatus.OUTDATED },
-          OR: [
-            { templateCode: null },
-            { templateCode: { notIn: activeCodes } },
-            { templateVersion: null },
-            { templateVersion: { not: version } }
-          ]
-        },
-        data: {
-          status: ProductDetailStatus.OUTDATED,
-          outdatedReason: "MEASUREMENT_TEMPLATE_VERSION_CHANGED",
-          outdatedAt
-        }
       }),
       ...templates.map((template) => prisma.productDetailTemplate.upsert({
         where: { code: template.code },

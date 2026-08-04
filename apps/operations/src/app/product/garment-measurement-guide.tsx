@@ -107,7 +107,7 @@ export function GarmentMeasurementGuide(props: {
       <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h4 className="text-sm font-semibold">尺寸位置示意</h4>
-          <p className="text-xs text-muted-foreground">虚线根据当前服装轮廓定位。位置不准时，可在测量板原图上手动连接起点和终点。</p>
+          <p className="text-xs text-muted-foreground">虚线根据当前服装轮廓定位。可直接填软尺实测值；需要时打开测量板校正四角，并连接尺寸起点和终点。</p>
         </div>
         {props.onManualCalibrate ? (
           <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={props.manualCalibrateDisabled} onClick={props.onManualCalibrate}>

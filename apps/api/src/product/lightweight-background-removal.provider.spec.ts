@@ -67,3 +67,63 @@ test("guided cutout sends normalized polygon to the lightweight service", async 
     else process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL = previousUrl;
   }
 });
+
+test("lightweight provider retries temporary Cloud Run capacity errors", async () => {
+  const previousUrl = process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL;
+  const previousDelay = process.env.LIGHTWEIGHT_CUTOUT_RETRY_BASE_DELAY_MS;
+  const previousFetch = globalThis.fetch;
+  process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL = "https://cutout.example.test";
+  process.env.LIGHTWEIGHT_CUTOUT_RETRY_BASE_DELAY_MS = "0";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    if (calls < 3) return new Response("Rate exceeded.", { status: 429 });
+    return new Response(Buffer.from("png"), {
+      status: 200,
+      headers: { "Content-Type": "image/png", "X-Processor": "lightweight-opencv" }
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await new LightweightBackgroundRemovalProvider().removeBackground({
+      body: Buffer.from("image"),
+      contentType: "image/jpeg",
+      filename: "front.jpg"
+    });
+    assert.equal(calls, 3);
+    assert.equal(result.provider, "lightweight-opencv");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL;
+    else process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL = previousUrl;
+    if (previousDelay === undefined) delete process.env.LIGHTWEIGHT_CUTOUT_RETRY_BASE_DELAY_MS;
+    else process.env.LIGHTWEIGHT_CUTOUT_RETRY_BASE_DELAY_MS = previousDelay;
+  }
+});
+
+test("lightweight provider does not retry rejected images", async () => {
+  const previousUrl = process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL;
+  const previousFetch = globalThis.fetch;
+  process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL = "https://cutout.example.test";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return new Response("invalid image", { status: 422 });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      new LightweightBackgroundRemovalProvider().removeBackground({
+        body: Buffer.from("invalid"),
+        contentType: "image/jpeg",
+        filename: "invalid.jpg"
+      }),
+      /failed after 1 attempt: 422/
+    );
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousUrl === undefined) delete process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL;
+    else process.env.LIGHTWEIGHT_CUTOUT_SERVICE_URL = previousUrl;
+  }
+});

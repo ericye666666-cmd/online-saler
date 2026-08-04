@@ -22,6 +22,37 @@ export const PRODUCT_FACTORY_STAGE_LABELS: Record<string, string> = {
   COMPLETE: "批次已完成"
 };
 
+export const PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER = [
+  "CAPTURE",
+  "AUTOMATION",
+  "CONFIRM_AND_PUBLISH"
+] as const;
+
+export const PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS: Record<string, string> = {
+  CAPTURE: "批量采集",
+  AUTOMATION: "AI 自动处理",
+  CONFIRM_AND_PUBLISH: "异常确认并发布",
+  COMPLETE: "批次已完成"
+};
+
+export type ProductFactoryWorkflowStage =
+  | (typeof PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER)[number]
+  | "COMPLETE";
+
+export function productFactoryWorkflowStage(stage: string): ProductFactoryWorkflowStage {
+  if (stage === "COMPLETE") return "COMPLETE";
+  if (stage === "UPLOAD") return "CAPTURE";
+  if (stage === "AI_IMAGE") return "AUTOMATION";
+  return "CONFIRM_AND_PUBLISH";
+}
+
+export function productFactoryWorkflowStageIndex(stage: string): number {
+  const workflowStage = productFactoryWorkflowStage(stage);
+  return workflowStage === "COMPLETE"
+    ? PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER.length
+    : PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER.indexOf(workflowStage);
+}
+
 export function batchNextActionHref(batchId: string, nextAction: string): string {
   const encodedBatchId = encodeURIComponent(batchId);
   const routes: Record<string, string> = {

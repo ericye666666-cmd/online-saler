@@ -5,6 +5,7 @@ import { AIJobService } from "./ai-job.service";
 import { AI_PROVIDER } from "./ai-provider";
 import { SelectedAIProvider } from "./ai-provider-selection";
 import { MockAIProvider } from "./mock-ai.provider";
+import { LightweightMeasurementBoardProvider } from "./lightweight-measurement-board.provider";
 import { OpenAIVisionProvider } from "./openai-vision.provider";
 
 @Module({
@@ -13,6 +14,7 @@ import { OpenAIVisionProvider } from "./openai-vision.provider";
   providers: [
     AIJobService,
     MockAIProvider,
+    LightweightMeasurementBoardProvider,
     OpenAIVisionProvider,
     SelectedAIProvider,
     { provide: AI_PROVIDER, useExisting: SelectedAIProvider }

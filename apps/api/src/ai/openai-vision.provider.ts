@@ -13,6 +13,7 @@ import {
 import { ProductImageStorageService } from "../product/product-image-storage.service";
 import { activeTaxonomyCodes, loadProductTaxonomy } from "../product/product-taxonomy";
 import type { AIProvider, AIProviderResult } from "./ai-provider";
+import { LightweightMeasurementBoardProvider } from "./lightweight-measurement-board.provider";
 import { normalizeOpenAIVisionOutput } from "./openai-vision-normalizer";
 
 type ResponsesApiPayload = Record<string, any>;
@@ -50,7 +51,10 @@ export const PRODUCT_AUDIENCE_TITLE_RULES = [
 
 @Injectable()
 export class OpenAIVisionProvider implements AIProvider {
-  constructor(private readonly imageStorage: ProductImageStorageService) {}
+  constructor(
+    private readonly imageStorage: ProductImageStorageService,
+    private readonly measurementBoard: LightweightMeasurementBoardProvider
+  ) {}
 
   isConfigured(): boolean {
     return Boolean(this.apiKey());
@@ -80,21 +84,32 @@ export class OpenAIVisionProvider implements AIProvider {
       throw new BadRequestException("At least one stored product image is required for AI recognition");
     }
 
-    const imageInputs = await Promise.all(
+    const storedImages = await Promise.all(
       images.map(async (image) => {
         if (!image.originalUrl.startsWith(`gs://${this.imageStorage.bucket}/`)) {
           throw new BadRequestException("Stored product image is not available for AI recognition");
         }
         const objectName = image.originalUrl.slice(`gs://${this.imageStorage.bucket}/`.length);
         const stored = await this.imageStorage.download(objectName);
+        return { image, stored };
+      })
+    );
+    const imageInputs = storedImages.map(({ image, stored }) => {
         const base64 = Buffer.from(stored.body).toString("base64");
         return {
           type: "input_image",
           image_url: `data:${stored.contentType};base64,${base64}`,
           detail: image.type === "FRONT" ? "high" : "low"
         };
-      })
-    );
+      });
+    const frontStored = storedImages.find(({ image }) => image.type === "FRONT") ?? storedImages[0];
+    const boardDetectionPromise = frontStored
+      ? this.measurementBoard.detect({
+          body: Buffer.from(frontStored.stored.body),
+          contentType: frontStored.stored.contentType,
+          filename: `${frontStored.image.id}.${frontStored.stored.contentType.split("/")[1] ?? "jpg"}`
+        })
+      : Promise.resolve(null);
 
     const response = await fetch(RESPONSES_API_URL, {
       method: "POST",
@@ -160,6 +175,7 @@ export class OpenAIVisionProvider implements AIProvider {
     }
 
     const rawOutput = parseOpenAIVisionOutput(payload);
+    const boardDetection = await boardDetectionPromise;
     return {
       provider: "openai",
       model: this.model(),
@@ -168,7 +184,8 @@ export class OpenAIVisionProvider implements AIProvider {
         rawOutput,
         request.imageIds,
         runtimeTaxonomy,
-        images.find((image) => image.type === "FRONT")?.id ?? request.imageIds[0] ?? null
+        images.find((image) => image.type === "FRONT")?.id ?? request.imageIds[0] ?? null,
+        boardDetection
       ),
       latencyMs: Date.now() - startedAt,
       inputTokens: numberOrUndefined(payload.usage?.input_tokens),

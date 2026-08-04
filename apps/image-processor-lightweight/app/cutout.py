@@ -155,7 +155,7 @@ def _encode_result(image: np.ndarray, foreground: np.ndarray) -> CutoutResult:
     if not ok:
         raise RuntimeError("Unable to encode transparent PNG")
 
-    score, issues = _quality(foreground)
+    score, issues = _quality(foreground, image)
     return CutoutResult(png=png.tobytes(), quality_score=score, issues=tuple(issues))
 
 
@@ -214,7 +214,7 @@ def _refine_with_grabcut(image: np.ndarray, initial: np.ndarray) -> np.ndarray:
     ).astype(np.uint8)
 
 
-def _quality(mask: np.ndarray) -> tuple[float, list[str]]:
+def _quality(mask: np.ndarray, image: np.ndarray) -> tuple[float, list[str]]:
     height, width = mask.shape
     area_ratio = float(np.count_nonzero(mask)) / float(height * width)
     issues: list[str] = []
@@ -223,24 +223,137 @@ def _quality(mask: np.ndarray) -> tuple[float, list[str]]:
         issues.append("SUBJECT_TOO_SMALL")
     if area_ratio > 0.82:
         issues.append("SUBJECT_TOO_LARGE")
+    if _is_subject_missing_or_off_center(mask):
+        issues.append("SUBJECT_OFF_CENTER")
 
     edge_pixels = np.concatenate([mask[0], mask[-1], mask[:, 0], mask[:, -1]])
     edge_ratio = float(np.count_nonzero(edge_pixels)) / float(edge_pixels.size)
     if edge_ratio > 0.04:
         issues.append("SUBJECT_TOUCHES_EDGE")
 
-    count, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    component_count = sum(
-        1
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    minimum_component_area = max(height * width * 0.0015, np.count_nonzero(mask) * 0.015)
+    significant_labels = [
+        label
         for label in range(1, count)
-        if stats[label, cv2.CC_STAT_AREA] > height * width * 0.0005
-    )
+        if stats[label, cv2.CC_STAT_AREA] >= minimum_component_area
+    ]
+    component_count = len(significant_labels)
     if component_count > 6:
         issues.append("EDGE_FRAGMENTED")
+    if component_count > 2:
+        issues.append("MULTIPLE_FOREGROUND_COMPONENTS")
+    if (
+        _has_bright_secondary_component(image, labels, stats, significant_labels)
+        or _has_embedded_bright_board_residue(image, mask)
+        or _has_inset_frame_residue(mask)
+    ):
+        issues.append("BOARD_RESIDUE_SUSPECTED")
 
     score = 1.0
     score -= min(abs(area_ratio - 0.34), 0.34) * 0.45
     score -= min(edge_ratio, 0.2) * 1.5
     score -= max(0, component_count - 3) * 0.04
-    score -= len(issues) * 0.08
+    score -= len(issues) * 0.13
+    if "BOARD_RESIDUE_SUSPECTED" in issues:
+        score = min(score, 0.6)
+    if "SUBJECT_OFF_CENTER" in issues:
+        score = min(score, 0.6)
     return round(float(np.clip(score, 0.0, 1.0)), 3), issues
+
+
+def _is_subject_missing_or_off_center(mask: np.ndarray) -> bool:
+    foreground = mask > 0
+    height, width = foreground.shape
+    ys, xs = np.where(foreground)
+    if ys.size == 0:
+        return True
+
+    box_height = (int(np.max(ys)) - int(np.min(ys)) + 1) / height
+    box_width = (int(np.max(xs)) - int(np.min(xs)) + 1) / width
+    center_x = float(np.mean(xs)) / width
+    center_y = float(np.mean(ys)) / height
+    foreground_pixels = ys.size
+    top_share = float(np.count_nonzero(foreground[: max(1, int(height * 0.28))])) / foreground_pixels
+    lower_half_share = float(np.count_nonzero(foreground[int(height * 0.5) :])) / foreground_pixels
+
+    if box_height < 0.30 or box_width < 0.16:
+        return True
+    if top_share >= 0.70 and lower_half_share <= 0.08:
+        return True
+    return (center_x < 0.24 or center_x > 0.76) and center_y < 0.72
+
+
+def _has_bright_secondary_component(
+    image: np.ndarray,
+    labels: np.ndarray,
+    stats: np.ndarray,
+    significant_labels: list[int],
+) -> bool:
+    if len(significant_labels) < 2:
+        return False
+
+    primary = max(significant_labels, key=lambda label: stats[label, cv2.CC_STAT_AREA])
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    primary_pixels = hsv[labels == primary]
+    if primary_pixels.size == 0:
+        return False
+    primary_saturation = float(np.median(primary_pixels[:, 1]))
+    primary_value = float(np.median(primary_pixels[:, 2]))
+    foreground_area = sum(float(stats[label, cv2.CC_STAT_AREA]) for label in significant_labels)
+
+    for label in significant_labels:
+        if label == primary:
+            continue
+        area_share = float(stats[label, cv2.CC_STAT_AREA]) / max(1.0, foreground_area)
+        if area_share < 0.04:
+            continue
+        pixels = hsv[labels == label]
+        if pixels.size == 0:
+            continue
+        saturation = float(np.median(pixels[:, 1]))
+        value = float(np.median(pixels[:, 2]))
+        looks_like_board = saturation <= 42 and value >= 205
+        differs_from_primary = value >= primary_value + 15 or saturation + 20 <= primary_saturation
+        if looks_like_board and differs_from_primary:
+            return True
+    return False
+
+
+def _has_embedded_bright_board_residue(image: np.ndarray, mask: np.ndarray) -> bool:
+    foreground = mask > 0
+    foreground_pixels = int(np.count_nonzero(foreground))
+    if foreground_pixels == 0:
+        return False
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    bright_board = foreground & (hsv[:, :, 1] <= 42) & (hsv[:, :, 2] >= 205)
+    dark_or_colored_subject = foreground & (
+        (hsv[:, :, 2] <= 170) | (hsv[:, :, 1] >= 55)
+    )
+    bright_share = float(np.count_nonzero(bright_board)) / foreground_pixels
+    subject_share = float(np.count_nonzero(dark_or_colored_subject)) / foreground_pixels
+    bottom_start = int(round(mask.shape[0] * 0.75))
+    bottom_bright_ratio = float(np.count_nonzero(bright_board[bottom_start:])) / max(
+        1, bright_board[bottom_start:].size
+    )
+    return bright_share >= 0.18 and subject_share >= 0.16 and bottom_bright_ratio >= 0.03
+
+
+def _has_inset_frame_residue(mask: np.ndarray) -> bool:
+    foreground = mask > 0
+    height, width = foreground.shape
+    top_end = max(1, int(round(height * 0.12)))
+    bottom_start = min(height - 1, int(round(height * 0.88)))
+    left_end = max(1, int(round(width * 0.12)))
+    right_start = min(width - 1, int(round(width * 0.88)))
+    row_occupancy = np.mean(foreground, axis=1)
+    column_occupancy = np.mean(foreground, axis=0)
+    return (
+        float(np.max(row_occupancy[:top_end])) >= 0.45
+        and float(np.max(row_occupancy[bottom_start:])) >= 0.55
+        and max(
+            float(np.max(column_occupancy[:left_end])),
+            float(np.max(column_occupancy[right_start:])),
+        ) >= 0.25
+    )

@@ -103,7 +103,10 @@ export class ProductImageProcessingController {
   ) {
     await requireAdminPermission(adminUserId, "action.product.edit");
     if (!body?.imageId?.trim()) throw new BadRequestException("imageId is required");
-    return this.imageProcessing.selectMainImage({ productId, imageId: body.imageId.trim() });
+    return this.imageProcessing.selectMainImage(
+      { productId, imageId: body.imageId.trim() },
+      { humanConfirmed: body.humanConfirmed !== false }
+    );
   }
 
   @Post("products/:productId/images/:imageId/manual-cutout")

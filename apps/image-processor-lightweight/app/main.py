@@ -6,13 +6,47 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 
 from .balance import balance_garment
 from .cutout import remove_background, remove_background_guided
+from .measurement_board import detect_measurement_board
 
-app = FastAPI(title="Online Saler Lightweight Image Processor", version="2.1.0")
+PROCESSOR_VERSION = "opencv-cutout-v2.3-board-calibration"
+
+app = FastAPI(title="Online Saler Lightweight Image Processor", version="2.3.0")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "processor": "lightweight-opencv", "version": "v2.1"}
+    return {"status": "ok", "processor": "lightweight-opencv", "version": PROCESSOR_VERSION}
+
+
+@app.post("/detect-measurement-board")
+async def measurement_board(
+    request: Request,
+    content_type: str | None = Header(default=None),
+) -> dict[str, object]:
+    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Only JPEG, PNG and WEBP are supported")
+    body = await request.body()
+    if not body or len(body) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image must be between 1 byte and 12 MB")
+
+    try:
+        result = detect_measurement_board(body)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail="Measurement board detection failed") from error
+
+    return {
+        "corners": {
+            "topLeft": vars(result.top_left),
+            "topRight": vars(result.top_right),
+            "bottomRight": vars(result.bottom_right),
+            "bottomLeft": vars(result.bottom_left),
+        },
+        "confidence": result.confidence,
+        "processor": "lightweight-opencv",
+        "processorVersion": PROCESSOR_VERSION,
+    }
 
 
 @app.post("/remove-background")
@@ -40,7 +74,7 @@ async def cutout(
         media_type="image/png",
         headers={
             "X-Processor": "lightweight-opencv",
-            "X-Processor-Version": "v1.0",
+            "X-Processor-Version": PROCESSOR_VERSION,
             "X-Quality-Score": str(result.quality_score),
             "X-Quality-Issues": ",".join(result.issues),
             "X-Source-Filename": x_filename or "unknown",

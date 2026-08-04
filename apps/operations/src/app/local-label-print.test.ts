@@ -15,7 +15,8 @@ const product = {
   category: "TOP",
   color: "ORANGE",
   finalSizeLabel: "M",
-  conditionGrade: "GOOD"
+  conditionGrade: "GOOD",
+  inventoryItem: { location: { locationCode: "A-01-02-03" } }
 };
 
 assert.equal(normalizeLabelSize("6040"), "60x40");
@@ -40,6 +41,7 @@ assert.equal(payload6040.template_size, "60x40");
 assert.equal(payload6040.template_code, "online_saler_product_60x40");
 assert.equal(payload6040.label_payload.barcode_value, "DLFOPENAI304937609951");
 assert.equal(payload6040.label_payload.title, "Coral Orange Graphic T-Shirt");
+assert.equal(payload6040.label_payload.location, "A-01-02-03");
 
 const payload4030 = buildLabelPrintPayload({ product, labelSize: "40x30", printerName: "deli-720" });
 assert.equal(payload4030.template_size, "40x30");

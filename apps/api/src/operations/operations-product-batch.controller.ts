@@ -106,6 +106,11 @@ export class OperationsProductBatchController {
     return this.batches.publishBatch(id, body);
   }
 
+  @Post(":id/complete-and-publish")
+  completeAndPublish(@Param("id") id: string, @Body() body: AdminEmployeeBody) {
+    return this.batches.completeAndPublishBatch(id, body);
+  }
+
   @Post("products/:id/review")
   reviewProduct(@Param("id") id: string, @Body() body: ReviewBody) {
     return this.batches.reviewProduct(id, body);

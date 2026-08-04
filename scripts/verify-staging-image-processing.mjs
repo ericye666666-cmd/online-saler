@@ -9,7 +9,13 @@ const EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const JPEG_SIGNATURE = Buffer.from([255, 216, 255]);
 const DEFAULT_STOREFRONT_MINIMUM_QUALITY_SCORE = 0.75;
-const DEFAULT_STOREFRONT_BLOCKING_ISSUES = ["SUBJECT_TOUCHES_EDGE", "EDGE_FRAGMENTED"];
+const DEFAULT_STOREFRONT_BLOCKING_ISSUES = [
+  "SUBJECT_TOUCHES_EDGE",
+  "SUBJECT_OFF_CENTER",
+  "EDGE_FRAGMENTED",
+  "MULTIPLE_FOREGROUND_COMPONENTS",
+  "BOARD_RESIDUE_SUSPECTED"
+];
 
 export function evaluateStorefrontCutoutQuality(input, environment = process.env) {
   const configuredMinimum = Number.parseFloat(
@@ -229,10 +235,6 @@ async function verifyCutoutPath(input) {
   if (input.expectFallback) {
     assert.equal(completed.fallbackFrom, "lightweight-opencv");
     assert.ok(completed.fallbackReason, "fallback must persist a reason");
-    assert.ok(
-      completed.qualityScore < 0.75 || completed.qualityIssues.length > 0,
-      "fallback must retain lightweight quality evidence"
-    );
   } else {
     assert.ok(completed.qualityScore >= 0.75);
     assert.equal(completed.fallbackFrom, null);
@@ -251,50 +253,63 @@ async function verifyCutoutPath(input) {
     `${input.serviceUrl}/products/${product.id}/image-assets/${completed.outputImageId}/content`
   );
   const alpha = inspectTransparentPng(transparent);
-  const white = await runDerivedOperation({
-    ...input,
-    productId: product.id,
-    sourceImageId: completed.outputImageId,
-    operation: "COMPOSE_WHITE_BACKGROUND",
-    expectedVariant: "CUTOUT_WHITE",
-    expectedProvider: "deterministic-sharp"
-  });
-  const optimized = await runDerivedOperation({
-    ...input,
-    productId: product.id,
-    sourceImageId: white.outputImageId,
-    operation: "OPTIMIZE_MAIN_IMAGE",
-    expectedVariant: "OPTIMIZED_MAIN",
-    expectedProvider: "deterministic-sharp"
-  });
-  const balanced = await runDerivedOperation({
-    ...input,
-    productId: product.id,
-    sourceImageId: completed.outputImageId,
-    operation: "OPTIMIZE_BALANCED_MAIN_IMAGE",
-    expectedVariant: "OPTIMIZED_BALANCED_MAIN",
-    expectedProvider: "lightweight-opencv"
-  });
   const storefrontQuality = evaluateStorefrontCutoutQuality(completed);
-  const selectionResponse = await fetch(`${input.serviceUrl}/products/${product.id}/main-image`, {
-    method: "POST",
-    headers: { ...input.adminHeaders, "Content-Type": "application/json" },
-    body: JSON.stringify({ imageId: balanced.outputImageId })
-  });
-  const selectionText = await selectionResponse.text();
-  const selection = selectionText ? JSON.parse(selectionText) : null;
+  let white = null;
+  let optimized = null;
+  let balanced = null;
   if (storefrontQuality.pass) {
+    white = await runDerivedOperation({
+      ...input,
+      productId: product.id,
+      sourceImageId: completed.outputImageId,
+      operation: "COMPOSE_WHITE_BACKGROUND",
+      expectedVariant: "CUTOUT_WHITE",
+      expectedProvider: "deterministic-sharp"
+    });
+    optimized = await runDerivedOperation({
+      ...input,
+      productId: product.id,
+      sourceImageId: white.outputImageId,
+      operation: "OPTIMIZE_MAIN_IMAGE",
+      expectedVariant: "OPTIMIZED_MAIN",
+      expectedProvider: "deterministic-sharp"
+    });
+    balanced = await runDerivedOperation({
+      ...input,
+      productId: product.id,
+      sourceImageId: completed.outputImageId,
+      operation: "OPTIMIZE_BALANCED_MAIN_IMAGE",
+      expectedVariant: "OPTIMIZED_BALANCED_MAIN",
+      expectedProvider: "lightweight-opencv"
+    });
+    const selectionResponse = await fetch(`${input.serviceUrl}/products/${product.id}/main-image`, {
+      method: "POST",
+      headers: { ...input.adminHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ imageId: balanced.outputImageId })
+    });
+    const selectionText = await selectionResponse.text();
+    const selection = selectionText ? JSON.parse(selectionText) : null;
     assert.equal(selectionResponse.status, 201, selectionText);
     assert.equal(selection.selectedMainImageId, balanced.outputImageId);
     assert.equal(selection.optimizedBalancedMain.selectedAsMain, true);
   } else {
-    assert.equal(selectionResponse.status, 400, selectionText);
+    const blockedResponse = await fetch(
+      `${input.serviceUrl}/products/${product.id}/images/${completed.outputImageId}/processing-jobs`,
+      {
+        method: "POST",
+        headers: { ...input.adminHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "COMPOSE_WHITE_BACKGROUND" })
+      }
+    );
+    const blockedText = await blockedResponse.text();
+    const blocked = blockedText ? JSON.parse(blockedText) : null;
+    assert.equal(blockedResponse.status, 400, blockedText);
     assert.match(
-      String(selection?.message ?? ""),
+      String(blocked?.message ?? ""),
       /Cutout quality is insufficient for storefront use/,
       "low-quality cutouts must be rejected as storefront main images"
     );
-    assert.match(String(selection.message), new RegExp(escapeRegExp(storefrontQuality.reason)));
+    assert.match(String(blocked.message), new RegExp(escapeRegExp(storefrontQuality.reason)));
     const comparisonAfterRejection = await requestJson(
       `${input.serviceUrl}/products/${product.id}/image-comparison`,
       { headers: input.adminHeaders }

@@ -87,7 +87,8 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
   const [batch, setBatch] = useState<ProductBatch | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
-  const [activeImage, setActiveImage] = useState("original");
+  const [batchComparisons, setBatchComparisons] = useState<Record<string, ProductImageComparisonResponse>>({});
+  const [activeImage, setActiveImage] = useState("white");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -107,6 +108,17 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
       next.products = [...next.products].sort((left, right) => Number(left.batchItemNumber ?? 0) - Number(right.batchItemNumber ?? 0));
     }
     setBatch(next);
+    const comparisonEntries = await Promise.all(next.products.map(async (item) => {
+      try {
+        const itemComparison = await request<ProductImageComparisonResponse>(`/products/${item.id}/image-comparison`, {
+          headers: { "X-Admin-User-Id": ids.adminUserId }
+        });
+        return [item.id, itemComparison] as const;
+      } catch {
+        return null;
+      }
+    }));
+    setBatchComparisons(Object.fromEntries(comparisonEntries.filter((entry): entry is readonly [string, ProductImageComparisonResponse] => Boolean(entry))));
     const firstReviewable = next.products.findIndex((product) => isReviewable(product.status));
     if (firstReviewable >= 0) setCurrentIndex((current) => isReviewable(next.products[current]?.status ?? "") ? current : firstReviewable);
   }, [batchId, ids.adminUserId]);
@@ -115,7 +127,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
 
   const product = batch?.products[currentIndex] ?? null;
   useEffect(() => {
-    setActiveImage("original");
+    setActiveImage("white");
     setComparison(null);
     if (!product || !ids.adminUserId) return;
     void request<ProductImageComparisonResponse>(`/products/${product.id}/image-comparison`, {
@@ -145,6 +157,13 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
       return;
     }
     await run(`review-${result}`, async () => {
+      if (result === "APPROVED" && comparison?.aiDisplayMain?.selectedAsMain) {
+        await request(`/products/${product.id}/main-image`, {
+          method: "POST",
+          headers: { "X-Admin-User-Id": ids.adminUserId },
+          body: JSON.stringify({ imageId: comparison.aiDisplayMain.imageId, humanConfirmed: true })
+        });
+      }
       await request(`/operations/product-batches/products/${product.id}/review`, {
         method: "POST",
         body: JSON.stringify({ ...ids, result, reason: reason.trim() || undefined })
@@ -173,6 +192,54 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
     }, `本批 ${batch.targetCount} 件已发布并完成。` );
   }
 
+  async function confirmAndApproveBatch() {
+    if (!batch) return;
+    const reviewable = batch.products.filter((item) => isReviewable(item.status));
+    if (!reviewable.length) return;
+    if (!window.confirm(`已逐件对照原图与 AI 陈列主图，并确认本批 ${reviewable.length} 件商品信息无异常？`)) return;
+
+    await run("approve-batch", async () => {
+      const generatedMainImages = reviewable.flatMap((item) => {
+        const itemComparison = batchComparisons[item.id];
+        const imageId = itemComparison?.aiDisplayMain?.selectedAsMain
+          ? itemComparison.aiDisplayMain.imageId
+          : "";
+        return imageId ? [{ productId: item.id, imageId }] : [];
+      });
+      await Promise.all(generatedMainImages.map(({ productId, imageId }) => request(`/products/${productId}/main-image`, {
+        method: "POST",
+        headers: { "X-Admin-User-Id": ids.adminUserId },
+        body: JSON.stringify({ imageId, humanConfirmed: true })
+      })));
+      await request(`/operations/product-batches/${batch.id}/detail-generation/approve`, {
+        method: "POST",
+        headers: { "X-Admin-User-Id": ids.adminUserId },
+        body: JSON.stringify({ employeeId: ids.employeeId })
+      }).catch(() => null);
+      await Promise.all(reviewable.map((item) => request(`/operations/product-batches/products/${item.id}/review`, {
+        method: "POST",
+        body: JSON.stringify({ ...ids, result: "APPROVED" })
+      })));
+    }, `本批 ${reviewable.length} 件 AI 主图与商品信息已人工确认。`);
+  }
+
+  async function completeStorageAndPublish() {
+    if (!batch) return;
+    const issue = batchStorageCompletionIssue(batch.products, batch.targetCount);
+    if (issue) { setError(issue); setNotice(""); return; }
+    if (!window.confirm(`已按货架号放置本批 ${batch.targetCount} 件商品，确认入库并发布？`)) return;
+    await run("stock-and-publish", async () => {
+      await request(`/operations/product-batches/${batch.id}/stock-in`, {
+        method: "POST",
+        body: JSON.stringify(ids)
+      });
+      await request(`/operations/product-batches/${batch.id}/publish`, {
+        method: "POST",
+        body: JSON.stringify(ids)
+      });
+    }, `本批 ${batch.targetCount} 件已入库并发布。`);
+  }
+
   if (!batch || !product) return <StatusMessage tone={error ? "danger" : "neutral"}>{error || "正在读取审核与入仓工作台..."}</StatusMessage>;
 
   const approvedCount = batch.products.filter((item) => ["APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(item.status)).length;
@@ -186,13 +253,14 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
   const imageTabs = buildImageTabs(product, comparison);
   const currentImage = imageTabs.find((tab) => tab.key === activeImage) ?? imageTabs[0];
   const aiOutput = normalizedAiOutput(product.aiExtractions?.[0] ?? null);
+  const reviewableCount = batch.products.filter((item) => isReviewable(item.status)).length;
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-3" />返回批次</Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · 审核、入仓与发布</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：异常确认并发布</h1>
           <p className="mt-1 text-sm text-muted-foreground">审核 {approvedCount}/{batch.targetCount} · 入仓 {availableCount}/{batch.targetCount} · 发布 {publishedCount}/{batch.targetCount}</p>
         </div>
         <Badge variant="outline">{batch.stageLabel}</Badge>
@@ -206,6 +274,38 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
       {hasException ? <StatusMessage tone="danger">本批存在退回返工或拒绝商品。修复异常前不能整批入仓和发布。</StatusMessage> : null}
+
+      {reviewableCount > 0 ? (
+        <section className="rounded-md border p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-semibold">候选主图整批确认</h2>
+              <p className="mt-1 text-sm text-muted-foreground">左侧原图、右侧 AI 陈列主图。逐件核对 Logo、图案、结构、磨损和瑕疵；有异常时使用下方单件审核。</p>
+            </div>
+            <Button disabled={Boolean(busy)} onClick={() => void confirmAndApproveBatch()}>
+              {busy === "approve-batch" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
+              确认本批无异常
+            </Button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {batch.products.map((item) => {
+              const itemComparison = batchComparisons[item.id];
+              return (
+                <article key={item.id} className="overflow-hidden rounded-md border">
+                  <div className="grid grid-cols-2 gap-px bg-border">
+                    <div className="aspect-[4/5] bg-white"><SafeProductImage src={comparisonImageUrl(itemComparison?.original)} alt={`${item.productCode} 原图`} /></div>
+                    <div className="aspect-[4/5] bg-white"><SafeProductImage src={comparisonImageUrl(itemComparison?.aiDisplayMain)} alt={`${item.productCode} AI 陈列图`} /></div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t px-2 py-2 text-xs">
+                    <span>第 {item.batchItemNumber ?? "-"} 件</span>
+                    <Badge variant={itemComparison?.aiDisplayMain ? "secondary" : "destructive"}>{itemComparison?.aiDisplayMain ? "待确认" : "缺 AI 主图"}</Badge>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {!allApproved ? (
         <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(380px,.9fr)]">
@@ -304,9 +404,9 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
               <h2 className="font-semibold">按货架号归位</h2>
               <p className="mt-1 text-sm text-muted-foreground">将每件商品放到对应货架，放完后统一确认。</p>
             </div>
-            <Button disabled={Boolean(busy) || !allAssigned} onClick={() => void completeStorage()}>
-              {busy === "stock-in" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <PackageCheckIcon data-icon="inline-start" />}
-              全部完成入库
+            <Button disabled={Boolean(busy) || !allAssigned} onClick={() => void completeStorageAndPublish()}>
+              {busy === "stock-and-publish" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <PackageCheckIcon data-icon="inline-start" />}
+              确认入库并发布
             </Button>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
@@ -361,22 +461,24 @@ function isReviewable(status: string) { return status === "BARCODE_ASSIGNED" || 
 
 function buildImageTabs(product: ProductRecord, comparison: ProductImageComparisonResponse | null): ImageTab[] {
   const tabs = [
-    variantTab("original", "原图", comparison?.original ?? null),
-    variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, true),
-    variantTab("white", "白底图", comparison?.cutoutWhite ?? null),
-    variantTab("optimized", "优化主图", comparison?.optimizedMain ?? null),
-    variantTab("balanced", "优化主图 2（均整版）", comparison?.optimizedBalancedMain ?? null),
-    variantTab("ai-display", "AI 陈列图（生成式）", comparison?.aiDisplayMain ?? null)
+    variantTab("white", "白底正面", comparison?.cutoutWhite ?? null),
+    variantTab("back-white", "白底背面", comparison?.backCutoutWhite ?? null),
+    variantTab("ai-display", "AI 陈列图", comparison?.aiDisplayMain ?? null)
   ].filter((tab) => tab.url);
-  for (const [type, label] of [["BACK", "背面"], ["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
+  for (const [type, label] of [["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
     const image = product.images?.find((candidate) => candidate.type === type);
     if (image?.publicUrl) tabs.push({ key: type.toLowerCase(), label, url: `${API_PROXY_URL}${image.publicUrl}` });
   }
   return tabs.length ? tabs : [{ key: "missing", label: "图片", url: "" }];
 }
 
-function variantTab(key: string, label: string, asset: ProductImageVariantRecord | null, transparent = false): ImageTab {
-  return { key, label, url: asset?.publicUrl ? `${API_PROXY_URL}${asset.publicUrl}` : "", transparent, selected: Boolean(asset?.selectedAsMain) };
+function variantTab(key: string, label: string, asset: ProductImageVariantRecord | null): ImageTab {
+  return { key, label, url: asset?.publicUrl ? `${API_PROXY_URL}${asset.publicUrl}` : "", selected: Boolean(asset?.selectedAsMain) };
+}
+
+function comparisonImageUrl(asset?: ProductImageVariantRecord | null) {
+  if (!asset?.publicUrl) return "";
+  return asset.publicUrl.startsWith("http") ? asset.publicUrl : `${API_PROXY_URL}${asset.publicUrl}`;
 }
 
 function aiValue(output: JsonRecord | null, key: string) {

@@ -187,7 +187,12 @@ export class ProductImageProcessingService {
       );
     }
 
-    const analyzed = await analyzeManualCutout(guided.body);
+    const baseAnalysis = await analyzeManualCutout(guided.body);
+    const analyzed = {
+      ...baseAnalysis,
+      qualityScore: Math.min(baseAnalysis.qualityScore, guided.qualityScore ?? 1),
+      qualityIssues: [...new Set([...baseAnalysis.qualityIssues, ...(guided.qualityIssues ?? [])])]
+    };
     const decision = evaluateCutoutImageQuality(analyzed);
     if (!decision.pass) {
       throw new BadRequestException(

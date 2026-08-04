@@ -1,5 +1,5 @@
 export const PRODUCT_UPLOAD_BATCH_CONCURRENCY = 10;
-export const PRODUCT_IMAGE_BATCH_CONCURRENCY = 10;
+export const PRODUCT_IMAGE_BATCH_CONCURRENCY = 4;
 export const PRODUCT_AI_BATCH_CONCURRENCY = 3;
 
 export async function runWithConcurrency<T>(

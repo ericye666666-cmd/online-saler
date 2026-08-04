@@ -31,6 +31,7 @@ export type LabelPrintPayload = {
     color: string;
     size: string;
     condition: string;
+    location: string;
   };
 };
 
@@ -97,6 +98,13 @@ export function buildLabelPrintPayload(input: {
   const color = stringValue(input.product.color) || "-";
   const size = stringValue(input.product.finalSizeLabel) || stringValue(input.product.tagSize) || "-";
   const condition = stringValue(input.product.conditionGrade) || "-";
+  const inventoryItem = input.product.inventoryItem && typeof input.product.inventoryItem === "object"
+    ? input.product.inventoryItem as JsonRecord
+    : {};
+  const location = inventoryItem.location && typeof inventoryItem.location === "object"
+    ? inventoryItem.location as JsonRecord
+    : {};
+  const locationCode = stringValue(location.locationCode) || "待分配";
   const templateCode = `online_saler_product_${input.labelSize}`;
   const printerName = input.printerName?.trim() || DEFAULT_PRINTER_NAME;
 
@@ -118,7 +126,8 @@ export function buildLabelPrintPayload(input: {
       category,
       color,
       size,
-      condition
+      condition,
+      location: locationCode
     }
   };
 }

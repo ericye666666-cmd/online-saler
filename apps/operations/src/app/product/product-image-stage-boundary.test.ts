@@ -10,11 +10,35 @@ const detailSource = readFileSync(
   join(process.cwd(), "src/app/product/product-detail-generation-client.tsx"),
   "utf8"
 );
+const executionSource = readFileSync(
+  join(process.cwd(), "src/app/product/product-batch-execution-client.tsx"),
+  "utf8"
+);
+const reviewSource = readFileSync(
+  join(process.cwd(), "src/app/product/product-batch-review-client.tsx"),
+  "utf8"
+);
 
 assert.equal(
   calibrationSource.includes('operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
   false,
   "Calibration must not generate AI display images."
+);
+assert.ok(
+  calibrationSource.includes("onManualCalibrate={measurementAction ?"),
+  "Every calibratable product with an original image must expose the measurement-board editor."
+);
+assert.ok(
+  calibrationSource.includes("打开测量板测量"),
+  "A new item without existing manual lines must still expose the measurement-board action."
+);
+assert.ok(
+  calibrationSource.includes("抠图不对，手动修正"),
+  "Staff must be able to override a visually wrong cutout even when automatic scoring passes."
+);
+assert.ok(
+  calibrationSource.includes("重新自动抠图"),
+  "A legacy result that passed older scoring must be rerunnable through the current automatic pipeline."
 );
 assert.equal(
   calibrationSource.includes("设为商城主图"),
@@ -24,6 +48,19 @@ assert.equal(
 assert.ok(
   detailSource.includes('operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
   "Detail generation must create AI display main-image candidates."
+);
+assert.equal(
+  executionSource.includes('"GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
+  false,
+  "Batch preprocessing must wait for the quick human pass before generating AI display images."
+);
+assert.ok(
+  calibrationSource.includes("正在批量生成 AI 陈列主图、销售详情与 Barcode"),
+  "The last quick confirmation must start batch AI display generation without style selection."
+);
+assert.ok(
+  reviewSource.includes("humanConfirmed: true"),
+  "Final review must explicitly confirm the generated main image."
 );
 assert.equal(
   detailSource.includes("MODEL_DISPLAY"),

@@ -12,6 +12,7 @@ import { AIJobService } from "../ai/ai-job.service";
 import { ProductApplicationService } from "../product/product-application.service";
 import { ProductBarcodeService } from "../product/product-barcode.service";
 import { ProductDetailGenerationService } from "../product/product-detail-generation.service";
+import { ProductImageProcessingService } from "../product/product-image-processing.service";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsProductControlService } from "./operations-product-control.service";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
@@ -23,6 +24,8 @@ import {
 } from "./product-factory-batch-size";
 import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
 import { buildProductBatchImagePreviews } from "./product-batch-image-preview";
+import { canGenerateOrReuseBarcode } from "./product-storage-reservation";
+import { requiresAiMainImageConfirmation } from "./product-review-main-image";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -77,7 +80,8 @@ export class OperationsProductBatchService {
     private readonly barcodes: ProductBarcodeService,
     private readonly products: ProductApplicationService,
     private readonly productControl: OperationsProductControlService,
-    private readonly details: ProductDetailGenerationService
+    private readonly details: ProductDetailGenerationService,
+    private readonly imageProcessing: ProductImageProcessingService
   ) {}
 
   async summary(adminUserId?: string, employeeId?: string) {
@@ -360,15 +364,23 @@ export class OperationsProductBatchService {
       where: { batchId: batch.id },
       orderBy: { batchItemNumber: "asc" }
     });
-    if (products.length !== batch.targetCount || products.some((product) => product.status !== ProductStatus.CALIBRATED)) {
+    if (products.length !== batch.targetCount || products.some((product) =>
+      !canGenerateOrReuseBarcode(product.status, product.barcode)
+    )) {
       throw new BadRequestException(`All ${batch.targetCount} products must be calibrated before generating barcodes.`);
     }
     const generated = [];
     const generatedAt = new Date();
     for (const product of products) {
-      generated.push(await this.barcodes.generate(product.id, employeeId, generatedAt));
+      generated.push(product.status === ProductStatus.CALIBRATED
+        ? await this.barcodes.generate(product.id, employeeId, generatedAt)
+        : product);
     }
-    return { batchId, generated };
+    const reserved = [];
+    for (const product of products) {
+      reserved.push(await this.productControl.assignRandomLocation(product.id, input));
+    }
+    return { batchId, generated, reserved };
   }
 
   async markBatchPrinted(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
@@ -447,6 +459,55 @@ export class OperationsProductBatchService {
     return { batchId, published };
   }
 
+  async completeAndPublishBatch(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
+    const employeeId = employeeIdOrDefault(input.employeeId);
+    await Promise.all([
+      this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION),
+      this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION),
+      this.access.requirePermission(input.adminUserId, "action.product.publish")
+    ]);
+    const batch = await this.requireBatch(batchId);
+    const products = await prisma.product.findMany({
+      where: { batchId: batch.id },
+      include: this.productInclude(),
+      orderBy: { batchItemNumber: "asc" }
+    });
+    if (products.length !== batch.targetCount) {
+      throw new BadRequestException(`Batch must contain exactly ${batch.targetCount} products.`);
+    }
+    if (products.some((product) => !product.barcode || !product.labelPrintedAt || !product.inventoryItem?.locationId)) {
+      throw new BadRequestException("Generate and print every barcode, then place every item at its reserved shelf location.");
+    }
+
+    const reviewable = products.filter((product) =>
+      product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING
+    );
+    for (const product of reviewable) {
+      const comparison = await this.imageProcessing.getComparison(product.id);
+      const aiDisplayImageId = comparison.aiDisplayMain?.imageId;
+      if (!aiDisplayImageId) {
+        throw new BadRequestException(`Product ${product.productCode} is missing its AI display image.`);
+      }
+      await this.imageProcessing.selectMainImage(
+        { productId: product.id, imageId: aiDisplayImageId },
+        { recordDetailSourceChange: false, humanConfirmed: true }
+      );
+    }
+
+    await this.details.approveBatch(batch.id, employeeId);
+    for (const product of reviewable) {
+      await this.reviewProduct(product.id, {
+        ...input,
+        employeeId,
+        result: ReviewResult.APPROVED
+      });
+    }
+    await this.prepareBatchStorage(batch.id, { ...input, employeeId });
+    await this.stockInBatch(batch.id, { ...input, employeeId });
+    await this.publishBatch(batch.id, { ...input, employeeId });
+    return this.batchDetail(batch.id, input.adminUserId);
+  }
+
   async reviewProduct(productId: string, input: ReviewInput) {
     const employeeId = employeeIdOrDefault(input.employeeId);
     await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
@@ -462,6 +523,15 @@ export class OperationsProductBatchService {
     if (!product) throw new NotFoundException("Product not found.");
     if ((product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING) && !product.labelPrintedAt) {
       throw new BadRequestException("Print the label before reviewing the product.");
+    }
+    if (result === ReviewResult.APPROVED) {
+      const mainSelection = await prisma.productMainImageSelection.findUnique({
+        where: { productId },
+        select: { variant: true, confirmedAt: true }
+      });
+      if (requiresAiMainImageConfirmation(mainSelection)) {
+        throw new BadRequestException("Confirm the AI display main image against the original before approving the product.");
+      }
     }
 
     const actor = { actorType: ActorType.EMPLOYEE, actorId: employeeId, sourceApp: SourceApp.OPERATIONS };

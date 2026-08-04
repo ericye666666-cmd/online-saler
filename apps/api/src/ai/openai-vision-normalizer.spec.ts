@@ -164,7 +164,16 @@ test("normalizes board corners and garment endpoints, then calculates centimeter
     },
     ["front-image", "label-image"],
     {},
-    "front-image"
+    "front-image",
+    {
+      corners: {
+        topLeft: { x: 10, y: 10 },
+        topRight: { x: 90, y: 10 },
+        bottomRight: { x: 90, y: 90 },
+        bottomLeft: { x: 10, y: 90 }
+      },
+      confidence: 0.93
+    }
   );
 
   assert.equal(output.measurementGeometry?.imageId, "front-image");
@@ -201,4 +210,66 @@ test("keeps the model centimeter estimate when its board geometry is invalid", (
   assert.equal(output.measurementGeometry?.boardCorners, null);
   assert.equal(output.chestWidthCm.value, 52);
   assert.equal(output.chestWidthCm.confidence, 0.7);
+});
+
+test("rejects a cropped model board that mistakes the 100 cm tick for the 120 cm edge", () => {
+  const output = normalizeOpenAIVisionOutput({
+    chestWidthCm: { value: 59, confidence: 0.82 },
+    measurementGeometry: {
+      boardCorners: {
+        value: {
+          topLeft: { x: 12.7, y: 1.5 },
+          topRight: { x: 68.7, y: 0.4 },
+          bottomRight: { x: 77.4, y: 99.2 },
+          bottomLeft: { x: 4.2, y: 99.5 }
+        },
+        confidence: 0.9
+      },
+      lines: {
+        chestWidthCm: {
+          value: { start: { x: 27, y: 34 }, end: { x: 59, y: 34 } },
+          confidence: 0.87
+        }
+      }
+    }
+  }, ["front-image"]);
+
+  assert.equal(output.measurementGeometry?.boardCorners, null);
+  assert.equal(output.chestWidthCm.value, 59);
+  assert.equal(output.chestWidthCm.confidence, 0.82);
+});
+
+test("uses a deterministic complete-board override for centimeter conversion", () => {
+  const output = normalizeOpenAIVisionOutput({
+    chestWidthCm: { value: 59, confidence: 0.82 },
+    measurementGeometry: {
+      boardCorners: {
+        value: {
+          topLeft: { x: 12.7, y: 1.5 },
+          topRight: { x: 68.7, y: 0.4 },
+          bottomRight: { x: 77.4, y: 99.2 },
+          bottomLeft: { x: 4.2, y: 99.5 }
+        },
+        confidence: 0.9
+      },
+      lines: {
+        chestWidthCm: {
+          value: { start: { x: 27, y: 34 }, end: { x: 59, y: 34 } },
+          confidence: 0.87
+        }
+      }
+    }
+  }, ["front-image"], {}, "front-image", {
+    corners: {
+      topLeft: { x: 17.66, y: 1.96 },
+      topRight: { x: 79.3, y: 1.43 },
+      bottomRight: { x: 89.42, y: 97.35 },
+      bottomLeft: { x: 7.41, y: 99.51 }
+    },
+    confidence: 0.93
+  });
+
+  assert.deepEqual(output.measurementGeometry?.boardCorners?.topRight, { x: 79.3, y: 1.43 });
+  assert.notEqual(output.chestWidthCm.value, 69.5);
+  assert.equal(output.chestWidthCm.confidence, 0.87);
 });

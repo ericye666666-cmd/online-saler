@@ -272,7 +272,7 @@ export function ProductBatchCalibrationPage({
   const [form, setForm] = useState<WorkspaceForm>(() => formFromProductAndAi(null, null));
   const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
   const [taxonomy, setTaxonomy] = useState<ProductTaxonomy | null>(null);
-  const [activeImage, setActiveImage] = useState("optimized");
+  const [activeImage, setActiveImage] = useState("white");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -344,13 +344,7 @@ export function ProductBatchCalibrationPage({
     void loadComparison(product.id, ids.adminUserId)
       .then((value) => {
         setComparison(value);
-        setActiveImage(
-          value.optimizedBalancedMain
-            ? "balanced"
-            : value.optimizedMain
-              ? "optimized"
-              : "original"
-        );
+        setActiveImage(value.cutoutWhite ? "white" : "back-white");
       })
       .catch((caught) => setError(errorMessage(caught, "无法读取图片版本。")));
   }, [ids.adminUserId, latestExtraction, product]);
@@ -371,8 +365,8 @@ export function ProductBatchCalibrationPage({
   ) ?? null;
   const cutoutWarning = latestRemovalJob ? cutoutQualityWarning(latestRemovalJob) : null;
   const imageTabs = useMemo(
-    () => buildImageTabs(product, comparison),
-    [comparison, product]
+    () => buildImageTabs(comparison),
+    [comparison]
   );
   const currentImage = imageTabs.find((item) => item.key === activeImage) ?? imageTabs[0] ?? null;
   const reasons = calibrationValidationReasons(form, {
@@ -625,7 +619,32 @@ export function ProductBatchCalibrationPage({
       if (next >= 0) setCurrentIndex(next);
       else if (firstPending >= 0) setCurrentIndex(firstPending);
       else setCurrentIndex(Math.min(currentIndex, updated.products.length - 1));
-      setNotice(firstPending >= 0 || next >= 0 ? "已保存，进入下一件。" : `本批 ${updated.targetCount} 件已全部校准。`);
+      if (firstPending >= 0 || next >= 0) {
+        setNotice("已确认，进入下一件。");
+      } else {
+        setBusy("finalize");
+        setNotice(`本批 ${updated.targetCount} 件已确认，正在批量生成 AI 陈列主图、销售详情与 Barcode。`);
+        const [detailResult, barcodeResult] = await Promise.allSettled([
+          request(`/operations/product-batches/${batchId}/detail-generation/run`, {
+            method: "POST",
+            headers: { "X-Admin-User-Id": ids.adminUserId },
+            body: JSON.stringify({}),
+            keepalive: true
+          }),
+          request(`/operations/product-batches/${batchId}/generate-barcodes`, {
+            method: "POST",
+            body: JSON.stringify(ids)
+          })
+        ]);
+        if (barcodeResult.status === "rejected") throw barcodeResult.reason;
+        if (detailResult.status === "rejected") {
+          sessionStorage.setItem(
+            `product-factory-notice:${batchId}`,
+            "Barcode 已生成；个别销售详情生成失败，可在异常确认阶段重试，不会重复生成旧资产。"
+          );
+        }
+        router.push(`/product/barcode?batchId=${encodeURIComponent(batchId)}`);
+      }
     } catch (caught) {
       setError(errorMessage(caught, "无法保存校准。"));
     } finally {
@@ -647,49 +666,21 @@ export function ProductBatchCalibrationPage({
       const warning = cutoutQualityWarning(cutout);
       if (warning) {
         setComparison(await loadComparison(product.id, ids.adminUserId));
-        setActiveImage("transparent");
+        setActiveImage("white");
         throw new Error(warning);
       }
-      await Promise.all([
-        (async () => {
-          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-        })(),
-        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
-      ]);
+      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
       const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
-      setActiveImage("balanced");
-      setNotice(`${mode === "rembg_birefnet" ? "已使用 BiRefNet" : "已使用 lightweight OpenCV"} 重新处理。请确认抠图边缘和白底结果；商城主图将在详情生成阶段选择。`);
+      setActiveImage("white");
+      const modeLabel = mode === "auto"
+        ? "自动抠图链路"
+        : mode === "rembg_birefnet"
+          ? "BiRefNet"
+          : "lightweight OpenCV";
+      setNotice(`已使用${modeLabel}重新处理。请确认抠图边缘和白底结果；商城主图将在详情生成阶段选择。`);
     } catch (caught) {
       setError(errorMessage(caught, "图片处理失败。"));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function rerunBalancedMain() {
-    if (!product) return;
-    const sourceId = comparison?.cutoutTransparent?.imageId;
-    if (!sourceId) {
-      setError("请先生成并确认透明抠图。");
-      return;
-    }
-    setBusy("balanced-main");
-    setError("");
-    setNotice("");
-    try {
-      await runImageOperation(
-        product.id,
-        sourceId,
-        "OPTIMIZE_BALANCED_MAIN_IMAGE",
-        ids.adminUserId
-      );
-      setComparison(await loadComparison(product.id, ids.adminUserId));
-      setActiveImage("balanced");
-      setNotice("白底均整图已使用当前透明抠图重新生成。请检查袖口、衣摆和服装轮廓。");
-    } catch (caught) {
-      setError(errorMessage(caught, "无法重新生成均整版。"));
     } finally {
       setBusy("");
     }
@@ -707,18 +698,12 @@ export function ProductBatchCalibrationPage({
         image,
         ids.adminUserId
       );
-      await Promise.all([
-        (async () => {
-          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-        })(),
-        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
-      ]);
+      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
       const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
-      setActiveImage("balanced");
+      setActiveImage("white");
       setManualEditorOpen(false);
-      setNotice("修正版已保存，并重新生成白底图与两版白底优化图。请检查边缘和商品细节。");
+      setNotice("修正版已保存，并重新生成白底正面图。请检查边缘和商品细节。");
     } catch (caught) {
       throw new Error(errorMessage(caught, "无法保存修正版抠图。"));
     } finally {
@@ -741,18 +726,12 @@ export function ProductBatchCalibrationPage({
       if (cutout.status !== "SUCCEEDED" || !cutout.outputImageId) {
         throw new Error(cutout.errorMessage || "按轮廓自动抠图失败。");
       }
-      await Promise.all([
-        (async () => {
-          const white = await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-          await runImageOperation(product.id, white.outputImageId!, "OPTIMIZE_MAIN_IMAGE", ids.adminUserId);
-        })(),
-        runImageOperation(product.id, cutout.outputImageId!, "OPTIMIZE_BALANCED_MAIN_IMAGE", ids.adminUserId)
-      ]);
+      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
       const updated = await loadComparison(product.id, ids.adminUserId);
       setComparison(updated);
-      setActiveImage("balanced");
+      setActiveImage("white");
       setManualEditorOpen(false);
-      setNotice("已按员工点选轮廓重新抠图，并生成白底图与两版白底优化图。请检查边缘和商品细节。");
+      setNotice("已按员工点选轮廓重新抠图，并生成白底正面图。请检查边缘和商品细节。");
     } catch (caught) {
       throw new Error(errorMessage(caught, "按轮廓自动抠图失败，请调整轮廓后重试。"));
     } finally {
@@ -814,6 +793,7 @@ export function ProductBatchCalibrationPage({
   }
 
   const allComplete = completedCount === batch.targetCount;
+  const finalPendingItem = !readOnly && completedCount === batch.targetCount - 1;
 
   return (
     <div className="flex min-w-0 flex-col gap-4 pb-20 lg:pb-6">
@@ -822,7 +802,7 @@ export function ProductBatchCalibrationPage({
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             <ArrowLeftIcon className="size-3" />返回批次
           </Link>
-          <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 人工校准</h1>
+          <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：异常确认并发布</h1>
           <p className="mt-1 text-sm text-muted-foreground">第 {currentIndex + 1}/{batch.targetCount} 件 · 已完成 {completedCount}/{batch.targetCount} · {productStatusLabel(product.status)}</p>
         </div>
         <div className="flex gap-2">
@@ -837,8 +817,8 @@ export function ProductBatchCalibrationPage({
 
       {allComplete ? (
         <div className="flex flex-col gap-3 rounded-md border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 {batch.targetCount} 件已完成人工校准</span>
-          <Button asChild><Link href={`/product/batches/${encodeURIComponent(batch.id)}`}>完成本批校准<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 {batch.targetCount} 件已完成最终确认</span>
+          <Button asChild><Link href={`/product/barcode?batchId=${encodeURIComponent(batch.id)}`}>继续打印和发布<ArrowRightIcon data-icon="inline-end" /></Link></Button>
         </div>
       ) : null}
 
@@ -847,14 +827,9 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">原图永久保留；本步骤只确认抠图、白底结果与商品事实。AI 陈列图和最终商城主图统一在详情生成阶段处理。</p>
+              <p className="text-xs text-muted-foreground">原图永久保留；这里只快速核对抠图、商品事实与异常。整批确认后系统才按默认风格批量生成 AI 陈列图，员工不需要选择风格。</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
-              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("rembg_birefnet")}><WandSparklesIcon data-icon="inline-start" />强制 BiRefNet</Button>
-              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutTransparent?.imageId} onClick={() => void rerunBalancedMain()}><RefreshCwIcon data-icon="inline-start" />重做均整版</Button>
-              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.publicUrl} onClick={() => setManualEditorOpen(true)}><ScissorsIcon data-icon="inline-start" />手动抠图</Button>
-            </div>
+            {cutoutWarning ? <Badge variant="destructive">需要图片异常处理</Badge> : <Badge variant="secondary">自动图片处理通过</Badge>}
           </div>
 
           {cutoutWarning ? (
@@ -862,6 +837,9 @@ export function ProductBatchCalibrationPage({
               <p className="font-semibold">抠图未通过，已禁止继续使用这张处理图</p>
               <p className="mt-1 text-xs">{cutoutWarning}</p>
               <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => void processImages("auto")} disabled={Boolean(busy) || readOnly}>
+                  {busy === "auto" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}自动重试抠图
+                </Button>
                 <Button size="sm" onClick={() => setManualEditorOpen(true)} disabled={Boolean(busy) || !comparison?.original?.publicUrl}><ScissorsIcon data-icon="inline-start" />点选轮廓重新抠图</Button>
                 <Button size="sm" variant="outline" onClick={() => void markRetake()} disabled={Boolean(busy) || readOnly}><RotateCcwIcon data-icon="inline-start" />无法修复，标记重拍</Button>
               </div>
@@ -884,6 +862,16 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />全屏</Button>
             {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
+            {!readOnly && !cutoutWarning && comparison?.original?.publicUrl ? (
+              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("auto")}>
+                {busy === "auto" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}重新自动抠图
+              </Button>
+            ) : null}
+            {!readOnly && comparison?.original?.publicUrl ? (
+              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => setManualEditorOpen(true)}>
+                <ScissorsIcon data-icon="inline-start" />抠图不对，手动修正
+              </Button>
+            ) : null}
           </div>
 
           {latestRemovalJob ? <ProcessingSummary job={latestRemovalJob} warning={cutoutWarning} /> : <StatusMessage tone="neutral">还没有图片处理记录。</StatusMessage>}
@@ -995,7 +983,11 @@ export function ProductBatchCalibrationPage({
               manualLines={manualMeasurementLines}
               aiLines={aiMeasurement.lines}
               onManualCalibrate={measurementAction ? () => void openManualMeasurementCalibration() : undefined}
-              manualCalibrateLabel={measurementAction === "REOPEN" ? "重新编辑测量线" : "手动定位尺寸"}
+              manualCalibrateLabel={manualMeasurementLines.length > 0
+                ? "修正已有测量线"
+                : aiMeasurement.lines.length > 0
+                  ? "校正 AI 测量线"
+                  : "打开测量板测量"}
               manualCalibrateDisabled={Boolean(busy)}
               measurements={measurementSuggestions.map((item) => ({
                 key: item.key,
@@ -1006,7 +998,7 @@ export function ProductBatchCalibrationPage({
             />
             {!hasAiMeasurements && !readOnly ? (
               <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                这件商品的旧 AI 结果没有测量值。请点击“重新 AI 识别与测量”，再由员工对照测量板确认。
+                AI 没有给出可靠厘米值。可直接用软尺实测并填写下方字段，也可打开测量板连接起点和终点，由系统按板面换算厘米。
               </div>
             ) : null}
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1063,14 +1055,14 @@ export function ProductBatchCalibrationPage({
                 ? "还差：修正抠图或标记重拍"
                 : validationIssues.length
                 ? `还差：${[...new Set(validationIssues.map((issue) => issue.label))].join("、")}`
-                : "必填信息已完整，可以保存并进入下一件。"}
+                : finalPendingItem ? "最后一件确认后，系统将自动生成详情与 Barcode。" : "必填信息已完整，可以确认并进入下一件。"}
             </p>
           ) : <span />}
           <div className="grid grid-cols-3 gap-2 lg:flex">
             <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />保存草稿</Button>
             <Button disabled={Boolean(busy) || readOnly || Boolean(cutoutWarning)} onClick={() => void saveAndNext()}>
-              {busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
-              {readOnly ? "本件已校准" : "保存并下一件"}
+              {busy === "save" || busy === "finalize" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
+              {readOnly ? "本件已确认" : finalPendingItem ? "确认本件并自动生成" : "确认并下一件"}
             </Button>
             <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={() => void markRetake()}><RotateCcwIcon data-icon="inline-start" />标记重拍</Button>
           </div>
@@ -1248,24 +1240,11 @@ function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; childre
   return <div className={cn("rounded-md border px-4 py-3 text-sm", tone === "danger" ? "border-destructive/40 bg-destructive/5 text-destructive" : "bg-muted/40 text-muted-foreground")}>{children}</div>;
 }
 
-function buildImageTabs(
-  product: ProductRecord | null,
-  comparison: ProductImageComparisonResponse | null
-): ImageTab[] {
+function buildImageTabs(comparison: ProductImageComparisonResponse | null): ImageTab[] {
   const tabs: ImageTab[] = [
-    variantTab("original", "原图", comparison?.original ?? null, false),
-    variantTab("transparent", "透明抠图", comparison?.cutoutTransparent ?? null, false, true),
-    variantTab("white", "白底图", comparison?.cutoutWhite ?? null, false),
-    variantTab("optimized", "白底优化图", comparison?.optimizedMain ?? null, false),
-    variantTab("balanced", "白底均整图", comparison?.optimizedBalancedMain ?? null, false),
-    variantTab("back-original", "背面原图", comparison?.backOriginal ?? null, false),
-    variantTab("back-transparent", "背面透明抠图", comparison?.backCutoutTransparent ?? null, false, true),
+    variantTab("white", "白底正面", comparison?.cutoutWhite ?? null, false),
     variantTab("back-white", "背面白底", comparison?.backCutoutWhite ?? null, false)
-  ];
-  for (const [type, label] of [["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
-    const image = newestImage(product, type);
-    if (image) tabs.push({ key: type.toLowerCase(), label, url: image.publicUrl ? `${API_PROXY_URL}${image.publicUrl}` : "", imageId: image.id, selectable: false, selected: false });
-  }
+  ].filter((tab) => tab.key === "white" || Boolean(tab.url));
   return tabs;
 }
 
@@ -1385,11 +1364,7 @@ function aiMeasurementSuggestion(
 }
 
 function measurementGuideImage(tabs: ImageTab[]) {
-  return tabs.find((tab) => tab.key === "transparent" && tab.url)?.url ??
-    tabs.find((tab) => tab.key === "balanced" && tab.url)?.url ??
-    tabs.find((tab) => tab.key === "optimized" && tab.url)?.url ??
-    tabs.find((tab) => tab.key === "white" && tab.url)?.url ??
-    tabs.find((tab) => tab.key === "original" && tab.url)?.url ?? "";
+  return tabs.find((tab) => tab.key === "white" && tab.url)?.url ?? "";
 }
 
 function manualLinesFromProduct(
