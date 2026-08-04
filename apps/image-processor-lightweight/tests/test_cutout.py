@@ -35,6 +35,30 @@ class GuidedCutoutTests(unittest.TestCase):
         self.assertNotIn("BOARD_RESIDUE_SUSPECTED", issues)
         self.assertGreaterEqual(score, 0.75)
 
+    def test_quality_blocks_bright_board_joined_to_dark_garment(self) -> None:
+        image = np.zeros((400, 300, 3), dtype=np.uint8)
+        mask = np.zeros((400, 300), dtype=np.uint8)
+        cv2.rectangle(image, (90, 50), (210, 250), (35, 35, 35), -1)
+        cv2.rectangle(mask, (90, 50), (210, 250), 255, -1)
+        cv2.rectangle(image, (70, 245), (230, 390), (220, 220, 220), -1)
+        cv2.rectangle(mask, (70, 245), (230, 390), 255, -1)
+
+        score, issues = _quality(mask, image)
+
+        self.assertIn("BOARD_RESIDUE_SUSPECTED", issues)
+        self.assertLess(score, 0.75)
+
+    def test_quality_blocks_an_inset_measurement_board_frame(self) -> None:
+        image = np.full((400, 300, 3), 225, dtype=np.uint8)
+        mask = np.zeros((400, 300), dtype=np.uint8)
+        cv2.rectangle(mask, (20, 20), (280, 380), 255, 10)
+        cv2.rectangle(mask, (85, 70), (215, 330), 255, -1)
+
+        score, issues = _quality(mask, image)
+
+        self.assertIn("BOARD_RESIDUE_SUSPECTED", issues)
+        self.assertLess(score, 0.75)
+
     def test_polygon_excludes_measurement_board_frame(self) -> None:
         image = np.full((420, 320, 3), 245, dtype=np.uint8)
         cv2.rectangle(image, (3, 3), (316, 416), (70, 70, 70), 8)

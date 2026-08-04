@@ -241,7 +241,11 @@ def _quality(mask: np.ndarray, image: np.ndarray) -> tuple[float, list[str]]:
         issues.append("EDGE_FRAGMENTED")
     if component_count > 2:
         issues.append("MULTIPLE_FOREGROUND_COMPONENTS")
-    if _has_bright_secondary_component(image, labels, stats, significant_labels):
+    if (
+        _has_bright_secondary_component(image, labels, stats, significant_labels)
+        or _has_embedded_bright_board_residue(image, mask)
+        or _has_inset_frame_residue(mask)
+    ):
         issues.append("BOARD_RESIDUE_SUSPECTED")
 
     score = 1.0
@@ -249,6 +253,8 @@ def _quality(mask: np.ndarray, image: np.ndarray) -> tuple[float, list[str]]:
     score -= min(edge_ratio, 0.2) * 1.5
     score -= max(0, component_count - 3) * 0.04
     score -= len(issues) * 0.13
+    if "BOARD_RESIDUE_SUSPECTED" in issues:
+        score = min(score, 0.6)
     return round(float(np.clip(score, 0.0, 1.0)), 3), issues
 
 
@@ -286,3 +292,42 @@ def _has_bright_secondary_component(
         if looks_like_board and differs_from_primary:
             return True
     return False
+
+
+def _has_embedded_bright_board_residue(image: np.ndarray, mask: np.ndarray) -> bool:
+    foreground = mask > 0
+    foreground_pixels = int(np.count_nonzero(foreground))
+    if foreground_pixels == 0:
+        return False
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    bright_board = foreground & (hsv[:, :, 1] <= 42) & (hsv[:, :, 2] >= 205)
+    dark_or_colored_subject = foreground & (
+        (hsv[:, :, 2] <= 170) | (hsv[:, :, 1] >= 55)
+    )
+    bright_share = float(np.count_nonzero(bright_board)) / foreground_pixels
+    subject_share = float(np.count_nonzero(dark_or_colored_subject)) / foreground_pixels
+    bottom_start = int(round(mask.shape[0] * 0.75))
+    bottom_bright_ratio = float(np.count_nonzero(bright_board[bottom_start:])) / max(
+        1, bright_board[bottom_start:].size
+    )
+    return bright_share >= 0.18 and subject_share >= 0.16 and bottom_bright_ratio >= 0.03
+
+
+def _has_inset_frame_residue(mask: np.ndarray) -> bool:
+    foreground = mask > 0
+    height, width = foreground.shape
+    top_end = max(1, int(round(height * 0.12)))
+    bottom_start = min(height - 1, int(round(height * 0.88)))
+    left_end = max(1, int(round(width * 0.12)))
+    right_start = min(width - 1, int(round(width * 0.88)))
+    row_occupancy = np.mean(foreground, axis=1)
+    column_occupancy = np.mean(foreground, axis=0)
+    return (
+        float(np.max(row_occupancy[:top_end])) >= 0.55
+        and float(np.max(row_occupancy[bottom_start:])) >= 0.55
+        and max(
+            float(np.max(column_occupancy[:left_end])),
+            float(np.max(column_occupancy[right_start:])),
+        ) >= 0.40
+    )
