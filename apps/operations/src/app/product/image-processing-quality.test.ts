@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ImageProcessingJobRecord } from "@online-saler/shared-types";
-import { cutoutQualityWarning, lightweightCutoutWarning } from "./image-processing-quality";
+import type { ImageProcessingJobRecord, ProductImageComparisonResponse, ProductImageVariantRecord } from "@online-saler/shared-types";
+import { cutoutQualityWarning, lightweightCutoutWarning, persistedFrontCutoutWarning } from "./image-processing-quality";
 
 function job(overrides: Partial<ImageProcessingJobRecord> = {}): ImageProcessingJobRecord {
   return {
@@ -26,6 +26,40 @@ function job(overrides: Partial<ImageProcessingJobRecord> = {}): ImageProcessing
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
     ...overrides
+  };
+}
+
+function variant(imageId: string, sourceImageId: string | null = null): ProductImageVariantRecord {
+  return {
+    imageId,
+    productId: "product-1",
+    sourceImageId,
+    variant: sourceImageId ? "CUTOUT_TRANSPARENT" : "ORIGINAL",
+    originalUrl: `/images/${imageId}`,
+    publicUrl: `/images/${imageId}`,
+    widthPx: 100,
+    heightPx: 100,
+    mimeType: "image/jpeg",
+    selectedAsMain: false,
+    createdAt: new Date(0).toISOString()
+  };
+}
+
+function comparison(jobs: ImageProcessingJobRecord[]): ProductImageComparisonResponse {
+  return {
+    productId: "product-1",
+    original: variant("original-1"),
+    cutoutTransparent: variant("cutout-1", "original-1"),
+    cutoutWhite: null,
+    optimizedMain: null,
+    optimizedBalancedMain: null,
+    aiDisplayMain: null,
+    backOriginal: null,
+    backCutoutTransparent: null,
+    backCutoutWhite: null,
+    selectedMainImageId: null,
+    selectedMainImageConfirmedAt: null,
+    jobs
   };
 }
 
@@ -54,5 +88,19 @@ describe("lightweight cutout storefront quality", () => {
 
   it("accepts a manually corrected cutout", () => {
     assert.equal(cutoutQualityWarning(job({ provider: "manual-cutout-editor", qualityScore: 0.4 })), null);
+  });
+
+  it("keeps a persisted low-quality front cutout blocked after reload", () => {
+    assert.match(
+      persistedFrontCutoutWarning(comparison([job({ provider: "rembg-birefnet", qualityScore: 0.49 })])) ?? "",
+      /49.*手工修边/
+    );
+  });
+
+  it("does not apply a removal job from another source image", () => {
+    assert.equal(
+      persistedFrontCutoutWarning(comparison([job({ sourceImageId: "old-original", qualityScore: 0.49 })])),
+      null
+    );
   });
 });

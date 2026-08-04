@@ -1,4 +1,4 @@
-import type { ImageProcessingJobRecord } from "@online-saler/shared-types";
+import type { ImageProcessingJobRecord, ProductImageComparisonResponse } from "@online-saler/shared-types";
 
 const MINIMUM_LIGHTWEIGHT_QUALITY_SCORE = 0.75;
 const BLOCKING_LIGHTWEIGHT_ISSUES = new Set(["SUBJECT_TOUCHES_EDGE", "EDGE_FRAGMENTED"]);
@@ -19,6 +19,17 @@ export function cutoutQualityWarning(job: ImageProcessingJobRecord): string | nu
 }
 
 export const lightweightCutoutWarning = cutoutQualityWarning;
+
+export function persistedFrontCutoutWarning(comparison: ProductImageComparisonResponse): string | null {
+  const originalId = comparison.original?.imageId;
+  if (!originalId) return null;
+  const job = comparison.jobs.find((candidate) =>
+    candidate.operation === "REMOVE_BACKGROUND" &&
+    candidate.status === "SUCCEEDED" &&
+    candidate.sourceImageId === originalId
+  );
+  return job ? cutoutQualityWarning(job) : null;
+}
 
 function automaticFailureMessage(job: ImageProcessingJobRecord, reason: string): string {
   if (job.provider === "lightweight-opencv") {

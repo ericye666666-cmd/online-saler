@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { productStatusLabel } from "./product-factory-display";
-import { lightweightCutoutWarning } from "./image-processing-quality";
+import { lightweightCutoutWarning, persistedFrontCutoutWarning } from "./image-processing-quality";
 import {
   PRODUCT_AI_BATCH_CONCURRENCY,
   PRODUCT_IMAGE_BATCH_CONCURRENCY,
@@ -230,6 +230,10 @@ async function runProductImagePipeline(
     let transparentId = comparison.cutoutTransparent?.sourceImageId === frontOriginalId
       ? comparison.cutoutTransparent.imageId
       : "";
+    if (transparentId && mode === "auto") {
+      const persistedWarning = persistedFrontCutoutWarning(comparison);
+      if (persistedWarning) throw new Error(persistedWarning);
+    }
     if (!transparentId || mode !== "auto") {
       const cutout = await runImageOperation(
         product.id,
@@ -754,6 +758,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
           {batch.products.map((product) => (
             <ProcessingRow
               key={product.id}
+              batchId={batch.id}
               product={product}
               state={states[product.id] ?? { status: "PENDING", comparison: null, message: "等待处理" }}
               disabled={busy}
@@ -872,6 +877,7 @@ function ImageInputCard(props: {
 }
 
 function ProcessingRow(props: {
+  batchId: string;
   product: ProductRecord;
   state: ProcessingState;
   disabled: boolean;
@@ -902,9 +908,15 @@ function ProcessingRow(props: {
           </div>
         ) : null}
       </div>
-      {props.state.status === "FAILED" ? (
+      {props.state.status === "FAILED" && removeJob?.provider === "lightweight-opencv" ? (
         <Button size="sm" variant="outline" disabled={props.disabled} onClick={props.onRetry}>
           <RotateCcwIcon data-icon="inline-start" />强制 BiRefNet
+        </Button>
+      ) : props.state.status === "FAILED" ? (
+        <Button size="sm" variant="outline" asChild>
+          <Link href={`/product/calibration?batchId=${encodeURIComponent(props.batchId)}&productId=${encodeURIComponent(props.product.id)}`}>
+            处理异常<ArrowRightIcon data-icon="inline-end" />
+          </Link>
         </Button>
       ) : <span />}
     </div>
@@ -963,6 +975,8 @@ function hasSucceededAi(product: ProductRecord) {
 }
 
 function stateFromProduct(product: ProductRecord, comparison: ProductImageComparisonResponse): ProcessingState {
+  const persistedWarning = persistedFrontCutoutWarning(comparison);
+  if (persistedWarning) return { status: "FAILED", comparison, message: persistedWarning };
   const frontReady = Boolean(
     comparison.cutoutWhite &&
     (comparison.optimizedBalancedMain || comparison.optimizedMain) &&
