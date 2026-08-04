@@ -36,6 +36,12 @@
 - API build verifies the 24 assets are copied into runtime output.
 - A checksum regression test locks all 24 approved files at 750 x 1082 px so the selected drawings and their aspect ratio cannot drift silently.
 - API renderer and existing-data boundary tests pass.
-- Full repository CI passes locally; staging browser validation remains pending deployment.
+- Full repository CI and GitHub repository checks pass.
+- The API staging deployment passed all image-processing, Operations API, public-storefront, OpenAI-recognition, and cleanup checks.
+- Browser QA used only the new batch `BATCH-1785813567011`; existing product detail assets were not regenerated.
+- All 3 new products completed detail generation: 3 `READY`, 0 failed. Their AI display images were selected as the default main images.
+- The short-sleeve dress rendered `DRESS_SHORT_SLEEVE · measurement-guides-v4.0.0` with A-F markers and its actual 38/46/37/50/110/22 cm measurements.
+- The approved reference and staging result were reviewed side by side. Garment geometry, proportions, construction lines, and marker positions align; only the intentional teal-to-coral token and live product values differ.
+- The detail-factory first step performs the batch AI display-image workflow, and the Model View placeholder remains absent.
 
-final result: visual direct replacement passed locally; staging pending deployment
+final result: direct replacement passed local, GitHub CI, API staging deployment, and staging browser QA
