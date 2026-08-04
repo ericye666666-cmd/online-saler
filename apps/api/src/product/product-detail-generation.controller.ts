@@ -178,7 +178,7 @@ export class ProductDetailGenerationController {
   @Post("product-detail-profiles/:profileId/main-image")
   async selectProfileMainImage(
     @Param("profileId") profileId: string,
-    @Body() body: { imageId?: string },
+    @Body() body: { imageId?: string; humanConfirmed?: boolean },
     @Headers(ADMIN_USER_HEADER) adminUserId?: string
   ) {
     await requireAdminPermission(adminUserId, "action.product.edit");
@@ -188,7 +188,7 @@ export class ProductDetailGenerationController {
     const profile = await this.details.prepareMainImageChange(profileId);
     const comparison = await this.imageProcessing.selectMainImage(
       { productId: profile.productId, imageId },
-      { recordDetailSourceChange: false }
+      { recordDetailSourceChange: false, humanConfirmed: body.humanConfirmed !== false }
     );
     const generatedAssets = await this.assets.generateForProfile(profileId);
     return { comparison, assets: generatedAssets };
@@ -203,7 +203,7 @@ export class ProductDetailGenerationController {
     }
     const stored = await this.storage.download(asset.storageUrl.slice(prefix.length));
     response.setHeader("Content-Type", asset.mimeType ?? stored.contentType);
-    response.setHeader("Cache-Control", "private, max-age=3600");
+    response.setHeader("Cache-Control", "private, no-cache, must-revalidate");
     return response.send(Buffer.from(stored.body));
   }
 }

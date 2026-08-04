@@ -8,6 +8,8 @@ import {
 import { ProductDetailOpenAIProvider } from "./product-detail-openai.provider";
 import { ProductDetailAssetService } from "./product-detail-asset.service";
 import type { ProductDetailFacts } from "./product-detail-copy";
+import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
+import { ProductImageProcessingService } from "./product-image-processing.service";
 
 const DETAIL_IMAGE_TYPES = new Set<ProductImageType>([
   ProductImageType.FRONT,
@@ -23,7 +25,9 @@ export const DETAIL_GENERATION_BATCH_CONCURRENCY = 3;
 export class ProductDetailGenerationRunnerService {
   constructor(
     private readonly provider: ProductDetailOpenAIProvider,
-    private readonly assets: ProductDetailAssetService
+    private readonly assets: ProductDetailAssetService,
+    private readonly imageProcessing: ProductImageProcessingService,
+    private readonly imageJobs: ProductImageJobRunnerService
   ) {}
 
   async run(jobId: string) {
@@ -74,6 +78,7 @@ export class ProductDetailGenerationRunnerService {
         throw new BadRequestException("Product facts changed before detail generation started");
       }
 
+      await this.ensureAiDisplayMain(job.productId);
       const facts = buildProductDetailFacts(job.product, job.detailProfile, job.sourceDataVersion);
       const originalImages = job.product.images.filter((image) => DETAIL_IMAGE_TYPES.has(image.type));
       const result = await this.provider.generate(facts, originalImages);
@@ -207,6 +212,46 @@ export class ProductDetailGenerationRunnerService {
       results.push(...groupResults);
     }
     return { batchId, processed: results.length, results };
+  }
+
+  async ensureAiDisplayMain(productId: string) {
+    let comparison = await this.imageProcessing.getComparison(productId);
+    let aiDisplayMain = comparison.aiDisplayMain;
+
+    if (!aiDisplayMain) {
+      const cutoutWhite = comparison.cutoutWhite;
+      if (!cutoutWhite) {
+        throw new BadRequestException("A completed white-background image is required before AI display generation");
+      }
+      const job = await this.imageProcessing.start({
+        productId,
+        sourceImageId: cutoutWhite.imageId,
+        operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"
+      });
+      if (job.status !== "PENDING") {
+        throw new BadRequestException(`AI display image job is not ready to run; current status is ${job.status}`);
+      }
+      const completed = await this.imageJobs.run(job.id);
+      if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
+        throw new BadRequestException(completed.errorMessage || "AI display image generation failed");
+      }
+      comparison = await this.imageProcessing.selectMainImage(
+        { productId, imageId: completed.outputImageId },
+        { recordDetailSourceChange: false, humanConfirmed: false }
+      );
+      aiDisplayMain = comparison.aiDisplayMain;
+    } else if (!aiDisplayMain.selectedAsMain) {
+      comparison = await this.imageProcessing.selectMainImage(
+        { productId, imageId: aiDisplayMain.imageId },
+        { recordDetailSourceChange: false, humanConfirmed: false }
+      );
+      aiDisplayMain = comparison.aiDisplayMain;
+    }
+
+    if (!aiDisplayMain?.selectedAsMain) {
+      throw new BadRequestException("AI display image could not be selected as the storefront main image");
+    }
+    return aiDisplayMain;
   }
 
   private async markOutdated(jobId: string, profileId: string, reason: string) {

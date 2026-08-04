@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   ProductDetailStatus,
   ProductFabricWeight,
   ProductFitType,
+  ProductImageVariant,
   ProductStatus,
   ProductStretchLevel,
   prisma
@@ -18,13 +19,22 @@ const originals = {
   batchFindUnique: prisma.productBatch.findUnique,
   profileFindUnique: prisma.productDetailProfile.findUnique,
   profileUpdate: prisma.productDetailProfile.update,
+  selectionFindUnique: prisma.productMainImageSelection.findUnique,
+  selectionCount: prisma.productMainImageSelection.count,
   transaction: prisma.$transaction
 };
+
+beforeEach(() => {
+  prisma.productMainImageSelection.findUnique = (async () => null) as never;
+  prisma.productMainImageSelection.count = (async () => 0) as never;
+});
 
 afterEach(() => {
   prisma.productBatch.findUnique = originals.batchFindUnique;
   prisma.productDetailProfile.findUnique = originals.profileFindUnique;
   prisma.productDetailProfile.update = originals.profileUpdate;
+  prisma.productMainImageSelection.findUnique = originals.selectionFindUnique;
+  prisma.productMainImageSelection.count = originals.selectionCount;
   prisma.$transaction = originals.transaction;
 });
 
@@ -253,6 +263,27 @@ describe("ProductDetailGenerationService", () => {
     await new ProductDetailGenerationService().approveProfile("profile-1", "employee-1");
 
     assert.deepEqual(updates, ["profile"]);
+  });
+
+  it("blocks approval until an automatically selected AI display main image is confirmed", async () => {
+    prisma.productDetailProfile.findUnique = (async () => ({
+      id: "profile-1",
+      productId: "product-1",
+      status: ProductDetailStatus.READY,
+      sourceDataVersion: 2,
+      customerDescription: "Description",
+      product: { id: "product-1", detailSourceVersion: 2, measurements: [] },
+      assets: []
+    })) as never;
+    prisma.productMainImageSelection.findUnique = (async () => ({
+      variant: ProductImageVariant.AI_DISPLAY_MAIN,
+      confirmedAt: null
+    })) as never;
+
+    await assert.rejects(
+      new ProductDetailGenerationService().approveProfile("profile-1", "employee-1"),
+      /Confirm the AI display main image/
+    );
   });
 
   it("unapproves the current detail before changing its storefront main image", async () => {

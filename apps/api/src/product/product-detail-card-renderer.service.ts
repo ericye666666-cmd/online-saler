@@ -126,6 +126,10 @@ export class ProductDetailCardRendererService {
   }
 }
 
-export function selectMeasurementTemplate(category: string | null, subcategory: string | null): MeasurementTemplate {
-  return selectProductDetailMeasurementTemplate(category, subcategory).code;
+export function selectMeasurementTemplate(
+  category: string | null,
+  subcategory: string | null,
+  sleeveType?: string | null
+): MeasurementTemplate {
+  return selectProductDetailMeasurementTemplate(category, subcategory, sleeveType).code;
 }

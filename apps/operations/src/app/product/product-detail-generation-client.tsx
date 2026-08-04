@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
+  ImageProcessingJobRecord,
   ProductImageComparisonResponse,
   ProductImageVariantRecord
 } from "@online-saler/shared-types";
@@ -36,6 +36,7 @@ import {
   detailProductStage,
   detailSellingPointsWithoutPrice,
   PRODUCT_DETAIL_ASSET_PLAN,
+  productDetailAssetProxyUrl,
   sortDetailBatches
 } from "./product-detail-page-plan";
 
@@ -92,6 +93,7 @@ type DetailAsset = {
   mimeType?: string | null;
   templateCode?: string | null;
   templateVersion?: string | null;
+  updatedAt?: string | null;
 };
 
 type DetailProfile = {
@@ -155,10 +157,11 @@ type EditableCopy = {
 };
 
 type DetailMainImageChoice = {
-  key: "original" | "white" | "optimized" | "balanced";
+  key: "original" | "white" | "optimized" | "balanced" | "ai-display";
   label: string;
   image: ProductImageVariantRecord | null;
   selectable: boolean;
+  generated: boolean;
 };
 
 async function request<T>(path: string, adminUserId: string, options?: RequestInit): Promise<T> {
@@ -182,6 +185,30 @@ async function request<T>(path: string, adminUserId: string, options?: RequestIn
   return body as T;
 }
 
+async function generateAiDisplayImage(
+  productId: string,
+  sourceImageId: string,
+  adminUserId: string
+): Promise<ImageProcessingJobRecord> {
+  const job = await request<ImageProcessingJobRecord>(
+    `/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(sourceImageId)}/processing-jobs`,
+    adminUserId,
+    {
+      method: "POST",
+      body: JSON.stringify({ operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" })
+    }
+  );
+  const completed = await request<ImageProcessingJobRecord>(
+    `/image-processing-jobs/${encodeURIComponent(job.id)}/run`,
+    adminUserId,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+  if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
+    throw new Error(completed.errorMessage || "AI 陈列图生成失败。");
+  }
+  return completed;
+}
+
 function useOperationIds() {
   const { session } = useOperationsSession();
   return useMemo(() => ({
@@ -191,7 +218,6 @@ function useOperationIds() {
 }
 
 export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = {}) {
-  const router = useRouter();
   const ids = useOperationIds();
   const [batches, setBatches] = useState<DetailBatch[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState(batchId ?? "");
@@ -242,20 +268,28 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
     const key = `${batch.id}-generate`;
     setBusy(key);
     setError("");
-    setNotice("正在启动本批详情生成。");
+    setNotice("第一步正在批量生成 AI 陈列主图并设为默认主图，随后继续生成详情。");
     try {
       await request(`/operations/product-batches/${batch.id}/detail-generation-jobs`, ids.adminUserId, {
         method: "POST",
         body: JSON.stringify({})
       });
-      void request<RunBatchResult>(`/operations/product-batches/${batch.id}/detail-generation/run`, ids.adminUserId, {
+      const result = await request<RunBatchResult>(`/operations/product-batches/${batch.id}/detail-generation/run`, ids.adminUserId, {
         method: "POST",
         body: JSON.stringify({}),
         keepalive: true
-      }).catch(() => undefined);
-      router.push("/product/new-batch");
+      });
+      await load();
+      const failed = result.results.filter((item) => item.status === "FAILED");
+      if (failed.length) {
+        setError(`${failed.length} 件处理失败：${failed.map((item) => item.error).filter(Boolean).join("；")}`);
+        setNotice(`本批已处理 ${result.processed} 件，成功 ${result.processed - failed.length} 件；失败项可直接重试。`);
+      } else {
+        setNotice(`本批已处理 ${result.processed} 件；AI 陈列主图已作为默认主图，并已继续生成详情。`);
+      }
     } catch (caught) {
       setError(errorMessage(caught));
+    } finally {
       setBusy("");
     }
   }
@@ -321,7 +355,7 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" disabled={actionBusy || !batch.generationReady || batch.pending === 0} onClick={() => void generateBatch(batch)}>
                     {busy === `${batch.id}-generate` ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                    {batch.generationReady && batch.pending > 0 ? `统一生成本批 ${batch.pending} 件并录下一批` : detailGenerationButtonLabel(batch)}
+                    {batch.generationReady && batch.pending > 0 ? `第一步 · 批量生成 AI 主图并处理 ${batch.pending} 件详情` : detailGenerationButtonLabel(batch)}
                     {batch.generationReady && batch.pending > 0 ? <ArrowRightIcon data-icon="inline-end" /> : null}
                   </Button>
                   <Button size="sm" variant="outline" disabled={actionBusy || batch.failed === 0} onClick={() => void run(`${batch.id}-failed`, `/operations/product-batches/${batch.id}/detail-generation/retry-failed`, "失败任务已重试。") }>
@@ -345,8 +379,8 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
               </div>
 
               <div className="border-b px-4 py-3">
-                <p className="text-sm font-medium">销售详情由商品事实、可用照片、实测尺寸、成色和配送规则自动组成。</p>
-                <p className="mt-1 text-xs text-muted-foreground">背面或细节照片不存在时不会生成空白素材，也不会在顾客页面显示缺失提示。</p>
+                <p className="text-sm font-medium">第一步先批量生成 AI 陈列图并设为默认商城主图，再生成文案、尺码和其他销售详情。</p>
+                <p className="mt-1 text-xs text-muted-foreground">员工仍需在详情审核中对照原图确认 Logo、图案、结构、磨损和瑕疵；Model View 占位页不会恢复。</p>
               </div>
 
               <div className="divide-y">
@@ -394,7 +428,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
   const [copy, setCopy] = useState<EditableCopy>(emptyCopy());
   const [viewMode, setViewMode] = useState<"preview" | "edit">("preview");
   const [activeAsset, setActiveAsset] = useState("FRONT_MAIN");
-  const [activeMainImage, setActiveMainImage] = useState<DetailMainImageChoice["key"]>("white");
+  const [activeMainImage, setActiveMainImage] = useState<DetailMainImageChoice["key"]>("ai-display");
   const [recalibrationReason, setRecalibrationReason] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -420,6 +454,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     setActiveMainImage((current) => {
       if (choices.some((choice) => choice.key === current && choice.image)) return current;
       return choices.find((choice) => choice.image?.selectedAsMain)?.key
+        ?? choices.find((choice) => choice.key === "ai-display" && choice.image)?.key
         ?? choices.find((choice) => choice.image)?.key
         ?? "white";
     });
@@ -469,6 +504,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
 
   async function chooseStorefrontMain(choice: DetailMainImageChoice) {
     if (!profile || !choice.selectable || !choice.image) return;
+    if (choice.generated && !window.confirm("请对照原图确认 AI 陈列图没有改变 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损或瑕疵。确认一致后继续。")) return;
     setBusy(`main-${choice.image.imageId}`);
     setError("");
     setNotice("");
@@ -487,6 +523,30 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
     }
   }
 
+  async function generateDisplayImage() {
+    if (!profile || !comparison?.cutoutWhite?.imageId) {
+      setError("请先完成白底图，再生成 AI 陈列图。");
+      return;
+    }
+    setBusy("ai-display");
+    setError("");
+    setNotice("");
+    try {
+      const completed = await generateAiDisplayImage(profile.product.id, comparison.cutoutWhite.imageId, ids.adminUserId);
+      await request(`/product-detail-profiles/${encodeURIComponent(profile.id)}/main-image`, ids.adminUserId, {
+        method: "POST",
+        body: JSON.stringify({ imageId: completed.outputImageId, humanConfirmed: false })
+      });
+      await load();
+      setActiveMainImage("ai-display");
+      setNotice("AI 陈列图已重新生成并设为默认商城主图，请对照原图人工确认。");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (!profile) return <Status tone={error ? "danger" : "neutral"}>{error || "正在读取商品详情…"}</Status>;
   const assets = profile.assets
     .filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type) && (asset.status === "READY" || asset.status === "APPROVED"))
@@ -496,6 +556,8 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
   const mainImageChoices = detailMainImageChoices(comparison);
   const currentMainImage = mainImageChoices.find((choice) => choice.key === activeMainImage) ?? mainImageChoices[0];
   const hasSelectedMainImage = Boolean(comparison?.selectedMainImageId);
+  const selectedMainIsGenerated = Boolean(mainImageChoices.find((choice) => choice.image?.selectedAsMain)?.generated);
+  const aiConfirmationRequired = selectedMainIsGenerated && !comparison?.selectedMainImageConfirmedAt;
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-12">
@@ -528,15 +590,22 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
           copy={copy}
           assets={assets}
           busy={Boolean(busy)}
+          approvalBlockedReason={aiConfirmationRequired ? "请先进入“编辑与素材”，对照原图并人工确认 AI 主图。" : null}
           onApprove={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId })}
           onEdit={() => setViewMode("edit")}
         />
       ) : <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,.95fr)]">
         <div className="min-w-0 space-y-6">
           <section className="min-w-0 space-y-3" aria-label="商城主图确认">
-            <div>
-              <h2 className="font-semibold">商城主图</h2>
-              <p className="mt-1 text-xs text-muted-foreground">对照原图，人工选择白底图、白底优化图或白底均整图。原图始终保留，不使用生成式图片制作尺码指南。</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="font-semibold">商城主图</h2>
+                <p className="mt-1 text-xs text-muted-foreground">批量详情生成会先创建 AI 陈列图并默认选为主图；在这里对照原图检查，也可以改选白底图、优化图或均整图。</p>
+              </div>
+              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutWhite?.imageId} onClick={() => void generateDisplayImage()}>
+                {busy === "ai-display" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
+                {comparison?.aiDisplayMain ? "重新生成 AI 陈列图" : "生成 AI 陈列图"}
+              </Button>
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -558,17 +627,28 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
               {currentMainImage?.image ? <SafeImage src={variantImageUrl(currentMainImage.image)} alt={currentMainImage.label} /> : <EmptyImage />}
             </div>
 
+            {currentMainImage?.generated ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="font-semibold">生成式陈列图必须人工核对</p>
+                <p className="mt-1 text-xs">重点检查 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵。任何商品事实改变都不能确认。</p>
+              </div>
+            ) : null}
+
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className={cn("text-xs", hasSelectedMainImage ? "text-emerald-700" : "font-medium text-amber-700")}>
-                {hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "尚未选择商城主图；商品发布时仍会执行正式主图与准备度规则。"}
+                {aiConfirmationRequired
+                  ? "AI 陈列图已默认设为主图；批准前请点击“人工确认 AI 主图”完成核对。"
+                  : hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "尚未选择商城主图；商品发布时仍会执行正式主图与准备度规则。"}
               </p>
               {currentMainImage?.selectable && currentMainImage.image ? (
                 <Button
                   size="sm"
-                  disabled={Boolean(busy) || currentMainImage.image.selectedAsMain}
+                  disabled={Boolean(busy) || (currentMainImage.image.selectedAsMain && !currentMainImage.generated)}
                   onClick={() => void chooseStorefrontMain(currentMainImage)}
                 >
-                  {currentMainImage.image.selectedAsMain ? "已是商城主图" : "设为商城主图"}
+                  {currentMainImage.generated && currentMainImage.image.selectedAsMain
+                    ? "人工确认 AI 主图"
+                    : currentMainImage.image.selectedAsMain ? "已是商城主图" : "设为商城主图"}
                 </Button>
               ) : null}
             </div>
@@ -661,6 +741,7 @@ function ProductPublishPreview({
   copy,
   assets,
   busy,
+  approvalBlockedReason,
   onApprove,
   onEdit
 }: {
@@ -668,6 +749,7 @@ function ProductPublishPreview({
   copy: EditableCopy;
   assets: DetailAsset[];
   busy: boolean;
+  approvalBlockedReason: string | null;
   onApprove: () => void;
   onEdit: () => void;
 }) {
@@ -763,8 +845,8 @@ function ProductPublishPreview({
       </section>
 
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">详情批准只确认当前草稿；商品发布仍由价格、库存、状态和商品控制规则共同决定。</p>
-        <Button disabled={busy || profile.status === "APPROVED"} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : "批准现有详情"}</Button>
+        <p className={cn("text-xs", approvalBlockedReason ? "font-medium text-amber-700" : "text-muted-foreground")}>{approvalBlockedReason || "详情批准只确认当前草稿；商品发布仍由价格、库存、状态和商品控制规则共同决定。"}</p>
+        <Button disabled={busy || Boolean(approvalBlockedReason) || profile.status === "APPROVED"} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : "批准现有详情"}</Button>
       </div>
     </div>
   );
@@ -804,10 +886,11 @@ function SafeImage({ src, alt }: { src: string; alt: string }) {
 
 function detailMainImageChoices(comparison: ProductImageComparisonResponse | null): DetailMainImageChoice[] {
   return [
-    { key: "original", label: "原图（对照）", image: comparison?.original ?? null, selectable: false },
-    { key: "white", label: "白底图", image: comparison?.cutoutWhite ?? null, selectable: true },
-    { key: "optimized", label: "白底优化图", image: comparison?.optimizedMain ?? null, selectable: true },
-    { key: "balanced", label: "白底均整图", image: comparison?.optimizedBalancedMain ?? null, selectable: true }
+    { key: "original", label: "原图（对照）", image: comparison?.original ?? null, selectable: false, generated: false },
+    { key: "white", label: "白底图", image: comparison?.cutoutWhite ?? null, selectable: true, generated: false },
+    { key: "optimized", label: "白底优化图", image: comparison?.optimizedMain ?? null, selectable: true, generated: false },
+    { key: "balanced", label: "白底均整图", image: comparison?.optimizedBalancedMain ?? null, selectable: true, generated: false },
+    { key: "ai-display", label: "AI 陈列图", image: comparison?.aiDisplayMain ?? null, selectable: true, generated: true }
   ];
 }
 
@@ -822,7 +905,7 @@ function EmptyImage({ compact = false }: { compact?: boolean } = {}) {
 
 function assetUrl(asset: DetailAsset) {
   if (asset.publicUrl) return asset.publicUrl.startsWith("http") ? asset.publicUrl : `${API_PROXY_URL}${asset.publicUrl}`;
-  return `${API_PROXY_URL}/product-detail-assets/${asset.id}/content`;
+  return productDetailAssetProxyUrl(API_PROXY_URL, asset);
 }
 
 function sourceImageUrl(productId: string, image: { id: string; publicUrl?: string | null }) {

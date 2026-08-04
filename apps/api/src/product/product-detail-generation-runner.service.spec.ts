@@ -13,7 +13,7 @@ test("runs a detail batch with bounded concurrency and keeps result order", asyn
 
   let active = 0;
   let maximumActive = 0;
-  const runner = new ProductDetailGenerationRunnerService({} as never, {} as never);
+  const runner = new ProductDetailGenerationRunnerService({} as never, {} as never, {} as never, {} as never);
   runner.run = (async (jobId: string) => {
     active += 1;
     maximumActive = Math.max(maximumActive, active);
@@ -30,4 +30,75 @@ test("runs a detail batch with bounded concurrency and keeps result order", asyn
   } finally {
     prisma.productDetailGenerationJob.findMany = originalFindMany;
   }
+});
+
+test("generates an AI display image first and selects it without changing the detail source version", async () => {
+  const starts: unknown[] = [];
+  const selections: unknown[] = [];
+  const imageProcessing = {
+    getComparison: async () => ({
+      cutoutWhite: { imageId: "white-1" },
+      aiDisplayMain: null
+    }),
+    start: async (input: unknown) => {
+      starts.push(input);
+      return { id: "image-job-1", status: "PENDING" };
+    },
+    selectMainImage: async (input: unknown, options: unknown) => {
+      selections.push({ input, options });
+      return {
+        aiDisplayMain: { imageId: "ai-1", selectedAsMain: true }
+      };
+    }
+  };
+  const imageJobs = {
+    run: async () => ({ status: "SUCCEEDED", outputImageId: "ai-1" })
+  };
+  const runner = new ProductDetailGenerationRunnerService(
+    {} as never,
+    {} as never,
+    imageProcessing as never,
+    imageJobs as never
+  );
+
+  const selected = await runner.ensureAiDisplayMain("product-1");
+
+  assert.equal(selected.imageId, "ai-1");
+  assert.deepEqual(starts, [{
+    productId: "product-1",
+    sourceImageId: "white-1",
+    operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"
+  }]);
+  assert.deepEqual(selections, [{
+    input: { productId: "product-1", imageId: "ai-1" },
+    options: { recordDetailSourceChange: false, humanConfirmed: false }
+  }]);
+});
+
+test("reuses an existing AI display image and makes it the default main image", async () => {
+  let startCalled = false;
+  const imageProcessing = {
+    getComparison: async () => ({
+      cutoutWhite: { imageId: "white-1" },
+      aiDisplayMain: { imageId: "ai-existing", selectedAsMain: false }
+    }),
+    start: async () => {
+      startCalled = true;
+      throw new Error("must not start a duplicate job");
+    },
+    selectMainImage: async () => ({
+      aiDisplayMain: { imageId: "ai-existing", selectedAsMain: true }
+    })
+  };
+  const runner = new ProductDetailGenerationRunnerService(
+    {} as never,
+    {} as never,
+    imageProcessing as never,
+    {} as never
+  );
+
+  const selected = await runner.ensureAiDisplayMain("product-1");
+
+  assert.equal(selected.imageId, "ai-existing");
+  assert.equal(startCalled, false);
 });

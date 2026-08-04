@@ -28,3 +28,18 @@ test("adds waist and hip for dresses and skips non-apparel categories", () => {
   );
   assert.deepEqual(requiredProductMeasurementTypes({ category: "BAG" }), []);
 });
+
+test("uses dedicated measurement sets for skirts, jumpsuits and bodysuits", () => {
+  assert.deepEqual(
+    requiredProductMeasurementTypes({ category: "KIDS", subcategory: "KIDS_SKIRT" }),
+    ["LENGTH", "WAIST", "HIP"]
+  );
+  assert.deepEqual(
+    requiredProductMeasurementTypes({ category: "FULL_BODY", subcategory: "JUMPSUIT", sleeveType: "SLEEVELESS" }),
+    ["LENGTH", "CHEST_WIDTH", "SHOULDER_WIDTH", "WAIST", "HIP", "INSEAM"]
+  );
+  assert.deepEqual(
+    requiredProductMeasurementTypes({ category: "SWIMWEAR", subcategory: "ONE_PIECE_SWIM" }),
+    ["LENGTH", "CHEST_WIDTH", "WAIST", "HIP"]
+  );
+});

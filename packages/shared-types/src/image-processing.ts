@@ -102,6 +102,7 @@ export interface ProductImageComparisonResponse {
   backCutoutTransparent: ProductImageVariantRecord | null;
   backCutoutWhite: ProductImageVariantRecord | null;
   selectedMainImageId: string | null;
+  selectedMainImageConfirmedAt: string | null;
   jobs: ImageProcessingJobRecord[];
 }
 

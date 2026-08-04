@@ -21,10 +21,18 @@ assert.equal(
   false,
   "Calibration must not select the storefront main image."
 );
-assert.equal(
+assert.ok(
   detailSource.includes('operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
+  "Detail generation must create AI display main-image candidates."
+);
+assert.equal(
+  detailSource.includes("MODEL_DISPLAY"),
   false,
-  "Commerce detail review must not create model-view images."
+  "Restoring AI display main images must not restore the removed Model View detail asset."
+);
+assert.ok(
+  detailSource.includes("人工确认 AI 主图"),
+  "Generated display images must keep an explicit human-confirmation action."
 );
 assert.ok(
   detailSource.includes("设为商城主图"),

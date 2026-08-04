@@ -3,6 +3,7 @@ import {
   ProductDetailAssetType,
   ProductDetailStatus,
   ProductImageType,
+  ProductImageVariant,
   ProductStatus,
   Prisma,
   prisma
@@ -445,6 +446,13 @@ export class ProductDetailGenerationService {
     if (profile.status !== ProductDetailStatus.READY && profile.status !== ProductDetailStatus.APPROVED) {
       throw new BadRequestException("Only ready product details can be approved");
     }
+    const mainSelection = await prisma.productMainImageSelection.findUnique({
+      where: { productId: profile.productId },
+      select: { variant: true, confirmedAt: true }
+    });
+    if (mainSelection?.variant === ProductImageVariant.AI_DISPLAY_MAIN && !mainSelection.confirmedAt) {
+      throw new BadRequestException("Confirm the AI display main image against the original before approving product details");
+    }
     const customerDescription = profile.customerDescription?.trim();
     const approvedAt = new Date();
     return prisma.$transaction(async (transaction) => {
@@ -490,6 +498,16 @@ export class ProductDetailGenerationService {
         : [];
     });
     if (profiles.length === 0) return this.getBatchDetailStatus(batchId);
+    const unconfirmedAiMainImages = await prisma.productMainImageSelection.count({
+      where: {
+        productId: { in: profiles.map((profile) => profile.productId) },
+        variant: ProductImageVariant.AI_DISPLAY_MAIN,
+        confirmedAt: null
+      }
+    });
+    if (unconfirmedAiMainImages > 0) {
+      throw new BadRequestException("Confirm every AI display main image against the originals before approving the batch");
+    }
     const approvedAt = new Date();
     await prisma.$transaction(async (transaction) => {
       await transaction.productDetailProfile.updateMany({
