@@ -1848,6 +1848,12 @@ select:focus-visible {
   margin: 0 0 22px;
 }
 
+.catalogBuyActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .catalogBuyButton {
   display: inline-flex;
   min-height: 54px;
@@ -1864,9 +1870,15 @@ select:focus-visible {
   letter-spacing: 0;
 }
 
+.catalogBuyButton.secondary {
+  background: #fff;
+  color: #262626;
+}
+
 .catalogBuyButton:hover {
   border-color: #ff2b08;
   background: #ff2b08;
+  color: #fff;
 }
 
 .catalogBuyButton:disabled {
@@ -1881,6 +1893,11 @@ select:focus-visible {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.catalogBuyMessage {
+  color: #147d43 !important;
+  font-weight: 900;
 }
 
 .attributeList {
@@ -3075,6 +3092,48 @@ select:focus-visible {
   justify-self: end;
 }
 
+.depopCartIcon {
+  position: relative;
+}
+
+.depopCartIcon > span {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: #ff2b08;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.depopMiniCart {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 30;
+  display: none;
+  width: 230px;
+  border: 1px solid #e8e2da;
+  border-radius: 8px;
+  background: #fff;
+  color: #4b4540;
+  padding: 12px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 14%);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.depopCartIcon:hover .depopMiniCart,
+.depopCartIcon:focus-visible .depopMiniCart {
+  display: block;
+}
+
 .depopIconButton,
 .depopMobileMenuButton,
 .depopMobileSearchButton {
@@ -3823,6 +3882,28 @@ select:focus-visible {
   justify-content: space-between;
   gap: 8px;
   margin-top: auto;
+}
+
+.depopCartButton {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #ded8d0;
+  border-radius: 999px;
+  background: #fff;
+  color: #202020;
+  cursor: pointer;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.depopCartButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .depopProductLocation {

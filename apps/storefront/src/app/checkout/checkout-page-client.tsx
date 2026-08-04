@@ -13,11 +13,19 @@ import {
   type CheckoutStage,
   type FulfillmentChoice
 } from "../cart-checkout-ui";
-import { CART_STORAGE_KEY, cartSubtotalKsh, parseCartSnapshot, type CartSnapshot } from "../storefront-cart";
-import { moneyKsh, productImageSrc, productMeta, type PublicProduct } from "../storefront-products";
+import {
+  CART_STORAGE_KEY,
+  cartProductIds,
+  notifyCartUpdated,
+  parseCartSnapshot,
+  removeCartItem,
+  type CartSnapshot
+} from "../storefront-cart";
+import type { CartValidationResponse, ValidatedCartItem } from "../../cart/cart-validation-types";
+import { moneyKsh } from "../storefront-products";
 import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded } from "../../payments/payment-ui";
 
-type CheckoutState = "loading" | "empty" | "ready" | "unavailable";
+type CheckoutState = "loading" | "empty" | "ready" | "error";
 type Reservation = {
   orderId: string;
   orderNumber: string;
@@ -46,9 +54,16 @@ type PaymentState = {
   receiptNumber?: string | null;
   resultDescription?: string | null;
 };
+type CheckoutDraft = {
+  phone: string;
+  fulfillment: FulfillmentChoice;
+  deliveryAddress: string;
+  deliveryNote: string;
+};
 
 const GOOGLE_MAPS_SCRIPT_ID = "direct-loop-google-maps-places";
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const CHECKOUT_DRAFT_STORAGE_KEY = "online-saler-checkout-draft-v1";
 
 type GoogleMapsWindow = Window & {
   google?: {
@@ -79,7 +94,7 @@ type GoogleMapsWindow = Window & {
 
 export function CheckoutPageClient() {
   const [snapshot, setSnapshot] = useState<CartSnapshot | null>(null);
-  const [product, setProduct] = useState<PublicProduct | null>(null);
+  const [validation, setValidation] = useState<CartValidationResponse | null>(null);
   const [state, setState] = useState<CheckoutState>("loading");
   const [fulfillment, setFulfillment] = useState<FulfillmentChoice>("PICKUP");
   const [phone, setPhone] = useState("");
@@ -92,29 +107,39 @@ export function CheckoutPageClient() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [refreshingPayment, setRefreshingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [reservedCartIds, setReservedCartIds] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const reservedCartIdsRef = useRef<string[]>([]);
 
   useEffect(() => {
-    const nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
-    setSnapshot(nextSnapshot);
-    if (!nextSnapshot?.item) {
-      setState("empty");
-      return;
+    const draft = readCheckoutDraft();
+    if (draft) {
+      setPhone(draft.phone);
+      setFulfillment(draft.fulfillment);
+      setDeliveryAddress(draft.deliveryAddress);
+      setDeliveryNote(draft.deliveryNote);
     }
-
-    fetch(`/api-proxy/public/products/${encodeURIComponent(nextSnapshot.item.productId)}`, {
-      cache: "no-store"
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          setState("unavailable");
-          return;
-        }
-        setProduct((await response.json()) as PublicProduct);
-        setState("ready");
-      })
-      .catch(() => setState("unavailable"));
+    void loadAndValidate();
   }, []);
+
+  useEffect(() => {
+    if (reservation) return;
+    writeCheckoutDraft({ phone, fulfillment, deliveryAddress, deliveryNote });
+  }, [deliveryAddress, deliveryNote, fulfillment, phone, reservation]);
+
+  useEffect(() => {
+    function handleFocus() {
+      if (!reservation) void loadAndValidate(false);
+    }
+    const timer = window.setInterval(() => {
+      if (!reservation) void loadAndValidate(false);
+    }, 45_000);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [reservation]);
 
   useEffect(() => {
     if (!reservation) return;
@@ -140,22 +165,50 @@ export function CheckoutPageClient() {
     return () => window.clearInterval(timer);
   }, [payment, reservation]);
 
+  const checkoutableItems = useMemo(() => validation?.items.filter((item) => item.canCheckout) ?? [], [validation]);
+  const unavailableItems = useMemo(() => validation?.items.filter((item) => !item.canCheckout) ?? [], [validation]);
   const secondsRemaining = useMemo(() => {
     if (!reservation) return 0;
     return Math.max(0, Math.ceil((new Date(reservation.expiresAt).getTime() - now) / 1000));
   }, [now, reservation]);
 
+  async function loadAndValidate(showLoading = true): Promise<CartValidationResponse | null> {
+    const nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
+    setSnapshot(nextSnapshot);
+    if (!nextSnapshot?.items.length) {
+      setValidation(null);
+      setState("empty");
+      return null;
+    }
+    if (showLoading) setState("loading");
+    try {
+      const nextValidation = await validateCart(cartProductIds(nextSnapshot));
+      setValidation(nextValidation);
+      setState("ready");
+      return nextValidation;
+    } catch {
+      setState("error");
+      return null;
+    }
+  }
+
   async function submitCheckout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!snapshot?.item || submitting || reservation) return;
+    if (submitting || reservation) return;
     setSubmitting(true);
     setError("");
     try {
+      const freshValidation = await loadAndValidate(false);
+      const payableItems = freshValidation?.items.filter((item) => item.canCheckout && item.productId) ?? [];
+      if (!payableItems.length) throw new Error("No available cart items can be paid for.");
+      if ((freshValidation?.summary.unavailableCount ?? 0) > 0) {
+        throw new Error("Remove unavailable items or continue with only available items after reviewing the cart.");
+      }
       const response = await fetch("/api/checkout/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          productId: snapshot.item.productId,
+          productIds: payableItems.map((item) => item.requestedProductId),
           phone,
           fulfillmentMethod: fulfillment,
           deliveryAddress: deliveryRequiresAddress(fulfillment) ? deliveryAddress : null,
@@ -163,12 +216,15 @@ export function CheckoutPageClient() {
         })
       });
       const result = await response.json().catch(() => ({})) as Reservation & { error?: string };
-      if (!response.ok) throw new Error(result.error || "Unable to reserve this item.");
+      if (!response.ok) throw new Error(result.error || "Unable to reserve these items.");
+      const nextReservedCartIds = payableItems.map((item) => item.requestedProductId);
+      reservedCartIdsRef.current = nextReservedCartIds;
+      setReservedCartIds(nextReservedCartIds);
       setReservation(result);
       setNow(Date.now());
       await initiatePayment(result.orderId);
     } catch (checkoutError) {
-      setError(checkoutError instanceof Error ? checkoutError.message : "Unable to reserve this item.");
+      setError(checkoutError instanceof Error ? checkoutError.message : "Unable to reserve these items.");
     } finally {
       setSubmitting(false);
     }
@@ -214,35 +270,46 @@ export function CheckoutPageClient() {
   function applyPaymentStatus(nextPayment: PaymentState) {
     setPayment(nextPayment);
     if (paymentSucceeded(nextPayment.orderStatus, nextPayment.paymentStatus ?? nextPayment.status)) {
-      window.localStorage.removeItem(CART_STORAGE_KEY);
+      removePurchasedCartItems(reservedCartIdsRef.current.length ? reservedCartIdsRef.current : reservedCartIds);
+      window.localStorage.removeItem(CHECKOUT_DRAFT_STORAGE_KEY);
     }
   }
 
+  function removePurchasedCartItems(productIds: string[]) {
+    let nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
+    for (const productId of productIds) {
+      nextSnapshot = removeCartItem(nextSnapshot, productId);
+    }
+    if (!nextSnapshot?.items.length) window.localStorage.removeItem(CART_STORAGE_KEY);
+    else window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
+    notifyCartUpdated();
+  }
+
   if (state === "loading") {
-    return <CheckoutEmpty title="Checkout" body="Checking the selected item..." />;
+    return <CheckoutEmpty title="Checkout" body="Checking your cart before payment..." />;
   }
 
   if (state === "empty") {
     return (
       <CheckoutEmpty
         title="Your cart is empty"
-        body="Choose an available item before starting checkout."
+        body="Choose available items before starting checkout."
         action={<Link className="commercePrimaryButton" href="/">Browse items <ArrowRight size={16} /></Link>}
       />
     );
   }
 
-  if (state === "unavailable" || !product) {
+  if (state === "error" || !validation) {
     return (
       <CheckoutEmpty
-        title="This item is no longer available"
-        body="Second-hand items sell one at a time. Pick another available piece from the shop."
-        action={<Link className="commerceSecondaryButton" href="/">Browse another item</Link>}
+        title="Checkout could not refresh"
+        body="We could not check current stock. Refresh the cart before payment."
+        action={<button className="commerceSecondaryButton" type="button" onClick={() => loadAndValidate()}>Refresh checkout</button>}
       />
     );
   }
 
-  const itemTotal = reservation?.itemSubtotalKsh ?? cartSubtotalKsh(snapshot);
+  const itemTotal = reservation?.itemSubtotalKsh ?? validation.summary.itemSubtotalKsh;
   const deliveryFee = reservation?.deliveryFeeKsh ?? (fulfillment === "KIKUYU_LOCAL_DELIVERY" ? KIKUYU_DELIVERY_FEE_KSH : 0);
   const total = reservation?.totalKsh ?? itemTotal + deliveryFee;
   const minutes = Math.floor(secondsRemaining / 60).toString().padStart(2, "0");
@@ -253,18 +320,17 @@ export function CheckoutPageClient() {
   const isPaymentRetryable = canRetryPayment(paymentStatus, secondsRemaining);
   const requiresAddress = deliveryRequiresAddress(fulfillment);
   const currentStage = checkoutStage(Boolean(reservation), isPaymentSucceeded);
-  const imageSrc = productImageSrc(product);
 
   return (
     <section className="commerceCheckoutShell" aria-label="Checkout">
       <div className="checkoutHero">
         <div>
           <span className="checkoutKicker">Checkout</span>
-          <h1>{reservation ? "Complete payment" : "Delivery and payment"}</h1>
+          <h1>{reservation ? "Complete payment" : "Review and pay"}</h1>
           <p className="checkoutLead">
             {reservation
               ? `Order ${reservation.orderNumber} is reserved for payment.`
-              : "Your item is reserved for 15 minutes only after you continue to payment."}
+              : "Stock is locked only when you press Pay with M-Pesa."}
           </p>
         </div>
         <CheckoutProgress stage={currentStage} />
@@ -273,55 +339,29 @@ export function CheckoutPageClient() {
       <div className="commerceCheckoutGrid">
         <div className="checkoutStack">
           <section className="checkoutPanel">
-            <h2>{reservation ? "M-Pesa request" : "How should we fulfill it?"}</h2>
+            <h2>{reservation ? "M-Pesa request" : "Delivery and customer details"}</h2>
 
             {reservation ? (
-              <div className="reservationCard" role="status">
-                <div className="reservationTimer">
-                  <div>
-                    <strong>{secondsRemaining > 0 ? `${minutes}:${seconds}` : "Expired"}</strong>
-                    <span>{secondsRemaining > 0 ? "remaining to complete payment" : "Return to the item and try again."}</span>
-                  </div>
-                  <Clock3 size={26} />
-                </div>
-                <p>M-Pesa phone: +{reservation.phone}</p>
-                <div className={`paymentStatusCard ${isPaymentSucceeded ? "success" : isPaymentFailed ? "failed" : ""}`}>
-                  <b>
-                    {paymentHeading({
-                      orderStatus: payment?.orderStatus,
-                      paymentStatus,
-                      paymentLoading
-                    })}
-                  </b>
-                  <span>
-                    {paymentBody({
-                      orderStatus: payment?.orderStatus,
-                      paymentStatus,
-                      receiptNumber: payment?.receiptNumber,
-                      paymentError,
-                      customerMessage: payment?.customerMessage,
-                      resultDescription: payment?.resultDescription
-                    })}
-                  </span>
-                </div>
-                <div className="checkoutPaymentActions">
-                  <button className="commerceSecondaryButton" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
-                    <RefreshCw size={16} /> {refreshingPayment ? "Refreshing..." : "Refresh status"}
-                  </button>
-                  {isPaymentSucceeded ? (
-                    <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
-                      View order <ArrowRight size={16} />
-                    </Link>
-                  ) : null}
-                </div>
-                {paymentError || isPaymentRetryable ? (
-                  <button className="commerceSecondaryButton full" type="button" disabled={paymentLoading || secondsRemaining <= 0} onClick={() => initiatePayment(reservation.orderId)}>
-                    <Smartphone size={16} /> {paymentLoading ? "Retrying..." : "Retry M-Pesa"}
-                  </button>
-                ) : null}
-              </div>
+              <PaymentPanel
+                isPaymentFailed={isPaymentFailed}
+                isPaymentRetryable={isPaymentRetryable}
+                isPaymentSucceeded={isPaymentSucceeded}
+                payment={payment}
+                paymentError={paymentError}
+                paymentLoading={paymentLoading}
+                refreshPaymentStatus={refreshPaymentStatus}
+                refreshingPayment={refreshingPayment}
+                reservation={reservation}
+                retryPayment={() => initiatePayment(reservation.orderId)}
+                secondsRemaining={secondsRemaining}
+                timerLabel={secondsRemaining > 0 ? `${minutes}:${seconds}` : "Expired"}
+              />
             ) : (
               <form className="checkoutForm" onSubmit={submitCheckout}>
+                <CheckoutItemsPreview items={validation.items} />
+                {unavailableItems.length ? (
+                  <p className="checkoutError" role="alert">Some cart items cannot be paid for. Return to cart to remove them before payment.</p>
+                ) : null}
                 <label className="checkoutField">
                   <span>M-Pesa phone</span>
                   <input
@@ -387,8 +427,8 @@ export function CheckoutPageClient() {
                 </label>
 
                 {error ? <p className="checkoutError" role="alert">{error}</p> : null}
-                <button className="commercePrimaryButton full" type="submit" disabled={submitting}>
-                  <CreditCard size={17} /> {submitting ? "Reserving item..." : "Continue to M-Pesa payment"}
+                <button className="commercePrimaryButton full" type="submit" disabled={submitting || !checkoutableItems.length || Boolean(unavailableItems.length)}>
+                  <CreditCard size={17} /> {submitting ? "Checking stock..." : "Pay with M-Pesa"}
                 </button>
               </form>
             )}
@@ -397,7 +437,7 @@ export function CheckoutPageClient() {
           <section className="commerceFeatureGrid" aria-label="Checkout safeguards">
             <div className="commerceFeature">
               <Clock3 size={18} />
-              <div><strong>15 minute lock</strong><span>Stock is locked only after you continue to payment.</span></div>
+              <div><strong>15 minute lock</strong><span>All items are locked together only at payment.</span></div>
             </div>
             <div className="commerceFeature">
               <CheckCircle2 size={18} />
@@ -412,17 +452,140 @@ export function CheckoutPageClient() {
 
         <aside className="checkoutSummaryPanel">
           <h2>Order summary</h2>
-          <SummaryProduct product={product} imageSrc={imageSrc} />
+          <SummaryItems items={checkoutableItems} />
           <div className="commerceSummaryRows">
-            <div className="commerceSummaryRow"><span>Item</span><strong>{moneyKsh(itemTotal)}</strong></div>
+            <div className="commerceSummaryRow"><span>Items</span><strong>{moneyKsh(itemTotal)}</strong></div>
             <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{moneyKsh(deliveryFee)}</strong></div>
             <div className="commerceSummaryRow total"><span>Total</span><strong>{moneyKsh(total)}</strong></div>
           </div>
-          <p className="commerceSummaryLine"><CreditCard size={16} /> M-Pesa request is sent to your phone after this step.</p>
-          <p className="commerceSummaryLine"><Clock3 size={16} /> Cart itself does not reserve the item.</p>
+          <p className="commerceSummaryLine"><CreditCard size={16} /> M-Pesa request is sent to your phone after stock is locked.</p>
+          <p className="commerceSummaryLine"><Clock3 size={16} /> If payment fails or expires, every locked item is released.</p>
         </aside>
       </div>
     </section>
+  );
+}
+
+async function validateCart(productIds: string[]): Promise<CartValidationResponse> {
+  const response = await fetch("/api/cart/validate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ productIds }),
+    cache: "no-store"
+  });
+  if (!response.ok) throw new Error("Cart validation failed.");
+  return response.json() as Promise<CartValidationResponse>;
+}
+
+function PaymentPanel({
+  isPaymentFailed,
+  isPaymentRetryable,
+  isPaymentSucceeded,
+  payment,
+  paymentError,
+  paymentLoading,
+  refreshPaymentStatus,
+  refreshingPayment,
+  reservation,
+  retryPayment,
+  secondsRemaining,
+  timerLabel
+}: {
+  isPaymentFailed: boolean;
+  isPaymentRetryable: boolean;
+  isPaymentSucceeded: boolean;
+  payment: PaymentState | null;
+  paymentError: string;
+  paymentLoading: boolean;
+  refreshPaymentStatus: () => void;
+  refreshingPayment: boolean;
+  reservation: Reservation;
+  retryPayment: () => void;
+  secondsRemaining: number;
+  timerLabel: string;
+}) {
+  const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
+  return (
+    <div className="reservationCard" role="status">
+      <div className="reservationTimer">
+        <div>
+          <strong>{timerLabel}</strong>
+          <span>{secondsRemaining > 0 ? "remaining to complete payment" : "Stock has been released."}</span>
+        </div>
+        <Clock3 size={26} />
+      </div>
+      <p>M-Pesa phone: +{reservation.phone}</p>
+      <div className={`paymentStatusCard ${isPaymentSucceeded ? "success" : isPaymentFailed ? "failed" : ""}`}>
+        <b>
+          {paymentHeading({
+            orderStatus: payment?.orderStatus,
+            paymentStatus,
+            paymentLoading
+          })}
+        </b>
+        <span>
+          {paymentBody({
+            orderStatus: payment?.orderStatus,
+            paymentStatus,
+            receiptNumber: payment?.receiptNumber,
+            paymentError,
+            customerMessage: payment?.customerMessage,
+            resultDescription: payment?.resultDescription
+          })}
+        </span>
+      </div>
+      <div className="checkoutPaymentActions">
+        <button className="commerceSecondaryButton" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
+          <RefreshCw size={16} /> {refreshingPayment ? "Refreshing..." : "Refresh status"}
+        </button>
+        {isPaymentSucceeded ? (
+          <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
+            View order <ArrowRight size={16} />
+          </Link>
+        ) : null}
+      </div>
+      {paymentError || isPaymentRetryable ? (
+        <button className="commerceSecondaryButton full" type="button" disabled={paymentLoading || secondsRemaining <= 0} onClick={retryPayment}>
+          <Smartphone size={16} /> {paymentLoading ? "Retrying..." : "Retry M-Pesa"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function CheckoutItemsPreview({ items }: { items: ValidatedCartItem[] }) {
+  return (
+    <div className="checkoutItemsPreview">
+      {items.map((item) => (
+        <div key={item.requestedProductId} className={`checkoutItemPreview ${item.canCheckout ? "" : "blocked"}`}>
+          <div className="summaryProductImage">{item.storefrontImage ? <img src={item.storefrontImage} alt="" /> : null}</div>
+          <div>
+            <strong>{item.title}</strong>
+            <span>{[item.productCode, item.size, item.condition].filter(Boolean).join(" / ")}</span>
+            {!item.canCheckout ? <small>{item.statusMessage}</small> : null}
+          </div>
+          <b>{moneyKsh(item.priceKsh)}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummaryItems({ items }: { items: ValidatedCartItem[] }) {
+  return (
+    <div className="summaryItemsList">
+      {items.map((item) => (
+        <div className="summaryProduct" key={item.requestedProductId}>
+          <div className="summaryProductImage">
+            {item.storefrontImage ? <img src={item.storefrontImage} alt="" /> : null}
+          </div>
+          <div>
+            <strong>{item.title}</strong>
+            <span>{[item.size, item.condition].filter(Boolean).join(" / ") || "Kikuyu warehouse"}</span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -455,18 +618,23 @@ function CheckoutProgress({ stage }: { stage: CheckoutStage }) {
   );
 }
 
-function SummaryProduct({ product, imageSrc }: { product: PublicProduct; imageSrc: string }) {
-  return (
-    <div className="summaryProduct">
-      <div className="summaryProductImage">
-        {imageSrc ? <img src={imageSrc} alt="" /> : null}
-      </div>
-      <div>
-        <strong>{product.title ?? "Second-hand item"}</strong>
-        <span>{productMeta(product) || "Kikuyu warehouse"}</span>
-      </div>
-    </div>
-  );
+function readCheckoutDraft(): CheckoutDraft | null {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(CHECKOUT_DRAFT_STORAGE_KEY) ?? "null") as CheckoutDraft | null;
+    if (!parsed) return null;
+    return {
+      phone: parsed.phone ?? "",
+      fulfillment: parsed.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "KIKUYU_LOCAL_DELIVERY" : "PICKUP",
+      deliveryAddress: parsed.deliveryAddress ?? "",
+      deliveryNote: parsed.deliveryNote ?? ""
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCheckoutDraft(draft: CheckoutDraft) {
+  window.localStorage.setItem(CHECKOUT_DRAFT_STORAGE_KEY, JSON.stringify(draft));
 }
 
 function GoogleAddressField({
