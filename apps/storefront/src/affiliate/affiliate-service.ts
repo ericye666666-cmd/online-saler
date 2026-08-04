@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   AffiliateStatus,
+  CollectionStatus,
   CommissionStatus,
   OrderStatus,
   Prisma,
@@ -16,9 +17,11 @@ export const AFFILIATE_DEFAULT_RATE_SETTING_KEY = "affiliate.defaultCommissionRa
 type TrackAffiliateClickInput = {
   affiliateCode?: string | null;
   productCode?: string | null;
+  collectionSlug?: string | null;
   customerId?: string | null;
   sessionId?: string | null;
   source?: string | null;
+  placement?: string | null;
   campaign?: string | null;
   landingPath?: string | null;
   referrer?: string | null;
@@ -31,6 +34,7 @@ export type AffiliateCookiePayload = {
   affiliateCode: string;
   clickId?: string;
   source?: string;
+  placement?: string;
   campaign?: string;
   expiresAt: string;
 };
@@ -39,6 +43,7 @@ export type CheckoutAttributionInput = {
   affiliateCode?: string | null;
   affiliateClickId?: string | null;
   source?: string | null;
+  placement?: string | null;
   campaign?: string | null;
 };
 
@@ -46,6 +51,7 @@ export type ResolvedCheckoutAttribution = {
   affiliateId: string;
   affiliateClickId: string | null;
   source: string | null;
+  placement: string | null;
   campaign: string | null;
   expiresAt: Date;
 };
@@ -83,6 +89,7 @@ export function parseAffiliateCookie(value?: string | null): AffiliateCookiePayl
       affiliateCode,
       clickId: typeof parsed.clickId === "string" ? parsed.clickId : undefined,
       source: normalizeSourceValue(parsed.source) ?? undefined,
+      placement: normalizeCampaignValue(parsed.placement) ?? undefined,
       campaign: normalizeCampaignValue(parsed.campaign) ?? undefined,
       expiresAt: parsed.expiresAt
     };
@@ -98,6 +105,7 @@ export async function recordAffiliateClick(input: TrackAffiliateClickInput) {
   const clickedAt = input.clickedAt ?? new Date();
   const expiresAt = createAttributionExpiry(clickedAt);
   const source = normalizeSourceValue(input.source);
+  const placement = normalizeCampaignValue(input.placement);
   const campaign = normalizeCampaignValue(input.campaign);
   const landingPath = input.landingPath?.trim().slice(0, 240) || landingPathForProduct(input.productCode);
 
@@ -112,13 +120,27 @@ export async function recordAffiliateClick(input: TrackAffiliateClickInput) {
   const product = input.productCode
     ? await prisma.product.findUnique({ where: { productCode: input.productCode.trim() } })
     : null;
+  const collection = input.collectionSlug
+    ? await prisma.collection.findFirst({
+        where: {
+          slug: input.collectionSlug.trim(),
+          affiliateId: affiliate.id,
+          status: CollectionStatus.PUBLISHED
+        }
+      })
+    : null;
 
   const affiliateLink = await prisma.affiliateLink.findFirst({
     where: {
       affiliateId: affiliate.id,
       active: true,
-      ...(product ? { productId: product.id } : { type: "STORE" }),
+      ...(product
+        ? { productId: product.id }
+        : collection
+          ? { collectionId: collection.id }
+          : { type: "STORE" }),
       ...(source ? { source } : {}),
+      ...(placement ? { placement } : {}),
       ...(campaign ? { campaign } : {})
     },
     orderBy: { createdAt: "desc" }
@@ -129,9 +151,11 @@ export async function recordAffiliateClick(input: TrackAffiliateClickInput) {
       affiliateId: affiliate.id,
       affiliateLinkId: affiliateLink?.id ?? null,
       productId: product?.id ?? null,
+      collectionId: collection?.id ?? null,
       customerId: input.customerId ?? null,
       sessionId: input.sessionId?.trim().slice(0, 120) || null,
       source,
+      placement,
       campaign,
       landingPath,
       referrer: input.referrer?.trim().slice(0, 500) || null,
@@ -147,6 +171,7 @@ export async function recordAffiliateClick(input: TrackAffiliateClickInput) {
     clickId: click.id,
     expiresAt: expiresAt.toISOString(),
     source: source ?? undefined,
+    placement: placement ?? undefined,
     campaign: campaign ?? undefined
   } satisfies AffiliateCookiePayload;
 }
@@ -181,6 +206,7 @@ export async function resolveCheckoutAttribution(
         affiliateId: click.affiliateId,
         affiliateClickId: click.id,
         source: normalizeSourceValue(input?.source) ?? click.source,
+        placement: normalizeCampaignValue(input?.placement) ?? click.placement,
         campaign: normalizeCampaignValue(input?.campaign) ?? click.campaign,
         expiresAt: click.expiresAt
       };
@@ -200,6 +226,7 @@ export async function resolveCheckoutAttribution(
     affiliateId: affiliate.id,
     affiliateClickId: null,
     source: normalizeSourceValue(input?.source),
+    placement: normalizeCampaignValue(input?.placement),
     campaign: normalizeCampaignValue(input?.campaign),
     expiresAt: createAttributionExpiry(now)
   };
@@ -219,6 +246,7 @@ export async function createAttributionForOrder(
       customerId: input.customerId,
       orderId: input.orderId,
       source: input.source,
+      placement: input.placement,
       campaign: input.campaign,
       expiresAt: input.expiresAt
     }

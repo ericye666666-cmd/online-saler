@@ -26,6 +26,7 @@ env:
   SERVICE_NAME: online-saler-storefront-staging
   STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
   STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
+  PRODUCT_IMAGE_BUCKET: online-saler-staging-product-images
 
 jobs:
   deploy:
@@ -102,8 +103,8 @@ jobs:
           flags: >-
             --allow-unauthenticated
             --port=3000
-            --memory=512Mi
-            --cpu=1
+            --memory=2Gi
+            --cpu=2
             --min-instances=0
             --max-instances=2
             --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
@@ -112,6 +113,7 @@ jobs:
             NODE_ENV=staging
             API_URL=${{ env.API_URL }}
             STOREFRONT_PUBLIC_URL=${{ env.STOREFRONT_PUBLIC_URL }}
+            PRODUCT_IMAGE_BUCKET=${{ env.PRODUCT_IMAGE_BUCKET }}
             NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_STAGING }}
             GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID_STAGING }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET_STAGING }}

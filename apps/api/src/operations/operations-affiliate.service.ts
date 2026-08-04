@@ -40,7 +40,9 @@ type LinkInput = {
   type?: AffiliateLinkType;
   productId?: string;
   productCode?: string;
+  collectionId?: string;
   source?: string;
+  placement?: string;
   campaign?: string;
   landingPath?: string;
 };
@@ -137,6 +139,7 @@ export class OperationsAffiliateService {
       data: {
         customerId: linkedCustomer?.id ?? null,
         affiliateCode,
+        slug: affiliateSlug(displayName, affiliateCode),
         displayName,
         phone: cleanOptional(input.phone) ?? linkedCustomer?.phone ?? null,
         email: cleanOptional(input.email)?.toLowerCase() ?? linkedCustomer?.email.toLowerCase() ?? null,
@@ -200,6 +203,7 @@ export class OperationsAffiliateService {
       data: {
         customerId: customer.id,
         affiliateCode,
+        slug: affiliateSlug(displayName, affiliateCode),
         displayName,
         phone: cleanOptional(input.phone) ?? customer.phone ?? null,
         email: customer.email.toLowerCase(),
@@ -236,35 +240,51 @@ export class OperationsAffiliateService {
     });
     return links.map((link) => ({
       ...link,
-      shareUrl: buildShareUrl(link.landingPath, link.affiliate.affiliateCode, link.source, link.campaign),
-      whatsappUrl: `https://wa.me/?text=${encodeURIComponent(buildShareUrl(link.landingPath, link.affiliate.affiliateCode, "whatsapp", link.campaign))}`
+      shareUrl: buildShareUrl(link.landingPath, link.affiliate.affiliateCode, link.source, link.campaign, link.placement),
+      whatsappUrl: `https://wa.me/?text=${encodeURIComponent(buildShareUrl(link.landingPath, link.affiliate.affiliateCode, "whatsapp", link.campaign, link.placement ?? "direct-message"))}`
     }));
   }
 
   async createLink(input: LinkInput) {
     await this.access.requirePermission(input.adminUserId, AFFILIATE_EDIT);
     const affiliate = await this.findAffiliate(input);
-    const type = input.type ?? (input.productId || input.productCode ? AffiliateLinkType.PRODUCT : AffiliateLinkType.STORE);
+    const type = input.type ?? (
+      input.productId || input.productCode
+        ? AffiliateLinkType.PRODUCT
+        : input.collectionId
+          ? AffiliateLinkType.COLLECTION
+          : AffiliateLinkType.STORE
+    );
     const product = input.productId
       ? await prisma.product.findUnique({ where: { id: input.productId } })
       : input.productCode
         ? await prisma.product.findUnique({ where: { productCode: input.productCode.trim() } })
         : null;
     if (type === AffiliateLinkType.PRODUCT && !product) throw new BadRequestException("Product link requires a valid product.");
-    const landingPath = cleanOptional(input.landingPath) ?? (product ? `/p/${product.productCode}` : "/");
+    const collection = input.collectionId
+      ? await prisma.collection.findFirst({ where: { id: input.collectionId, affiliateId: affiliate.id } })
+      : null;
+    if (type === AffiliateLinkType.COLLECTION && !collection) {
+      throw new BadRequestException("Collection link requires a valid Affiliate Collection.");
+    }
+    const landingPath = cleanOptional(input.landingPath)
+      ?? (product ? `/p/${product.productCode}` : collection ? `/c/${collection.slug}` : "/");
     return prisma.affiliateLink.create({
       data: {
         affiliateId: affiliate.id,
         linkCode: await uniqueLinkCode(affiliate.affiliateCode),
         type,
         productId: product?.id ?? null,
+        collectionId: collection?.id ?? null,
         landingPath,
-        source: normalizeSource(input.source),
-        campaign: normalizeCampaign(input.campaign)
+        source: normalizeSource(input.source) ?? "direct",
+        placement: normalizeCampaign(input.placement) ?? "share",
+        campaign: normalizeCampaign(input.campaign) ?? "organic"
       },
       include: {
         affiliate: true,
-        product: true
+        product: true,
+        collection: true
       }
     });
   }
@@ -466,11 +486,28 @@ async function uniqueLinkCode(affiliateCode: string): Promise<string> {
   throw new BadRequestException("Could not generate a unique affiliate link code.");
 }
 
-function buildShareUrl(path: string, affiliateCode: string, source?: string | null, campaign?: string | null): string {
+function affiliateSlug(displayName: string, affiliateCode: string): string {
+  const name = displayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "affiliate";
+  const code = affiliateCode.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `${name}-${code}`;
+}
+
+function buildShareUrl(
+  path: string,
+  affiliateCode: string,
+  source?: string | null,
+  campaign?: string | null,
+  placement?: string | null
+): string {
   const base = process.env.STOREFRONT_PUBLIC_URL ?? "http://localhost:3000";
   const url = new URL(path || "/", base);
   url.searchParams.set("ref", affiliateCode);
-  if (source) url.searchParams.set("source", source);
-  if (campaign) url.searchParams.set("campaign", campaign);
+  url.searchParams.set("source", source || "direct");
+  url.searchParams.set("placement", placement || "share");
+  url.searchParams.set("campaign", campaign || "organic");
   return url.toString();
 }

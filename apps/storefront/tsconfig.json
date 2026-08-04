@@ -2,9 +2,15 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "allowJs": false,
+    "baseUrl": ".",
     "jsx": "preserve",
     "module": "ESNext",
     "noEmit": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
     "plugins": [
       {
         "name": "next"

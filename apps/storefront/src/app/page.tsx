@@ -5,7 +5,7 @@ import { listPublishedProducts } from "../db/catalog";
 export const dynamic = "force-dynamic";
 
 type HomeProps = {
-  searchParams: Promise<{ ref?: string; category?: string; source?: string; campaign?: string; utm_source?: string; utm_campaign?: string }>;
+  searchParams: Promise<{ ref?: string; category?: string; source?: string; placement?: string; campaign?: string; utm_source?: string; utm_campaign?: string }>;
 };
 
 export default async function Home({ searchParams }: HomeProps) {
@@ -22,6 +22,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
   const sellerRef = normalizeSellerRef(ref);
   const source = normalizeTrackingParam(query.source ?? query.utm_source);
+  const placement = normalizeTrackingParam(query.placement);
   const campaign = normalizeTrackingParam(query.campaign ?? query.utm_campaign);
 
   return (
@@ -30,6 +31,7 @@ export default async function Home({ searchParams }: HomeProps) {
       initialCategory={initialCategory}
       sellerRef={sellerRef}
       source={source}
+      placement={placement}
       campaign={campaign}
     />
   );

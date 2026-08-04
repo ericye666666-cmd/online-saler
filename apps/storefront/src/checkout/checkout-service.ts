@@ -186,6 +186,7 @@ export async function startCheckout(input: StartCheckoutInput) {
         totalKsh: amounts.totalKsh,
         affiliateId: attribution?.affiliateId ?? null,
         affiliateSource: attribution?.source ?? null,
+        affiliatePlacement: attribution?.placement ?? null,
         affiliateCampaign: attribution?.campaign ?? null,
         items: {
           create: uniqueProducts.map((product) => ({

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ChevronRight, MapPin } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ProductGallery } from "../../components/product-gallery";
-import { ShareActions } from "../../components/share-actions";
+import { ProductShareSheet } from "../../components/product-share-sheet";
 import { ReferralTracker } from "../../components/referral-tracker";
 import { SiteHeader } from "../../components/site-header";
 import { CatalogBuyAction } from "../../catalog-buy-action";
@@ -26,6 +26,7 @@ type ProductPageProps = {
   searchParams: Promise<{
     ref?: string;
     source?: string;
+    placement?: string;
     campaign?: string;
     utm_source?: string;
     utm_campaign?: string;
@@ -82,6 +83,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
 
   const sellerRef = normalizeSellerRef(query.ref);
   const source = normalizeTrackingParam(query.source ?? query.utm_source);
+  const placement = normalizeTrackingParam(query.placement);
   const campaign = normalizeTrackingParam(query.campaign ?? query.utm_campaign);
   const related = products
     .filter((item) => item.code !== product.code)
@@ -102,7 +104,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
 
   return (
     <main className="productPage">
-      <ReferralTracker sellerRef={sellerRef} productCode={product.code} source={source} campaign={campaign} />
+      <ReferralTracker sellerRef={sellerRef} productCode={product.code} source={source} placement={placement} campaign={campaign} />
       <SiteHeader sellerRef={sellerRef} productDetail />
 
       <div className="productPageShell">
@@ -137,7 +139,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             </dl>
 
             <CatalogBuyAction product={product} />
-            <ShareActions product={product} sellerRef={sellerRef} />
+            <ProductShareSheet product={product} />
           </div>
         </section>
 

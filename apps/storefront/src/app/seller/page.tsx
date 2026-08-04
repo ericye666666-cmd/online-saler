@@ -1,20 +1,13 @@
+import { redirect } from "next/navigation";
+import { getActiveAffiliateForCustomer } from "../../affiliate/affiliate-platform-service";
 import { currentCustomerSession } from "../../auth/customer-auth";
-import { getSellerDashboardForCustomer } from "../../seller/seller-dashboard-service";
-import { SellerPortal } from "./seller-portal";
+import { AffiliateCenter } from "./affiliate-center";
 
 export const dynamic = "force-dynamic";
 
 export default async function SellerPage() {
   const session = await currentCustomerSession();
-  const dashboard = await getSellerDashboardForCustomer(session);
-  const loginHref = `/login?returnTo=${encodeURIComponent("/seller")}`;
-
-  return (
-    <SellerPortal
-      initialDashboard={dashboard}
-      isAuthenticated={Boolean(session)}
-      loginHref={loginHref}
-      joinHref="/join-seller"
-    />
-  );
+  if (!session) redirect(`/login?returnTo=${encodeURIComponent("/seller")}`);
+  if (!await getActiveAffiliateForCustomer(session)) redirect("/become-affiliate");
+  return <AffiliateCenter />;
 }

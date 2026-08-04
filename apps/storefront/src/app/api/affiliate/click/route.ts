@@ -12,7 +12,9 @@ type TrackBody = {
   affiliateCode?: string;
   sellerRef?: string;
   productCode?: string;
+  collectionSlug?: string;
   source?: string;
+  placement?: string;
   campaign?: string;
   landingPath?: string;
   sessionId?: string;
@@ -25,9 +27,11 @@ export async function POST(request: Request) {
     const result = await recordAffiliateClick({
       affiliateCode: body.affiliateCode ?? body.sellerRef,
       productCode: body.productCode,
+      collectionSlug: body.collectionSlug,
       customerId: session?.customerId ?? null,
       sessionId: body.sessionId,
       source: body.source,
+      placement: body.placement,
       campaign: body.campaign,
       landingPath: body.landingPath,
       referrer: request.headers.get("referer"),

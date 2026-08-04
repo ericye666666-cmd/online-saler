@@ -2,43 +2,18 @@
 
 import Link from "next/link";
 import { UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
-
-type SellerStatusResponse = {
-  seller?: {
-    id: string;
-    affiliateCode: string;
-    displayName: string;
-    status: string;
-  } | null;
-};
+import { useAffiliateSession } from "../../affiliate/affiliate-client";
 
 type SellerHeaderActionProps = {
   variant?: "desktop" | "mobile-menu" | "mobile-compact";
 };
 
 export function SellerHeaderAction({ variant = "desktop" }: SellerHeaderActionProps) {
-  const [activeSeller, setActiveSeller] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/seller/status", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : null)
-      .then((payload: SellerStatusResponse | null) => {
-        if (!active) return;
-        setActiveSeller(Boolean(payload?.seller));
-      })
-      .catch(() => {
-        if (active) setActiveSeller(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const action = activeSeller
-    ? { label: "推广者中台", href: "/seller", active: true }
-    : { label: "Join seller", href: "/join-seller", active: false };
+  const { payload, loading } = useAffiliateSession();
+  const activeAffiliate = Boolean(payload?.affiliate);
+  const action = activeAffiliate
+    ? { label: "Affiliate Center", href: "/seller", active: true }
+    : { label: loading ? "Affiliate" : "Become an Affiliate", href: "/become-affiliate", active: false };
   const className = variant === "mobile-compact"
     ? "depopMobileSellerButton"
     : action.active
@@ -46,7 +21,7 @@ export function SellerHeaderAction({ variant = "desktop" }: SellerHeaderActionPr
       : "depopSecondaryAction";
 
   return (
-    <Link className={className} href={action.href}>
+    <Link className={className} href={action.href} aria-disabled={loading || undefined}>
       {variant === "mobile-menu" && action.active ? <UserRound size={18} /> : null}
       {action.label}
     </Link>

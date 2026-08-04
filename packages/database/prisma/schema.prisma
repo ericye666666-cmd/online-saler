@@ -350,6 +350,8 @@ model Product {
   inventoryMovements   InventoryMovement[]
   affiliateLinks       AffiliateLink[]
   affiliateClicks      AffiliateClick[]
+  collectionItems      CollectionItem[]
+  shareCards           ShareCard[]
   publishedAt          DateTime?
   unpublishedAt        DateTime?
   createdAt            DateTime             @default(now())
@@ -669,9 +671,41 @@ enum AffiliateStatus {
   DISABLED
 }
 
+enum AffiliateLevel {
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+}
+
 enum AffiliateLinkType {
   STORE
   PRODUCT
+  COLLECTION
+}
+
+enum CollectionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CampaignChannel {
+  WHATSAPP
+  STATUS
+  TIKTOK
+  FACEBOOK
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum AffiliateAssetStatus {
+  PROCESSING
+  READY
+  FAILED
 }
 
 enum CommissionStatus {
@@ -761,6 +795,7 @@ model Order {
   currency             OrderCurrency         @default(KES)
   affiliateId          String?
   affiliateSource      String?
+  affiliatePlacement   String?
   affiliateCampaign    String?
   customer             Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
   affiliate            Affiliate?            @relation("OrderAffiliate", fields: [affiliateId], references: [id], onDelete: SetNull)
@@ -1020,10 +1055,13 @@ model Affiliate {
   id                String                 @id @default(uuid())
   customerId        String?                @unique
   affiliateCode     String                 @unique
+  slug              String                 @unique
   displayName       String
+  bio               String?
   phone             String?
   email             String?
   status            AffiliateStatus        @default(ACTIVE)
+  level             AffiliateLevel         @default(LEVEL_1)
   commissionRateBps Int?
   disabledAt        DateTime?
   customer          Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -1032,6 +1070,11 @@ model Affiliate {
   attributions      AffiliateAttribution[]
   orders            Order[]                @relation("OrderAffiliate")
   commissions       Commission[]
+  collections       Collection[]
+  campaigns         Campaign[]
+  shareCards        ShareCard[]
+  statusPacks       StatusPack[]
+  tiktokVideos      TikTokVideo[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
@@ -1046,19 +1089,23 @@ model AffiliateLink {
   linkCode    String            @unique
   type        AffiliateLinkType @default(STORE)
   productId   String?
+  collectionId String?
   landingPath String
   source      String?
+  placement   String?
   campaign    String?
   active      Boolean           @default(true)
   affiliate   Affiliate         @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
   product     Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  collection  Collection?       @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   clicks      AffiliateClick[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
   @@index([affiliateId, type, createdAt])
   @@index([productId])
-  @@index([source, campaign])
+  @@index([collectionId])
+  @@index([source, placement, campaign])
 }
 
 model AffiliateClick {
@@ -1066,9 +1113,11 @@ model AffiliateClick {
   affiliateId     String
   affiliateLinkId String?
   productId       String?
+  collectionId    String?
   customerId      String?
   sessionId       String?
   source          String?
+  placement       String?
   campaign        String?
   landingPath     String
   referrer        String?
@@ -1079,13 +1128,15 @@ model AffiliateClick {
   affiliate       Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
   affiliateLink   AffiliateLink?        @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
   product         Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  collection      Collection?           @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   customer        Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
   attribution     AffiliateAttribution?
 
   @@index([affiliateId, clickedAt])
   @@index([customerId, clickedAt])
   @@index([sessionId, clickedAt])
-  @@index([source, campaign])
+  @@index([collectionId, clickedAt])
+  @@index([source, placement, campaign])
 }
 
 model AffiliateAttribution {
@@ -1095,6 +1146,7 @@ model AffiliateAttribution {
   customerId       String
   orderId          String?         @unique
   source           String?
+  placement        String?
   campaign         String?
   attributedAt     DateTime        @default(now())
   expiresAt        DateTime
@@ -1106,6 +1158,126 @@ model AffiliateAttribution {
 
   @@index([affiliateId, attributedAt])
   @@index([customerId, expiresAt])
+}
+
+model Collection {
+  id           String           @id @default(uuid())
+  affiliateId  String
+  title        String
+  slug         String           @unique
+  coverImage   String?
+  description  String?
+  status       CollectionStatus @default(DRAFT)
+  affiliate    Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  items        CollectionItem[]
+  campaigns    Campaign[]
+  links        AffiliateLink[]
+  clicks       AffiliateClick[]
+  statusPacks  StatusPack[]
+  tiktokVideos TikTokVideo[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([affiliateId, status, updatedAt])
+}
+
+model CollectionItem {
+  collectionId String
+  productId    String
+  sortOrder    Int        @default(0)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([collectionId, productId])
+  @@index([productId])
+  @@index([collectionId, sortOrder])
+}
+
+model Campaign {
+  id            String          @id @default(uuid())
+  affiliateId   String
+  collectionId  String?
+  title         String
+  slug          String
+  channel       CampaignChannel
+  source        String
+  placement     String
+  status        CampaignStatus  @default(DRAFT)
+  affiliate     Affiliate       @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection    Collection?     @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  shareCards    ShareCard[]
+  statusPacks   StatusPack[]
+  tiktokVideos  TikTokVideo[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([affiliateId, slug])
+  @@index([affiliateId, status, createdAt])
+  @@index([collectionId])
+}
+
+model ShareCard {
+  id               String               @id @default(uuid())
+  affiliateId      String
+  productId        String
+  campaignId       String?
+  affiliateLink    String
+  storageObjectKey String?
+  publicUrl         String?
+  width             Int                  @default(1200)
+  height            Int                  @default(630)
+  status            AffiliateAssetStatus @default(PROCESSING)
+  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  product           Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([affiliateId, createdAt])
+  @@index([productId, createdAt])
+}
+
+model StatusPack {
+  id               String               @id @default(uuid())
+  affiliateId      String
+  collectionId     String
+  campaignId       String?
+  itemCount        Int
+  pageCount        Int
+  affiliateLink    String
+  storageObjectKey String?
+  publicUrl         String?
+  status            AffiliateAssetStatus @default(PROCESSING)
+  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection        Collection           @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([affiliateId, createdAt])
+  @@index([collectionId, createdAt])
+}
+
+model TikTokVideo {
+  id               String               @id @default(uuid())
+  affiliateId      String
+  collectionId     String
+  campaignId       String?
+  durationSeconds  Int                  @default(12)
+  affiliateLink    String
+  storageObjectKey String?
+  publicUrl         String?
+  status            AffiliateAssetStatus @default(PROCESSING)
+  errorMessage     String?
+  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection        Collection           @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([affiliateId, createdAt])
+  @@index([collectionId, createdAt])
 }
 
 model Commission {

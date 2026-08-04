@@ -8,6 +8,7 @@ __pycache__/
 .next/
 dist/
 build/
+apps/storefront/public/remotion-bundle/
 coverage/
 out/
 *.tsbuildinfo
