@@ -1,4 +1,5 @@
 export type CheckoutPaymentStatus = string | null | undefined;
+export type CheckoutPaymentTone = "pending" | "success" | "failed" | "expired" | "review";
 
 const retryableStatuses = new Set(["FAILED", "CANCELLED", "TIMEOUT"]);
 const failedStatuses = new Set(["FAILED", "CANCELLED", "TIMEOUT", "EXPIRED", "MANUAL_REVIEW"]);
@@ -13,6 +14,18 @@ export function paymentFailed(paymentStatus: CheckoutPaymentStatus): boolean {
 
 export function canRetryPayment(paymentStatus: CheckoutPaymentStatus, secondsRemaining: number): boolean {
   return secondsRemaining > 0 && retryableStatuses.has(paymentStatus ?? "");
+}
+
+export function paymentTone(input: {
+  orderStatus?: CheckoutPaymentStatus;
+  paymentStatus?: CheckoutPaymentStatus;
+  paymentLoading: boolean;
+}): CheckoutPaymentTone {
+  if (paymentSucceeded(input.orderStatus, input.paymentStatus)) return "success";
+  if (input.paymentStatus === "MANUAL_REVIEW") return "review";
+  if (input.paymentStatus === "EXPIRED") return "expired";
+  if (paymentFailed(input.paymentStatus)) return "failed";
+  return "pending";
 }
 
 export function paymentHeading(input: {

@@ -1,7 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Clock3, CreditCard, MapPin, Navigation, PackageCheck, RefreshCw, Smartphone, Truck } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Clock3,
+  CreditCard,
+  MapPin,
+  MessageCircle,
+  Navigation,
+  PackageCheck,
+  ReceiptText,
+  RefreshCw,
+  Smartphone,
+  Truck
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { KIKUYU_DELIVERY_FEE_KSH } from "@online-saler/business-rules";
@@ -23,7 +37,7 @@ import {
 } from "../storefront-cart";
 import type { CartValidationResponse, ValidatedCartItem } from "../../cart/cart-validation-types";
 import { moneyKsh } from "../storefront-products";
-import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded } from "../../payments/payment-ui";
+import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded, paymentTone } from "../../payments/payment-ui";
 
 type CheckoutState = "loading" | "empty" | "ready" | "error";
 type Reservation = {
@@ -540,41 +554,88 @@ function PaymentPanel({
   timerLabel: string;
 }) {
   const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
+  const tone = paymentTone({
+    orderStatus: payment?.orderStatus,
+    paymentStatus,
+    paymentLoading
+  });
+  const timerDisplay = isPaymentSucceeded ? "Paid" : secondsRemaining > 0 ? timerLabel : "Expired";
+  const timerCopy = isPaymentSucceeded
+    ? "payment confirmed"
+    : secondsRemaining > 0
+      ? "remaining to complete payment"
+      : "stock has been released";
+  const paymentIcon = tone === "success"
+    ? <CheckCircle2 size={22} />
+    : tone === "failed" || tone === "expired"
+      ? <AlertCircle size={22} />
+      : tone === "review"
+        ? <ReceiptText size={22} />
+        : <Smartphone size={22} />;
   return (
-    <div className="reservationCard" role="status">
+    <div className={`reservationCard ${tone}`} role="status">
       <div className="reservationTimer">
         <div>
-          <strong>{timerLabel}</strong>
-          <span>{secondsRemaining > 0 ? "remaining to complete payment" : "Stock has been released."}</span>
+          <strong>{timerDisplay}</strong>
+          <span>{timerCopy}</span>
         </div>
         <Clock3 size={26} />
       </div>
-      <p>M-Pesa phone: +{reservation.phone}</p>
-      <div className={`paymentStatusCard ${isPaymentSucceeded ? "success" : isPaymentFailed ? "failed" : ""}`}>
-        <b>
-          {paymentHeading({
-            orderStatus: payment?.orderStatus,
-            paymentStatus,
-            paymentLoading
-          })}
-        </b>
-        <span>
-          {paymentBody({
-            orderStatus: payment?.orderStatus,
-            paymentStatus,
-            receiptNumber: payment?.receiptNumber,
-            paymentError,
-            customerMessage: payment?.customerMessage,
-            resultDescription: payment?.resultDescription
-          })}
-        </span>
+
+      <div className="paymentReviewGrid">
+        <div><span>Order</span><strong>{reservation.orderNumber}</strong></div>
+        <div><span>Total</span><strong>{moneyKsh(reservation.totalKsh)}</strong></div>
+        <div><span>M-Pesa phone</span><strong>+{reservation.phone}</strong></div>
       </div>
+
+      <div className={`paymentStatusCard ${tone}`}>
+        <div className="paymentStatusIcon">{paymentIcon}</div>
+        <div>
+          <b>
+            {paymentHeading({
+              orderStatus: payment?.orderStatus,
+              paymentStatus,
+              paymentLoading
+            })}
+          </b>
+          <span>
+            {paymentBody({
+              orderStatus: payment?.orderStatus,
+              paymentStatus,
+              receiptNumber: payment?.receiptNumber,
+              paymentError,
+              customerMessage: payment?.customerMessage,
+              resultDescription: payment?.resultDescription
+            })}
+          </span>
+        </div>
+      </div>
+
+      {!isPaymentSucceeded ? (
+        <div className="mpesaInstructionCard">
+          <Smartphone size={18} />
+          <div>
+            <strong>Check your phone</strong>
+            <span>Safaricom will show a payment prompt. Enter your M-Pesa PIN before the timer expires.</span>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="paymentTimeline" aria-label="Payment progress">
+        <div className="done"><CheckCircle2 size={16} /><span>Stock locked</span></div>
+        <div className={isPaymentSucceeded ? "done" : isPaymentFailed ? "failed" : "current"}>
+          {isPaymentFailed ? <AlertCircle size={16} /> : isPaymentSucceeded ? <CheckCircle2 size={16} /> : <Smartphone size={16} />}
+          <span>M-Pesa confirmation</span>
+        </div>
+        <div className={isPaymentSucceeded ? "current" : "pending"}><MessageCircle size={16} /><span>Staff handoff call</span></div>
+      </div>
+
       {isPaymentSucceeded ? (
         <div className="paymentHandoffNotice">
-          <CheckCircle2 size={18} />
+          <MessageCircle size={18} />
           <div>
-            <strong>Next: customer service confirmation</strong>
-            <span>We will contact +{reservation.phone} by phone or WhatsApp to arrange pickup or local delivery.</span>
+            <strong>Customer service will contact you next</strong>
+            <span>Keep +{reservation.phone} reachable. We will confirm pickup time or Kikuyu local delivery by phone or WhatsApp.</span>
           </div>
         </div>
       ) : null}
@@ -645,9 +706,9 @@ function CheckoutEmpty({ title, body, action }: { title: string; body: string; a
 
 function CheckoutProgress({ stage }: { stage: CheckoutStage }) {
   const steps: Array<{ key: CheckoutStage; label: string }> = [
-    { key: "details", label: "Details" },
+    { key: "details", label: "Review" },
     { key: "payment", label: "M-Pesa" },
-    { key: "complete", label: "Done" }
+    { key: "complete", label: "Confirmed" }
   ];
 
   return (
