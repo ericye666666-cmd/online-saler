@@ -95,10 +95,29 @@ test("renders deterministic standalone SVG without external images or unconfirme
     measurements: { WAIST: 45.5, HIP: 52.5, OUTSEAM: 114.5, INSEAM: 84 }
   });
   assert.match(svg, /data-template-code="PANTS"/);
-  assert.match(svg, />45\.5 cm</);
-  assert.match(svg, />84 cm</);
+  assert.match(svg, />45\.5</);
+  assert.match(svg, />84\.0</);
+  assert.match(svg, /marker-start="url\(#measure-arrow\)" marker-end="url\(#measure-arrow\)"/);
   assert.match(svg, /Some measurements are not available\./);
   assert.doesNotMatch(svg, /Not confirmed|<image|href=/i);
+});
+
+test("embeds an approved diagram asset while keeping table values data-driven", () => {
+  const diagramImageDataUri = "data:image/png;base64,iVBORw0KGgo=";
+  const svg = renderProductDetailMeasurementGuideSvg({
+    template: PRODUCT_DETAIL_MEASUREMENT_TEMPLATES.TOP_SLEEVELESS,
+    title: "Sleeveless top",
+    measurements: { SHOULDER_WIDTH: 34, CHEST_WIDTH: 44, GARMENT_LENGTH: 60 },
+    diagramImageDataUri
+  });
+  assert.match(svg, new RegExp(`href="${diagramImageDataUri}"`));
+  assert.match(svg, /data-measurement-count="3"/);
+  assert.match(svg, /data-row-count="4"/);
+  assert.match(svg, />34\.0</);
+  assert.match(svg, />44\.0</);
+  assert.match(svg, />60\.0</);
+  assert.match(svg, />—</);
+  assert.doesNotMatch(svg, /class="outline"/);
 });
 
 test("injects A-E markers, labels and calibrated values into a sleeveless dress SVG", () => {
@@ -114,18 +133,25 @@ test("injects A-E markers, labels and calibrated values into a sleeveless dress 
     }
   });
   assert.match(svg, /data-template-code="DRESS_SLEEVELESS"/);
-  assert.match(svg, /data-template-version="measurement-guides-v3\.0\.0"/);
+  assert.match(svg, /data-template-version="measurement-guides-v4\.0\.0"/);
   assert.match(svg, /data-measurement-count="5"/);
-  assert.match(svg, /<circle cx="24" cy="0"/);
-  assert.match(svg, /<text x="418" y="7" text-anchor="end" class="value">33\.5 cm</);
+  assert.match(svg, /<circle cx="20" cy="0"/);
+  assert.match(svg, /<text x="420" y="7" text-anchor="end" class="value">33\.5</);
   assert.doesNotMatch(svg, /cx="724"/);
+  assert.match(svg, />MEASUREMENT STUDIO</);
+  assert.match(svg, />SLEEVELESS DRESS</);
+  assert.match(svg, />MEASUREMENT GUIDE</);
+  assert.match(svg, /#e84c35/i);
+  assert.match(svg, /#1f1b18/i);
+  assert.match(svg, /#e5ddd4/i);
+  assert.doesNotMatch(svg, /#2f766d|teal|green/i);
   for (const marker of ["A", "B", "C", "D", "E"]) {
     assert.match(svg, new RegExp(`class="diagram-marker">${marker}<`));
   }
-  for (const label of ["Shoulder width", "Bust width", "Waist width", "Hip width", "Garment length"]) {
+  for (const label of ["Shoulder", "Bust", "Waist", "Hip", "Garment length"]) {
     assert.match(svg, new RegExp(`>${label}<`));
   }
-  for (const value of ["24 cm", "33.5 cm", "29 cm", "45 cm", "107.5 cm"]) {
+  for (const value of ["24.0", "33.5", "29.0", "45.0", "107.5"]) {
     assert.match(svg, new RegExp(`>${value}<`));
   }
   assert.doesNotMatch(svg, /Sleeve length/);
