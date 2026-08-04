@@ -625,7 +625,32 @@ export function ProductBatchCalibrationPage({
       if (next >= 0) setCurrentIndex(next);
       else if (firstPending >= 0) setCurrentIndex(firstPending);
       else setCurrentIndex(Math.min(currentIndex, updated.products.length - 1));
-      setNotice(firstPending >= 0 || next >= 0 ? "已保存，进入下一件。" : `本批 ${updated.targetCount} 件已全部校准。`);
+      if (firstPending >= 0 || next >= 0) {
+        setNotice("已确认，进入下一件。");
+      } else {
+        setBusy("finalize");
+        setNotice(`本批 ${updated.targetCount} 件已确认，正在自动生成销售详情与 Barcode。`);
+        const [detailResult, barcodeResult] = await Promise.allSettled([
+          request(`/operations/product-batches/${batchId}/detail-generation/run`, {
+            method: "POST",
+            headers: { "X-Admin-User-Id": ids.adminUserId },
+            body: JSON.stringify({}),
+            keepalive: true
+          }),
+          request(`/operations/product-batches/${batchId}/generate-barcodes`, {
+            method: "POST",
+            body: JSON.stringify(ids)
+          })
+        ]);
+        if (barcodeResult.status === "rejected") throw barcodeResult.reason;
+        if (detailResult.status === "rejected") {
+          sessionStorage.setItem(
+            `product-factory-notice:${batchId}`,
+            "Barcode 已生成；个别销售详情生成失败，可在异常确认阶段重试，不会重复生成旧资产。"
+          );
+        }
+        router.push(`/product/barcode?batchId=${encodeURIComponent(batchId)}`);
+      }
     } catch (caught) {
       setError(errorMessage(caught, "无法保存校准。"));
     } finally {
@@ -814,6 +839,7 @@ export function ProductBatchCalibrationPage({
   }
 
   const allComplete = completedCount === batch.targetCount;
+  const finalPendingItem = !readOnly && completedCount === batch.targetCount - 1;
 
   return (
     <div className="flex min-w-0 flex-col gap-4 pb-20 lg:pb-6">
@@ -822,7 +848,7 @@ export function ProductBatchCalibrationPage({
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             <ArrowLeftIcon className="size-3" />返回批次
           </Link>
-          <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 人工校准</h1>
+          <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：异常确认并发布</h1>
           <p className="mt-1 text-sm text-muted-foreground">第 {currentIndex + 1}/{batch.targetCount} 件 · 已完成 {completedCount}/{batch.targetCount} · {productStatusLabel(product.status)}</p>
         </div>
         <div className="flex gap-2">
@@ -837,8 +863,8 @@ export function ProductBatchCalibrationPage({
 
       {allComplete ? (
         <div className="flex flex-col gap-3 rounded-md border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 {batch.targetCount} 件已完成人工校准</span>
-          <Button asChild><Link href={`/product/batches/${encodeURIComponent(batch.id)}`}>完成本批校准<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 {batch.targetCount} 件已完成最终确认</span>
+          <Button asChild><Link href={`/product/barcode?batchId=${encodeURIComponent(batch.id)}`}>继续打印和发布<ArrowRightIcon data-icon="inline-end" /></Link></Button>
         </div>
       ) : null}
 
@@ -847,14 +873,9 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">原图永久保留；本步骤只确认抠图、白底结果与商品事实。AI 陈列图和最终商城主图统一在详情生成阶段处理。</p>
+              <p className="text-xs text-muted-foreground">原图永久保留；AI 陈列图已按默认风格生成并选为候选主图。这里只核对商品事实与异常，不再要求员工选择风格。</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("lightweight")}><RefreshCwIcon data-icon="inline-start" />重跑 lightweight</Button>
-              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("rembg_birefnet")}><WandSparklesIcon data-icon="inline-start" />强制 BiRefNet</Button>
-              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutTransparent?.imageId} onClick={() => void rerunBalancedMain()}><RefreshCwIcon data-icon="inline-start" />重做均整版</Button>
-              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.publicUrl} onClick={() => setManualEditorOpen(true)}><ScissorsIcon data-icon="inline-start" />手动抠图</Button>
-            </div>
+            {cutoutWarning ? <Badge variant="destructive">需要图片异常处理</Badge> : <Badge variant="secondary">自动图片处理通过</Badge>}
           </div>
 
           {cutoutWarning ? (
@@ -994,8 +1015,8 @@ export function ProductBatchCalibrationPage({
               imageUrl={measurementGuideImage(imageTabs)}
               manualLines={manualMeasurementLines}
               aiLines={aiMeasurement.lines}
-              onManualCalibrate={measurementAction ? () => void openManualMeasurementCalibration() : undefined}
-              manualCalibrateLabel={measurementAction === "REOPEN" ? "重新编辑测量线" : "手动定位尺寸"}
+              onManualCalibrate={measurementAction && manualMeasurementLines.length > 0 ? () => void openManualMeasurementCalibration() : undefined}
+              manualCalibrateLabel="修正已有测量线"
               manualCalibrateDisabled={Boolean(busy)}
               measurements={measurementSuggestions.map((item) => ({
                 key: item.key,
@@ -1006,7 +1027,7 @@ export function ProductBatchCalibrationPage({
             />
             {!hasAiMeasurements && !readOnly ? (
               <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                这件商品的旧 AI 结果没有测量值。请点击“重新 AI 识别与测量”，再由员工对照测量板确认。
+                AI 没有给出可靠厘米值。请直接用软尺实测并填写下方字段；系统不会再要求点击定位板或按像素估算距离。
               </div>
             ) : null}
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1063,14 +1084,14 @@ export function ProductBatchCalibrationPage({
                 ? "还差：修正抠图或标记重拍"
                 : validationIssues.length
                 ? `还差：${[...new Set(validationIssues.map((issue) => issue.label))].join("、")}`
-                : "必填信息已完整，可以保存并进入下一件。"}
+                : finalPendingItem ? "最后一件确认后，系统将自动生成详情与 Barcode。" : "必填信息已完整，可以确认并进入下一件。"}
             </p>
           ) : <span />}
           <div className="grid grid-cols-3 gap-2 lg:flex">
             <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />保存草稿</Button>
             <Button disabled={Boolean(busy) || readOnly || Boolean(cutoutWarning)} onClick={() => void saveAndNext()}>
-              {busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
-              {readOnly ? "本件已校准" : "保存并下一件"}
+              {busy === "save" || busy === "finalize" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
+              {readOnly ? "本件已确认" : finalPendingItem ? "确认本件并自动生成" : "确认并下一件"}
             </Button>
             <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={() => void markRetake()}><RotateCcwIcon data-icon="inline-start" />标记重拍</Button>
           </div>

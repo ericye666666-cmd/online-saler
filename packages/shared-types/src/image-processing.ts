@@ -108,6 +108,7 @@ export interface ProductImageComparisonResponse {
 
 export interface SelectProductMainImageRequest {
   imageId: string;
+  humanConfirmed?: boolean;
 }
 
 export function isProductImageVariant(value: string): value is ProductImageVariant {

@@ -103,8 +103,13 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
   }, [batchId, ids.adminUserId]);
 
   useEffect(() => {
+    const carriedNotice = sessionStorage.getItem(`product-factory-notice:${batchId}`);
+    if (carriedNotice) {
+      sessionStorage.removeItem(`product-factory-notice:${batchId}`);
+      setNotice(carriedNotice);
+    }
     void load().catch((caught) => setError(errorMessage(caught, "无法读取 Barcode 工位。")));
-  }, [load]);
+  }, [batchId, load]);
 
   async function generateBarcodes() {
     if (!batch) return;
@@ -117,7 +122,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
         body: JSON.stringify(ids)
       });
       await load();
-      setNotice("本批 10 个 Barcode 已生成并与商品固定绑定。");
+      setNotice(`本批 ${batch.targetCount} 个 Barcode 已生成并与商品固定绑定。`);
     } catch (caught) {
       setError(errorMessage(caught, "无法生成 Barcode。"));
     } finally {
@@ -195,7 +200,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-3" />返回批次</Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · Barcode 与标签</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：打印、确认与发布</h1>
           <p className="mt-1 text-sm text-muted-foreground">已生成 {barcodeCount}/{batch.targetCount} · 已打印 {printedCount}/{batch.targetCount}</p>
         </div>
         {readyForReview ? <Button asChild><Link href={`/product/review?batchId=${encodeURIComponent(batch.id)}`}>进入商品审核<ArrowRightIcon data-icon="inline-end" /></Link></Button> : null}
@@ -210,11 +215,11 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
 
       {barcodeCount < batch.targetCount ? (
         <section className="rounded-md border p-4">
-          <h2 className="font-semibold">1. 生成本批 Barcode</h2>
+          <h2 className="font-semibold">Barcode 自动生成补救</h2>
           <p className="mt-1 text-sm text-muted-foreground">只有本批 {batch.targetCount} 件全部完成人工校准后才允许生成。生成后每个码永久绑定一件商品。</p>
           <Button className="mt-4" disabled={Boolean(busy) || !allCalibrated} onClick={() => void generateBarcodes()}>
             {busy === "generate" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <BarcodeIcon data-icon="inline-start" />}
-            生成 {batch.targetCount} 个 Barcode
+            补生成 {batch.targetCount} 个 Barcode
           </Button>
           {!allCalibrated ? <p className="mt-2 text-xs text-destructive">尚有商品未完成人工校准，暂不能生成。</p> : null}
         </section>
@@ -224,7 +229,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
         <>
           <section className="flex flex-col gap-3 rounded-md border p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="font-semibold">2. 打印并按顺序贴码</h2>
+              <h2 className="font-semibold">打印并按顺序贴码</h2>
               <p className="mt-1 text-sm text-muted-foreground">模板 {DEFAULT_LABEL_SIZE} mm · Deli DL-720C · 批次号、序号、短标题与 Barcode 同时打印。</p>
             </div>
             <div className="flex flex-wrap gap-2">

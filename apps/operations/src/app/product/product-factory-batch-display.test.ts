@@ -1,14 +1,27 @@
 import assert from "node:assert/strict";
 import {
   PRODUCT_FACTORY_STAGE_ORDER,
+  PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER,
   batchFollowingStageLabel,
   batchNextActionHref,
   batchProductCalibrationHref,
   manualMeasurementAction,
+  productFactoryWorkflowStage,
+  productFactoryWorkflowStageIndex,
   resolveCalibrationProductIndex
 } from "./product-factory-batch-display";
 
 assert.equal(PRODUCT_FACTORY_STAGE_ORDER.length, 8);
+assert.equal(PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER.length, 3);
+assert.equal(productFactoryWorkflowStage("UPLOAD"), "CAPTURE");
+assert.equal(productFactoryWorkflowStage("AI_IMAGE"), "AUTOMATION");
+assert.equal(productFactoryWorkflowStage("CALIBRATION"), "CONFIRM_AND_PUBLISH");
+assert.equal(productFactoryWorkflowStage("PUBLISH"), "CONFIRM_AND_PUBLISH");
+assert.equal(productFactoryWorkflowStage("COMPLETE"), "COMPLETE");
+assert.equal(productFactoryWorkflowStageIndex("UPLOAD"), 0);
+assert.equal(productFactoryWorkflowStageIndex("AI_IMAGE"), 1);
+assert.equal(productFactoryWorkflowStageIndex("REVIEW"), 2);
+assert.equal(productFactoryWorkflowStageIndex("COMPLETE"), 3);
 assert.equal(batchNextActionHref("batch/1", "CONTINUE_UPLOAD"), "/product/batches/batch%2F1/upload");
 assert.equal(batchNextActionHref("batch/1", "START_AI_IMAGE"), "/product/batches/batch%2F1/processing");
 assert.equal(batchNextActionHref("batch-1", "CONTINUE_CALIBRATION"), "/product/calibration?batchId=batch-1");

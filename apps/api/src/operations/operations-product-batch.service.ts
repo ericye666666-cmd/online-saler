@@ -23,6 +23,7 @@ import {
 } from "./product-factory-batch-size";
 import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
 import { buildProductBatchImagePreviews } from "./product-batch-image-preview";
+import { requiresAiMainImageConfirmation } from "./product-review-main-image";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -462,6 +463,15 @@ export class OperationsProductBatchService {
     if (!product) throw new NotFoundException("Product not found.");
     if ((product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING) && !product.labelPrintedAt) {
       throw new BadRequestException("Print the label before reviewing the product.");
+    }
+    if (result === ReviewResult.APPROVED) {
+      const mainSelection = await prisma.productMainImageSelection.findUnique({
+        where: { productId },
+        select: { variant: true, confirmedAt: true }
+      });
+      if (requiresAiMainImageConfirmation(mainSelection)) {
+        throw new BadRequestException("Confirm the AI display main image against the original before approving the product.");
+      }
     }
 
     const actor = { actorType: ActorType.EMPLOYEE, actorId: employeeId, sourceApp: SourceApp.OPERATIONS };

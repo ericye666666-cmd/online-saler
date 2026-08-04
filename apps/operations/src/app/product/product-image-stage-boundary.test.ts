@@ -10,6 +10,14 @@ const detailSource = readFileSync(
   join(process.cwd(), "src/app/product/product-detail-generation-client.tsx"),
   "utf8"
 );
+const executionSource = readFileSync(
+  join(process.cwd(), "src/app/product/product-batch-execution-client.tsx"),
+  "utf8"
+);
+const reviewSource = readFileSync(
+  join(process.cwd(), "src/app/product/product-batch-review-client.tsx"),
+  "utf8"
+);
 
 assert.equal(
   calibrationSource.includes('operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
@@ -24,6 +32,18 @@ assert.equal(
 assert.ok(
   detailSource.includes('operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
   "Detail generation must create AI display main-image candidates."
+);
+assert.ok(
+  executionSource.includes('"GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
+  "Batch automation must generate the AI display main image without a separate style-selection step."
+);
+assert.ok(
+  executionSource.includes("humanConfirmed: false"),
+  "Automatic AI display selection must remain unconfirmed until human review."
+);
+assert.ok(
+  reviewSource.includes("humanConfirmed: true"),
+  "Final review must explicitly confirm the generated main image."
 );
 assert.equal(
   detailSource.includes("MODEL_DISPLAY"),
