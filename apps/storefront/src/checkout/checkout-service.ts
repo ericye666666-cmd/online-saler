@@ -6,7 +6,8 @@ import {
   OrderStatus,
   PaymentStatus,
   ProductStatus,
-  prisma
+  prisma,
+  releaseExpiredReservations as releaseExpiredReservationsFromDatabase
 } from "@online-saler/database";
 import {
   KIKUYU_DELIVERY_FEE_KSH,
@@ -53,6 +54,8 @@ export async function startCheckout(input: StartCheckoutInput) {
   if (input.fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY && !deliveryAddress) {
     throw new CheckoutValidationError("Delivery address is required for local delivery.");
   }
+
+  await releaseExpiredReservations();
 
   return prisma.$transaction(async (tx) => {
     const now = new Date();
@@ -294,37 +297,86 @@ function sameProductSet(left: string[], right: string[]): boolean {
 }
 
 export async function releaseExpiredReservations(now = new Date()) {
+  return releaseExpiredReservationsFromDatabase(now);
+}
+
+export async function releaseCustomerCheckoutReservations(customerId: string, productIds: string[]) {
+  const requestedProductIds = normalizeProductIds(productIds);
+  if (!requestedProductIds.length) {
+    throw new CheckoutValidationError("Choose at least one reserved item to release.");
+  }
+
+  await releaseExpiredReservations();
+  const products = await prisma.product.findMany({
+    where: {
+      OR: [
+        { id: { in: requestedProductIds } },
+        { productCode: { in: requestedProductIds } },
+        { barcode: { in: requestedProductIds } }
+      ]
+    },
+    select: { id: true }
+  });
+  const resolvedProductIds = products.map((product) => product.id);
+  if (!resolvedProductIds.length) return { cancelledOrders: 0, releasedItems: 0 };
+
   const drafts = await prisma.checkoutDraft.findMany({
-    where: { status: CheckoutDraftStatus.ACTIVE, expiresAt: { lte: now } },
-    include: { convertedOrder: { include: { items: true } } },
-    take: 100
+    where: {
+      customerId,
+      status: CheckoutDraftStatus.ACTIVE,
+      convertedOrder: {
+        is: {
+          status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] },
+          items: {
+            some: {
+              productId: { in: resolvedProductIds }
+            }
+          }
+        }
+      }
+    },
+    include: { convertedOrder: { include: { items: true, payments: true } } },
+    take: 10
   });
 
-  let released = 0;
+  let releasedItems = 0;
+  let cancelledOrders = 0;
   for (const draft of drafts) {
-    await prisma.$transaction(async (tx) => {
-      const expired = await tx.checkoutDraft.updateMany({
-        where: { id: draft.id, status: CheckoutDraftStatus.ACTIVE },
-        data: { status: CheckoutDraftStatus.EXPIRED }
-      });
-      if (expired.count !== 1 || !draft.convertedOrder) return;
+    const order = draft.convertedOrder;
+    if (!order) continue;
+    if (order.payments.some((payment) => payment.status === PaymentStatus.SUCCESS)) continue;
 
-      await tx.order.updateMany({
-        where: { id: draft.convertedOrder.id, status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] } },
-        data: { status: OrderStatus.EXPIRED }
+    await prisma.$transaction(async (tx) => {
+      const abandoned = await tx.checkoutDraft.updateMany({
+        where: { id: draft.id, customerId, status: CheckoutDraftStatus.ACTIVE },
+        data: { status: CheckoutDraftStatus.ABANDONED }
       });
+      if (abandoned.count !== 1) return;
+
+      const cancelled = await tx.order.updateMany({
+        where: { id: order.id, status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] } },
+        data: { status: OrderStatus.CANCELLED }
+      });
+      cancelledOrders += cancelled.count;
+
       await tx.payment.updateMany({
-        where: { orderId: draft.convertedOrder.id, status: PaymentStatus.PENDING },
-        data: { status: PaymentStatus.EXPIRED, completedAt: now }
+        where: { orderId: order.id, status: PaymentStatus.PENDING },
+        data: {
+          status: PaymentStatus.CANCELLED,
+          providerResultDescription: "Customer released unpaid payment reservation.",
+          completedAt: new Date()
+        }
       });
-      for (const item of draft.convertedOrder.items) {
-        const result = await tx.inventoryItem.updateMany({
+
+      for (const item of order.items) {
+        const released = await tx.inventoryItem.updateMany({
           where: { productId: item.productId, status: InventoryItemStatus.RESERVED },
           data: { status: InventoryItemStatus.AVAILABLE }
         });
-        released += result.count;
+        releasedItems += released.count;
       }
     });
   }
-  return { expiredDrafts: drafts.length, releasedItems: released };
+
+  return { cancelledOrders, releasedItems };
 }

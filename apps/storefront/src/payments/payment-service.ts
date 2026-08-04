@@ -5,7 +5,8 @@ import {
   OrderStatus,
   PaymentStatus,
   Prisma,
-  prisma
+  prisma,
+  releaseExpiredReservations
 } from "@online-saler/database";
 import { RESERVATION_MINUTES } from "@online-saler/business-rules";
 import {
@@ -89,6 +90,8 @@ export async function initiateMpesaPayment(
   customerId: string,
   client = new MpesaClient(mpesaConfigFromEnv())
 ): Promise<InitiatePaymentResult> {
+  await releaseExpiredReservations();
+
   const order = await prisma.order.findFirst({
     where: { id: orderId, customerId },
     include: {
@@ -174,6 +177,8 @@ export async function initiateMpesaPayment(
 }
 
 export async function getPaymentStatus(orderId: string, customerId: string): Promise<PaymentStatusResult> {
+  await releaseExpiredReservations();
+
   const order = await prisma.order.findFirst({
     where: { id: orderId, customerId },
     include: {

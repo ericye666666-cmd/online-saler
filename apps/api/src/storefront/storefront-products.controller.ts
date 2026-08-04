@@ -6,7 +6,8 @@ import {
   ProductDetailStatus,
   ProductGender,
   ProductStatus,
-  prisma
+  prisma,
+  releaseExpiredReservations
 } from "@online-saler/database";
 
 type ProductListQuery = {
@@ -24,6 +25,8 @@ type ProductListQuery = {
 export class StorefrontProductsController {
   @Get()
   async list(@Query() query: ProductListQuery) {
+    await releaseExpiredReservations();
+
     const products = await prisma.product.findMany({
       where: productWhere(query),
       include: productInclude(),
@@ -36,6 +39,8 @@ export class StorefrontProductsController {
 
   @Get("filters")
   async filters() {
+    await releaseExpiredReservations();
+
     const products = await prisma.product.findMany({
       where: basePublicWhere(),
       select: {
@@ -68,6 +73,8 @@ export class StorefrontProductsController {
 
   @Get(":id")
   async detail(@Param("id") id: string) {
+    await releaseExpiredReservations();
+
     const product = await prisma.product.findFirst({
       where: {
         ...basePublicWhere(),
