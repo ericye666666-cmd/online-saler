@@ -283,7 +283,6 @@ try {
   const employee = await prisma.employee.upsert({
     where: { employeeCode: linkedEmployee.employeeCode },
     update: {
-      slug: "staging-affiliate",
       name: linkedEmployee.name,
       status: linkedEmployee.status
     },
@@ -341,6 +340,7 @@ try {
   const affiliate = await prisma.affiliate.upsert({
     where: { affiliateCode: "DL-AFF-001" },
     update: {
+      slug: "staging-affiliate",
       displayName: "Staging Affiliate",
       phone: "+254700000046",
       email: "affiliate@online-saler.local",
