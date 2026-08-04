@@ -326,11 +326,11 @@ export function CheckoutPageClient() {
       <div className="checkoutHero">
         <div>
           <span className="checkoutKicker">Checkout</span>
-          <h1>{reservation ? "Complete payment" : "Review and pay"}</h1>
+          <h1>{reservation ? "Complete payment" : "Secure your pieces"}</h1>
           <p className="checkoutLead">
             {reservation
-              ? `Order ${reservation.orderNumber} is reserved for payment.`
-              : "Stock is locked only when you press Pay with M-Pesa."}
+              ? `Order ${reservation.orderNumber} is reserved while you complete M-Pesa. Customer service confirms the handoff after payment.`
+              : "We lock your one-off items only when M-Pesa starts. After payment, customer service confirms pickup or local delivery by phone."}
           </p>
         </div>
         <CheckoutProgress stage={currentStage} />
@@ -339,7 +339,7 @@ export function CheckoutPageClient() {
       <div className="commerceCheckoutGrid">
         <div className="checkoutStack">
           <section className="checkoutPanel">
-            <h2>{reservation ? "M-Pesa request" : "Delivery and customer details"}</h2>
+            <h2>{reservation ? "M-Pesa request" : "Contact and handoff details"}</h2>
 
             {reservation ? (
               <PaymentPanel
@@ -358,12 +358,29 @@ export function CheckoutPageClient() {
               />
             ) : (
               <form className="checkoutForm" onSubmit={submitCheckout}>
+                <div className="checkoutServiceStrip" aria-label="Checkout handoff steps">
+                  <div>
+                    <span>01</span>
+                    <strong>M-Pesa phone</strong>
+                    <p>We send the payment prompt to this number.</p>
+                  </div>
+                  <div>
+                    <span>02</span>
+                    <strong>Choose handoff</strong>
+                    <p>Pickup is free. Kikuyu delivery is {moneyKsh(KIKUYU_DELIVERY_FEE_KSH)}.</p>
+                  </div>
+                  <div>
+                    <span>03</span>
+                    <strong>Staff confirms</strong>
+                    <p>After payment, our team calls or WhatsApps you.</p>
+                  </div>
+                </div>
                 <CheckoutItemsPreview items={validation.items} />
                 {unavailableItems.length ? (
                   <p className="checkoutError" role="alert">Some cart items cannot be paid for. Return to cart to remove them before payment.</p>
                 ) : null}
                 <label className="checkoutField">
-                  <span>M-Pesa phone</span>
+                  <span>M-Pesa phone for payment and handoff</span>
                   <input
                     autoComplete="tel"
                     inputMode="tel"
@@ -373,6 +390,7 @@ export function CheckoutPageClient() {
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                   />
+                  <small>The M-Pesa prompt is sent here, and customer service uses the same number to confirm pickup or delivery.</small>
                 </label>
 
                 <div className="commerceOptionGrid" role="radiogroup" aria-label="Fulfillment">
@@ -388,7 +406,7 @@ export function CheckoutPageClient() {
                     <div>
                       <span>Free</span>
                       <strong>Kikuyu pickup</strong>
-                      <p>Collect from the Kikuyu warehouse after payment is confirmed.</p>
+                      <p>Our team prepares the order and confirms the pickup time after payment.</p>
                     </div>
                   </label>
                   <label className={`commerceOption ${fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "selected" : ""}`}>
@@ -403,7 +421,7 @@ export function CheckoutPageClient() {
                     <div>
                       <span>{moneyKsh(KIKUYU_DELIVERY_FEE_KSH)}</span>
                       <strong>Kikuyu local delivery</strong>
-                      <p>Use address search or type a landmark manually.</p>
+                      <p>Share an estate, road, shop, gate, or landmark. We confirm the exact spot by phone.</p>
                     </div>
                   </label>
                 </div>
@@ -417,14 +435,22 @@ export function CheckoutPageClient() {
                 ) : null}
 
                 <label className="checkoutField">
-                  <span>{fulfillment === "PICKUP" ? "Pickup note" : "Delivery note"}</span>
+                  <span>{fulfillment === "PICKUP" ? "Pickup note for customer service" : "Delivery note for customer service"}</span>
                   <textarea
                     name="deliveryNote"
-                    placeholder="Optional note for the team"
+                    placeholder="Preferred time, nearby shop, gate colour, WhatsApp note, or anything the team should know"
                     value={deliveryNote}
                     onChange={(event) => setDeliveryNote(event.target.value)}
                   />
                 </label>
+
+                <div className="checkoutSupportNotice">
+                  <Smartphone size={17} />
+                  <div>
+                    <strong>Customer service arranges the final handoff</strong>
+                    <p>Keep your phone reachable after payment. We will confirm pickup or local delivery before the order moves out.</p>
+                  </div>
+                </div>
 
                 {error ? <p className="checkoutError" role="alert">{error}</p> : null}
                 <button className="commercePrimaryButton full" type="submit" disabled={submitting || !checkoutableItems.length || Boolean(unavailableItems.length)}>
@@ -445,7 +471,7 @@ export function CheckoutPageClient() {
             </div>
             <div className="commerceFeature">
               <MapPin size={18} />
-              <div><strong>Kikuyu only</strong><span>Pickup is free. Local delivery is KSh 50.</span></div>
+              <div><strong>Customer service handoff</strong><span>Pickup or local delivery is confirmed by staff after payment.</span></div>
             </div>
           </section>
         </div>
@@ -458,7 +484,12 @@ export function CheckoutPageClient() {
             <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{moneyKsh(deliveryFee)}</strong></div>
             <div className="commerceSummaryRow total"><span>Total</span><strong>{moneyKsh(total)}</strong></div>
           </div>
+          <div className="checkoutSummaryHandoff">
+            <strong>After payment</strong>
+            <span>Customer service will call or WhatsApp you to confirm the pickup time or local delivery landmark.</span>
+          </div>
           <p className="commerceSummaryLine"><CreditCard size={16} /> M-Pesa request is sent to your phone after stock is locked.</p>
+          <p className="commerceSummaryLine"><Smartphone size={16} /> Keep the same phone reachable for handoff confirmation.</p>
           <p className="commerceSummaryLine"><Clock3 size={16} /> If payment fails or expires, every locked item is released.</p>
         </aside>
       </div>
@@ -534,6 +565,15 @@ function PaymentPanel({
           })}
         </span>
       </div>
+      {isPaymentSucceeded ? (
+        <div className="paymentHandoffNotice">
+          <CheckCircle2 size={18} />
+          <div>
+            <strong>Next: customer service confirmation</strong>
+            <span>We will contact +{reservation.phone} by phone or WhatsApp to arrange pickup or local delivery.</span>
+          </div>
+        </div>
+      ) : null}
       <div className="checkoutPaymentActions">
         <button className="commerceSecondaryButton" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
           <RefreshCw size={16} /> {refreshingPayment ? "Refreshing..." : "Refresh status"}
@@ -699,13 +739,13 @@ function GoogleAddressField({
   return (
     <div className="deliveryAddressBox">
       <label className="checkoutField">
-        <span>Delivery address</span>
+        <span>Delivery landmark or address</span>
         <input
           ref={inputRef}
           autoComplete="street-address"
           disabled={disabled}
           name="deliveryAddress"
-          placeholder="Search Kikuyu estate, road or landmark"
+          placeholder="Estate, road, shop, gate, or nearby landmark in Kikuyu"
           required
           value={value}
           onChange={(event) => {
@@ -718,10 +758,10 @@ function GoogleAddressField({
         <Navigation size={16} />
         <span>
           {mapsState === "ready"
-            ? "Google address suggestions are ready. Choose a place or keep typing manually."
+            ? "Google address suggestions are ready. Choose one or keep typing your landmark."
             : mapsState === "loading"
               ? "Loading Google address suggestions..."
-              : "Address suggestions are not configured yet. You can still type the address manually."}
+              : "You can type a landmark manually. Customer service will confirm it after payment."}
         </span>
       </div>
       {placeDetails ? (
@@ -730,7 +770,7 @@ function GoogleAddressField({
           <span>{placeDetails.address}</span>
         </div>
       ) : null}
-      <p className="deliveryMapHint">Delivery is limited to Kikuyu local area. The team will confirm the landmark by phone.</p>
+      <p className="deliveryMapHint">No exact pin is required now. Delivery is limited to Kikuyu local area and arranged by customer service after payment.</p>
     </div>
   );
 }
