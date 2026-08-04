@@ -309,16 +309,20 @@ export function CheckoutPageClient() {
     );
   }
 
+  const hasCheckoutableItems = checkoutableItems.length > 0;
+  const requiresAddress = deliveryRequiresAddress(fulfillment);
   const itemTotal = reservation?.itemSubtotalKsh ?? validation.summary.itemSubtotalKsh;
   const deliveryFee = reservation?.deliveryFeeKsh ?? (fulfillment === "KIKUYU_LOCAL_DELIVERY" ? KIKUYU_DELIVERY_FEE_KSH : 0);
   const total = reservation?.totalKsh ?? itemTotal + deliveryFee;
+  const itemTotalLabel = hasCheckoutableItems ? moneyKsh(itemTotal) : "Not available";
+  const deliveryFeeLabel = requiresAddress ? moneyKsh(deliveryFee) : "Free";
+  const totalLabel = hasCheckoutableItems ? moneyKsh(total) : "Not ready";
   const minutes = Math.floor(secondsRemaining / 60).toString().padStart(2, "0");
   const seconds = (secondsRemaining % 60).toString().padStart(2, "0");
   const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
   const isPaymentSucceeded = paymentSucceeded(payment?.orderStatus, paymentStatus);
   const isPaymentFailed = paymentFailed(paymentStatus);
   const isPaymentRetryable = canRetryPayment(paymentStatus, secondsRemaining);
-  const requiresAddress = deliveryRequiresAddress(fulfillment);
   const currentStage = checkoutStage(Boolean(reservation), isPaymentSucceeded);
 
   return (
@@ -326,11 +330,11 @@ export function CheckoutPageClient() {
       <div className="checkoutHero">
         <div>
           <span className="checkoutKicker">Checkout</span>
-          <h1>{reservation ? "Complete payment" : "Secure your pieces"}</h1>
+          <h1>{reservation ? "Complete payment" : "Review your order"}</h1>
           <p className="checkoutLead">
             {reservation
-              ? `Order ${reservation.orderNumber} is reserved while you complete M-Pesa. Customer service confirms the handoff after payment.`
-              : "We lock your one-off items only when M-Pesa starts. After payment, customer service confirms pickup or local delivery by phone."}
+              ? `Order ${reservation.orderNumber} is reserved while you complete M-Pesa.`
+              : "Confirm the items, choose pickup or Kikuyu delivery, then pay with M-Pesa."}
           </p>
         </div>
         <CheckoutProgress stage={currentStage} />
@@ -480,9 +484,9 @@ export function CheckoutPageClient() {
           <h2>Order summary</h2>
           <SummaryItems items={checkoutableItems} />
           <div className="commerceSummaryRows">
-            <div className="commerceSummaryRow"><span>Items</span><strong>{moneyKsh(itemTotal)}</strong></div>
-            <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{moneyKsh(deliveryFee)}</strong></div>
-            <div className="commerceSummaryRow total"><span>Total</span><strong>{moneyKsh(total)}</strong></div>
+            <div className="commerceSummaryRow"><span>Items</span><strong>{itemTotalLabel}</strong></div>
+            <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{deliveryFeeLabel}</strong></div>
+            <div className="commerceSummaryRow total"><span>Total</span><strong>{totalLabel}</strong></div>
           </div>
           <div className="checkoutSummaryHandoff">
             <strong>After payment</strong>
