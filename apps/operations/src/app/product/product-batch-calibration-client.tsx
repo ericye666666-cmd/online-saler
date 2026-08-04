@@ -629,7 +629,7 @@ export function ProductBatchCalibrationPage({
         setNotice("已确认，进入下一件。");
       } else {
         setBusy("finalize");
-        setNotice(`本批 ${updated.targetCount} 件已确认，正在自动生成销售详情与 Barcode。`);
+        setNotice(`本批 ${updated.targetCount} 件已确认，正在批量生成 AI 陈列主图、销售详情与 Barcode。`);
         const [detailResult, barcodeResult] = await Promise.allSettled([
           request(`/operations/product-batches/${batchId}/detail-generation/run`, {
             method: "POST",
@@ -878,7 +878,7 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">原图永久保留；AI 陈列图已按默认风格生成并选为候选主图。这里只核对商品事实与异常，不再要求员工选择风格。</p>
+              <p className="text-xs text-muted-foreground">原图永久保留；这里只快速核对抠图、商品事实与异常。整批确认后系统才按默认风格批量生成 AI 陈列图，员工不需要选择风格。</p>
             </div>
             {cutoutWarning ? <Badge variant="destructive">需要图片异常处理</Badge> : <Badge variant="secondary">自动图片处理通过</Badge>}
           </div>

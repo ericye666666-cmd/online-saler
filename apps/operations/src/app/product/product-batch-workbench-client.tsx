@@ -537,7 +537,7 @@ function BatchStageStepper({ batch }: { batch: ProductBatch }) {
             </div>
             <div className="mt-2 text-sm font-medium leading-snug">{PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[stage]}</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {stage === "CAPTURE" ? "按顺序上传正面图，可补充背面与瑕疵图。" : stage === "AUTOMATION" ? "抠图、白底、识别和 AI 陈列主图整批完成。" : "核对异常、打印贴码、入库并发布。"}
+              {stage === "CAPTURE" ? "按顺序上传正面图，可补充背面与瑕疵图。" : stage === "AUTOMATION" ? "先整批完成抠图、白底和识别，再由员工快速确认。" : "确认后批量生成 AI 陈列主图，再打印贴码、入库并发布。"}
             </div>
           </li>
         );

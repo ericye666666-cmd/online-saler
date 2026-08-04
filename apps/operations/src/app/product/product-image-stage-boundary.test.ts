@@ -49,13 +49,14 @@ assert.ok(
   detailSource.includes('operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
   "Detail generation must create AI display main-image candidates."
 );
-assert.ok(
+assert.equal(
   executionSource.includes('"GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
-  "Batch automation must generate the AI display main image without a separate style-selection step."
+  false,
+  "Batch preprocessing must wait for the quick human pass before generating AI display images."
 );
 assert.ok(
-  executionSource.includes("humanConfirmed: false"),
-  "Automatic AI display selection must remain unconfirmed until human review."
+  calibrationSource.includes("正在批量生成 AI 陈列主图、销售详情与 Barcode"),
+  "The last quick confirmation must start batch AI display generation without style selection."
 );
 assert.ok(
   reviewSource.includes("humanConfirmed: true"),

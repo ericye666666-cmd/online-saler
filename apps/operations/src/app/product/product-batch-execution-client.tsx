@@ -189,34 +189,6 @@ async function runImageOperation(
   return completed;
 }
 
-async function ensureAiDisplayMain(
-  productId: string,
-  comparison: ProductImageComparisonResponse,
-  adminUserId: string
-) {
-  const whiteImageId = comparison.cutoutWhite?.imageId;
-  if (!whiteImageId) throw new Error("生成 AI 陈列图前必须先完成白底图");
-
-  let displayImageId = comparison.aiDisplayMain?.sourceImageId === whiteImageId
-    ? comparison.aiDisplayMain.imageId
-    : "";
-  if (!displayImageId) {
-    const completed = await runImageOperation(
-      productId,
-      whiteImageId,
-      "GENERATE_AI_DISPLAY_MAIN_IMAGE",
-      adminUserId
-    );
-    displayImageId = completed.outputImageId!;
-  }
-
-  return request<ProductImageComparisonResponse>(`/products/${productId}/main-image`, {
-    method: "POST",
-    headers: { "X-Admin-User-Id": adminUserId },
-    body: JSON.stringify({ imageId: displayImageId, humanConfirmed: false })
-  });
-}
-
 async function runProductImagePipeline(
   product: ProductRecord,
   adminUserId: string,
@@ -305,8 +277,7 @@ async function runProductImagePipeline(
   };
 
   await Promise.all([processFront(), processBack()]);
-  const processed = await getImageComparison(product.id, adminUserId);
-  return ensureAiDisplayMain(product.id, processed, adminUserId);
+  return getImageComparison(product.id, adminUserId);
 }
 
 async function runProductAi(product: ProductRecord, ids: ReturnType<typeof useOperationIds>) {
@@ -620,7 +591,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
       ]);
       setStates((current) => ({
         ...current,
-        [product.id]: { status: "SUCCEEDED", comparison, message: "AI 陈列主图与商品识别已完成，待最终确认" }
+        [product.id]: { status: "SUCCEEDED", comparison, message: "抠图与商品识别已完成，待人工快速确认" }
       }));
       return true;
     } catch (caught) {
@@ -651,7 +622,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
           next[product.id] = {
             ...current[product.id],
             status: "RUNNING",
-            message: `本批 ${pending.length} 件正在同时抠图、生成白底与 AI 陈列主图`
+            message: `本批 ${pending.length} 件正在同时抠图并生成白底图`
           };
         }
         return next;
@@ -662,7 +633,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
           imageResults.set(product.id, comparison);
           setStates((current) => ({
             ...current,
-            [product.id]: { status: "RUNNING", comparison, message: "AI 陈列主图已生成，等待商品识别" }
+            [product.id]: { status: "RUNNING", comparison, message: "抠图与白底图已生成，等待商品识别" }
           }));
         } catch (caught) {
           setStates((current) => ({
@@ -670,7 +641,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
             [product.id]: {
               ...current[product.id],
               status: "FAILED",
-              message: errorMessage(caught, "图片处理或 AI 陈列图生成失败")
+              message: errorMessage(caught, "抠图或白底图生成失败")
             }
           }));
         }
@@ -682,13 +653,13 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
         const comparison = imageResults.get(product.id) ?? null;
         setStates((current) => ({
           ...current,
-            [product.id]: { status: "RUNNING", comparison, message: "AI 陈列主图已就绪，正在运行商品识别" }
+            [product.id]: { status: "RUNNING", comparison, message: "图片已就绪，正在运行商品识别" }
         }));
         try {
           await runProductAi(product, ids);
           setStates((current) => ({
             ...current,
-              [product.id]: { status: "SUCCEEDED", comparison, message: "AI 自动处理已完成，待最终确认" }
+              [product.id]: { status: "SUCCEEDED", comparison, message: "自动处理已完成，待人工快速确认" }
           }));
         } catch (caught) {
           setStates((current) => ({
@@ -738,13 +709,13 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>整批自动处理 {batch.targetCount} 件商品</CardTitle>
-              <CardDescription>系统自动抠图、生成正反面白底、识别商品，并按 Direct Loop 默认风格生成 AI 陈列图且设为候选主图。员工不需要选择风格。</CardDescription>
+              <CardDescription>系统先自动抠图、生成正反面白底并识别商品。员工快速确认整批结果后，系统才按 Direct Loop 默认风格批量生成 AI 陈列图；员工不需要选择风格。</CardDescription>
             </div>
             {completed < batch.targetCount ? (
               <Button disabled={busy} onClick={() => void processAll()}>
                 {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
                 {batchPhase === "images"
-                  ? `正在生成图片与 AI 陈列主图`
+                  ? "正在批量抠图并生成白底图"
                   : batchPhase === "ai"
                     ? "正在批量 AI 识别"
                     : failed ? "重试未完成商品" : `一键处理本批 ${batch.targetCount} 件`}
@@ -979,19 +950,18 @@ function stateFromProduct(product: ProductRecord, comparison: ProductImageCompar
   if (persistedWarning) return { status: "FAILED", comparison, message: persistedWarning };
   const frontReady = Boolean(
     comparison.cutoutWhite &&
-    (comparison.optimizedBalancedMain || comparison.optimizedMain) &&
-    comparison.aiDisplayMain?.selectedAsMain
+    (comparison.optimizedBalancedMain || comparison.optimizedMain)
   );
   const backReady = !comparison.backOriginal || Boolean(comparison.backCutoutWhite);
   const imageReady = frontReady && backReady;
   const aiReady = hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status);
-  if (imageReady && aiReady) return { status: "SUCCEEDED", comparison, message: "AI 自动处理已完成，待最终确认" };
+  if (imageReady && aiReady) return { status: "SUCCEEDED", comparison, message: "自动处理已完成，待人工快速确认" };
   const failed = comparison.jobs.find((job) => job.status === "FAILED");
   if (failed) return { status: "FAILED", comparison, message: failed.errorMessage || "图片处理失败" };
   if (product.aiExtractions?.[0]?.status === "FAILED") {
     return { status: "FAILED", comparison, message: product.aiExtractions[0].errorMessage || "AI 识别失败" };
   }
-  return { status: "PENDING", comparison, message: imageReady ? "等待 AI 识别" : "等待图片处理与 AI 陈列图" };
+  return { status: "PENDING", comparison, message: imageReady ? "等待 AI 识别" : "等待抠图与白底图" };
 }
 
 function providerLabel(provider: string | null) {
