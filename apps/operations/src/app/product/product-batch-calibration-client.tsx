@@ -913,6 +913,11 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />全屏</Button>
             {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
+            {!readOnly && !cutoutWarning && comparison?.original?.publicUrl ? (
+              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("auto")}>
+                {busy === "auto" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}重新自动抠图
+              </Button>
+            ) : null}
             {!readOnly && comparison?.original?.publicUrl ? (
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => setManualEditorOpen(true)}>
                 <ScissorsIcon data-icon="inline-start" />抠图不对，手动修正

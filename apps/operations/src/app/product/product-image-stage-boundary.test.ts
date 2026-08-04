@@ -36,6 +36,10 @@ assert.ok(
   calibrationSource.includes("抠图不对，手动修正"),
   "Staff must be able to override a visually wrong cutout even when automatic scoring passes."
 );
+assert.ok(
+  calibrationSource.includes("重新自动抠图"),
+  "A legacy result that passed older scoring must be rerunnable through the current automatic pipeline."
+);
 assert.equal(
   calibrationSource.includes("设为商城主图"),
   false,
