@@ -49,6 +49,54 @@ jobs:
       - name: Set up Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Verify production Secret Manager prerequisites
+        run: |
+          set -euo pipefail
+
+          for secret in \
+            PRODUCTION_DATABASE_URL \
+            PRODUCTION_CUSTOMER_SESSION_SECRET \
+            PRODUCTION_GOOGLE_CLIENT_SECRET \
+            PRODUCTION_INTERNAL_CRON_SECRET \
+            PRODUCTION_MPESA_CONSUMER_KEY \
+            PRODUCTION_MPESA_CONSUMER_SECRET \
+            PRODUCTION_MPESA_SHORTCODE \
+            PRODUCTION_MPESA_PASSKEY \
+            PRODUCTION_MPESA_TEST_PHONE_WHITELIST
+          do
+            gcloud secrets versions access latest \
+              --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
+              --secret "${secret}" >/dev/null
+          done
+
+          if [ "${{ inputs.mpesa_launch_mode }}" = "one_ksh" ]; then
+            TEST_WHITELIST="$(gcloud secrets versions access latest \
+              --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
+              --secret PRODUCTION_MPESA_TEST_PHONE_WHITELIST)"
+
+            if [ -z "${TEST_WHITELIST}" ]; then
+              echo "PRODUCTION_MPESA_TEST_PHONE_WHITELIST must contain at least one test phone in one_ksh mode." >&2
+              exit 1
+            fi
+          fi
+
+          if [ "${{ inputs.mpesa_launch_mode }}" = "live" ]; then
+            echo "Live M-Pesa amount deployment selected. This should only run after a signed-off 1 KSh test."
+          fi
+
+          if [ -z "${{ vars.MPESA_CALLBACK_URL_PRODUCTION }}" ]; then
+            echo "MPESA_CALLBACK_URL_PRODUCTION is required." >&2
+            exit 1
+          fi
+
+          case "${{ vars.MPESA_CALLBACK_URL_PRODUCTION }}" in
+            https://*/api/payments/mpesa/callback) ;;
+            *)
+              echo "MPESA_CALLBACK_URL_PRODUCTION must be an HTTPS /api/payments/mpesa/callback URL." >&2
+              exit 1
+              ;;
+          esac
+
       - name: Configure Docker for Artifact Registry
         run: |
           gcloud auth configure-docker \
@@ -135,3 +183,26 @@ jobs:
             --retry-delay 5 \
             "${SERVICE_URL}/checkout" \
             | grep -q "Checkout"
+
+          CALLBACK_STATUS="$(curl \
+            --show-error \
+            --silent \
+            --output /tmp/mpesa-callback-response.json \
+            --write-out "%{http_code}" \
+            --request POST \
+            --header "content-type: application/json" \
+            --data '{}' \
+            "${SERVICE_URL}/api/payments/mpesa/callback")"
+
+          if [ "${CALLBACK_STATUS}" != "400" ]; then
+            cat /tmp/mpesa-callback-response.json >&2
+            echo "Expected M-Pesa callback endpoint to reject malformed payload with HTTP 400, got ${CALLBACK_STATUS}." >&2
+            exit 1
+          fi
+
+      - name: Configure production reservation cleanup scheduler
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID_PRODUCTION }}
+          GCP_REGION: ${{ vars.GCP_REGION_PRODUCTION }}
+          STOREFRONT_PUBLIC_URL: ${{ steps.deploy.outputs.url }}
+        run: bash scripts/gcloud/configure-production-scheduler.sh

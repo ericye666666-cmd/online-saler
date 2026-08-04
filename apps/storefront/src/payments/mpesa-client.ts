@@ -56,8 +56,7 @@ type StkResponse = {
 export type FetchLike = typeof fetch;
 
 export function mpesaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MpesaConfig {
-  const environmentValue = env.MPESA_ENV?.trim() || env.MPESA_ENVIRONMENT?.trim();
-  const environment = environmentValue === "production" ? "production" : "sandbox";
+  const environment = mpesaEnvironmentFromEnv(env);
   const baseUrl = environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
   const explicitCallbackUrl = env.MPESA_CALLBACK_URL?.trim() || undefined;
   const config: MpesaConfig = {
@@ -73,6 +72,7 @@ export function mpesaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MpesaC
     oauthUrl: env.MPESA_OAUTH_URL?.trim() || `${baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
     stkPushUrl: env.MPESA_STK_PUSH_URL?.trim() || `${baseUrl}/mpesa/stkpush/v1/processrequest`
   };
+  assertMpesaProductionConfig(config);
   return config;
 }
 
@@ -147,6 +147,26 @@ function required(value: string | undefined, name: string): string {
   const next = value?.trim();
   if (!next) throw new MpesaConfigurationError(`${name} is required for M-Pesa payments.`);
   return next;
+}
+
+function mpesaEnvironmentFromEnv(env: NodeJS.ProcessEnv): "sandbox" | "production" {
+  const value = env.MPESA_ENV?.trim() || env.MPESA_ENVIRONMENT?.trim() || "sandbox";
+  if (value === "sandbox" || value === "production") return value;
+  throw new MpesaConfigurationError("MPESA_ENV must be sandbox or production.");
+}
+
+function assertMpesaProductionConfig(config: MpesaConfig): void {
+  if (config.environment !== "production") return;
+
+  if (config.transactionType !== "CustomerBuyGoodsOnline") {
+    throw new MpesaConfigurationError("Production M-Pesa Till payments must use CustomerBuyGoodsOnline.");
+  }
+
+  const callbackUrl = mpesaCallbackUrl(config);
+  const parsedCallbackUrl = new URL(callbackUrl);
+  if (parsedCallbackUrl.protocol !== "https:") {
+    throw new MpesaConfigurationError("Production M-Pesa callback URL must use HTTPS.");
+  }
 }
 
 function callbackBaseUrlFromEnv(env: NodeJS.ProcessEnv, explicitCallbackUrl: string | undefined): string {
