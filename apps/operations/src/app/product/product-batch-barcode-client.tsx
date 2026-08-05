@@ -35,7 +35,11 @@ const API_PROXY_URL = "/api-proxy";
 type InventoryItem = {
   status?: string | null;
   locationId?: string | null;
-  location?: { locationCode?: string | null } | null;
+  location?: {
+    locationCode?: string | null;
+    capacity?: number | null;
+    _count?: { inventoryItems?: number | null };
+  } | null;
 };
 
 type ProductRecord = Record<string, unknown> & {
@@ -249,7 +253,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
 
   async function confirmPlacedAndPublish() {
     if (!batch) return;
-    if (!window.confirm(`确认本批 ${batch.targetCount} 件 AI 陈列图无异常，并已按货架号归位？确认后将直接入仓并发布。`)) return;
+    if (!window.confirm(`Have all items been placed in their assigned shelf locations?\n\n请同时确认本批 ${batch.targetCount} 件 AI 陈列图无异常；继续后将直接入仓并发布。`)) return;
     setBusy("publish");
     setError("");
     setNotice("");
@@ -279,6 +283,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
   const allLocationsReady = locationCount === batch.targetCount;
   const allPrinted = printedCount === batch.targetCount;
   const readyToPublish = allBarcodesReady && allLocationsReady && allPrinted && allAiDisplaysReady;
+  const shelfGroups = groupProductsByShelf(batch.products);
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -326,6 +331,31 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
             </div>
           </section>
 
+          {allLocationsReady ? (
+            <section className="flex flex-col gap-4 rounded-md border p-4">
+              <div>
+                <h2 className="font-semibold">按货架位分组摆放</h2>
+                <p className="mt-1 text-sm text-muted-foreground">系统已根据可用容量自动分配货架位。请按分组清单完成摆放，然后一次性确认入库。</p>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {shelfGroups.map((group) => (
+                  <div key={group.locationCode} className="rounded-md border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="font-semibold">{group.locationCode}</h3>
+                      <Badge variant="outline">{group.beforeCount}/{group.capacity} → 本批放 {group.products.length} 件</Badge>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2">
+                      {group.products.map((product) => {
+                        const imageUrl = comparisonUrl(comparisons[product.id]?.cutoutWhite?.publicUrl);
+                        return <div key={product.id} className="flex items-center gap-3 rounded-md bg-muted/40 p-2">{imageUrl ? <img src={imageUrl} alt={product.title ?? product.productCode} className="size-12 rounded object-contain" /> : <div className="size-12 rounded bg-background" />}<div className="min-w-0"><p className="truncate text-sm font-medium">{product.title ?? product.productCode}</p><p className="truncate font-mono text-xs text-muted-foreground">{product.barcode}</p></div></div>;
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 print:grid-cols-2">
             {batch.products.map((product) => (
               <LabelPreview
@@ -358,7 +388,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
                 </div>
                 <Button disabled={Boolean(busy) || !readyToPublish} onClick={() => void confirmPlacedAndPublish()}>
                   {busy === "publish" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <PackageCheckIcon data-icon="inline-start" />}
-                  确认已归位并发布
+                  Confirm all items stored · 入仓并发布
                 </Button>
               </div>
               {!readyToPublish ? <p className="mt-3 text-xs text-muted-foreground">还需完成：{pendingLabels({ allLocationsReady, allPrinted, allAiDisplaysReady }).join("、")}。</p> : null}
@@ -443,6 +473,27 @@ function pendingLabels(input: { allLocationsReady: boolean; allPrinted: boolean;
   if (!input.allPrinted) pending.push("标签打印");
   if (!input.allAiDisplaysReady) pending.push("AI 陈列图生成");
   return pending;
+}
+
+function groupProductsByShelf(products: ProductRecord[]) {
+  const groups = new Map<string, { locationCode: string; capacity: number; currentCount: number; products: ProductRecord[] }>();
+  for (const product of products) {
+    const location = product.inventoryItem?.location;
+    const locationCode = location?.locationCode;
+    if (!locationCode) continue;
+    const group = groups.get(locationCode) ?? {
+      locationCode,
+      capacity: Number(location.capacity ?? 0),
+      currentCount: Number(location._count?.inventoryItems ?? 0),
+      products: []
+    };
+    group.products.push(product);
+    groups.set(locationCode, group);
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    beforeCount: Math.max(0, group.currentCount - group.products.length)
+  }));
 }
 
 function comparisonUrl(value?: string | null) {

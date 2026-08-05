@@ -26,6 +26,7 @@ import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
 import { buildProductBatchImagePreviews } from "./product-batch-image-preview";
 import { canGenerateOrReuseBarcode } from "./product-storage-reservation";
 import { requiresAiMainImageConfirmation } from "./product-review-main-image";
+import { WAREHOUSE_OCCUPYING_STATUSES } from "./warehouse-capacity";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -376,10 +377,7 @@ export class OperationsProductBatchService {
         ? await this.barcodes.generate(product.id, employeeId, generatedAt)
         : product);
     }
-    const reserved = [];
-    for (const product of products) {
-      reserved.push(await this.productControl.assignRandomLocation(product.id, input));
-    }
+    const reserved = await this.productControl.assignBatchLocations(products.map((product) => product.id), input);
     return { batchId, generated, reserved };
   }
 
@@ -398,7 +396,8 @@ export class OperationsProductBatchService {
   }
 
   async stockInBatch(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
-    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    const session = await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    const employeeId = employeeIdOrDefault(input.employeeId);
     const batch = await this.requireBatch(batchId);
     const products = await prisma.product.findMany({
       where: { batchId: batch.id },
@@ -417,6 +416,20 @@ export class OperationsProductBatchService {
     for (const product of products) {
       stocked.push(await this.productControl.confirmPlaced(product.id, input));
     }
+    await prisma.auditLog.create({
+      data: {
+        actorType: ActorType.EMPLOYEE,
+        actorId: employeeId,
+        actorAdminUserId: session.adminUser?.id ?? null,
+        sourceApp: SourceApp.OPERATIONS,
+        module: "WAREHOUSE",
+        entityType: "ProductBatch",
+        entityId: batch.id,
+        action: "WAREHOUSE_BATCH_STOCKED",
+        afterJson: { productIds: products.map((product) => product.id), status: "AVAILABLE" },
+        reason: "All assigned products were confirmed stored in one batch action."
+      }
+    });
     await this.completeBatchIfDone(batch.id);
     return { batchId, stocked };
   }
@@ -432,10 +445,10 @@ export class OperationsProductBatchService {
     }
     const prepared = [];
     for (const product of products) {
-      await this.productControl.prepareForStorage(product.id, input);
-      prepared.push(await this.productControl.assignRandomLocation(product.id, input));
+      prepared.push(await this.productControl.prepareForStorage(product.id, input));
     }
-    return { batchId, prepared };
+    const reserved = await this.productControl.assignBatchLocations(products.map((product) => product.id), input);
+    return { batchId, prepared, reserved };
   }
 
   async publishBatch(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
@@ -713,7 +726,19 @@ export class OperationsProductBatchService {
         take: 1,
         select: { status: true, sourceDataVersion: true }
       },
-      inventoryItem: { include: { location: true } },
+      inventoryItem: {
+        include: {
+          location: {
+            include: {
+              _count: {
+                select: {
+                  inventoryItems: { where: { status: { in: WAREHOUSE_OCCUPYING_STATUSES } } }
+                }
+              }
+            }
+          }
+        }
+      },
       aiExtractions: {
         include: { fieldDecisions: { orderBy: { fieldName: "asc" } } },
         orderBy: { createdAt: "desc" },

@@ -19,10 +19,6 @@ type UnpublishBody = EmployeeBody & {
   reason?: string;
 };
 
-type ConfirmPlacedAtLocationBody = EmployeeBody & {
-  locationCode?: string;
-};
-
 @Controller("operations/product-control")
 export class OperationsProductControlController {
   constructor(private readonly productControl: OperationsProductControlService) {}
@@ -60,11 +56,6 @@ export class OperationsProductControlController {
   @Post("products/:id/confirm-placed")
   confirmPlaced(@Param("id") id: string, @Body() body: EmployeeBody) {
     return this.productControl.confirmPlaced(id, body);
-  }
-
-  @Post("products/:id/confirm-placed-at-location")
-  confirmPlacedAtLocation(@Param("id") id: string, @Body() body: ConfirmPlacedAtLocationBody) {
-    return this.productControl.confirmPlacedAtLocation(id, body);
   }
 
   @Post("products/:id/publish")

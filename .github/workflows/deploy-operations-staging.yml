@@ -62,6 +62,32 @@ jobs:
 
           echo "API_URL=${API_URL}" >> "${GITHUB_ENV}"
 
+      - name: Resolve Metabase dashboard URLs
+        run: |
+          WAREHOUSE_DASHBOARD_URL="${{ vars.METABASE_WAREHOUSE_DASHBOARD_URL_STAGING }}"
+          SEARCH_DASHBOARD_URL="${{ vars.METABASE_SEARCH_DASHBOARD_URL_STAGING }}"
+          METABASE_URL="$(gcloud run services describe online-saler-metabase-staging \
+            --region "${{ vars.GCP_REGION }}" \
+            --format "value(status.url)" 2>/dev/null || true)"
+
+          if [ -n "${METABASE_URL}" ] && gcloud secrets describe METABASE_API_KEY_STAGING >/dev/null 2>&1; then
+            METABASE_API_KEY="$(gcloud secrets versions access latest --secret METABASE_API_KEY_STAGING)"
+            DASHBOARDS="$(curl --fail --show-error --silent \
+              --header "X-API-Key: ${METABASE_API_KEY}" \
+              "${METABASE_URL}/api/dashboard" || true)"
+            WAREHOUSE_ID="$(jq -r '.[] | select(.name == "[Online Saler BI] Warehouse performance") | .id' <<<"${DASHBOARDS:-[]}" 2>/dev/null | head -n 1 || true)"
+            SEARCH_ID="$(jq -r '.[] | select(.name == "[Online Saler BI] Search keywords") | .id' <<<"${DASHBOARDS:-[]}" 2>/dev/null | head -n 1 || true)"
+            if [ -n "${WAREHOUSE_ID}" ]; then
+              WAREHOUSE_DASHBOARD_URL="${METABASE_URL}/dashboard/${WAREHOUSE_ID}"
+            fi
+            if [ -n "${SEARCH_ID}" ]; then
+              SEARCH_DASHBOARD_URL="${METABASE_URL}/dashboard/${SEARCH_ID}"
+            fi
+          fi
+
+          echo "METABASE_WAREHOUSE_DASHBOARD_URL=${WAREHOUSE_DASHBOARD_URL}" >> "${GITHUB_ENV}"
+          echo "METABASE_SEARCH_DASHBOARD_URL=${SEARCH_DASHBOARD_URL}" >> "${GITHUB_ENV}"
+
       - name: Build Docker image
         run: |
           IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${IMAGE_NAME}:${GITHUB_SHA}"
@@ -94,8 +120,8 @@ jobs:
             NODE_ENV=staging
             STAGING_PILOT_BATCH_ENABLED=true
             API_URL=${{ env.API_URL }}
-            METABASE_WAREHOUSE_DASHBOARD_URL=${{ vars.METABASE_WAREHOUSE_DASHBOARD_URL_STAGING }}
-            METABASE_SEARCH_DASHBOARD_URL=${{ vars.METABASE_SEARCH_DASHBOARD_URL_STAGING }}
+            METABASE_WAREHOUSE_DASHBOARD_URL=${{ env.METABASE_WAREHOUSE_DASHBOARD_URL }}
+            METABASE_SEARCH_DASHBOARD_URL=${{ env.METABASE_SEARCH_DASHBOARD_URL }}
 
       - name: Verify Operations page
         run: |

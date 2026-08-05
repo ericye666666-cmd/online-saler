@@ -272,13 +272,14 @@ Verify:
 
 ### Warehouse locations
 
-Create or confirm active location codes before stock-in.
+Create or confirm enabled location codes and positive capacities before stock-in.
 
-- Each physical location must have one scannable code.
-- Product scan and location scan are both required before placement confirmation.
-- The scanned location, employee, and time must be stored in inventory movement history.
+- Shelf locations do not use QR codes or shelf scanning.
+- Formal Barcode generation reserves shelf text automatically within remaining capacity.
+- Employees place the batch from the grouped shelf list and confirm all items once.
+- The assigned location, employee, and time remain in inventory movement and audit history.
 
-Do not rely on random location assignment for real stock-in.
+Do not bypass capacity validation or silently change a location after its product label is printed.
 
 ## 4. Final readiness verification
 

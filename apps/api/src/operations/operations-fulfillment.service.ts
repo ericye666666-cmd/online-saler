@@ -9,7 +9,6 @@ import {
   FulfillmentMethod,
   FulfillmentStatus,
   InventoryItemStatus,
-  InventoryMovementType,
   OrderStatus,
   PackagingMethod,
   PaymentStatus,
@@ -24,6 +23,7 @@ import {
   type OrderCenterTab,
   verifyFulfillmentItemBarcode
 } from "./operations-fulfillment-state";
+import { refreshWarehouseLocationStatuses } from "./warehouse-capacity";
 
 const ORDER_INCLUDE = {
   customer: true,
@@ -339,6 +339,10 @@ export class OperationsFulfillmentService {
         where: { fulfillmentId: fulfillment.id, status: FulfillmentItemStatus.PENDING }
       });
       if (remaining === 0) {
+        const pickedInventory = await tx.inventoryItem.findMany({
+          where: { productId: { in: order.items.map((item) => item.productId) } },
+          select: { locationId: true }
+        });
         await tx.orderFulfillment.update({
           where: { id: fulfillment.id },
           data: { status: FulfillmentStatus.READY_TO_PACK, pickedAt: new Date() }
@@ -347,6 +351,10 @@ export class OperationsFulfillmentService {
           where: { productId: { in: order.items.map((item) => item.productId) } },
           data: { status: InventoryItemStatus.PICKED }
         });
+        await refreshWarehouseLocationStatuses(
+          tx,
+          pickedInventory.map((item) => item.locationId ?? "")
+        );
         await this.createEvent(tx, {
           idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.READY_TO_PACK}`,
           fulfillmentId: fulfillment.id,
@@ -683,97 +691,6 @@ export class OperationsFulfillmentService {
     return this.orderDetail(orderId, input.adminUserId);
   }
 
-  async listLocations(adminUserId?: string, search?: string) {
-    await this.access.requirePermission(adminUserId, "warehouse-locations.view");
-    const value = search?.trim();
-    return prisma.warehouseLocation.findMany({
-      where: value ? {
-        OR: [
-          { locationCode: { contains: value, mode: "insensitive" } },
-          { zoneCode: { contains: value, mode: "insensitive" } },
-          { rackCode: { contains: value, mode: "insensitive" } },
-          { inventoryItems: { some: { barcode: { contains: value, mode: "insensitive" } } } },
-          { inventoryItems: { some: { product: { title: { contains: value, mode: "insensitive" } } } } }
-        ]
-      } : {},
-      include: {
-        inventoryItems: {
-          include: { product: { include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } } } },
-          orderBy: { updatedAt: "desc" }
-        }
-      },
-      orderBy: [{ active: "desc" }, { locationCode: "asc" }],
-      take: 200
-    });
-  }
-
-  async createLocation(input: { adminUserId?: string; zoneCode?: string; rackCode?: string; binCode?: string; note?: string }) {
-    await this.access.requirePermission(input.adminUserId, "warehouse-locations.manage");
-    const parts = locationParts(input);
-    return prisma.warehouseLocation.create({
-      data: { ...parts, locationCode: parts.code, qrCode: parts.code, note: input.note?.trim() || null }
-    });
-  }
-
-  async bulkCreateLocations(input: {
-    adminUserId?: string;
-    zoneCode?: string;
-    rackCode?: string;
-    start?: number;
-    count?: number;
-    note?: string;
-  }) {
-    await this.access.requirePermission(input.adminUserId, "warehouse-locations.manage");
-    const zoneCode = requiredCode(input.zoneCode, "Zone code");
-    const rackCode = requiredCode(input.rackCode, "Rack code");
-    const start = Number(input.start ?? 1);
-    const count = Number(input.count ?? 1);
-    if (!Number.isInteger(start) || start < 1 || !Number.isInteger(count) || count < 1 || count > 200) {
-      throw new BadRequestException("Bulk location range must contain 1 to 200 positive bins.");
-    }
-    const rows = Array.from({ length: count }, (_, index) => {
-      const binCode = String(start + index).padStart(3, "0");
-      const locationCode = `${zoneCode}-${rackCode}-${binCode}`;
-      return { zoneCode, rackCode, binCode, locationCode, qrCode: locationCode, note: input.note?.trim() || null };
-    });
-    await prisma.warehouseLocation.createMany({ data: rows, skipDuplicates: true });
-    return this.listLocations(input.adminUserId, `${zoneCode}-${rackCode}`);
-  }
-
-  async setLocationActive(locationId: string, active: boolean, adminUserId?: string) {
-    await this.access.requirePermission(adminUserId, "warehouse-locations.manage");
-    return prisma.warehouseLocation.update({ where: { id: locationId }, data: { active } });
-  }
-
-  async moveInventoryItem(input: { adminUserId?: string; inventoryItemId?: string; locationId?: string; note?: string }) {
-    const actor = await this.employeeForPermission(input.adminUserId, "warehouse-locations.manage");
-    const inventoryItemId = input.inventoryItemId?.trim();
-    const locationId = input.locationId?.trim();
-    if (!inventoryItemId || !locationId) throw new BadRequestException("Inventory item and destination location are required.");
-    const [item, destination] = await Promise.all([
-      prisma.inventoryItem.findUnique({ where: { id: inventoryItemId } }),
-      prisma.warehouseLocation.findUnique({ where: { id: locationId } })
-    ]);
-    if (!item) throw new NotFoundException("Inventory item was not found.");
-    if (!destination?.active) throw new BadRequestException("Destination location is missing or inactive.");
-    if (item.locationId === locationId) return item;
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.inventoryItem.update({ where: { id: item.id }, data: { locationId } });
-      await tx.inventoryMovement.create({
-        data: {
-          inventoryItemId: item.id,
-          productId: item.productId,
-          movementType: InventoryMovementType.MOVE,
-          fromLocationId: item.locationId,
-          toLocationId: locationId,
-          employeeId: actor.actorEmployeeId,
-          reason: input.note?.trim() || "Moved in warehouse location management."
-        }
-      });
-      return updated;
-    });
-  }
-
   private async moveToHandoff(
     orderId: string,
     input: AdminInput,
@@ -1091,18 +1008,4 @@ function pickupVerificationMatches(order: OrderDetail, method: PickupVerificatio
 
 function normalizePhone(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
-}
-
-function requiredCode(value: string | undefined, label: string) {
-  const code = value?.trim().toUpperCase().replace(/\s+/g, "-");
-  if (!code) throw new BadRequestException(`${label} is required.`);
-  return code;
-}
-
-function locationParts(input: { zoneCode?: string; rackCode?: string; binCode?: string }) {
-  const zoneCode = requiredCode(input.zoneCode, "Zone code");
-  const rackCode = input.rackCode?.trim() ? requiredCode(input.rackCode, "Rack code") : null;
-  const binCode = input.binCode?.trim() ? requiredCode(input.binCode, "Bin code") : null;
-  if (binCode && !rackCode) throw new BadRequestException("A bin must belong to a rack.");
-  return { zoneCode, rackCode, binCode, code: [zoneCode, rackCode, binCode].filter(Boolean).join("-") };
 }
