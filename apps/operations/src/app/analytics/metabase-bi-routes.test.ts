@@ -9,8 +9,8 @@ assert.equal(validDashboardUrl("javascript:alert(1)"), null);
 assert.equal(validDashboardUrl("not-a-url"), null);
 
 const shell = readFileSync(resolve(process.cwd(), "src/components/admin/operations-admin-shell.tsx"), "utf8");
-assert.match(shell, /仓库经营 BI/);
-assert.match(shell, /搜索关键词 BI/);
+assert.match(shell, /高级仓库分析/);
+assert.match(shell, /搜索分析/);
 assert.match(shell, /\/analytics\/warehouse-bi/);
 assert.match(shell, /\/analytics\/search-bi/);
 

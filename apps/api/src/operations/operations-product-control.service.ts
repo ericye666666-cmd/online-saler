@@ -3,6 +3,7 @@ import {
   ActorType,
   InventoryItemStatus,
   InventoryMovementType,
+  Prisma,
   ProductStatus,
   SourceApp,
   prisma
@@ -12,6 +13,11 @@ import { OperationsAccessService } from "./operations-access.service";
 import { canReserveStorageLocation } from "./product-storage-reservation";
 import { missingPublishMeasurementTypes } from "./operations-product-publish-readiness";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
+import {
+  WAREHOUSE_OCCUPYING_STATUSES,
+  buildShelfAllocationPlan,
+  refreshWarehouseLocationStatuses
+} from "./warehouse-capacity";
 
 const PRODUCT_CONTROL_PAGE = "page.product.control";
 const PRODUCT_EDIT_ACTION = "action.product.edit";
@@ -202,65 +208,139 @@ export class OperationsProductControlService {
   }
 
   async assignRandomLocation(productId: string, input: { employeeId?: string; adminUserId?: string }) {
+    await this.assignBatchLocations([productId], input);
+    return this.productDetail(productId);
+  }
+
+  async assignBatchLocations(
+    productIds: readonly string[],
+    input: { employeeId?: string; adminUserId?: string }
+  ) {
     const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
-    const product = await this.requireProduct(productId);
-    if (!product.barcode) {
-      throw new BadRequestException("Generate barcode before assigning a warehouse location.");
-    }
-    if (!canReserveStorageLocation(product.status, product.barcode)) {
-      throw new BadRequestException("Generate the formal barcode before reserving a warehouse location.");
-    }
-
+    const session = await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    const uniqueProductIds = [...new Set(productIds.map((id) => id.trim()).filter(Boolean))];
+    if (uniqueProductIds.length === 0) return [];
     await this.ensureDefaultLocations();
-    const locations = await prisma.warehouseLocation.findMany({
-      where: { active: true },
-      orderBy: { locationCode: "asc" }
-    });
-    if (locations.length === 0) {
-      throw new BadRequestException("No active warehouse locations are available.");
-    }
 
-    const existing = await prisma.inventoryItem.findUnique({
-      where: { productId },
-      include: { location: true }
-    });
-    if (existing?.locationId) {
-      return this.productDetail(productId);
-    }
-
-    const randomLocation = locations[Math.floor(Math.random() * locations.length)];
     await prisma.$transaction(async (transaction) => {
-      const item = existing
-        ? await transaction.inventoryItem.update({
-            where: { id: existing.id },
-            data: {
-              locationId: randomLocation.id,
-              createdByEmployeeId: existing.createdByEmployeeId ?? employeeId
-            }
-          })
-        : await transaction.inventoryItem.create({
-            data: {
-              productId,
-              barcode: product.barcode!,
-              locationId: randomLocation.id,
-              createdByEmployeeId: employeeId
-            }
-          });
+      await transaction.$queryRaw(Prisma.sql`
+        SELECT "id"
+        FROM "WarehouseLocation"
+        WHERE "active" = true AND "status" <> 'INACTIVE'::"WarehouseLocationStatus"
+        ORDER BY "id"
+        FOR UPDATE
+      `);
 
-      await transaction.inventoryMovement.create({
+      const [products, existingItems, locations, counts] = await Promise.all([
+        transaction.product.findMany({
+          where: { id: { in: uniqueProductIds } },
+          select: { id: true, barcode: true, status: true, batchId: true }
+        }),
+        transaction.inventoryItem.findMany({
+          where: { productId: { in: uniqueProductIds } }
+        }),
+        transaction.warehouseLocation.findMany({
+          where: { active: true, status: { not: "INACTIVE" } },
+          orderBy: { locationCode: "asc" }
+        }),
+        transaction.inventoryItem.groupBy({
+          by: ["locationId"],
+          where: {
+            locationId: { not: null },
+            status: { in: WAREHOUSE_OCCUPYING_STATUSES }
+          },
+          _count: { _all: true }
+        })
+      ]);
+
+      if (products.length !== uniqueProductIds.length) {
+        throw new BadRequestException("One or more products were not found.");
+      }
+      const invalidProduct = products.find((product) =>
+        !product.barcode || !canReserveStorageLocation(product.status, product.barcode)
+      );
+      if (invalidProduct) {
+        throw new BadRequestException("Generate the formal barcode before reserving a warehouse location.");
+      }
+
+      const existingByProduct = new Map(existingItems.map((item) => [item.productId, item]));
+      const unassignedProductIds = uniqueProductIds.filter((productId) => !existingByProduct.get(productId)?.locationId);
+      if (unassignedProductIds.length === 0) return;
+
+      const countByLocation = new Map(counts.map((row) => [row.locationId, row._count._all]));
+      let assignments;
+      try {
+        assignments = buildShelfAllocationPlan(
+          unassignedProductIds,
+          locations.map((location) => ({
+            id: location.id,
+            locationCode: location.locationCode,
+            capacity: location.capacity,
+            currentItemCount: countByLocation.get(location.id) ?? 0,
+            active: location.active,
+            status: location.status
+          }))
+        );
+      } catch (error) {
+        throw new BadRequestException(error instanceof Error ? error.message : "No shelf location has enough available capacity.");
+      }
+
+      const productById = new Map(products.map((product) => [product.id, product]));
+      const assignedLocationIds: string[] = [];
+      for (const assignment of assignments) {
+        const product = productById.get(assignment.productId)!;
+        const existing = existingByProduct.get(assignment.productId);
+        const item = existing
+          ? await transaction.inventoryItem.update({
+              where: { id: existing.id },
+              data: {
+                barcode: product.barcode!,
+                locationId: assignment.locationId,
+                createdByEmployeeId: existing.createdByEmployeeId ?? employeeId
+              }
+            })
+          : await transaction.inventoryItem.create({
+              data: {
+                productId: product.id,
+                barcode: product.barcode!,
+                locationId: assignment.locationId,
+                createdByEmployeeId: employeeId
+              }
+            });
+        await transaction.inventoryMovement.create({
+          data: {
+            inventoryItemId: item.id,
+            productId: product.id,
+            movementType: InventoryMovementType.LOCATION_ASSIGNED,
+            toLocationId: assignment.locationId,
+            employeeId,
+            reason: "Capacity-safe shelf location reserved at barcode generation"
+          }
+        });
+        assignedLocationIds.push(assignment.locationId);
+      }
+
+      await refreshWarehouseLocationStatuses(transaction, assignedLocationIds);
+      await transaction.auditLog.create({
         data: {
-          inventoryItemId: item.id,
-          productId,
-          movementType: InventoryMovementType.LOCATION_ASSIGNED,
-          toLocationId: randomLocation.id,
-          employeeId,
-          reason: "Warehouse location reserved at barcode generation"
+          actorType: ActorType.EMPLOYEE,
+          actorId: employeeId,
+          actorAdminUserId: session.adminUser?.id ?? null,
+          sourceApp: SourceApp.OPERATIONS,
+          module: "WAREHOUSE",
+          entityType: "ProductBatch",
+          entityId: products[0]?.batchId ?? null,
+          action: "WAREHOUSE_BATCH_AUTO_ASSIGNED",
+          afterJson: {
+            productIds: assignments.map((assignment) => assignment.productId),
+            assignments
+          },
+          reason: "Random available shelves were filled sequentially within capacity."
         }
       });
-    });
+    }, { timeout: 20_000 });
 
-    return this.productDetail(productId);
+    return Promise.all(uniqueProductIds.map((productId) => this.productDetail(productId)));
   }
 
   async confirmPlaced(productId: string, input: { employeeId?: string; adminUserId?: string }) {
@@ -281,13 +361,15 @@ export class OperationsProductControlService {
     }
 
     await prisma.$transaction(async (transaction) => {
-      const updated = await transaction.inventoryItem.update({
-        where: { id: item.id },
+      const changed = await transaction.inventoryItem.updateMany({
+        where: { id: item.id, status: { not: InventoryItemStatus.AVAILABLE } },
         data: {
           status: InventoryItemStatus.AVAILABLE,
           checkedInAt: new Date()
         }
       });
+      if (changed.count === 0) return;
+      const updated = await transaction.inventoryItem.findUniqueOrThrow({ where: { id: item.id } });
 
       await transaction.inventoryMovement.create({
         data: {
@@ -297,87 +379,6 @@ export class OperationsProductControlService {
           toLocationId: updated.locationId,
           employeeId,
           reason: "Employee confirmed item placed"
-        }
-      });
-    });
-
-    return this.productDetail(productId);
-  }
-
-  async confirmPlacedAtLocation(
-    productId: string,
-    input: { employeeId?: string; adminUserId?: string; locationCode?: string }
-  ) {
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
-    const locationCode = input.locationCode?.trim().toUpperCase();
-    if (!locationCode) throw new BadRequestException("Warehouse location code is required.");
-
-    const product = await this.requireProduct(productId);
-    if (!product.barcode) throw new BadRequestException("Generate barcode before stock-in.");
-    if (product.status !== ProductStatus.READY_FOR_STORAGE) {
-      throw new BadRequestException("Only storage-ready products can be scanned into inventory.");
-    }
-
-    await this.ensureDefaultLocations();
-    const location = await prisma.warehouseLocation.findUnique({ where: { locationCode } });
-    if (!location?.active) throw new BadRequestException("Warehouse location is not active or does not exist.");
-
-    const existing = await prisma.inventoryItem.findUnique({ where: { productId } });
-    if (existing?.status === InventoryItemStatus.AVAILABLE) {
-      throw new BadRequestException("Product was already confirmed in storage.");
-    }
-
-    const checkedInAt = new Date();
-    await prisma.$transaction(async (transaction) => {
-      let item;
-      if (existing) {
-        const updated = await transaction.inventoryItem.updateMany({
-            where: { id: existing.id, status: { not: InventoryItemStatus.AVAILABLE } },
-            data: {
-              barcode: product.barcode!,
-              locationId: location.id,
-              status: InventoryItemStatus.AVAILABLE,
-              checkedInAt,
-              createdByEmployeeId: existing.createdByEmployeeId ?? employeeId
-            }
-          });
-        if (updated.count !== 1) throw new BadRequestException("Product was already confirmed in storage.");
-        item = await transaction.inventoryItem.findUniqueOrThrow({ where: { id: existing.id } });
-      } else {
-        item = await transaction.inventoryItem.create({
-            data: {
-              productId,
-              barcode: product.barcode!,
-              locationId: location.id,
-              status: InventoryItemStatus.AVAILABLE,
-              checkedInAt,
-              createdByEmployeeId: employeeId
-            }
-          });
-      }
-
-      if (existing?.locationId !== location.id) {
-        await transaction.inventoryMovement.create({
-          data: {
-            inventoryItemId: item.id,
-            productId,
-            movementType: InventoryMovementType.LOCATION_ASSIGNED,
-            fromLocationId: existing?.locationId ?? null,
-            toLocationId: location.id,
-            employeeId,
-            reason: "Employee scanned warehouse location"
-          }
-        });
-      }
-      await transaction.inventoryMovement.create({
-        data: {
-          inventoryItemId: item.id,
-          productId,
-          movementType: InventoryMovementType.STOCK_IN,
-          toLocationId: location.id,
-          employeeId,
-          reason: "Employee scanned product and location"
         }
       });
     });
@@ -441,7 +442,9 @@ export class OperationsProductControlService {
       where: { active: true },
       include: {
         _count: {
-          select: { inventoryItems: true }
+          select: {
+            inventoryItems: { where: { status: { in: WAREHOUSE_OCCUPYING_STATUSES } } }
+          }
         }
       },
       orderBy: { locationCode: "asc" },

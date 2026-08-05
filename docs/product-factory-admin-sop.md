@@ -6,7 +6,7 @@
 2. Confirm API configuration, OpenAI, storage, auto routing, lightweight OpenCV, rembg + BiRefNet, quality threshold, Operations origin, and batch size are ready.
 3. Confirm the operator account is active, has a linked employee, and has the Product Factory role.
 4. On the operator workstation, start the Deli print agent and verify the configured printer and physical label size.
-5. Confirm active warehouse locations have scannable codes.
+5. Confirm active warehouse locations have valid capacities and enough remaining capacity for the planned batch.
 
 ## Taxonomy administration
 
@@ -23,7 +23,7 @@
 - Failed AI: retry that product. Do not rerun successful products.
 - Barcode mismatch: stop label application, compare batch index and product code, and reprint only the affected label.
 - Review rework: enter a concrete reason and return the product to calibration.
-- Location scan failure: verify the physical label and location status; never bypass with random assignment.
+- Shelf reservation failure: verify enabled shelf capacity and existing reservations; do not override an existing printed assignment silently.
 
 ## Reprinting
 

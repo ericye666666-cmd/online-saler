@@ -11,7 +11,11 @@ const modules: NavigationModule[] = [
   {
     key: "product",
     label: "商品中心",
-    items: [{ label: "商品工作台", href: "/", permission: "page.product.digitalization" }]
+    items: [
+      { label: "商品工作台", href: "/", permission: "page.product.digitalization" },
+      { label: "货架位管理", href: "/product/warehouse-locations", permission: "page.product.warehouse-locations" },
+      { label: "库存概览", href: "/product/inventory-overview", permission: "page.product.inventory-overview" }
+    ]
   },
   {
     key: "orders",
@@ -26,11 +30,7 @@ const modules: NavigationModule[] = [
   { key: "affiliate", label: "推广中心", items: [] },
   { key: "service", label: "客服中心", items: [] },
   { key: "analytics", label: "数据中心", items: [] },
-  {
-    key: "system",
-    label: "系统管理",
-    items: [{ label: "货架位管理", href: "/system/warehouse/locations", permission: "page.system.warehouse-locations" }]
-  }
+  { key: "system", label: "系统管理", items: [] }
 ];
 
 const pickerSession: OperationsSession = {
@@ -71,12 +71,13 @@ const managerSession: OperationsSession = {
   roles: [],
   permissions: [
     "module.orders",
-    "module.system",
+    "module.product",
     "page.orders.workbench",
     "page.orders.all",
     "page.orders.after-sale",
     "page.orders.exceptions",
-    "page.system.warehouse-locations",
+    "page.product.warehouse-locations",
+    "page.product.inventory-overview",
     "orders.view",
     "warehouse-locations.view"
   ]
@@ -85,6 +86,8 @@ const managerSession: OperationsSession = {
 assert.equal(canAccessPath("/orders/after-sales", modules, managerSession), true);
 assert.equal(canAccessPath("/orders/exceptions", modules, managerSession), true);
 assert.equal(canAccessPath("/system/warehouse/locations", modules, managerSession), true);
+assert.equal(canAccessPath("/product/warehouse-locations", modules, managerSession), true);
+assert.equal(canAccessPath("/product/inventory-overview", modules, managerSession), true);
 assert.equal(canAccessPath("/warehouse/inventory", modules, managerSession), true);
 
 console.log("Operations access tests passed");

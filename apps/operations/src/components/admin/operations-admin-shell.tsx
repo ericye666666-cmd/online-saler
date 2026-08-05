@@ -116,6 +116,8 @@ export const operationsModules: ModuleNav[] = [
       { label: "商品查询", href: "/product/search", icon: SearchIcon, permission: "page.product.digitalization" },
       { label: "详情生成", href: "/product/details", icon: FileTextIcon, permission: "page.product.details" },
       { label: "分类与属性", href: "/product/taxonomy", icon: SettingsIcon, permission: "page.product.control" },
+      { label: "货架位管理", href: "/product/warehouse-locations", icon: BoxesIcon, permission: "page.product.warehouse-locations" },
+      { label: "库存概览", href: "/product/inventory-overview", icon: BarChart3Icon, permission: "page.product.inventory-overview" },
       { label: "已完成", href: "/product/completed", icon: PackageCheckIcon, permission: "page.product.digitalization" }
     ]
   },
@@ -168,9 +170,9 @@ export const operationsModules: ModuleNav[] = [
     icon: BarChart3Icon,
     permission: "module.analytics",
     items: [
-      { label: "仓库经营 BI", href: "/analytics/warehouse-bi", icon: BoxesIcon, permission: "action.analytics.view" },
-      { label: "搜索关键词 BI", href: "/analytics/search-bi", icon: SearchIcon, permission: "action.analytics.view" },
-      { label: "销售概览", href: "/analytics", icon: BarChart3Icon, permission: "action.analytics.view" },
+      { label: "经营概览", href: "/analytics", icon: BarChart3Icon, permission: "action.analytics.view" },
+      { label: "高级仓库分析", href: "/analytics/warehouse-bi", icon: BoxesIcon, permission: "analytics.warehouse.view" },
+      { label: "搜索分析", href: "/analytics/search-bi", icon: SearchIcon, permission: "action.analytics.view" },
       { label: "商品漏斗", href: "/analytics/product-funnel", icon: LayoutDashboardIcon, permission: "action.analytics.view" },
       { label: "支付转化", href: "/analytics/payment-conversion", icon: CircleDollarSignIcon, permission: "action.analytics.view" },
       { label: "库存售罄", href: "/analytics/inventory-sellout", icon: BoxesIcon, permission: "action.analytics.view" },
@@ -187,7 +189,6 @@ export const operationsModules: ModuleNav[] = [
     permission: "module.system",
     items: [
       { label: "商品工厂配置", href: "/system/product-factory", icon: SettingsIcon, permission: "page.product.control" },
-      { label: "仓库配置 · 货架位", href: "/system/warehouse/locations", icon: BoxesIcon, permission: "page.system.warehouse-locations" },
       { label: "账号管理", href: "/system/accounts", icon: UsersIcon, permission: "page.system.accounts" },
       { label: "角色管理", href: "/system/roles", icon: UserCogIcon, permission: "page.system.roles" },
       { label: "权限管理", href: "/system/permissions", icon: ShieldCheckIcon, permission: "page.system.permissions" }

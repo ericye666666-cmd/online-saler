@@ -90,6 +90,22 @@ const pagePermissions: OperationsPermission[] = [
     description: "Open warehouse location configuration."
   },
   {
+    code: "page.product.warehouse-locations",
+    module: "product",
+    scope: "PAGE",
+    page: "warehouse-locations",
+    action: "view",
+    description: "Open Product Center warehouse location management."
+  },
+  {
+    code: "page.product.inventory-overview",
+    module: "product",
+    scope: "PAGE",
+    page: "inventory-overview",
+    action: "view",
+    description: "Open the real-time Product Center inventory overview."
+  },
+  {
     code: "page.product.digitalization",
     module: "product",
     scope: "PAGE",
@@ -161,10 +177,14 @@ const orderWorkflowPermissions: OperationsPermission[] = [
   ["orders.cancel", "cancel", "Cancel an eligible order."],
   ["orders.after-sale", "after-sale", "Manage after-sale ownership and status."],
   ["warehouse-locations.view", "view", "View warehouse locations and their products."],
-  ["warehouse-locations.manage", "manage", "Create, disable, move, and print warehouse locations."]
+  ["warehouse-locations.manage", "manage", "Create, enable, and disable warehouse locations."],
+  ["warehouse-locations.edit-capacity", "edit-capacity", "Edit warehouse location capacity."],
+  ["warehouse-locations.move-product", "move-product", "Move eligible inventory between warehouse locations."],
+  ["inventory-overview.view", "inventory-overview", "View the real-time warehouse inventory overview."],
+  ["analytics.warehouse.view", "warehouse-analytics", "Open advanced warehouse analytics in Metabase."]
 ].map(([code, action, description]) => ({
   code,
-  module: code.startsWith("warehouse-locations") ? "system" : "orders",
+  module: code.startsWith("analytics.") ? "analytics" : code.startsWith("orders.") ? "orders" : "product",
   scope: "ACTION" as const,
   action,
   description
@@ -201,6 +221,8 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "page.orders.after-sale",
       "page.orders.exceptions",
       "page.system.warehouse-locations",
+      "page.product.warehouse-locations",
+      "page.product.inventory-overview",
       "action.product.edit",
       "action.product.approve",
       "action.product.publish",
@@ -216,7 +238,11 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "orders.cancel",
       "orders.after-sale",
       "warehouse-locations.view",
-      "warehouse-locations.manage"
+      "warehouse-locations.manage",
+      "warehouse-locations.edit-capacity",
+      "warehouse-locations.move-product",
+      "inventory-overview.view",
+      "analytics.warehouse.view"
     ])
   },
   {
@@ -227,11 +253,15 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "module.product",
       "page.product.digitalization",
       "page.product.control",
+      "page.product.warehouse-locations",
+      "page.product.inventory-overview",
       "action.product.view",
       "action.product.create",
       "action.product.edit",
       "action.product.approve",
-      "action.product.publish"
+      "action.product.publish",
+      "warehouse-locations.view",
+      "inventory-overview.view"
     ]
   },
   {
@@ -240,16 +270,20 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
     description: "Order-level picking, packing, pickup, and delivery handoff work.",
     permissions: [
       "module.orders",
+      "module.product",
       "page.orders.workbench",
       "page.orders.all",
       "page.orders.exceptions",
+      "page.product.warehouse-locations",
+      "page.product.inventory-overview",
       "action.orders.view",
       "orders.view",
       "orders.pick",
       "orders.pack",
       "orders.dispatch",
       "orders.complete",
-      "warehouse-locations.view"
+      "warehouse-locations.view",
+      "inventory-overview.view"
     ]
   },
   {
@@ -317,7 +351,8 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "action.affiliate.approve",
       "action.affiliate.export",
       "action.analytics.view",
-      "action.analytics.export"
+      "action.analytics.export",
+      "analytics.warehouse.view"
     ]
   },
   {
@@ -326,6 +361,9 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
     description: "Read and export operational analytics.",
     permissions: uniquePermissionCodes([
       ...readAllModules,
+      "page.product.inventory-overview",
+      "inventory-overview.view",
+      "analytics.warehouse.view",
       "action.analytics.export"
     ])
   }

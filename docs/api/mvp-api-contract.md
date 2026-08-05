@@ -583,13 +583,22 @@ actions additionally require an active employee linked to the admin account.
 Wrong barcode responses include expected barcode, actual barcode, product, and
 correct location.
 
-Warehouse location configuration is separate from daily order work:
+Warehouse location capacity management lives in Product Center and remains
+separate from daily order work. Counts are computed from the current
+`InventoryItem.locationId`, not historical movements:
 
 - `GET /operations/warehouse-locations`
+- `GET /operations/warehouse-locations/summary`
 - `POST /operations/warehouse-locations`
 - `POST /operations/warehouse-locations/bulk`
-- `PATCH /operations/warehouse-locations/:locationId/active`
+- `PATCH /operations/warehouse-locations/:locationId/status`
+- `PATCH /operations/warehouse-locations/:locationId/capacity`
 - `POST /operations/warehouse-locations/move-item`
+- `GET /operations/inventory-overview`
+
+Every read and mutation checks the matching warehouse or inventory permission
+on the server. Shelf QR codes and shelf scanning are not part of this contract;
+product Barcode verification for order picking remains unchanged.
 
 ### `POST /api/v1/operations/deliveries/:shipmentCode/attempts`
 

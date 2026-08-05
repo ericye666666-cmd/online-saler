@@ -19,8 +19,19 @@ test("super admin role includes every operations permission", () => {
 test("product digitization role cannot access system account management", () => {
   const permissions = rolePermissionCodes(["PRODUCT_DIGITIZATION"]);
   assert.equal(hasOperationsPermission(permissions, "page.product.digitalization"), true);
+  assert.equal(hasOperationsPermission(permissions, "page.product.warehouse-locations"), true);
+  assert.equal(hasOperationsPermission(permissions, "inventory-overview.view"), true);
+  assert.equal(hasOperationsPermission(permissions, "warehouse-locations.edit-capacity"), false);
   assert.equal(hasOperationsPermission(permissions, "page.product.details"), false);
   assert.equal(hasOperationsPermission(permissions, "action.system.manage-users"), false);
+});
+
+test("warehouse management mutations require explicit supervisor permissions", () => {
+  const manager = rolePermissionCodes(["PROJECT_MANAGER"]);
+  assert.equal(hasOperationsPermission(manager, "warehouse-locations.manage"), true);
+  assert.equal(hasOperationsPermission(manager, "warehouse-locations.edit-capacity"), true);
+  assert.equal(hasOperationsPermission(manager, "warehouse-locations.move-product"), true);
+  assert.equal(hasOperationsPermission(rolePermissionCodes(["DATA_ANALYST"]), "analytics.warehouse.view"), true);
 });
 
 test("product detail generation is limited to project managers and super admins", () => {

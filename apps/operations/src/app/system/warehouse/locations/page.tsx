@@ -1,5 +1,5 @@
-import { WarehouseLocationsPage } from "./warehouse-locations-client";
+import { permanentRedirect } from "next/navigation";
 
 export default function Page() {
-  return <WarehouseLocationsPage />;
+  permanentRedirect("/product/warehouse-locations");
 }

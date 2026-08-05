@@ -38,11 +38,11 @@ Use **重跑 lightweight** for a normal retry and **强制 BiRefNet** for light-
 ## 5. Review, store, and publish
 
 1. A reviewer checks the complete product and approves, requests rework, or rejects it. Rework and rejection require a reason.
-2. After all ten are approved, scan a product Barcode and its physical location code.
-3. Confirm placement, then repeat for all ten products. Never use a random location for real stock.
-4. Publish the batch after all ten products show available at a location.
+2. When formal Barcodes are generated, the system reserves enabled shelf locations within their remaining capacity.
+3. Place the products by the grouped shelf list. Do not select or scan a shelf for each item.
+4. Use the single batch confirmation only after every product is at its assigned shelf; the action records stock-in and makes inventory available before publishing.
 5. Move the finished batch to **已完成** and start the next batch.
 
 ## Stop conditions
 
-Stop and report the product instead of guessing when the original image is missing, the cutout changes the garment, AI and the physical item disagree, the Barcode is duplicated, the scanned location is inactive, or the printed label does not match the batch mapping.
+Stop and report the product instead of guessing when the original image is missing, the cutout changes the garment, AI and the physical item disagree, the Barcode is duplicated, no shelf capacity is available, or the printed shelf text does not match the batch mapping.

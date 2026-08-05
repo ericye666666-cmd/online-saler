@@ -186,10 +186,10 @@ It is not a management dashboard.
 | AI Extraction | Start extraction, view extraction status, save raw output | Product |
 | Manual Calibration | Edit final measurements and attributes while preserving AI raw values | Product, Audit |
 | Product Review | Approve, reject, or return to rework | Product, Audit |
-| Check-in | Scan location, scan product, mark item available online | Inventory, Product |
-| Movement | Scan product and new location, record movement | Inventory, Audit |
+| Check-in | Follow the capacity-safe grouped shelf list, confirm the batch, mark items available online | Inventory, Product |
+| Movement | Select an eligible product and an enabled destination with capacity, record movement | Inventory, Audit |
 | Count | Count by location, record missing, extra, damaged | Inventory, Audit |
-| Picking | Pick by task, scan location, scan product, block wrong item | Fulfillment, Inventory |
+| Picking | Pick by task, read the current shelf location, scan the product Barcode, block wrong item | Fulfillment, Inventory |
 | Packing | Pack items into parcel, scan items again, print or show parcel code | Fulfillment |
 | Pickup | Verify pickup code or phone, mark handed over | Fulfillment |
 | Delivery Handoff | Assign rider or delivery batch, record handoff | Fulfillment |

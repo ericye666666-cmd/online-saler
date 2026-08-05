@@ -9,7 +9,11 @@ import { OperationsAnalyticsController } from "./operations-analytics.controller
 import { OperationsAnalyticsService } from "./operations-analytics.service";
 import { OperationsCustomerServiceController } from "./operations-customer-service.controller";
 import { OperationsCustomerServiceService } from "./operations-customer-service.service";
-import { OperationsFulfillmentController, OperationsWarehouseLocationsController } from "./operations-fulfillment.controller";
+import {
+  OperationsFulfillmentController,
+  OperationsInventoryOverviewController,
+  OperationsWarehouseLocationsController
+} from "./operations-fulfillment.controller";
 import { OperationsFulfillmentService } from "./operations-fulfillment.service";
 import { OperationsProductBatchController } from "./operations-product-batch.controller";
 import { OperationsProductBatchService } from "./operations-product-batch.service";
@@ -19,6 +23,7 @@ import { OperationsProductFactoryAdminController } from "./operations-product-fa
 import { OperationsProductFactoryAdminService } from "./operations-product-factory-admin.service";
 import { OperationsWorkspaceController } from "./operations-workspace.controller";
 import { OperationsWorkspaceService } from "./operations-workspace.service";
+import { OperationsWarehouseService } from "./operations-warehouse.service";
 
 @Module({
   imports: [ProductModule, AIModule],
@@ -30,6 +35,7 @@ import { OperationsWorkspaceService } from "./operations-workspace.service";
     OperationsProductFactoryAdminController,
     OperationsFulfillmentController,
     OperationsWarehouseLocationsController,
+    OperationsInventoryOverviewController,
     OperationsAffiliateController,
     OperationsAnalyticsController,
     OperationsCustomerServiceController
@@ -41,6 +47,7 @@ import { OperationsWorkspaceService } from "./operations-workspace.service";
     OperationsProductControlService,
     OperationsProductFactoryAdminService,
     OperationsFulfillmentService,
+    OperationsWarehouseService,
     OperationsAffiliateService,
     OperationsAnalyticsService,
     OperationsCustomerServiceService

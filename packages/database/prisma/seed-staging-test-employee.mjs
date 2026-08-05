@@ -54,6 +54,22 @@ const permissions = [
     description: "Open warehouse location configuration."
   },
   {
+    code: "page.product.warehouse-locations",
+    module: "product",
+    scope: "PAGE",
+    page: "warehouse-locations",
+    action: "view",
+    description: "Open Product Center warehouse location management."
+  },
+  {
+    code: "page.product.inventory-overview",
+    module: "product",
+    scope: "PAGE",
+    page: "inventory-overview",
+    action: "view",
+    description: "Open the real-time Product Center inventory overview."
+  },
+  {
     code: "page.product.digitalization",
     module: "product",
     scope: "PAGE",
@@ -112,8 +128,12 @@ const permissions = [
     ["orders.complete", "orders", "complete", "Confirm delivery or customer pickup completion."],
     ["orders.cancel", "orders", "cancel", "Cancel an eligible order."],
     ["orders.after-sale", "orders", "after-sale", "Manage after-sale ownership and status."],
-    ["warehouse-locations.view", "system", "view", "View warehouse locations and their products."],
-    ["warehouse-locations.manage", "system", "manage", "Create, disable, move, and print warehouse locations."]
+    ["warehouse-locations.view", "product", "view", "View warehouse locations and their products."],
+    ["warehouse-locations.manage", "product", "manage", "Create, enable, and disable warehouse locations."],
+    ["warehouse-locations.edit-capacity", "product", "edit-capacity", "Edit warehouse location capacity."],
+    ["warehouse-locations.move-product", "product", "move-product", "Move eligible inventory between warehouse locations."],
+    ["inventory-overview.view", "product", "inventory-overview", "View the real-time warehouse inventory overview."],
+    ["analytics.warehouse.view", "analytics", "warehouse-analytics", "Open advanced warehouse analytics in Metabase."]
   ].map(([code, module, action, description]) => ({ code, module, scope: "ACTION", action, description }))
 ];
 
@@ -144,6 +164,8 @@ const roles = [
       "page.orders.after-sale",
       "page.orders.exceptions",
       "page.system.warehouse-locations",
+      "page.product.warehouse-locations",
+      "page.product.inventory-overview",
       "action.product.edit",
       "action.product.approve",
       "action.product.publish",
@@ -159,7 +181,11 @@ const roles = [
       "orders.cancel",
       "orders.after-sale",
       "warehouse-locations.view",
-      "warehouse-locations.manage"
+      "warehouse-locations.manage",
+      "warehouse-locations.edit-capacity",
+      "warehouse-locations.move-product",
+      "inventory-overview.view",
+      "analytics.warehouse.view"
     ])
   },
   {
@@ -170,18 +196,22 @@ const roles = [
       "module.product",
       "page.product.digitalization",
       "page.product.control",
+      "page.product.warehouse-locations",
+      "page.product.inventory-overview",
       "action.product.view",
       "action.product.create",
       "action.product.edit",
       "action.product.approve",
-      "action.product.publish"
+      "action.product.publish",
+      "warehouse-locations.view",
+      "inventory-overview.view"
     ]
   },
   {
     code: "WAREHOUSE_FULFILLMENT",
     name: "Order Fulfillment",
     description: "Order-level picking, packing, pickup, and delivery handoff work.",
-    permissions: ["module.orders", "page.orders.workbench", "page.orders.all", "page.orders.exceptions", "action.orders.view", "orders.view", "orders.pick", "orders.pack", "orders.dispatch", "orders.complete", "warehouse-locations.view"]
+    permissions: ["module.orders", "module.product", "page.orders.workbench", "page.orders.all", "page.orders.exceptions", "page.product.warehouse-locations", "page.product.inventory-overview", "action.orders.view", "orders.view", "orders.pick", "orders.pack", "orders.dispatch", "orders.complete", "warehouse-locations.view", "inventory-overview.view"]
   },
   {
     code: "ORDER_OPERATIONS",
@@ -205,13 +235,13 @@ const roles = [
     code: "FINANCE",
     name: "Finance",
     description: "Payment, payout, commission, and export access.",
-    permissions: ["module.orders", "module.affiliate", "module.analytics", "action.orders.view", "action.orders.export", "action.affiliate.view", "action.affiliate.approve", "action.affiliate.export", "action.analytics.view", "action.analytics.export"]
+    permissions: ["module.orders", "module.affiliate", "module.analytics", "action.orders.view", "action.orders.export", "action.affiliate.view", "action.affiliate.approve", "action.affiliate.export", "action.analytics.view", "action.analytics.export", "analytics.warehouse.view"]
   },
   {
     code: "DATA_ANALYST",
     name: "Data Analyst",
     description: "Read and export operational analytics.",
-    permissions: unique([...readAllModules, "action.analytics.export"])
+    permissions: unique([...readAllModules, "page.product.inventory-overview", "inventory-overview.view", "analytics.warehouse.view", "action.analytics.export"])
   }
 ];
 
