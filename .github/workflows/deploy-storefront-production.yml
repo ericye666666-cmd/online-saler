@@ -107,11 +107,15 @@ jobs:
         run: |
           IMAGE_URI="${{ vars.GCP_REGION_PRODUCTION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID_PRODUCTION }}/${{ vars.GCP_ARTIFACT_REPOSITORY_PRODUCTION }}/${IMAGE_NAME}:${GITHUB_SHA}"
 
+          echo "Workspace: ${GITHUB_WORKSPACE}"
+          ls -la "${GITHUB_WORKSPACE}"
+          test -s "${GITHUB_WORKSPACE}/Dockerfile.storefront"
+
           docker build \
-            --file Dockerfile.storefront \
+            --file "${GITHUB_WORKSPACE}/Dockerfile.storefront" \
             --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_PRODUCTION }}" \
             --tag "${IMAGE_URI}" \
-            .
+            "${GITHUB_WORKSPACE}"
 
           echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
 
