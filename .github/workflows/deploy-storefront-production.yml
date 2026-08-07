@@ -207,6 +207,6 @@ jobs:
       - name: Configure production reservation cleanup scheduler
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID_PRODUCTION }}
-          GCP_REGION: ${{ vars.GCP_REGION_PRODUCTION }}
+          GCP_SCHEDULER_REGION: ${{ vars.GCP_SCHEDULER_REGION_PRODUCTION }}
           STOREFRONT_PUBLIC_URL: ${{ steps.deploy.outputs.url }}
         run: bash scripts/gcloud/configure-production-scheduler.sh
