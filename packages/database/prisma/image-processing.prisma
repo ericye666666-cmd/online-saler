@@ -1,0 +1,78 @@
+enum ProductImageVariant {
+  ORIGINAL
+  CUTOUT_TRANSPARENT
+  CUTOUT_WHITE
+  OPTIMIZED_MAIN
+  OPTIMIZED_BALANCED_MAIN
+  AI_DISPLAY_MAIN
+}
+
+enum ImageProcessingOperation {
+  REMOVE_BACKGROUND
+  COMPOSE_WHITE_BACKGROUND
+  OPTIMIZE_MAIN_IMAGE
+  OPTIMIZE_BALANCED_MAIN_IMAGE
+  GENERATE_AI_DISPLAY_MAIN_IMAGE
+}
+
+enum ImageProcessingStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model ProductImageVariantAsset {
+  id            String              @id @default(uuid())
+  productId     String
+  sourceImageId String
+  variant       ProductImageVariant
+  storageUrl    String
+  publicUrl     String?
+  widthPx       Int?
+  heightPx      Int?
+  mimeType      String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([productId, variant, createdAt])
+  @@index([sourceImageId])
+}
+
+model ProductImageProcessingJob {
+  id               String                   @id @default(uuid())
+  productId        String
+  sourceImageId    String
+  operation        ImageProcessingOperation
+  targetVariant    ProductImageVariant
+  status           ImageProcessingStatus    @default(PENDING)
+  provider         String?
+  processorVersion String?
+  qualityScore     Float?
+  qualityIssues    Json?
+  fallbackFrom     String?
+  fallbackReason   String?
+  outputImageId    String?                  @unique
+  retryCount       Int                      @default(0)
+  retryReason      String?
+  failureCode      String?
+  errorMessage     String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([productId, status, createdAt])
+  @@index([sourceImageId, operation, createdAt])
+}
+
+model ProductMainImageSelection {
+  productId       String              @id
+  selectedImageId String
+  variant         ProductImageVariant
+  selectedAt      DateTime            @default(now())
+  confirmedAt     DateTime?
+  updatedAt       DateTime            @updatedAt
+
+  @@index([selectedImageId])
+}

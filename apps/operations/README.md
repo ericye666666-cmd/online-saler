@@ -12,3 +12,9 @@ Planned capabilities:
 - Warehouse check-in and movement.
 - Picking, packing, pickup, delivery handoff.
 - Customer service and return intake.
+
+Foundation command:
+
+```bash
+npm run dev:operations
+```

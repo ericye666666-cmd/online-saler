@@ -1,0 +1,1371 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  SUSPENDED
+  LEFT
+}
+
+enum AdminUserStatus {
+  ACTIVE
+  DISABLED
+  LOCKED
+}
+
+enum PermissionScope {
+  MODULE
+  PAGE
+  ACTION
+}
+
+enum ActorType {
+  EMPLOYEE
+  SYSTEM
+  CUSTOMER
+  AFFILIATE
+}
+
+enum SourceApp {
+  STOREFRONT
+  OPERATIONS
+  ADMIN
+  API
+  WORKER
+}
+
+enum ProductStatus {
+  DRAFT
+  PHOTOGRAPHED
+  AI_PROCESSING
+  AI_PROCESSED
+  CALIBRATION_PENDING
+  CALIBRATED
+  BARCODE_ASSIGNED
+  REVIEW_PENDING
+  REWORK_REQUIRED
+  APPROVED
+  READY_FOR_STORAGE
+  PUBLISHED
+  UNPUBLISHED
+  ARCHIVED
+}
+
+enum ProductBatchStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
+enum ProductImageType {
+  FRONT
+  BACK
+  LABEL
+  DEFECT
+  DETAIL
+  SOCIAL_CARD
+}
+
+enum ProductGender {
+  WOMEN
+  MEN
+  KIDS
+  UNISEX
+}
+
+enum ProductFitType {
+  SLIM
+  REGULAR
+  RELAXED
+  OVERSIZED
+  UNKNOWN
+}
+
+enum ProductStretchLevel {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  UNKNOWN
+}
+
+enum ProductFabricWeight {
+  LIGHT
+  REGULAR
+  HEAVY
+  UNKNOWN
+}
+
+enum ConditionGrade {
+  LIKE_NEW
+  EXCELLENT
+  GOOD
+  FAIR
+}
+
+enum AIExtractionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum AIFieldDecisionSource {
+  AI_PROPOSED
+  HUMAN_ACCEPTED
+  HUMAN_EDITED
+  HUMAN_ENTERED
+}
+
+enum ReviewResult {
+  APPROVED
+  REWORK_REQUIRED
+  REJECTED
+}
+
+enum MeasurementSource {
+  AI_ACCEPTED
+  HUMAN_EDITED
+  HUMAN_ENTERED
+}
+
+enum DefectSeverity {
+  MINOR
+  MAJOR
+}
+
+enum InventoryItemStatus {
+  PENDING_STOCK_IN
+  AVAILABLE
+  RESERVED
+  PAID
+  PICKED
+  PACKED
+  DELIVERED
+  RETURNED
+  LOST
+}
+
+enum InventoryMovementType {
+  LOCATION_ASSIGNED
+  STOCK_IN
+  MOVE
+  ADJUST
+}
+
+enum WarehouseLocationStatus {
+  ACTIVE
+  FULL
+  INACTIVE
+}
+
+model Employee {
+  id                          String                @id @default(uuid())
+  employeeCode                String                @unique
+  name                        String
+  phone                       String?               @unique
+  status                      EmployeeStatus        @default(ACTIVE)
+  roles                       EmployeeRole[]
+  auditLogs                   AuditLog[]
+  createdProducts             Product[]             @relation("ProductCreatedBy")
+  approvedProducts            Product[]             @relation("ProductApprovedBy")
+  uploadedProductImages       ProductImage[]        @relation("ProductImageUploadedBy")
+  reviewedMeasurements        ProductMeasurement[]  @relation("ProductMeasurementReviewedBy")
+  reviewedAIFieldDecisions    AIFieldDecision[]     @relation("AIFieldDecisionReviewedBy")
+  productReviews              ProductReview[]       @relation("ProductReviewReviewer")
+  createdProductBatches       ProductBatch[]        @relation("ProductBatchCreatedBy")
+  inventoryItemsCreated       InventoryItem[]       @relation("InventoryItemCreatedBy")
+  inventoryMovements          InventoryMovement[]   @relation("InventoryMovementEmployee")
+  assignedFulfillments        OrderFulfillment[]    @relation("FulfillmentAssignedPicker")
+  packingStartedFulfillments  OrderFulfillment[]    @relation("FulfillmentPackingStartedBy")
+  packedFulfillments          OrderFulfillment[]    @relation("FulfillmentPackedBy")
+  dispatchedFulfillments      OrderFulfillment[]    @relation("FulfillmentDispatchedBy")
+  pickupConfirmedFulfillments OrderFulfillment[]    @relation("FulfillmentPickupConfirmedBy")
+  afterSaleFulfillments       OrderFulfillment[]    @relation("FulfillmentAfterSaleOwner")
+  verifiedFulfillmentItems    FulfillmentItem[]     @relation("FulfillmentItemVerifiedBy")
+  fulfillmentEvents           FulfillmentEvent[]    @relation("FulfillmentEventActor")
+  relatedFulfillmentEvents    FulfillmentEvent[]    @relation("FulfillmentEventRelatedEmployee")
+  deliveryRider               DeliveryRider?        @relation("DeliveryRiderEmployee")
+  afterSaleCases              CustomerServiceCase[] @relation("CustomerServiceCaseOwner")
+  adminUser                   AdminUser?            @relation("AdminUserLinkedEmployee")
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
+}
+
+model AdminUser {
+  id                   String                @id @default(uuid())
+  name                 String
+  email                String?               @unique
+  loginAccount         String                @unique
+  phone                String?               @unique
+  passwordHash         String?
+  inviteTokenHash      String?
+  inviteExpiresAt      DateTime?
+  status               AdminUserStatus       @default(ACTIVE)
+  linkedEmployeeId     String?               @unique
+  linkedEmployee       Employee?             @relation("AdminUserLinkedEmployee", fields: [linkedEmployeeId], references: [id], onDelete: SetNull)
+  roles                UserRole[]
+  customerServiceCases CustomerServiceCase[] @relation("CustomerServiceCaseCreatedBy")
+  customerServiceNotes CustomerServiceNote[] @relation("CustomerServiceNoteAuthor")
+  fulfillmentEvents    FulfillmentEvent[]    @relation("FulfillmentEventAdminActor")
+  deliveryAssignments  DeliveryAssignment[]  @relation("DeliveryAssignmentAssignedBy")
+  auditLogs            AuditLog[]            @relation("AuditLogAdminUser")
+  lastLoginAt          DateTime?
+  lockedAt             DateTime?
+  disabledAt           DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([status, createdAt])
+  @@index([linkedEmployeeId])
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  description String?
+  employees   EmployeeRole[]
+  adminUsers  UserRole[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  module      String
+  scope       PermissionScope  @default(ACTION)
+  page        String?
+  action      String?
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model UserRole {
+  adminUserId String
+  roleId      String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@id([adminUserId, roleId])
+}
+
+model EmployeeRole {
+  employeeId String
+  roleId     String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  role       Role     @relation(fields: [roleId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@id([employeeId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+}
+
+model AuditLog {
+  id               String     @id @default(uuid())
+  actorType        ActorType
+  actorId          String?
+  actorAdminUserId String?
+  employee         Employee?  @relation(fields: [actorId], references: [id])
+  adminUser        AdminUser? @relation("AuditLogAdminUser", fields: [actorAdminUserId], references: [id], onDelete: SetNull)
+  sourceApp        SourceApp
+  module           String
+  entityType       String
+  entityId         String?
+  action           String
+  beforeJson       Json?
+  afterJson        Json?
+  reason           String?
+  createdAt        DateTime   @default(now())
+
+  @@index([module, entityType, entityId])
+  @@index([actorType, actorId])
+  @@index([actorAdminUserId, createdAt])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key                 String   @id
+  valueJson           Json
+  scope               String   @default("GLOBAL")
+  updatedByEmployeeId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Product {
+  id                   String               @id @default(uuid())
+  productCode          String               @unique
+  batchId              String?
+  batchItemNumber      Int?
+  barcode              String?              @unique
+  status               ProductStatus        @default(DRAFT)
+  title                String?
+  description          String?
+  category             String?
+  subcategory          String?
+  brand                String?
+  color                String?
+  pattern              String?
+  sleeveType           String?
+  fitType              ProductFitType?
+  stretchLevel         ProductStretchLevel?
+  fabricWeight         ProductFabricWeight?
+  material             String?
+  tags                 String[]             @default([])
+  detailSourceVersion  Int                  @default(0)
+  gender               ProductGender?
+  kidsAgeRange         String?
+  tagSize              String?
+  finalSizeLabel       String?
+  ukSizeLabel          String?
+  conditionGrade       ConditionGrade?
+  priceKsh             Int?
+  labelPrintedAt       DateTime?
+  labelAppliedAt       DateTime?
+  createdByEmployeeId  String?
+  approvedByEmployeeId String?
+  createdBy            Employee?            @relation("ProductCreatedBy", fields: [createdByEmployeeId], references: [id])
+  approvedBy           Employee?            @relation("ProductApprovedBy", fields: [approvedByEmployeeId], references: [id])
+  batch                ProductBatch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  images               ProductImage[]
+  measurements         ProductMeasurement[]
+  aiExtractions        AIExtraction[]
+  defects              ProductDefect[]
+  reviews              ProductReview[]
+  detailProfiles       ProductDetailProfile[]
+  detailAssets         ProductDetailAsset[]
+  detailGenerationJobs ProductDetailGenerationJob[]
+  inventoryItem        InventoryItem?
+  inventoryMovements   InventoryMovement[]
+  affiliateLinks       AffiliateLink[]
+  affiliateClicks      AffiliateClick[]
+  collectionItems      CollectionItem[]
+  shareCards           ShareCard[]
+  publishedAt          DateTime?
+  unpublishedAt        DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@unique([batchId, batchItemNumber])
+  @@index([status, publishedAt])
+  @@index([batchId, batchItemNumber])
+  @@index([category, finalSizeLabel, priceKsh])
+  @@index([category, subcategory])
+  @@index([gender, kidsAgeRange])
+  @@index([conditionGrade])
+}
+
+model ProductBatch {
+  id                  String             @id @default(uuid())
+  batchCode           String             @unique
+  status              ProductBatchStatus @default(OPEN)
+  targetCount         Int                @default(10)
+  createdByEmployeeId String?
+  createdBy           Employee?          @relation("ProductBatchCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  products            Product[]
+  detailGenerationJobs ProductDetailGenerationJob[]
+  note                String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([status, createdAt])
+  @@index([createdByEmployeeId])
+}
+
+model WarehouseLocation {
+  id             String                  @id @default(uuid())
+  locationCode   String                  @unique
+  zoneCode       String?
+  rackCode       String?
+  binCode        String?
+  qrCode         String?                 @unique
+  capacity       Int                     @default(100)
+  status         WarehouseLocationStatus @default(ACTIVE)
+  active         Boolean                 @default(true)
+  note           String?
+  inventoryItems InventoryItem[]
+  movementsFrom  InventoryMovement[]     @relation("MovementFromLocation")
+  movementsTo    InventoryMovement[]     @relation("MovementToLocation")
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([status, locationCode])
+  @@index([active, locationCode])
+  @@index([zoneCode, rackCode, binCode])
+}
+
+model InventoryItem {
+  id                  String              @id @default(uuid())
+  productId           String              @unique
+  barcode             String              @unique
+  status              InventoryItemStatus @default(PENDING_STOCK_IN)
+  locationId          String?
+  checkedInAt         DateTime?
+  createdByEmployeeId String?
+  product             Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location            WarehouseLocation?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  createdBy           Employee?           @relation("InventoryItemCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  movements           InventoryMovement[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([status, locationId])
+  @@index([createdByEmployeeId])
+}
+
+model InventoryMovement {
+  id              String                @id @default(uuid())
+  inventoryItemId String
+  productId       String
+  movementType    InventoryMovementType
+  fromLocationId  String?
+  toLocationId    String?
+  employeeId      String?
+  reason          String?
+  inventoryItem   InventoryItem         @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  product         Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fromLocation    WarehouseLocation?    @relation("MovementFromLocation", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocation      WarehouseLocation?    @relation("MovementToLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
+  employee        Employee?             @relation("InventoryMovementEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  createdAt       DateTime              @default(now())
+
+  @@index([inventoryItemId, createdAt])
+  @@index([productId, createdAt])
+  @@index([movementType, createdAt])
+  @@index([employeeId])
+}
+
+model ProductImage {
+  id                   String           @id @default(uuid())
+  productId            String
+  type                 ProductImageType
+  originalUrl          String
+  publicUrl            String?
+  sortOrder            Int              @default(0)
+  isRequired           Boolean          @default(false)
+  uploadedByEmployeeId String?
+  product              Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  uploadedBy           Employee?        @relation("ProductImageUploadedBy", fields: [uploadedByEmployeeId], references: [id])
+  defects              ProductDefect[]
+  createdAt            DateTime         @default(now())
+
+  @@index([productId, type])
+  @@index([uploadedByEmployeeId])
+}
+
+model ProductMeasurement {
+  id                   String             @id @default(uuid())
+  productId            String
+  measurementType      String
+  aiValueCm            Decimal?           @db.Decimal(6, 2)
+  aiConfidence         Decimal?           @db.Decimal(4, 3)
+  finalValueCm         Decimal?           @db.Decimal(6, 2)
+  finalSource          MeasurementSource?
+  manualLineImageId    String?
+  manualLineStartX     Decimal?           @db.Decimal(5, 4)
+  manualLineStartY     Decimal?           @db.Decimal(5, 4)
+  manualLineEndX       Decimal?           @db.Decimal(5, 4)
+  manualLineEndY       Decimal?           @db.Decimal(5, 4)
+  reviewedByEmployeeId String?
+  reviewedAt           DateTime?
+  product              Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reviewedBy           Employee?          @relation("ProductMeasurementReviewedBy", fields: [reviewedByEmployeeId], references: [id])
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@unique([productId, measurementType])
+  @@index([measurementType])
+  @@index([reviewedByEmployeeId])
+}
+
+model AIExtraction {
+  id                   String             @id @default(uuid())
+  productId            String
+  provider             String?
+  model                String?
+  promptVersion        String?
+  requestJson          Json?
+  inputImageIds        Json?
+  rawOutputJson        Json?
+  normalizedOutputJson Json?
+  status               AIExtractionStatus @default(PENDING)
+  errorMessage         String?
+  failureCode          String?
+  retryCount           Int                @default(0)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  latencyMs            Int?
+  inputTokens          Int?
+  outputTokens         Int?
+  estimatedCostUsd     Decimal?           @db.Decimal(10, 6)
+  product              Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fieldDecisions       AIFieldDecision[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([productId, status])
+  @@index([createdAt])
+}
+
+model AIFieldDecision {
+  id                        String                @id @default(uuid())
+  extractionId              String
+  fieldName                 String
+  aiValueJson               Json?
+  finalValueJson            Json?
+  confidence                Decimal?              @db.Decimal(4, 3)
+  evidenceImageIds          Json?
+  source                    AIFieldDecisionSource @default(AI_PROPOSED)
+  requiresHumanConfirmation Boolean               @default(false)
+  reviewedByEmployeeId      String?
+  reviewedAt                DateTime?
+  extraction                AIExtraction          @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  reviewedBy                Employee?             @relation("AIFieldDecisionReviewedBy", fields: [reviewedByEmployeeId], references: [id], onDelete: SetNull)
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  @@unique([extractionId, fieldName])
+  @@index([fieldName, source])
+  @@index([reviewedByEmployeeId])
+}
+
+model ProductDefect {
+  id                      String         @id @default(uuid())
+  productId               String
+  defectType              String
+  severity                DefectSeverity
+  description             String
+  customerSafeDescription String?
+  imageId                 String?
+  product                 Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  image                   ProductImage?  @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  createdAt               DateTime       @default(now())
+
+  @@index([productId])
+  @@index([defectType])
+  @@index([imageId])
+}
+
+model ProductReview {
+  id                 String       @id @default(uuid())
+  productId          String
+  reviewerEmployeeId String?
+  result             ReviewResult
+  reason             String?
+  product            Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reviewer           Employee?    @relation("ProductReviewReviewer", fields: [reviewerEmployeeId], references: [id])
+  createdAt          DateTime     @default(now())
+
+  @@index([productId, createdAt])
+  @@index([reviewerEmployeeId])
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum CheckoutDraftStatus {
+  ACTIVE
+  CONVERTED
+  ABANDONED
+  EXPIRED
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAYMENT_PROCESSING
+  PAID
+  CANCELLED
+  EXPIRED
+  FULFILLING
+  COMPLETED
+  REFUNDED
+}
+
+enum FulfillmentMethod {
+  PICKUP
+  KIKUYU_LOCAL_DELIVERY
+}
+
+enum OrderCurrency {
+  KES
+}
+
+enum PaymentProvider {
+  MPESA
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  TIMEOUT
+  EXPIRED
+  MANUAL_REVIEW
+}
+
+enum FulfillmentStatus {
+  PAID
+  PICKING
+  READY_TO_PACK
+  PACKED
+  READY_FOR_PICKUP
+  READY_FOR_DISPATCH
+  OUT_FOR_DELIVERY
+  COMPLETED
+  EXCEPTION
+}
+
+enum FulfillmentItemStatus {
+  PENDING
+  VERIFIED
+}
+
+enum PackagingMethod {
+  BAG
+  BOX
+  OTHER
+}
+
+enum PickupVerificationMethod {
+  ORDER_NUMBER
+  PHONE
+  PICKUP_CODE
+}
+
+enum DeliveryRiderType {
+  INTERNAL
+  EXTERNAL
+}
+
+enum FulfillmentExceptionReason {
+  ITEM_NOT_FOUND
+  BARCODE_MISMATCH
+  ITEM_DAMAGED
+  CUSTOMER_CANCELLED
+  DELIVERY_FAILED
+  OTHER
+}
+
+enum MpesaCallbackProcessingStatus {
+  APPLIED
+  DUPLICATE
+  IGNORED
+  MANUAL_REVIEW
+}
+
+enum AffiliateStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AffiliateLevel {
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+}
+
+enum AffiliateLinkType {
+  STORE
+  PRODUCT
+  COLLECTION
+}
+
+enum CollectionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CampaignChannel {
+  WHATSAPP
+  STATUS
+  TIKTOK
+  FACEBOOK
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum AffiliateAssetStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum CommissionStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  PAID
+}
+
+enum CustomerServiceCaseStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum CustomerServiceIssueType {
+  PAYMENT
+  PICKUP
+  DELIVERY
+  AFTER_SALE
+  ORDER
+  OTHER
+}
+
+model Customer {
+  id                         String                 @id @default(uuid())
+  googleSubjectId            String                 @unique
+  email                      String
+  normalizedEmail            String                 @unique
+  emailVerified              Boolean                @default(false)
+  displayName                String?
+  avatarUrl                  String?
+  phone                      String?
+  defaultAddress             String?
+  preferredFulfillmentMethod FulfillmentMethod?
+  status                     CustomerStatus         @default(ACTIVE)
+  lastLoginAt                DateTime?
+  checkoutDrafts             CheckoutDraft[]
+  orders                     Order[]
+  affiliateProfile           Affiliate?
+  affiliateClicks            AffiliateClick[]
+  affiliateAttributions      AffiliateAttribution[]
+  customerServiceCases       CustomerServiceCase[]
+  customerServiceNotes       CustomerServiceNote[]
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+
+  @@index([status, createdAt])
+  @@index([phone])
+}
+
+model CheckoutDraft {
+  id                String              @id @default(uuid())
+  customerId        String
+  status            CheckoutDraftStatus @default(ACTIVE)
+  fulfillmentMethod FulfillmentMethod   @default(PICKUP)
+  deliveryAddress   String?
+  deliveryNote      String?
+  itemSubtotalKsh   Int                 @default(0)
+  deliveryFeeKsh    Int                 @default(0)
+  totalKsh          Int                 @default(0)
+  currency          OrderCurrency       @default(KES)
+  expiresAt         DateTime?
+  convertedOrderId  String?             @unique
+  customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  convertedOrder    Order?              @relation("CheckoutDraftConvertedOrder", fields: [convertedOrderId], references: [id], onDelete: SetNull)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([customerId, status, updatedAt])
+  @@index([status, expiresAt])
+}
+
+model Order {
+  id                   String                @id @default(uuid())
+  orderNumber          String                @unique
+  customerId           String
+  status               OrderStatus           @default(DRAFT)
+  fulfillmentMethod    FulfillmentMethod
+  pickupCode           String?               @unique
+  deliveryAddress      String?
+  deliveryNote         String?
+  itemSubtotalKsh      Int
+  deliveryFeeKsh       Int                   @default(0)
+  totalKsh             Int
+  currency             OrderCurrency         @default(KES)
+  affiliateId          String?
+  affiliateSource      String?
+  affiliatePlacement   String?
+  affiliateCampaign    String?
+  customer             Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  affiliate            Affiliate?            @relation("OrderAffiliate", fields: [affiliateId], references: [id], onDelete: SetNull)
+  items                OrderItem[]
+  payments             Payment[]
+  fulfillment          OrderFulfillment?
+  fulfillmentEvents    FulfillmentEvent[]
+  deliveryAssignments  DeliveryAssignment[]
+  affiliateAttribution AffiliateAttribution?
+  commission           Commission?
+  customerServiceCases CustomerServiceCase[]
+  customerServiceNotes CustomerServiceNote[]
+  sourceDraft          CheckoutDraft?        @relation("CheckoutDraftConvertedOrder")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
+  @@index([affiliateId, createdAt])
+}
+
+model OrderItem {
+  id                String             @id @default(uuid())
+  orderId           String
+  productId         String
+  unitPriceKsh      Int
+  quantity          Int                @default(1)
+  lineTotalKsh      Int
+  order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  snapshot          OrderSnapshot?
+  fulfillmentItem   FulfillmentItem?
+  fulfillmentEvents FulfillmentEvent[]
+  createdAt         DateTime           @default(now())
+
+  @@unique([orderId, productId])
+  @@index([productId])
+}
+
+model OrderSnapshot {
+  id             String          @id @default(uuid())
+  orderItemId    String          @unique
+  productCode    String
+  barcode        String?
+  title          String
+  category       String?
+  subcategory    String?
+  brand          String?
+  color          String?
+  sizeLabel      String?
+  conditionGrade ConditionGrade?
+  imageUrl       String?
+  measurements   Json?
+  defects        Json?
+  unitPriceKsh   Int
+  orderItem      OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+
+  @@index([productCode])
+  @@index([barcode])
+}
+
+model Payment {
+  id                        String          @id @default(uuid())
+  orderId                   String
+  provider                  PaymentProvider @default(MPESA)
+  status                    PaymentStatus   @default(PENDING)
+  amountKsh                 Int
+  currency                  OrderCurrency   @default(KES)
+  phone                     String
+  idempotencyKey            String          @unique
+  providerMerchantRequestId String?
+  providerCheckoutRequestId String?         @unique
+  providerReceiptNumber     String?         @unique
+  providerResultCode        Int?
+  providerResultDescription String?
+  providerResponseJson      Json?
+  requestedAt               DateTime        @default(now())
+  expiresAt                 DateTime?
+  completedAt               DateTime?
+  order                     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  callbacks                 MpesaCallback[]
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+
+  @@index([orderId, status])
+  @@index([status, requestedAt])
+  @@index([phone, status])
+  @@index([providerMerchantRequestId])
+}
+
+model OrderFulfillment {
+  id                          String                      @id @default(uuid())
+  orderId                     String                      @unique
+  status                      FulfillmentStatus           @default(PAID)
+  assignedPickerEmployeeId    String?
+  packingStartedByEmployeeId  String?
+  packedByEmployeeId          String?
+  dispatchedByEmployeeId      String?
+  pickupConfirmedByEmployeeId String?
+  afterSaleOwnerEmployeeId    String?
+  deliveryRiderId             String?
+  deliveryRiderName           String?
+  deliveryRiderPhone          String?
+  exceptionReason             FulfillmentExceptionReason?
+  exceptionNote               String?
+  packingStatus               String?
+  packingNote                 String?
+  packagingMethod             PackagingMethod?
+  packageCount                Int?
+  pickedAt                    DateTime?
+  packingStartedAt            DateTime?
+  packedAt                    DateTime?
+  readyForPickupAt            DateTime?
+  readyForDispatchAt          DateTime?
+  dispatchedAt                DateTime?
+  outForDeliveryAt            DateTime?
+  pickupVerificationMethod    PickupVerificationMethod?
+  pickupVerificationValue     String?
+  pickupNote                  String?
+  completedAt                 DateTime?
+  order                       Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  assignedPicker              Employee?                   @relation("FulfillmentAssignedPicker", fields: [assignedPickerEmployeeId], references: [id], onDelete: SetNull)
+  packingStartedBy            Employee?                   @relation("FulfillmentPackingStartedBy", fields: [packingStartedByEmployeeId], references: [id], onDelete: SetNull)
+  packedBy                    Employee?                   @relation("FulfillmentPackedBy", fields: [packedByEmployeeId], references: [id], onDelete: SetNull)
+  dispatchedBy                Employee?                   @relation("FulfillmentDispatchedBy", fields: [dispatchedByEmployeeId], references: [id], onDelete: SetNull)
+  pickupConfirmedBy           Employee?                   @relation("FulfillmentPickupConfirmedBy", fields: [pickupConfirmedByEmployeeId], references: [id], onDelete: SetNull)
+  afterSaleOwner              Employee?                   @relation("FulfillmentAfterSaleOwner", fields: [afterSaleOwnerEmployeeId], references: [id], onDelete: SetNull)
+  deliveryRider               DeliveryRider?              @relation(fields: [deliveryRiderId], references: [id], onDelete: SetNull)
+  items                       FulfillmentItem[]
+  deliveryAssignments         DeliveryAssignment[]
+  events                      FulfillmentEvent[]
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([assignedPickerEmployeeId])
+  @@index([packedByEmployeeId])
+  @@index([dispatchedByEmployeeId])
+  @@index([deliveryRiderId])
+}
+
+model FulfillmentItem {
+  id                   String                @id @default(uuid())
+  fulfillmentId        String
+  orderItemId          String                @unique
+  expectedBarcode      String?
+  status               FulfillmentItemStatus @default(PENDING)
+  scannedBarcode       String?
+  verifiedByEmployeeId String?
+  verifiedAt           DateTime?
+  fulfillment          OrderFulfillment      @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  orderItem            OrderItem             @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  verifiedBy           Employee?             @relation("FulfillmentItemVerifiedBy", fields: [verifiedByEmployeeId], references: [id], onDelete: SetNull)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([fulfillmentId, status])
+  @@index([verifiedByEmployeeId, verifiedAt])
+}
+
+model DeliveryRider {
+  id           String               @id @default(uuid())
+  type         DeliveryRiderType
+  employeeId   String?              @unique
+  name         String
+  phone        String?
+  company      String?
+  vehicle      String?
+  employee     Employee?            @relation("DeliveryRiderEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  fulfillments OrderFulfillment[]
+  assignments  DeliveryAssignment[]
+  events       FulfillmentEvent[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([type, name])
+  @@index([phone])
+}
+
+model DeliveryAssignment {
+  id                    String           @id @default(uuid())
+  fulfillmentId         String
+  orderId               String
+  deliveryRiderId       String
+  assignedByAdminUserId String?
+  estimatedDeliveryAt   DateTime?
+  note                  String?
+  fulfillment           OrderFulfillment @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  order                 Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  deliveryRider         DeliveryRider    @relation(fields: [deliveryRiderId], references: [id], onDelete: Restrict)
+  assignedByAdminUser   AdminUser?       @relation("DeliveryAssignmentAssignedBy", fields: [assignedByAdminUserId], references: [id], onDelete: SetNull)
+  createdAt             DateTime         @default(now())
+
+  @@index([fulfillmentId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([deliveryRiderId, createdAt])
+}
+
+model FulfillmentEvent {
+  id                String                      @id @default(uuid())
+  idempotencyKey    String?                     @unique
+  fulfillmentId     String
+  orderId           String
+  actorEmployeeId   String?
+  actorAdminUserId  String?
+  relatedEmployeeId String?
+  deliveryRiderId   String?
+  orderItemId       String?
+  action            String
+  oldStatus         FulfillmentStatus?
+  newStatus         FulfillmentStatus
+  note              String?
+  expectedBarcode   String?
+  scannedBarcode    String?
+  exceptionReason   FulfillmentExceptionReason?
+  fulfillment       OrderFulfillment            @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  order             Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actorEmployee     Employee?                   @relation("FulfillmentEventActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)
+  actorAdminUser    AdminUser?                  @relation("FulfillmentEventAdminActor", fields: [actorAdminUserId], references: [id], onDelete: SetNull)
+  relatedEmployee   Employee?                   @relation("FulfillmentEventRelatedEmployee", fields: [relatedEmployeeId], references: [id], onDelete: SetNull)
+  deliveryRider     DeliveryRider?              @relation(fields: [deliveryRiderId], references: [id], onDelete: SetNull)
+  orderItem         OrderItem?                  @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                    @default(now())
+
+  @@index([fulfillmentId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([actorEmployeeId, createdAt])
+  @@index([actorAdminUserId, createdAt])
+  @@index([relatedEmployeeId, createdAt])
+  @@index([deliveryRiderId, createdAt])
+  @@index([orderItemId, createdAt])
+}
+
+model MpesaCallback {
+  id                        String                        @id @default(uuid())
+  paymentId                 String?
+  orderId                   String?
+  providerMerchantRequestId String?
+  providerCheckoutRequestId String                        @unique
+  resultCode                Int
+  resultDescription         String?
+  amountKsh                 Int?
+  mpesaReceiptNumber        String?
+  phone                     String?
+  transactionDate           DateTime?
+  processingStatus          MpesaCallbackProcessingStatus
+  rawJson                   Json
+  payment                   Payment?                      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt                 DateTime                      @default(now())
+
+  @@index([paymentId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([mpesaReceiptNumber])
+}
+
+model Affiliate {
+  id                String                 @id @default(uuid())
+  customerId        String?                @unique
+  affiliateCode     String                 @unique
+  slug              String                 @unique
+  displayName       String
+  bio               String?
+  phone             String?
+  email             String?
+  status            AffiliateStatus        @default(ACTIVE)
+  level             AffiliateLevel         @default(LEVEL_1)
+  commissionRateBps Int?
+  disabledAt        DateTime?
+  customer          Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  links             AffiliateLink[]
+  clicks            AffiliateClick[]
+  attributions      AffiliateAttribution[]
+  orders            Order[]                @relation("OrderAffiliate")
+  commissions       Commission[]
+  collections       Collection[]
+  campaigns         Campaign[]
+  shareCards        ShareCard[]
+  statusPacks       StatusPack[]
+  tiktokVideos      TikTokVideo[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([status, createdAt])
+  @@index([phone])
+  @@index([email])
+}
+
+model AffiliateLink {
+  id          String            @id @default(uuid())
+  affiliateId String
+  linkCode    String            @unique
+  type        AffiliateLinkType @default(STORE)
+  productId   String?
+  collectionId String?
+  landingPath String
+  source      String?
+  placement   String?
+  campaign    String?
+  active      Boolean           @default(true)
+  affiliate   Affiliate         @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  product     Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  collection  Collection?       @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  clicks      AffiliateClick[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([affiliateId, type, createdAt])
+  @@index([productId])
+  @@index([collectionId])
+  @@index([source, placement, campaign])
+}
+
+model AffiliateClick {
+  id              String                @id @default(uuid())
+  affiliateId     String
+  affiliateLinkId String?
+  productId       String?
+  collectionId    String?
+  customerId      String?
+  sessionId       String?
+  source          String?
+  placement       String?
+  campaign        String?
+  landingPath     String
+  referrer        String?
+  userAgent       String?
+  ipHash          String?
+  clickedAt       DateTime              @default(now())
+  expiresAt       DateTime
+  affiliate       Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  affiliateLink   AffiliateLink?        @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
+  product         Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  collection      Collection?           @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  customer        Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  attribution     AffiliateAttribution?
+
+  @@index([affiliateId, clickedAt])
+  @@index([customerId, clickedAt])
+  @@index([sessionId, clickedAt])
+  @@index([collectionId, clickedAt])
+  @@index([source, placement, campaign])
+}
+
+model AffiliateAttribution {
+  id               String          @id @default(uuid())
+  affiliateId      String
+  affiliateClickId String?         @unique
+  customerId       String
+  orderId          String?         @unique
+  source           String?
+  placement        String?
+  campaign         String?
+  attributedAt     DateTime        @default(now())
+  expiresAt        DateTime
+  affiliate        Affiliate       @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  click            AffiliateClick? @relation(fields: [affiliateClickId], references: [id], onDelete: SetNull)
+  customer         Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order            Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  commission       Commission?
+
+  @@index([affiliateId, attributedAt])
+  @@index([customerId, expiresAt])
+}
+
+model Collection {
+  id           String           @id @default(uuid())
+  affiliateId  String
+  title        String
+  slug         String           @unique
+  coverImage   String?
+  description  String?
+  status       CollectionStatus @default(DRAFT)
+  affiliate    Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  items        CollectionItem[]
+  campaigns    Campaign[]
+  links        AffiliateLink[]
+  clicks       AffiliateClick[]
+  statusPacks  StatusPack[]
+  tiktokVideos TikTokVideo[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([affiliateId, status, updatedAt])
+}
+
+model CollectionItem {
+  collectionId String
+  productId    String
+  sortOrder    Int        @default(0)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([collectionId, productId])
+  @@index([productId])
+  @@index([collectionId, sortOrder])
+}
+
+model Campaign {
+  id            String          @id @default(uuid())
+  affiliateId   String
+  collectionId  String?
+  title         String
+  slug          String
+  channel       CampaignChannel
+  source        String
+  placement     String
+  status        CampaignStatus  @default(DRAFT)
+  affiliate     Affiliate       @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection    Collection?     @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  shareCards    ShareCard[]
+  statusPacks   StatusPack[]
+  tiktokVideos  TikTokVideo[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([affiliateId, slug])
+  @@index([affiliateId, status, createdAt])
+  @@index([collectionId])
+}
+
+model ShareCard {
+  id               String               @id @default(uuid())
+  affiliateId      String
+  productId        String
+  campaignId       String?
+  affiliateLink    String
+  storageObjectKey String?
+  publicUrl         String?
+  width             Int                  @default(1200)
+  height            Int                  @default(630)
+  status            AffiliateAssetStatus @default(PROCESSING)
+  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  product           Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([affiliateId, createdAt])
+  @@index([productId, createdAt])
+}
+
+model StatusPack {
+  id               String               @id @default(uuid())
+  affiliateId      String
+  collectionId     String
+  campaignId       String?
+  itemCount        Int
+  pageCount        Int
+  affiliateLink    String
+  storageObjectKey String?
+  publicUrl         String?
+  status            AffiliateAssetStatus @default(PROCESSING)
+  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection        Collection           @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([affiliateId, createdAt])
+  @@index([collectionId, createdAt])
+}
+
+model TikTokVideo {
+  id               String               @id @default(uuid())
+  affiliateId      String
+  collectionId     String
+  campaignId       String?
+  durationSeconds  Int                  @default(12)
+  affiliateLink    String
+  storageObjectKey String?
+  publicUrl         String?
+  status            AffiliateAssetStatus @default(PROCESSING)
+  errorMessage     String?
+  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection        Collection           @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([affiliateId, createdAt])
+  @@index([collectionId, createdAt])
+}
+
+model Commission {
+  id                  String                @id @default(uuid())
+  affiliateId         String
+  orderId             String                @unique
+  attributionId       String?               @unique
+  status              CommissionStatus      @default(PENDING)
+  rateBps             Int
+  orderSubtotalKsh    Int
+  commissionAmountKsh Int
+  eligibleAt          DateTime?
+  confirmedAt         DateTime?
+  rejectedAt          DateTime?
+  paidAt              DateTime?
+  holdReason          String?
+  note                String?
+  affiliate           Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  order               Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  attribution         AffiliateAttribution? @relation(fields: [attributionId], references: [id], onDelete: SetNull)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([affiliateId, status, createdAt])
+  @@index([status, eligibleAt])
+}
+
+model CustomerServiceCase {
+  id                         String                    @id @default(uuid())
+  customerId                 String?
+  orderId                    String?
+  issueType                  CustomerServiceIssueType  @default(OTHER)
+  status                     CustomerServiceCaseStatus @default(OPEN)
+  title                      String
+  description                String?
+  tags                       Json?
+  createdByAdminUserId       String?
+  assignedEmployeeId         String?
+  afterSaleReason            String?
+  customerRequest            String?
+  requiresReturn             Boolean                   @default(false)
+  requiresRefund             Boolean                   @default(false)
+  affectsAffiliateCommission Boolean                   @default(false)
+  resolvedAt                 DateTime?
+  customer                   Customer?                 @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order                      Order?                    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdByAdminUser         AdminUser?                @relation("CustomerServiceCaseCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
+  assignedEmployee           Employee?                 @relation("CustomerServiceCaseOwner", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  notes                      CustomerServiceNote[]
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+
+  @@index([status, issueType, updatedAt])
+  @@index([customerId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([createdByAdminUserId, createdAt])
+  @@index([assignedEmployeeId, status, updatedAt])
+}
+
+model CustomerServiceNote {
+  id                String               @id @default(uuid())
+  caseId            String?
+  customerId        String?
+  orderId           String?
+  authorAdminUserId String?
+  body              String
+  tags              Json?
+  case              CustomerServiceCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  customer          Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order             Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  authorAdminUser   AdminUser?           @relation("CustomerServiceNoteAuthor", fields: [authorAdminUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime             @default(now())
+
+  @@index([caseId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([authorAdminUserId, createdAt])
+}

@@ -1,0 +1,391 @@
+import {
+  AI_MEASUREMENT_FIELDS,
+  AI_AUDIENCES,
+  AI_COLORS,
+  AI_KIDS_AGE_RANGES,
+  AI_PATTERNS,
+  AI_PRODUCT_CATEGORIES,
+  AI_SLEEVE_TYPES,
+  PRODUCT_FABRIC_WEIGHTS,
+  PRODUCT_FIT_TYPES,
+  PRODUCT_MATERIAL_OPTIONS,
+  PRODUCT_STRETCH_LEVELS,
+  PRODUCT_SUBCATEGORY_OPTIONS,
+  PRODUCT_TAG_OPTIONS,
+  type AIAudience,
+  type AIColor,
+  type AIExtractionNormalizedOutput,
+  type AIFieldValue,
+  type AIImagePoint,
+  type AIKidsAgeRange,
+  type AIMeasurementBoardCorners,
+  type AIMeasurementField,
+  type AIMeasurementGeometry,
+  type AIMeasurementLine,
+  type AIPattern,
+  type AIProductCategory,
+  type AISleeveType,
+  type ProductFabricWeightValue,
+  type ProductFitTypeValue,
+  type ProductMaterialOption,
+  type ProductStretchLevelValue,
+  type ProductSubcategoryOption,
+  type ProductTagOption
+} from "@online-saler/shared-types";
+import {
+  measurementLengthCm,
+  validMeasurementBoardCalibration
+} from "@online-saler/business-rules";
+
+type FieldLike = {
+  value?: unknown;
+  confidence?: unknown;
+};
+
+type RawExtraction = Record<string, unknown>;
+
+export type RuntimeProductTaxonomy = {
+  categories?: string[];
+  subcategories?: string[];
+  colors?: string[];
+  materials?: string[];
+  tags?: string[];
+};
+
+export type MeasurementBoardOverride = {
+  corners: AIMeasurementBoardCorners;
+  confidence: number;
+};
+
+const CATEGORY_SET = new Set<string>(AI_PRODUCT_CATEGORIES);
+const SUBCATEGORY_SET = new Set<string>(PRODUCT_SUBCATEGORY_OPTIONS);
+const COLOR_SET = new Set<string>(AI_COLORS);
+const AUDIENCE_SET = new Set<string>(AI_AUDIENCES);
+const KIDS_AGE_SET = new Set<string>(AI_KIDS_AGE_RANGES);
+const PATTERN_SET = new Set<string>(AI_PATTERNS);
+const SLEEVE_SET = new Set<string>(AI_SLEEVE_TYPES);
+const FIT_SET = new Set<string>(PRODUCT_FIT_TYPES);
+const STRETCH_SET = new Set<string>(PRODUCT_STRETCH_LEVELS);
+const FABRIC_WEIGHT_SET = new Set<string>(PRODUCT_FABRIC_WEIGHTS);
+const MATERIAL_SET = new Set<string>(PRODUCT_MATERIAL_OPTIONS);
+const TAG_SET = new Set<string>(PRODUCT_TAG_OPTIONS);
+
+const CATEGORY_ALIASES: Record<string, AIProductCategory> = {
+  TOP: "LADY_TOPS",
+  SHIRT: "SHIRTS",
+  TROUSER: "PANTS",
+  TROUSERS: "PANTS",
+  SKIRT: "DRESSES",
+  DRESS: "DRESSES",
+  JACKET: "JACKETS",
+  SWEATER: "JACKETS",
+  SHORTS: "SHORT",
+  KIDS_WEAR: "KIDS",
+  T_SHIRT: "TSHIRTS",
+  TSHIRT: "TSHIRTS"
+};
+
+const SUBCATEGORY_ALIASES: Record<string, ProductSubcategoryOption> = {
+  KIDS_DRESSES: "KIDS_DRESS",
+  KIDS_TOP: "KIDS_JACKET_TOP",
+  KIDS_JACKET: "KIDS_JACKET_TOP",
+  KIDS_TSHIRT: "KIDS_JACKET_TOP",
+  KIDS_T_SHIRT: "KIDS_JACKET_TOP",
+  BABY: "NEWBORN",
+  MEN_JEAN: "MEN_JEANS",
+  LADIES_PANTS: "LADIES_PANTS_MIX",
+  WOMEN_PANTS: "LADIES_PANTS_MIX",
+  SWEATPANTS: "SWEAT_PANTS",
+  OFFICIAL_PANT: "OFFICIAL_PANTS",
+  MEN_JACKET: "MEN_JACKETS",
+  LADIES_JACKET: "LADIES_JACKETS",
+  WOMEN_JACKETS: "LADIES_JACKETS",
+  WOMEN_JACKET: "LADIES_JACKETS",
+  DENIM_JACKET: "DENIM_JACKETS",
+  SHORT_DRESS: "SHORT_DRESSES_SKIRTS",
+  SKIRT: "SHORT_DRESSES_SKIRTS",
+  SHORT_SHIRT: "SHORT_SHIRTS",
+  LONG_SHIRT: "LONG_SHIRTS",
+  T_SHIRT: "TSHIRT",
+  TSHIRTS: "TSHIRT",
+  SHORTS: "SHORT_PANTS",
+  TWO_PIECE: "LONG_TWO_PIECE",
+  MEN_SNEAKERS: "MEN_SPORT_SHOES",
+  WOMEN_SHOES: "LADIES_SHOES",
+  WOMEN_BAGS: "LADIES_BAGS",
+  CAP: "HATS_CAPS",
+  HAT: "HATS_CAPS",
+  SCARF: "SCARFS",
+  BODY_SHAPER: "BODY_SHAPERS",
+  INNER_WEAR: "INNER_WARES",
+  BLANKET: "LIGHT_BLANKETS"
+};
+
+const AUDIENCE_ALIASES: Record<string, AIAudience> = {
+  WOMAN: "WOMEN",
+  FEMALE: "WOMEN",
+  LADY: "WOMEN",
+  LADIES: "WOMEN",
+  MAN: "MEN",
+  MALE: "MEN",
+  MENS: "MEN",
+  MEN_S: "MEN",
+  CHILD: "KIDS",
+  CHILDREN: "KIDS",
+  TODDLER: "KIDS",
+  BABY: "KIDS",
+  BOY: "KIDS",
+  GIRL: "KIDS",
+  NEUTRAL: "UNISEX"
+};
+
+export function normalizeOpenAIVisionOutput(
+  raw: unknown,
+  evidenceImageIds: string[],
+  runtimeTaxonomy: RuntimeProductTaxonomy = {},
+  measurementImageId = evidenceImageIds[0] ?? null,
+  measurementBoardOverride: MeasurementBoardOverride | null = null
+): AIExtractionNormalizedOutput {
+  const record = asRecord(raw);
+  const categorySet = runtimeSet(runtimeTaxonomy.categories, CATEGORY_SET);
+  const subcategorySet = runtimeSet(runtimeTaxonomy.subcategories, SUBCATEGORY_SET);
+  const colorSet = runtimeSet(runtimeTaxonomy.colors, COLOR_SET);
+  const materialSet = runtimeSet(runtimeTaxonomy.materials, MATERIAL_SET);
+  const tagSet = runtimeSet(runtimeTaxonomy.tags, TAG_SET);
+
+  const output: AIExtractionNormalizedOutput = {
+    category: enumField<AIProductCategory>(record, ["category"], categorySet, "OTHER", evidenceImageIds, CATEGORY_ALIASES),
+    subcategory: enumField<ProductSubcategoryOption>(
+      record,
+      ["subcategory", "subCategory", "itemType", "item_type"],
+      subcategorySet,
+      "OTHER",
+      evidenceImageIds,
+      SUBCATEGORY_ALIASES
+    ),
+    primaryColor: enumField<AIColor>(record, ["primaryColor", "color"], colorSet, "OTHER", evidenceImageIds),
+    audience: enumField<AIAudience>(
+      record,
+      ["audience", "gender", "customerGender", "customer_gender"],
+      AUDIENCE_SET,
+      "UNISEX",
+      evidenceImageIds,
+      AUDIENCE_ALIASES
+    ),
+    kidsAgeRange: enumField<AIKidsAgeRange>(
+      record,
+      ["kidsAgeRange", "kids_age_range", "childAgeRange", "child_age_range", "kidsAge"],
+      KIDS_AGE_SET,
+      "NOT_APPLICABLE",
+      evidenceImageIds
+    ),
+    pattern: enumField<AIPattern>(record, ["pattern"], PATTERN_SET, "OTHER", evidenceImageIds),
+    sleeveType: enumField<AISleeveType>(record, ["sleeveType", "sleeve"], SLEEVE_SET, "OTHER", evidenceImageIds),
+    fitType: enumField<ProductFitTypeValue>(record, ["fitType", "fit", "silhouette"], FIT_SET, "UNKNOWN", evidenceImageIds),
+    stretchLevel: enumField<ProductStretchLevelValue>(record, ["stretchLevel", "stretch"], STRETCH_SET, "UNKNOWN", evidenceImageIds),
+    fabricWeight: enumField<ProductFabricWeightValue>(record, ["fabricWeight", "fabric_weight", "weight"], FABRIC_WEIGHT_SET, "UNKNOWN", evidenceImageIds),
+    material: enumField<ProductMaterialOption>(
+      record,
+      ["material", "fabric", "fabricMaterial", "fabric_material"],
+      materialSet,
+      "UNKNOWN",
+      evidenceImageIds
+    ),
+    tags: enumArrayField<ProductTagOption>(record, ["tags", "productTags", "product_tags"], tagSet, evidenceImageIds),
+    brandLabel: stringField(record, ["brandLabel", "brand"], evidenceImageIds),
+    sizeLabel: stringField(record, ["sizeLabel", "size"], evidenceImageIds),
+    ukSizeLabel: stringField(record, ["ukSizeLabel", "ukSize", "uk_size"], evidenceImageIds),
+    title: catalogTitleField(record, ["title"], evidenceImageIds),
+    lengthCm: numberField(record, ["lengthCm", "length_cm", "bodyLengthCm"], evidenceImageIds),
+    chestWidthCm: numberField(record, ["chestWidthCm", "chest_width_cm", "pitToPitCm"], evidenceImageIds),
+    shoulderWidthCm: numberField(record, ["shoulderWidthCm", "shoulder_width_cm"], evidenceImageIds),
+    sleeveLengthCm: numberField(record, ["sleeveLengthCm", "sleeve_length_cm"], evidenceImageIds),
+    waistCm: numberField(record, ["waistCm", "waist_cm", "waistWidthCm"], evidenceImageIds),
+    hipCm: numberField(record, ["hipCm", "hip_cm", "hipWidthCm"], evidenceImageIds),
+    thighWidthCm: numberField(record, ["thighWidthCm", "thigh_width_cm"], evidenceImageIds),
+    legOpeningCm: numberField(record, ["legOpeningCm", "leg_opening_cm"], evidenceImageIds),
+    inseamCm: numberField(record, ["inseamCm", "inseam_cm"], evidenceImageIds)
+  };
+  const geometry = normalizeMeasurementGeometry(record, measurementImageId, measurementBoardOverride);
+  output.measurementGeometry = geometry;
+  if (geometry.boardCorners) {
+    for (const { field } of AI_MEASUREMENT_FIELDS) {
+      const line = geometry.lines[field];
+      if (!line) continue;
+      const value = measurementLengthCm(geometry.boardCorners, line.start, line.end);
+      if (value === null) continue;
+      if (!measurementBoardOverride && !measurementValuesAgree(output[field].value, value)) continue;
+      output[field] = {
+        value,
+        confidence: Math.min(geometry.boardConfidence, line.confidence),
+        evidenceImageIds: geometry.imageId ? [geometry.imageId] : evidenceImageIds
+      };
+    }
+  }
+  return output;
+}
+
+function normalizeMeasurementGeometry(
+  record: RawExtraction,
+  measurementImageId: string | null,
+  measurementBoardOverride: MeasurementBoardOverride | null
+): AIMeasurementGeometry {
+  const geometry = asRecord(record.measurementGeometry);
+  const boardField = firstField(geometry, ["boardCorners", "boardCalibration", "calibrationPoints"]);
+  const overrideCorners = measurementBoardCorners(measurementBoardOverride?.corners);
+  const modelCorners = measurementBoardCorners(boardField.value);
+  const boardCorners = overrideCorners ?? (modelCorners && completeBoardFraming(modelCorners) ? modelCorners : null);
+  const linesRecord = asRecord(geometry.lines ?? geometry.measurementLines);
+  const lines: Partial<Record<AIMeasurementField, AIMeasurementLine>> = {};
+  for (const { field } of AI_MEASUREMENT_FIELDS) {
+    const normalized = measurementLine(linesRecord[field]);
+    if (normalized) lines[field] = normalized;
+  }
+  return {
+    imageId: measurementImageId,
+    boardCorners,
+    boardConfidence: boardCorners
+      ? overrideCorners
+        ? confidence(measurementBoardOverride?.confidence)
+        : confidence(boardField.confidence)
+      : 0,
+    lines
+  };
+}
+
+function completeBoardFraming(corners: AIMeasurementBoardCorners): boolean {
+  const topY = (corners.topLeft.y + corners.topRight.y) / 2;
+  const bottomY = (corners.bottomLeft.y + corners.bottomRight.y) / 2;
+  const leftX = (corners.topLeft.x + corners.bottomLeft.x) / 2;
+  const rightX = (corners.topRight.x + corners.bottomRight.x) / 2;
+  return topY <= 20 && bottomY >= 80 && leftX <= 25 && rightX >= 75;
+}
+
+function measurementValuesAgree(directValue: number | null, geometryValue: number): boolean {
+  if (directValue === null) return true;
+  return Math.abs(directValue - geometryValue) <= Math.max(4, directValue * 0.12);
+}
+
+function measurementBoardCorners(value: unknown): AIMeasurementBoardCorners | null {
+  const record = asRecord(value);
+  const corners = {
+    topLeft: imagePoint(record.topLeft),
+    topRight: imagePoint(record.topRight),
+    bottomRight: imagePoint(record.bottomRight),
+    bottomLeft: imagePoint(record.bottomLeft)
+  };
+  if (!corners.topLeft || !corners.topRight || !corners.bottomRight || !corners.bottomLeft) return null;
+  const calibration: AIMeasurementBoardCorners = {
+    topLeft: corners.topLeft,
+    topRight: corners.topRight,
+    bottomRight: corners.bottomRight,
+    bottomLeft: corners.bottomLeft
+  };
+  return validMeasurementBoardCalibration(calibration) ? calibration : null;
+}
+
+function measurementLine(value: unknown): AIMeasurementLine | null {
+  const field = asRecord(value);
+  const line = asRecord(field.value ?? field);
+  const start = imagePoint(line.start);
+  const end = imagePoint(line.end);
+  if (!start || !end || Math.hypot(end.x - start.x, end.y - start.y) < 0.5) return null;
+  return { start, end, confidence: confidence(field.confidence ?? line.confidence) };
+}
+
+function imagePoint(value: unknown): AIImagePoint | null {
+  const point = asRecord(value);
+  let x = Number(point.x);
+  let y = Number(point.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+    x *= 100;
+    y *= 100;
+  }
+  if (x < 0 || x > 100 || y < 0 || y > 100) return null;
+  return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
+}
+
+function enumArrayField<T extends string>(
+  record: RawExtraction,
+  keys: string[],
+  allowed: Set<string>,
+  evidenceImageIds: string[]
+): AIFieldValue<T[]> {
+  const field = firstField(record, keys);
+  const values = Array.isArray(field.value) ? field.value : [];
+  const normalized = values
+    .map((value) => String(value).trim().toUpperCase().replaceAll(" ", "_").replaceAll("-", "_"))
+    .filter((value): value is T => allowed.has(value));
+  return {
+    value: [...new Set(normalized)].slice(0, 8),
+    confidence: confidence(field.confidence),
+    evidenceImageIds
+  };
+}
+
+function runtimeSet(values: string[] | undefined, fallback: Set<string>): Set<string> {
+  return values?.length ? new Set(values) : fallback;
+}
+
+function enumField<T extends string>(
+  record: RawExtraction,
+  keys: string[],
+  allowed: Set<string>,
+  fallback: T,
+  evidenceImageIds: string[],
+  aliases: Partial<Record<string, T>> = {}
+): AIFieldValue<T> {
+  const field = firstField(record, keys);
+  const rawValue = String(field.value ?? "").trim().toUpperCase().replaceAll(" ", "_").replaceAll("-", "_");
+  const normalizedValue = aliases[rawValue] ?? rawValue;
+  const value = allowed.has(normalizedValue) ? (normalizedValue as T) : fallback;
+  return { value, confidence: confidence(field.confidence), evidenceImageIds };
+}
+
+function stringField(record: RawExtraction, keys: string[], evidenceImageIds: string[]): AIFieldValue<string> {
+  const field = firstField(record, keys);
+  const value = typeof field.value === "string" ? field.value.trim() : "";
+  return { value: value || null, confidence: confidence(field.confidence), evidenceImageIds };
+}
+
+function catalogTitleField(record: RawExtraction, keys: string[], evidenceImageIds: string[]): AIFieldValue<string> {
+  const field = stringField(record, keys, evidenceImageIds);
+  if (!field.value) return field;
+  const value = field.value
+    .replace(/^(?:women'?s|woman'?s|ladies'?|lady'?s|men'?s|man'?s|boy'?s?|girl'?s?|unisex)\s+/i, "")
+    .trim();
+  return { ...field, value: value || null };
+}
+
+function numberField(record: RawExtraction, keys: string[], evidenceImageIds: string[]): AIFieldValue<number> {
+  const field = firstField(record, keys);
+  const numeric = typeof field.value === "number" ? field.value : Number(field.value);
+  const value = Number.isFinite(numeric) && numeric > 0 && numeric <= 250
+    ? Math.round(numeric * 10) / 10
+    : null;
+  return { value, confidence: confidence(field.confidence), evidenceImageIds };
+}
+
+function firstField(record: RawExtraction, keys: string[]): FieldLike {
+  for (const key of keys) {
+    const value = record[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as FieldLike;
+    }
+    if (value !== undefined) {
+      return { value, confidence: 0.5 };
+    }
+  }
+  return { value: null, confidence: 0.4 };
+}
+
+function asRecord(value: unknown): RawExtraction {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as RawExtraction) : {};
+}
+
+function confidence(value: unknown): number {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return 0.5;
+  return Math.max(0, Math.min(1, numberValue));
+}

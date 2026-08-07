@@ -11,3 +11,9 @@ Planned capabilities:
 - Affiliate and commission management.
 - Employee roles and permissions.
 - Audit logs and exports.
+
+Foundation command:
+
+```bash
+npm run dev:admin
+```

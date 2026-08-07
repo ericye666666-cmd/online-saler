@@ -1,0 +1,173 @@
+name: Deploy Operations to Staging
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - "apps/operations/**"
+      - "packages/business-rules/**"
+      - "packages/shared-types/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - "Dockerfile.operations"
+      - ".dockerignore"
+      - ".github/workflows/deploy-operations-staging.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE_NAME: operations
+  SERVICE_NAME: online-saler-operations-staging
+
+jobs:
+  deploy:
+    name: Build and deploy Operations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker \
+            "${{ vars.GCP_REGION }}-docker.pkg.dev" \
+            --quiet
+
+      - name: Resolve staging API URL
+        run: |
+          API_URL="$(gcloud run services describe online-saler-api-staging \
+            --region "${{ vars.GCP_REGION }}" \
+            --format "value(status.url)")"
+
+          if [ -z "${API_URL}" ]; then
+            echo "online-saler-api-staging has no status.url" >&2
+            exit 1
+          fi
+
+          echo "API_URL=${API_URL}" >> "${GITHUB_ENV}"
+
+      - name: Resolve Metabase dashboard URLs
+        run: |
+          WAREHOUSE_DASHBOARD_URL="${{ vars.METABASE_WAREHOUSE_DASHBOARD_URL_STAGING }}"
+          SEARCH_DASHBOARD_URL="${{ vars.METABASE_SEARCH_DASHBOARD_URL_STAGING }}"
+          METABASE_URL="$(gcloud run services describe online-saler-metabase-staging \
+            --region "${{ vars.GCP_REGION }}" \
+            --format "value(status.url)" 2>/dev/null || true)"
+
+          if [ -n "${METABASE_URL}" ] && gcloud secrets describe METABASE_API_KEY_STAGING >/dev/null 2>&1; then
+            METABASE_API_KEY="$(gcloud secrets versions access latest --secret METABASE_API_KEY_STAGING)"
+            DASHBOARDS="$(curl --fail --show-error --silent \
+              --header "X-API-Key: ${METABASE_API_KEY}" \
+              "${METABASE_URL}/api/dashboard" || true)"
+            WAREHOUSE_ID="$(jq -r '.[] | select(.name == "[Online Saler BI] Warehouse performance") | .id' <<<"${DASHBOARDS:-[]}" 2>/dev/null | head -n 1 || true)"
+            SEARCH_ID="$(jq -r '.[] | select(.name == "[Online Saler BI] Search keywords") | .id' <<<"${DASHBOARDS:-[]}" 2>/dev/null | head -n 1 || true)"
+            if [ -n "${WAREHOUSE_ID}" ]; then
+              WAREHOUSE_DASHBOARD_URL="${METABASE_URL}/dashboard/${WAREHOUSE_ID}"
+            fi
+            if [ -n "${SEARCH_ID}" ]; then
+              SEARCH_DASHBOARD_URL="${METABASE_URL}/dashboard/${SEARCH_ID}"
+            fi
+          fi
+
+          echo "METABASE_WAREHOUSE_DASHBOARD_URL=${WAREHOUSE_DASHBOARD_URL}" >> "${GITHUB_ENV}"
+          echo "METABASE_SEARCH_DASHBOARD_URL=${SEARCH_DASHBOARD_URL}" >> "${GITHUB_ENV}"
+
+      - name: Build Docker image
+        run: |
+          IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${IMAGE_NAME}:${GITHUB_SHA}"
+
+          docker build \
+            --file Dockerfile.operations \
+            --tag "${IMAGE_URI}" \
+            .
+
+          echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
+
+      - name: Push Docker image
+        run: docker push "${IMAGE_URI}"
+
+      - name: Deploy Cloud Run service
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ env.IMAGE_URI }}
+          flags: >-
+            --allow-unauthenticated
+            --port=3001
+            --memory=512Mi
+            --cpu=1
+            --min-instances=0
+            --max-instances=2
+          env_vars: |
+            NODE_ENV=staging
+            STAGING_PILOT_BATCH_ENABLED=true
+            API_URL=${{ env.API_URL }}
+            METABASE_WAREHOUSE_DASHBOARD_URL=${{ env.METABASE_WAREHOUSE_DASHBOARD_URL }}
+            METABASE_SEARCH_DASHBOARD_URL=${{ env.METABASE_SEARCH_DASHBOARD_URL }}
+
+      - name: Verify Operations page
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          HTML_FILE="$(mktemp)"
+          CSS_FILE="$(mktemp)"
+
+          echo "Service URL: ${SERVICE_URL}"
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 10 \
+            --retry-delay 5 \
+            "${SERVICE_URL}" \
+            --output "${HTML_FILE}"
+
+          grep -q "Online Saler Operations" "${HTML_FILE}"
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 10 \
+            --retry-delay 5 \
+            "${SERVICE_URL}/system/accounts" \
+            | grep -q "Online Saler Operations"
+
+          CSS_PATH="$(grep -o '/_next/static/[^"]*\.css' "${HTML_FILE}" | head -n 1)"
+          if [ -z "${CSS_PATH}" ]; then
+            echo "Operations page did not include a CSS asset." >&2
+            exit 1
+          fi
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 10 \
+            --retry-delay 5 \
+            "${SERVICE_URL}${CSS_PATH}" \
+            --output "${CSS_FILE}"
+
+          grep -q "\.flex" "${CSS_FILE}"
+          grep -q "\.rounded-xl" "${CSS_FILE}"
+          if grep -q "@apply" "${CSS_FILE}"; then
+            echo "Operations CSS still contains unresolved Tailwind @apply directives." >&2
+            exit 1
+          fi

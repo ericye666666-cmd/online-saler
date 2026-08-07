@@ -1,0 +1,17 @@
+{
+  "name": "@online-saler/worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "node dist/index.js --once",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@online-saler/business-rules": "0.1.0",
+    "@online-saler/shared-types": "0.1.0"
+  }
+}

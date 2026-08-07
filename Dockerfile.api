@@ -1,0 +1,53 @@
+FROM node:20-slim AS build
+
+WORKDIR /app
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY apps ./apps
+COPY packages ./packages
+RUN mkdir -p scripts
+COPY scripts/deploy-staging-migrations.mjs ./scripts/deploy-staging-migrations.mjs
+COPY scripts/cleanup-staging-test-data.mjs ./scripts/cleanup-staging-test-data.mjs
+COPY scripts/staging-test-data-cleanup-lib.mjs ./scripts/staging-test-data-cleanup-lib.mjs
+
+RUN npm ci
+RUN npm run build:api
+
+FROM node:20-slim AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=4000
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends fonts-dejavu-core openssl \
+  && rm -rf /var/lib/apt/lists/* \
+  && test -r /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build /app/packages/database/package.json ./packages/database/package.json
+COPY --from=build /app/packages/database/dist ./packages/database/dist
+COPY --from=build /app/packages/database/prisma ./packages/database/prisma
+COPY --from=build /app/packages/business-rules/package.json ./packages/business-rules/package.json
+COPY --from=build /app/packages/business-rules/dist ./packages/business-rules/dist
+COPY --from=build /app/packages/shared-types/package.json ./packages/shared-types/package.json
+COPY --from=build /app/packages/shared-types/dist ./packages/shared-types/dist
+RUN mkdir -p scripts
+COPY --from=build /app/scripts/deploy-staging-migrations.mjs ./scripts/deploy-staging-migrations.mjs
+COPY --from=build /app/scripts/cleanup-staging-test-data.mjs ./scripts/cleanup-staging-test-data.mjs
+COPY --from=build /app/scripts/staging-test-data-cleanup-lib.mjs ./scripts/staging-test-data-cleanup-lib.mjs
+RUN test -f /app/scripts/deploy-staging-migrations.mjs \
+  && test -f /app/scripts/cleanup-staging-test-data.mjs \
+  && test -f /app/scripts/staging-test-data-cleanup-lib.mjs
+
+EXPOSE 4000
+
+CMD ["node", "apps/api/dist/main.js"]

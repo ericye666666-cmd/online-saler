@@ -1,13 +1,17 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+__pycache__/
+*.pyc
 
 # Build outputs
 .next/
 dist/
 build/
+apps/storefront/public/remotion-bundle/
 coverage/
 out/
+*.tsbuildinfo
 
 # Environment and secrets
 .env

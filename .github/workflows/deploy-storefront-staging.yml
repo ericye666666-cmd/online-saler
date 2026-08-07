@@ -1,0 +1,219 @@
+name: Deploy Storefront to Staging
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - "apps/storefront/**"
+      - "packages/business-rules/**"
+      - "packages/database/**"
+      - "packages/shared-types/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - "Dockerfile.storefront"
+      - ".dockerignore"
+      - "scripts/gcloud/configure-staging-scheduler.sh"
+      - ".github/workflows/deploy-storefront-staging.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE_NAME: storefront
+  SERVICE_NAME: online-saler-storefront-staging
+  STAGING_RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
+  STAGING_CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
+  PRODUCT_IMAGE_BUCKET: online-saler-staging-product-images
+
+jobs:
+  deploy:
+    name: Build and deploy Storefront
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker \
+            "${{ vars.GCP_REGION }}-docker.pkg.dev" \
+            --quiet
+
+      - name: Resolve staging API URL
+        run: |
+          API_URL="$(gcloud run services describe online-saler-api-staging \
+            --region "${{ vars.GCP_REGION }}" \
+            --format "value(status.url)")"
+
+          if [ -z "${API_URL}" ]; then
+            echo "online-saler-api-staging has no status.url" >&2
+            exit 1
+          fi
+
+          echo "API_URL=${API_URL}" >> "${GITHUB_ENV}"
+
+      - name: Resolve staging Storefront URL
+        run: |
+          STOREFRONT_PUBLIC_URL="$(gcloud run services describe "${SERVICE_NAME}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --format "value(status.url)" 2>/dev/null || true)"
+
+          if [ -z "${STOREFRONT_PUBLIC_URL}" ]; then
+            STOREFRONT_PUBLIC_URL="https://${SERVICE_NAME}-${{ vars.GCP_PROJECT_NUMBER }}.${{ vars.GCP_REGION }}.run.app"
+          fi
+
+          echo "STOREFRONT_PUBLIC_URL=${STOREFRONT_PUBLIC_URL}" >> "${GITHUB_ENV}"
+
+      - name: Build Docker image
+        run: |
+          IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${IMAGE_NAME}:${GITHUB_SHA}"
+
+          docker build \
+            --file Dockerfile.storefront \
+            --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_STAGING }}" \
+            --tag "${IMAGE_URI}" \
+            .
+
+          echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
+
+      - name: Push Docker image
+        run: docker push "${IMAGE_URI}"
+
+      - name: Deploy Cloud Run service
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ env.IMAGE_URI }}
+          flags: >-
+            --allow-unauthenticated
+            --port=3000
+            --memory=2Gi
+            --cpu=2
+            --min-instances=0
+            --max-instances=2
+            --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
+            --add-cloudsql-instances=${{ env.STAGING_CLOUD_SQL_INSTANCE }}
+          env_vars: |
+            NODE_ENV=staging
+            API_URL=${{ env.API_URL }}
+            STOREFRONT_PUBLIC_URL=${{ env.STOREFRONT_PUBLIC_URL }}
+            PRODUCT_IMAGE_BUCKET=${{ env.PRODUCT_IMAGE_BUCKET }}
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_STAGING }}
+            GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID_STAGING }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET_STAGING }}
+            CUSTOMER_SESSION_SECRET=${{ secrets.CUSTOMER_SESSION_SECRET_STAGING }}
+            INTERNAL_CRON_SECRET=${{ secrets.INTERNAL_CRON_SECRET_STAGING }}
+            MPESA_ENVIRONMENT=sandbox
+            MPESA_ENABLE_SANDBOX_SIMULATOR=${{ vars.MPESA_ENABLE_SANDBOX_SIMULATOR_STAGING }}
+            MPESA_CALLBACK_BASE_URL=${{ env.STOREFRONT_PUBLIC_URL }}
+            MPESA_CONSUMER_KEY=${{ secrets.MPESA_CONSUMER_KEY_STAGING }}
+            MPESA_CONSUMER_SECRET=${{ secrets.MPESA_CONSUMER_SECRET_STAGING }}
+            MPESA_SHORTCODE=${{ vars.MPESA_SHORTCODE_STAGING }}
+            MPESA_PASSKEY=${{ secrets.MPESA_PASSKEY_STAGING }}
+            MPESA_TRANSACTION_TYPE=CustomerPayBillOnline
+            MPESA_ACCOUNT_REFERENCE_PREFIX=DLOOP
+          secrets: |
+            DATABASE_URL=STAGING_DATABASE_URL:latest
+
+      - name: Verify Storefront page
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+
+          echo "Service URL: ${SERVICE_URL}"
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 24 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "${SERVICE_URL}" \
+            | grep -q "Direct Loop"
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 24 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "${SERVICE_URL}/api-proxy/public/products" \
+            | grep -q '^\['
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 24 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "${SERVICE_URL}/api-proxy/public/products/filters" \
+            | grep -q '"categories"'
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 24 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "${SERVICE_URL}/cart" \
+            | grep -q "Your cart"
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 24 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "${SERVICE_URL}/checkout" \
+            | grep -q "Checkout"
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 24 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "${SERVICE_URL}/seller/staging-affiliate" \
+            | grep -q "Staging Affiliate"
+
+      - name: Configure staging reservation cleanup scheduler
+        continue-on-error: true
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          STOREFRONT_PUBLIC_URL: ${{ steps.deploy.outputs.url }}
+          INTERNAL_CRON_SECRET: ${{ secrets.INTERNAL_CRON_SECRET_STAGING }}
+        run: |
+          if [ -z "${INTERNAL_CRON_SECRET}" ]; then
+            echo "INTERNAL_CRON_SECRET_STAGING is not configured; skipping Cloud Scheduler setup."
+            exit 0
+          fi
+          bash scripts/gcloud/configure-staging-scheduler.sh
+
+      - name: Print Storefront diagnostics
+        if: failure()
+        run: |
+          gcloud run services logs read "${SERVICE_NAME}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --limit 100

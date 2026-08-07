@@ -1,0 +1,313 @@
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  AIFieldDecisionSource,
+  ConditionGrade,
+  DefectSeverity,
+  MeasurementSource,
+  ProductFabricWeight,
+  ProductFitType,
+  ProductGender,
+  ProductStatus,
+  ProductStretchLevel,
+  Prisma,
+  prisma
+} from "@online-saler/database";
+import { ProductStateMachine } from "./product-state-machine";
+import { ProductDetailGenerationService } from "./product-detail-generation.service";
+
+export interface CalibrationMeasurementInput {
+  type: string;
+  valueCm: number;
+  manualLine?: {
+    imageId: string;
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+  };
+}
+
+export interface CalibrationDefectInput {
+  type: string;
+  severity: DefectSeverity;
+  description: string;
+  customerSafeDescription?: string;
+  imageId?: string;
+}
+
+export interface CalibrateProductInput {
+  employeeId: string;
+  extractionId: string;
+  title: string;
+  category: string;
+  subcategory?: string;
+  color: string;
+  gender?: ProductGender;
+  kidsAgeRange?: string;
+  pattern: string;
+  sleeveType: string;
+  fitType: ProductFitType;
+  stretchLevel: ProductStretchLevel;
+  fabricWeight: ProductFabricWeight;
+  material: string;
+  tags: string[];
+  brand?: string;
+  tagSize?: string;
+  sizeLabel?: string;
+  ukSizeLabel?: string;
+  conditionGrade: ConditionGrade;
+  priceKsh?: number;
+  measurements: CalibrationMeasurementInput[];
+  defects: CalibrationDefectInput[];
+}
+
+@Injectable()
+export class ProductCalibrationService {
+  private readonly logger = new Logger(ProductCalibrationService.name);
+
+  constructor(
+    private readonly stateMachine: ProductStateMachine,
+    private readonly details?: ProductDetailGenerationService
+  ) {}
+
+  async calibrate(productId: string, input: CalibrateProductInput) {
+    this.validate(input);
+
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new NotFoundException("Product not found");
+
+    const extraction = await prisma.aIExtraction.findFirst({
+      where: { id: input.extractionId, productId },
+      include: { fieldDecisions: true }
+    });
+    if (!extraction) throw new NotFoundException("AI extraction not found for product");
+
+    this.stateMachine.assertCanTransition({
+      fromStatus: product.status,
+      toStatus: ProductStatus.CALIBRATED
+    });
+
+    const reviewedAt = new Date();
+    const finalFields: Record<string, string | string[] | null> = {
+      title: input.title,
+      category: input.category,
+      subcategory: input.subcategory ?? null,
+      primaryColor: input.color,
+      audience: input.gender ?? null,
+      kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
+      pattern: input.pattern,
+      sleeveType: input.sleeveType,
+      fitType: input.fitType,
+      stretchLevel: input.stretchLevel,
+      fabricWeight: input.fabricWeight,
+      material: input.material,
+      tags: input.tags,
+      brandLabel: input.brand ?? null,
+      tagSize: input.tagSize ?? null,
+      sizeLabel: input.sizeLabel ?? null,
+      ukSizeLabel: input.ukSizeLabel ?? null
+    };
+
+    const operations: Prisma.PrismaPromise<unknown>[] = [
+      prisma.product.update({
+        where: { id: productId },
+        data: {
+          title: input.title,
+          category: input.category,
+          subcategory: input.subcategory ?? null,
+          color: input.color,
+          pattern: input.pattern,
+          sleeveType: input.sleeveType,
+          fitType: input.fitType,
+          stretchLevel: input.stretchLevel,
+          fabricWeight: input.fabricWeight,
+          material: input.material,
+          tags: input.tags,
+          detailSourceVersion: { increment: 1 },
+          gender: input.gender ?? null,
+          kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
+          brand: input.brand ?? null,
+          tagSize: input.tagSize ?? null,
+          finalSizeLabel: input.sizeLabel ?? null,
+          ukSizeLabel: input.ukSizeLabel ?? null,
+          conditionGrade: input.conditionGrade,
+          priceKsh: input.priceKsh,
+          status: ProductStatus.CALIBRATED
+        }
+      }),
+      prisma.productMeasurement.updateMany({
+        where: {
+          productId,
+          measurementType: { notIn: input.measurements.map((measurement) => measurement.type) }
+        },
+        data: {
+          finalValueCm: null,
+          finalSource: null,
+          manualLineImageId: null,
+          manualLineStartX: null,
+          manualLineStartY: null,
+          manualLineEndX: null,
+          manualLineEndY: null,
+          reviewedByEmployeeId: null,
+          reviewedAt: null
+        }
+      }),
+      prisma.productDefect.deleteMany({ where: { productId } })
+    ];
+
+    for (const [fieldName, finalValue] of Object.entries(finalFields)) {
+      const decision = extraction.fieldDecisions.find((item) => item.fieldName === fieldName);
+      operations.push(
+        prisma.aIFieldDecision.upsert({
+          where: { extractionId_fieldName: { extractionId: extraction.id, fieldName } },
+          create: {
+            extractionId: extraction.id,
+            fieldName,
+            finalValueJson: finalValue === null ? Prisma.JsonNull : finalValue as Prisma.InputJsonValue,
+            source: AIFieldDecisionSource.HUMAN_ENTERED,
+            requiresHumanConfirmation: false,
+            reviewedByEmployeeId: input.employeeId,
+            reviewedAt
+          },
+          update: {
+            finalValueJson: finalValue === null ? Prisma.JsonNull : finalValue as Prisma.InputJsonValue,
+            source:
+              sameJsonValue(decision?.aiValueJson, finalValue)
+                ? AIFieldDecisionSource.HUMAN_ACCEPTED
+                : AIFieldDecisionSource.HUMAN_EDITED,
+            requiresHumanConfirmation: false,
+            reviewedByEmployeeId: input.employeeId,
+            reviewedAt
+          }
+        })
+      );
+    }
+
+    for (const measurement of input.measurements) {
+      operations.push(
+        prisma.productMeasurement.upsert({
+          where: {
+            productId_measurementType: {
+              productId,
+              measurementType: measurement.type
+            }
+          },
+          create: {
+            productId,
+            measurementType: measurement.type,
+            finalValueCm: measurement.valueCm,
+            finalSource: MeasurementSource.HUMAN_ENTERED,
+            manualLineImageId: measurement.manualLine?.imageId ?? null,
+            manualLineStartX: measurement.manualLine?.start.x ?? null,
+            manualLineStartY: measurement.manualLine?.start.y ?? null,
+            manualLineEndX: measurement.manualLine?.end.x ?? null,
+            manualLineEndY: measurement.manualLine?.end.y ?? null,
+            reviewedByEmployeeId: input.employeeId,
+            reviewedAt
+          },
+          update: {
+            finalValueCm: measurement.valueCm,
+            finalSource: MeasurementSource.HUMAN_ENTERED,
+            manualLineImageId: measurement.manualLine?.imageId ?? null,
+            manualLineStartX: measurement.manualLine?.start.x ?? null,
+            manualLineStartY: measurement.manualLine?.start.y ?? null,
+            manualLineEndX: measurement.manualLine?.end.x ?? null,
+            manualLineEndY: measurement.manualLine?.end.y ?? null,
+            reviewedByEmployeeId: input.employeeId,
+            reviewedAt
+          }
+        })
+      );
+    }
+
+    for (const defect of input.defects) {
+      operations.push(
+        prisma.productDefect.create({
+          data: {
+            productId,
+            defectType: defect.type,
+            severity: defect.severity,
+            description: defect.description,
+            customerSafeDescription: defect.customerSafeDescription,
+            imageId: defect.imageId
+          }
+        })
+      );
+    }
+
+    await prisma.$transaction(operations);
+    try {
+      await this.details?.afterCalibration(productId, product.batchId);
+    } catch (error) {
+      this.logger.error(
+        `Detail job reconciliation failed after calibrating ${productId}`,
+        error instanceof Error ? error.stack : String(error)
+      );
+    }
+
+    return prisma.product.findUnique({
+      where: { id: productId },
+      include: { measurements: true, defects: true, aiExtractions: { include: { fieldDecisions: true } } }
+    });
+  }
+
+  private validate(input: CalibrateProductInput): void {
+    if (!input.employeeId || !input.extractionId) {
+      throw new BadRequestException("employeeId and extractionId are required");
+    }
+    if (!input.title?.trim() || !input.category?.trim() || !input.subcategory?.trim() || !input.color?.trim()) {
+      throw new BadRequestException("title, category, subcategory and color are required");
+    }
+    if (!input.gender || !Object.values(ProductGender).includes(input.gender)) {
+      throw new BadRequestException("audience must be confirmed by an employee");
+    }
+    if (input.gender === ProductGender.KIDS && !input.kidsAgeRange?.trim()) {
+      throw new BadRequestException("kids age range is required for kids items");
+    }
+    if (!input.conditionGrade) {
+      throw new BadRequestException("conditionGrade must be confirmed by an employee");
+    }
+    if (!Object.values(ProductFitType).includes(input.fitType)) {
+      throw new BadRequestException("fitType must be confirmed by an employee");
+    }
+    if (!Object.values(ProductStretchLevel).includes(input.stretchLevel)) {
+      throw new BadRequestException("stretchLevel must be confirmed by an employee");
+    }
+    if (!Object.values(ProductFabricWeight).includes(input.fabricWeight)) {
+      throw new BadRequestException("fabricWeight must be confirmed by an employee");
+    }
+    if (!input.material?.trim()) {
+      throw new BadRequestException("material must be confirmed by an employee");
+    }
+    if (!Array.isArray(input.tags) || input.tags.length > 8 || input.tags.some((tag) => !tag?.trim())) {
+      throw new BadRequestException("tags must be an array of at most 8 confirmed values");
+    }
+    if (new Set(input.tags).size !== input.tags.length) {
+      throw new BadRequestException("tags must not contain duplicates");
+    }
+    if (input.priceKsh !== undefined && (!Number.isInteger(input.priceKsh) || input.priceKsh <= 0)) {
+      throw new BadRequestException("priceKsh must be a positive integer");
+    }
+    if (!Array.isArray(input.measurements)) {
+      throw new BadRequestException("measurements must be confirmed by an employee");
+    }
+    if (!Array.isArray(input.defects)) {
+      throw new BadRequestException("defects must be confirmed by an employee, use [] when none");
+    }
+    if (input.measurements.some((item) => !item.type?.trim() || !Number.isFinite(item.valueCm) || item.valueCm <= 0)) {
+      throw new BadRequestException("each measurement requires a type and positive valueCm");
+    }
+    if (input.measurements.some((item) => item.manualLine && !validManualMeasurementLine(item.manualLine))) {
+      throw new BadRequestException("manual measurement lines require an imageId and two distinct normalized points");
+    }
+  }
+}
+
+function validManualMeasurementLine(line: NonNullable<CalibrationMeasurementInput["manualLine"]>) {
+  const coordinates = [line.start.x, line.start.y, line.end.x, line.end.y];
+  return Boolean(line.imageId?.trim()) &&
+    coordinates.every((value) => Number.isFinite(value) && value >= 0 && value <= 1) &&
+    (line.start.x !== line.end.x || line.start.y !== line.end.y);
+}
+
+function sameJsonValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}

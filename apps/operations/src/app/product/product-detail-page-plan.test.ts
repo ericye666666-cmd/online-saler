@@ -1,0 +1,116 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  detailBatchStageLabel,
+  detailConditionSummary,
+  detailCopyWithoutPrice,
+  detailGenerationButtonLabel,
+  detailProductStage,
+  detailSellingPointsWithoutPrice,
+  PRODUCT_DETAIL_ASSET_PLAN,
+  productDetailAssetProxyUrl,
+  sortDetailBatches
+} from "./product-detail-page-plan";
+
+test("tracks only commerce detail assets and marks missing photography as optional", () => {
+  assert.deepEqual(
+    PRODUCT_DETAIL_ASSET_PLAN.map((asset) => asset.type),
+    ["FRONT_MAIN", "BACK_MAIN", "MEASUREMENT_GUIDE", "DETAIL_GALLERY"]
+  );
+  assert.deepEqual(
+    PRODUCT_DETAIL_ASSET_PLAN.filter((asset) => asset.optional).map((asset) => asset.type),
+    ["BACK_MAIN", "DETAIL_GALLERY"]
+  );
+});
+
+test("cache-busts regenerated detail assets with their updated timestamp", () => {
+  assert.equal(
+    productDetailAssetProxyUrl("/api-proxy", { id: "asset-1", updatedAt: "2026-08-03T20:45:00.000Z" }),
+    "/api-proxy/product-detail-assets/asset-1/content?v=2026-08-03T20%3A45%3A00.000Z"
+  );
+  assert.equal(
+    productDetailAssetProxyUrl("/api-proxy", { id: "asset-2" }),
+    "/api-proxy/product-detail-assets/asset-2/content"
+  );
+});
+
+test("keeps legacy price and unconfirmed defect claims out of the customer preview", () => {
+  assert.equal(
+    detailCopyWithoutPrice("Heavy denim with low stretch. KSh 500."),
+    "Heavy denim with low stretch."
+  );
+  assert.deepEqual(
+    detailSellingPointsWithoutPrice(["KSh 700", "Faded wash", "Zip-front design"]),
+    ["Faded wash", "Zip-front design"]
+  );
+  assert.equal(detailConditionSummary("Good condition with no confirmed defects.", 0), "");
+  assert.equal(detailConditionSummary("Small cuff mark.", 1), "Small cuff mark.");
+});
+
+test("blocks detail generation until the complete batch is calibrated", () => {
+  assert.equal(
+    detailGenerationButtonLabel({ generationReady: false, calibrated: 1, targetCount: 10, pending: 0 }),
+    "等待校准（1/10）"
+  );
+  assert.equal(detailProductStage({ productStatus: "CALIBRATION_PENDING" }, false), "AWAITING_CALIBRATION");
+  assert.equal(detailProductStage({ productStatus: "CALIBRATED" }, false), "AWAITING_BATCH");
+});
+
+test("reports the exact number of detail drafts to generate", () => {
+  assert.equal(
+    detailGenerationButtonLabel({ generationReady: true, calibrated: 10, targetCount: 10, pending: 8 }),
+    "生成 8 件详情草稿"
+  );
+});
+
+test("orders active detail batches ahead of completed batches", () => {
+  const base = {
+    targetCount: 10,
+    calibrated: 10,
+    generationReady: true,
+    pending: 0,
+    generating: 0,
+    succeeded: 10,
+    failed: 0,
+    outdated: 0,
+    approved: 10
+  };
+  const ordered = sortDetailBatches([
+    { ...base, id: "done", batchCode: "DONE", createdAt: "2026-08-03T10:00:00Z" },
+    { ...base, id: "pending", batchCode: "PENDING", createdAt: "2026-08-02T10:00:00Z", pending: 10, succeeded: 0, approved: 0 },
+    { ...base, id: "running", batchCode: "RUNNING", createdAt: "2026-08-01T10:00:00Z", generating: 3, succeeded: 0, approved: 0 }
+  ]);
+  assert.deepEqual(ordered.map((batch) => batch.id), ["running", "pending", "done"]);
+});
+
+test("summarizes the selected batch state for employees", () => {
+  assert.equal(detailBatchStageLabel({
+    id: "batch",
+    batchCode: "BATCH-1",
+    createdAt: "2026-08-03T10:00:00Z",
+    targetCount: 10,
+    calibrated: 10,
+    generationReady: true,
+    pending: 8,
+    generating: 0,
+    succeeded: 2,
+    failed: 0,
+    outdated: 0,
+    approved: 0
+  }), "待生成 8 件");
+
+  assert.equal(detailBatchStageLabel({
+    id: "partially-approved",
+    batchCode: "BATCH-2",
+    createdAt: "2026-08-03T10:00:00Z",
+    targetCount: 10,
+    calibrated: 10,
+    generationReady: true,
+    pending: 0,
+    generating: 0,
+    succeeded: 4,
+    failed: 0,
+    outdated: 0,
+    approved: 6
+  }), "待检查 4 件");
+});

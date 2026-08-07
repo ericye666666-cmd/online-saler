@@ -1,0 +1,35 @@
+{
+  "name": "@online-saler/operations",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --port 3001",
+    "start": "next start --port 3001",
+    "test": "tsx src/app/ai-digitization-flow.test.ts && tsx src/app/operations-workspace-flow.test.ts && tsx src/app/local-label-print.test.ts && tsx src/app/product-control-flow.test.ts && tsx src/app/product/product-factory-display.test.ts && tsx src/app/product/product-factory-batch-display.test.ts && tsx src/app/product/product-factory-batch-size.test.ts && tsx src/app/product/product-factory-upload-flow.test.ts && tsx src/app/product/product-factory-storage-flow.test.ts && tsx src/app/product/product-image-stage-boundary.test.ts && tsx --test src/app/product/garment-measurement-geometry.test.ts src/app/product/manual-measurement-lines.test.ts src/app/product/image-processing-quality.test.ts src/app/product/product-detail-page-plan.test.ts src/app/product/product-batch-processing-concurrency.test.ts && tsx src/app/orders/order-center-routes.test.ts && tsx src/app/operations-access.test.ts && tsx src/app/analytics/metabase-bi-routes.test.ts && tsx src/app/operations-style-build.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@online-saler/business-rules": "0.1.0",
+    "@online-saler/shared-types": "0.1.0",
+    "@tanstack/react-table": "^8.21.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jsbarcode": "^3.12.1",
+    "lucide-react": "^1.28.0",
+    "next": "^16.2.12",
+    "radix-ui": "^1.6.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "shadcn": "^4.16.0",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3",
+    "tw-animate-css": "^1.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/jsbarcode": "^3.11.4",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}

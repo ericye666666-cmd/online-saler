@@ -7,7 +7,7 @@ Use separate Google Cloud projects or clearly separated resources:
 - `online-saler-staging`
 - `online-saler-production`
 
-Staging is for test products, sandbox payment, and integration checks. Production is for real customers, real inventory, real M-Pesa, and real commission records.
+Staging is for test products, sandbox payment, integration checks, and extended pre-production validation. Production is for real customers, real inventory, real M-Pesa, and real commission records.
 
 ## Initial Google Cloud Resources
 
@@ -27,6 +27,111 @@ Not required for the first MVP:
 - BigQuery.
 - GPU services.
 - Multi-region deployment.
+
+## Staging API Database Binding
+
+The staging API deployment is configured by `.github/workflows/deploy-api-staging.yml`.
+
+Staging resources:
+
+- Cloud Run service: `online-saler-api-staging`
+- Cloud Run service: `online-saler-lightweight-cutout-staging`
+- Cloud Run service: `online-saler-rembg-birefnet-staging`
+- Runtime service account: `online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com`
+- Cloud SQL instance connection name: `online-saler-staging:africa-south1:online-saler-staging-db`
+- PostgreSQL database: `online_saler_staging`
+- PostgreSQL application user: `online_saler_app`
+- Secret Manager secret: `STAGING_DATABASE_URL`
+- Runtime environment variable: `DATABASE_URL`
+- Runtime environment variable: `BACKGROUND_REMOVAL_PROVIDER=auto`
+- Runtime environment variable: `LIGHTWEIGHT_CUTOUT_SERVICE_URL`
+- Runtime environment variable: `REMBG_BIREFNET_SERVICE_URL`
+
+The workflow must:
+
+1. Build and push the lightweight OpenCV cutout image.
+2. Deploy and verify `online-saler-lightweight-cutout-staging`.
+3. Build and push the rembg BiRefNet image.
+4. Deploy and verify `online-saler-rembg-birefnet-staging`.
+5. Build and push the API image.
+6. Run `prisma migrate deploy` against staging and seed the staging operator baseline.
+7. Deploy API Cloud Run with the dedicated runtime service account.
+8. Attach the Cloud SQL instance with the Cloud SQL connector.
+9. Inject `DATABASE_URL` from `STAGING_DATABASE_URL:latest`.
+10. Inject the two image processor URLs and set `BACKGROUND_REMOVAL_PROVIDER=auto`.
+11. Verify `/health`, real product creation, image upload/retrieval, and a real `REMOVE_BACKGROUND` image-processing job.
+
+Staging must use migrations for schema changes:
+
+```text
+npm run db:migrate-staging
+```
+
+`db:migrate-staging` runs `prisma migrate deploy` and then refreshes the staging test operator and role baseline. `db:push:staging` remains available only for explicit bootstrap or repair work and must not be the normal deployment path.
+
+If staging was previously initialized with `db push`, the script only baselines existing migrations after Prisma confirms the live staging schema matches the repository schema. It refuses to mark migrations as applied when schema drift exists.
+
+The secret value must never be committed to GitHub or written into documentation. The GitHub deployment identity must have permission to deploy Cloud Run and act as the runtime service account. The runtime service account requires only the permissions needed to connect to Cloud SQL and read the required secret.
+
+Pull-request CI should use an ephemeral PostgreSQL service container. It must not connect directly to the long-lived staging Cloud SQL instance.
+
+## Staging Storefront Database and Payment Binding
+
+The staging Storefront deployment is configured by `.github/workflows/deploy-storefront-staging.yml`.
+
+Staging resources:
+
+- Cloud Run service: `online-saler-storefront-staging`
+- Runtime service account: `online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com`
+- Cloud SQL instance connection name: `online-saler-staging:africa-south1:online-saler-staging-db`
+- Secret Manager secret: `STAGING_DATABASE_URL`
+- Runtime environment variable: `DATABASE_URL`
+
+The Storefront owns customer-facing Google sign-in, checkout, M-Pesa initiation,
+M-Pesa callback handling, and payment status polling. The workflow must attach
+the same Cloud SQL connector and inject `DATABASE_URL`, otherwise checkout and
+payment route handlers cannot read orders.
+
+Staging Google OAuth values:
+
+- GitHub variable: `GOOGLE_CLIENT_ID_STAGING`
+- GitHub secret: `GOOGLE_CLIENT_SECRET_STAGING`
+- GitHub secret: `CUSTOMER_SESSION_SECRET_STAGING`
+- GitHub secret: `INTERNAL_CRON_SECRET_STAGING`
+- Runtime callback URL: `<STOREFRONT_PUBLIC_URL>/api/auth/google/callback`
+
+Staging M-Pesa sandbox values:
+
+- GitHub secret: `MPESA_CONSUMER_KEY_STAGING`
+- GitHub secret: `MPESA_CONSUMER_SECRET_STAGING`
+- GitHub variable: `MPESA_SHORTCODE_STAGING`
+- GitHub secret: `MPESA_PASSKEY_STAGING`
+- GitHub variable: `MPESA_ENABLE_SANDBOX_SIMULATOR_STAGING`, set to `true` only
+  while staging staff need to simulate M-Pesa callbacks.
+- Runtime callback URL: `<STOREFRONT_PUBLIC_URL>/api/payments/mpesa/callback`
+
+Missing M-Pesa values should not break browsing, but payment initiation returns a
+configuration error until sandbox credentials are present.
+
+The internal reservation cleanup route and staging-only M-Pesa callback simulator
+require the `INTERNAL_CRON_SECRET_STAGING` bearer token. Do not expose this value
+to browser code or commit it to the repository.
+
+When `MPESA_ENABLE_SANDBOX_SIMULATOR_STAGING=true`, staging can simulate a final
+M-Pesa callback for a pending payment:
+
+```text
+POST /api/internal/mpesa/simulate-callback
+Authorization: Bearer <INTERNAL_CRON_SECRET_STAGING>
+
+{
+  "orderNumber": "DL-...",
+  "result": "success"
+}
+```
+
+Supported `result` values are `success`, `cancelled`, `timeout`, and `failed`.
+This is for staging verification only and must stay disabled in production.
 
 ## Suggested Buckets
 

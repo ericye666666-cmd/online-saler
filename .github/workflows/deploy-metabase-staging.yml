@@ -1,0 +1,139 @@
+name: Deploy Metabase to Staging
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - .github/workflows/deploy-metabase-staging.yml
+      - infrastructure/metabase/**
+      - scripts/bootstrap-metabase-bi.mjs
+  workflow_dispatch:
+    inputs:
+      bootstrap_dashboards:
+        description: Refresh the two Online Saler BI dashboards after deployment
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE_NAME: metabase
+  SERVICE_NAME: online-saler-metabase-staging
+  METABASE_VERSION: v0.63.2
+  CLOUD_SQL_PROXY_VERSION: 2.22.0
+  CLOUD_SQL_INSTANCE: online-saler-staging:africa-south1:online-saler-staging-db
+  RUNTIME_SERVICE_ACCOUNT: online-saler-api-staging@online-saler-staging.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    name: Deploy Metabase and refresh dashboards
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify Metabase runtime secrets
+        run: |
+          for SECRET in METABASE_DB_CONNECTION_URI_STAGING METABASE_ENCRYPTION_SECRET_KEY_STAGING; do
+            gcloud secrets describe "${SECRET}" --project "${{ vars.GCP_PROJECT_ID }}" >/dev/null
+          done
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker \
+            "${{ vars.GCP_REGION }}-docker.pkg.dev" \
+            --quiet
+
+      - name: Mirror pinned Metabase image
+        run: |
+          IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${IMAGE_NAME}:${METABASE_VERSION}"
+          docker pull "metabase/metabase:${METABASE_VERSION}"
+          docker tag "metabase/metabase:${METABASE_VERSION}" "${IMAGE_URI}"
+          docker push "${IMAGE_URI}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
+
+      - name: Deploy Metabase with Cloud SQL Auth Proxy
+        run: |
+          gcloud run deploy "${SERVICE_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+            --execution-environment gen2 \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 1 \
+            --concurrency 20 \
+            --timeout 300s \
+            --container metabase \
+            --image "${IMAGE_URI}" \
+            --port 3000 \
+            --cpu 1 \
+            --memory 2Gi \
+            --depends-on cloud-sql-proxy \
+            --set-env-vars MB_DB_TYPE=postgres,JAVA_TIMEZONE=Africa/Nairobi \
+            --set-secrets MB_DB_CONNECTION_URI=METABASE_DB_CONNECTION_URI_STAGING:latest,MB_ENCRYPTION_SECRET_KEY=METABASE_ENCRYPTION_SECRET_KEY_STAGING:latest \
+            --container cloud-sql-proxy \
+            --image "gcr.io/cloud-sql-connectors/cloud-sql-proxy:${CLOUD_SQL_PROXY_VERSION}" \
+            --cpu 1 \
+            --memory 256Mi \
+            --args="--structured-logs,--lazy-refresh,--address=0.0.0.0,--port=5432,${CLOUD_SQL_INSTANCE}" \
+            --startup-probe "tcpSocket.port=5432,periodSeconds=1,timeoutSeconds=1,failureThreshold=60"
+
+      - name: Verify Metabase health
+        run: |
+          METABASE_URL="$(gcloud run services describe "${SERVICE_NAME}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --region "${{ vars.GCP_REGION }}" \
+            --format='value(status.url)')"
+          echo "METABASE_URL=${METABASE_URL}" >> "${GITHUB_ENV}"
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 5 \
+            --retry 180 \
+            --retry-all-errors \
+            --retry-delay 10 \
+            "${METABASE_URL}/api/health"
+
+      - name: Check dashboard bootstrap configuration
+        if: ${{ github.event_name == 'push' || inputs.bootstrap_dashboards }}
+        id: bootstrap_config
+        run: |
+          if [ -z "${{ vars.METABASE_WAREHOUSE_DATABASE_ID_STAGING }}" ]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "Skipping dashboard bootstrap until METABASE_WAREHOUSE_DATABASE_ID_STAGING is configured."
+            exit 0
+          fi
+          if ! gcloud secrets describe METABASE_API_KEY_STAGING --project "${{ vars.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "Skipping dashboard bootstrap until METABASE_API_KEY_STAGING is configured."
+            exit 0
+          fi
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Refresh warehouse and search dashboards
+        if: ${{ (github.event_name == 'push' || inputs.bootstrap_dashboards) && steps.bootstrap_config.outputs.configured == 'true' }}
+        env:
+          METABASE_WAREHOUSE_DATABASE_ID: ${{ vars.METABASE_WAREHOUSE_DATABASE_ID_STAGING }}
+        run: |
+          METABASE_API_KEY="$(gcloud secrets versions access latest \
+            --secret METABASE_API_KEY_STAGING \
+            --project "${{ vars.GCP_PROJECT_ID }}")"
+          export METABASE_API_KEY
+          node scripts/bootstrap-metabase-bi.mjs

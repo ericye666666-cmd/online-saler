@@ -1,0 +1,27 @@
+FROM node:22-alpine AS dependencies
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/operations/package.json apps/operations/package.json
+COPY packages/business-rules/package.json packages/business-rules/package.json
+COPY packages/shared-types/package.json packages/shared-types/package.json
+RUN npm ci
+
+FROM dependencies AS builder
+WORKDIR /app
+COPY tsconfig.base.json ./
+COPY apps/operations apps/operations
+COPY packages/business-rules packages/business-rules
+COPY packages/shared-types packages/shared-types
+RUN npm run build -w @online-saler/business-rules \
+  && npm run build -w @online-saler/shared-types \
+  && npm run build -w @online-saler/operations
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV HOSTNAME=0.0.0.0
+COPY --from=builder /app/apps/operations/.next/standalone ./
+COPY --from=builder /app/apps/operations/.next/static ./apps/operations/.next/static
+EXPOSE 3001
+CMD ["node", "apps/operations/server.js"]

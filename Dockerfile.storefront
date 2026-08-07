@@ -1,0 +1,42 @@
+FROM node:22-bookworm-slim AS dependencies
+WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
+COPY package.json package-lock.json ./
+COPY apps/storefront/package.json apps/storefront/package.json
+COPY packages/business-rules/package.json packages/business-rules/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/shared-types/package.json packages/shared-types/package.json
+RUN npm ci
+
+FROM dependencies AS builder
+WORKDIR /app
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=""
+ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+COPY tsconfig.base.json ./
+COPY apps/storefront apps/storefront
+COPY packages/business-rules packages/business-rules
+COPY packages/database packages/database
+COPY packages/shared-types packages/shared-types
+RUN npm run db:generate -w @online-saler/database \
+  && npm run build -w @online-saler/database \
+  && npm run build -w @online-saler/business-rules \
+  && npm run build -w @online-saler/shared-types \
+  && npm run build -w @online-saler/storefront
+
+FROM node:22-bookworm-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends chromium fonts-liberation openssl \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/apps/storefront/.next/standalone ./
+COPY --from=builder /app/apps/storefront/.next/static ./apps/storefront/.next/static
+COPY --from=builder /app/apps/storefront/public ./apps/storefront/public
+COPY --from=builder /app/apps/storefront/build/remotion-release ./apps/storefront/build/remotion-release
+EXPOSE 3000
+CMD ["node", "apps/storefront/server.js"]
