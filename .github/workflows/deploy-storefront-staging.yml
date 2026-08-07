@@ -1,4 +1,4 @@
-name: Deploy Storefront to Staging
+name: Deploy Live Storefront
 
 on:
   push:
@@ -31,7 +31,7 @@ env:
 
 jobs:
   deploy:
-    name: Build and deploy Storefront
+    name: Build and deploy live Storefront
     runs-on: ubuntu-latest
 
     steps:
@@ -47,6 +47,21 @@ jobs:
 
       - name: Set up Google Cloud CLI
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify live M-Pesa secrets
+        run: |
+          set -euo pipefail
+
+          for secret in \
+            PRODUCTION_MPESA_CONSUMER_KEY \
+            PRODUCTION_MPESA_CONSUMER_SECRET \
+            PRODUCTION_MPESA_SHORTCODE \
+            PRODUCTION_MPESA_PASSKEY
+          do
+            gcloud secrets versions access latest \
+              --project "${{ vars.GCP_PROJECT_ID }}" \
+              --secret "${secret}" >/dev/null
+          done
 
       - name: Configure Docker for Artifact Registry
         run: |
@@ -111,7 +126,7 @@ jobs:
             --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
             --add-cloudsql-instances=${{ env.STAGING_CLOUD_SQL_INSTANCE }}
           env_vars: |
-            NODE_ENV=staging
+            NODE_ENV=production
             API_URL=${{ env.API_URL }}
             STOREFRONT_PUBLIC_URL=${{ env.STOREFRONT_PUBLIC_URL }}
             PRODUCT_IMAGE_BUCKET=${{ env.PRODUCT_IMAGE_BUCKET }}
@@ -120,17 +135,20 @@ jobs:
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET_STAGING }}
             CUSTOMER_SESSION_SECRET=${{ secrets.CUSTOMER_SESSION_SECRET_STAGING }}
             INTERNAL_CRON_SECRET=${{ secrets.INTERNAL_CRON_SECRET_STAGING }}
-            MPESA_ENVIRONMENT=sandbox
-            MPESA_ENABLE_SANDBOX_SIMULATOR=${{ vars.MPESA_ENABLE_SANDBOX_SIMULATOR_STAGING }}
+            MPESA_ENV=production
+            MPESA_ENVIRONMENT=production
+            MPESA_ENABLE_SANDBOX_SIMULATOR=false
+            MPESA_CALLBACK_URL=${{ env.STOREFRONT_PUBLIC_URL }}/api/payments/mpesa/callback
             MPESA_CALLBACK_BASE_URL=${{ env.STOREFRONT_PUBLIC_URL }}
-            MPESA_CONSUMER_KEY=${{ secrets.MPESA_CONSUMER_KEY_STAGING }}
-            MPESA_CONSUMER_SECRET=${{ secrets.MPESA_CONSUMER_SECRET_STAGING }}
-            MPESA_SHORTCODE=${{ vars.MPESA_SHORTCODE_STAGING }}
-            MPESA_PASSKEY=${{ secrets.MPESA_PASSKEY_STAGING }}
-            MPESA_TRANSACTION_TYPE=CustomerPayBillOnline
+            MPESA_PRODUCTION_LAUNCH_MODE=live
+            MPESA_TRANSACTION_TYPE=CustomerBuyGoodsOnline
             MPESA_ACCOUNT_REFERENCE_PREFIX=DLOOP
           secrets: |
             DATABASE_URL=STAGING_DATABASE_URL:latest
+            MPESA_CONSUMER_KEY=PRODUCTION_MPESA_CONSUMER_KEY:latest
+            MPESA_CONSUMER_SECRET=PRODUCTION_MPESA_CONSUMER_SECRET:latest
+            MPESA_SHORTCODE=PRODUCTION_MPESA_SHORTCODE:latest
+            MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest
 
       - name: Verify Storefront page
         run: |
@@ -187,6 +205,22 @@ jobs:
             "${SERVICE_URL}/checkout" \
             | grep -q "Checkout"
 
+          CALLBACK_STATUS="$(curl \
+            --show-error \
+            --silent \
+            --output /tmp/mpesa-callback-response.json \
+            --write-out "%{http_code}" \
+            --request POST \
+            --header "content-type: application/json" \
+            --data '{}' \
+            "${SERVICE_URL}/api/payments/mpesa/callback")"
+
+          if [ "${CALLBACK_STATUS}" != "400" ]; then
+            cat /tmp/mpesa-callback-response.json >&2
+            echo "Expected M-Pesa callback endpoint to reject malformed payload with HTTP 400, got ${CALLBACK_STATUS}." >&2
+            exit 1
+          fi
+
           curl \
             --fail \
             --show-error \
@@ -197,7 +231,7 @@ jobs:
             "${SERVICE_URL}/seller/staging-affiliate" \
             | grep -q "Staging Affiliate"
 
-      - name: Configure staging reservation cleanup scheduler
+      - name: Configure live reservation cleanup scheduler
         continue-on-error: true
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
