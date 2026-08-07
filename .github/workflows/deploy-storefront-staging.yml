@@ -109,6 +109,16 @@ jobs:
       - name: Push Docker image
         run: docker push "${IMAGE_URI}"
 
+      - name: Remove legacy plain-text M-Pesa runtime variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run services update "${SERVICE_NAME}" \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_REGION }}" \
+            --remove-env-vars=MPESA_CONSUMER_KEY,MPESA_CONSUMER_SECRET,MPESA_SHORTCODE,MPESA_PASSKEY \
+            --quiet
+
       - name: Deploy Cloud Run service
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
