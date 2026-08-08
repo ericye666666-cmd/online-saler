@@ -1,0 +1,128 @@
+name: Audit live Storefront domain
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/audit-live-domain.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: online-saler-staging
+  GCP_REGION: africa-south1
+  STOREFRONT_SERVICE: online-saler-storefront-production
+
+jobs:
+  audit:
+    name: Read-only Cloud Run and load balancer audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Audit Cloud Run revision and safe runtime configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gcloud run services describe "${STOREFRONT_SERVICE}" \
+            --project="${GCP_PROJECT_ID}" \
+            --region="${GCP_REGION}" \
+            --format=json \
+            | jq '{
+                service: .metadata.name,
+                url: .status.url,
+                latestReadyRevision: .status.latestReadyRevisionName,
+                traffic: .status.traffic,
+                containers: [
+                  .spec.template.spec.containers[] | {
+                    image,
+                    env: [
+                      (.env // [])[]
+                      | select(.name == "STOREFRONT_PUBLIC_URL"
+                        or .name == "MPESA_ENV"
+                        or .name == "MPESA_ENVIRONMENT"
+                        or .name == "MPESA_ENABLE_SANDBOX_SIMULATOR"
+                        or .name == "MPESA_CALLBACK_URL"
+                        or .name == "MPESA_CALLBACK_BASE_URL"
+                        or .name == "MPESA_PRODUCTION_LAUNCH_MODE"
+                        or .name == "MPESA_TRANSACTION_TYPE"
+                        or .name == "MPESA_CONSUMER_KEY"
+                        or .name == "MPESA_CONSUMER_SECRET"
+                        or .name == "MPESA_SHORTCODE"
+                        or .name == "MPESA_PASSKEY")
+                      | if (.name == "MPESA_CONSUMER_KEY"
+                          or .name == "MPESA_CONSUMER_SECRET"
+                          or .name == "MPESA_PASSKEY") then
+                          if .valueFrom then
+                            {name, configured: true, source: "secret", secretRef: .valueFrom.secretKeyRef.name}
+                          else
+                            {name, configured: ((.value // "") | length > 0), source: "literal-redacted"}
+                          end
+                        elif .valueFrom then
+                          {name, secretRef: .valueFrom.secretKeyRef.name}
+                        else
+                          {name, value}
+                        end
+                    ]
+                  }
+                ]
+              }'
+
+      - name: Audit domain load balancer resources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          audit_resource() {
+            local label="$1"
+            shift
+            echo "::group::${label}"
+            if "$@"; then
+              :
+            else
+              echo "NOT_FOUND"
+            fi
+            echo "::endgroup::"
+          }
+
+          audit_resource "Static IPv4: dloop-storefront-ip" \
+            gcloud compute addresses describe dloop-storefront-ip \
+              --project="${GCP_PROJECT_ID}" --global \
+              --format='yaml(name,address,addressType,ipVersion,status)'
+
+          audit_resource "Serverless NEG: dloop-storefront-neg" \
+            gcloud compute network-endpoint-groups describe dloop-storefront-neg \
+              --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" \
+              --format='yaml(name,region,networkEndpointType,cloudRun)'
+
+          audit_resource "Backend: dloop-storefront-backend" \
+            gcloud compute backend-services describe dloop-storefront-backend \
+              --project="${GCP_PROJECT_ID}" --global \
+              --format='yaml(name,protocol,loadBalancingScheme,backends)'
+
+          audit_resource "Certificate: dloop-co-ke-cert" \
+            gcloud compute ssl-certificates describe dloop-co-ke-cert \
+              --project="${GCP_PROJECT_ID}" --global \
+              --format='yaml(name,type,managed.domains,managed.status,managed.domainStatus)'
+
+          audit_resource "HTTPS forwarding rule: dloop-https" \
+            gcloud compute forwarding-rules describe dloop-https \
+              --project="${GCP_PROJECT_ID}" --global \
+              --format='yaml(name,IPAddress,IPProtocol,portRange,loadBalancingScheme,target)'
+
+          audit_resource "URL map: dloop-storefront-lb" \
+            gcloud compute url-maps describe dloop-storefront-lb \
+              --project="${GCP_PROJECT_ID}" --global \
+              --format='yaml(name,defaultService)'
