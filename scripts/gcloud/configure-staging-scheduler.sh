@@ -17,7 +17,7 @@ if gcloud scheduler jobs describe "${JOB_NAME}" --project "${GCP_PROJECT_ID}" --
     --time-zone "Africa/Nairobi" \
     --uri "${URI}" \
     --http-method POST \
-    --headers "Authorization=Bearer ${INTERNAL_CRON_SECRET}"
+    --update-headers "Authorization=Bearer ${INTERNAL_CRON_SECRET}"
 else
   gcloud scheduler jobs create http "${JOB_NAME}" \
     --project "${GCP_PROJECT_ID}" \
