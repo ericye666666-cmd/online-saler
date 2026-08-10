@@ -80,6 +80,109 @@ jobs:
                 ]
               }'
 
+      - name: Diagnose production Safaricom OAuth without payment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+
+          SERVICE_JSON="${RUNNER_TEMP}/storefront-service.json"
+          KEY_FILE="${RUNNER_TEMP}/mpesa-consumer-key"
+          SECRET_FILE="${RUNNER_TEMP}/mpesa-consumer-secret"
+          RESPONSE_FILE="${RUNNER_TEMP}/mpesa-oauth-response.json"
+
+          gcloud run services describe "${STOREFRONT_SERVICE}" \
+            --project="${GCP_PROJECT_ID}" \
+            --region="${GCP_REGION}" \
+            --format=json > "${SERVICE_JSON}"
+
+          secret_ref() {
+            local env_name="$1"
+            local field="$2"
+            jq -r --arg env_name "${env_name}" --arg field "${field}" '
+              .spec.template.spec.containers[0].env[]
+              | select(.name == $env_name)
+              | .valueFrom.secretKeyRef[$field] // empty
+            ' "${SERVICE_JSON}"
+          }
+
+          KEY_SECRET="$(secret_ref MPESA_CONSUMER_KEY name)"
+          KEY_VERSION="$(secret_ref MPESA_CONSUMER_KEY key)"
+          CONSUMER_SECRET="$(secret_ref MPESA_CONSUMER_SECRET name)"
+          CONSUMER_SECRET_VERSION="$(secret_ref MPESA_CONSUMER_SECRET key)"
+
+          if [ -z "${KEY_SECRET}" ] || [ -z "${CONSUMER_SECRET}" ]; then
+            echo "OAuth diagnostic failed: Cloud Run is missing one or both Secret Manager references." >&2
+            exit 1
+          fi
+
+          KEY_VERSION="${KEY_VERSION:-latest}"
+          CONSUMER_SECRET_VERSION="${CONSUMER_SECRET_VERSION:-latest}"
+
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}"
+          echo "CLOUD_RUN_SERVICE=${STOREFRONT_SERVICE}"
+          echo "CONSUMER_KEY_REF=${KEY_SECRET}:${KEY_VERSION}"
+          echo "CONSUMER_SECRET_REF=${CONSUMER_SECRET}:${CONSUMER_SECRET_VERSION}"
+
+          gcloud secrets versions describe "${KEY_VERSION}" \
+            --project="${GCP_PROJECT_ID}" \
+            --secret="${KEY_SECRET}" \
+            --format='value(name,createTime,state)'
+          gcloud secrets versions describe "${CONSUMER_SECRET_VERSION}" \
+            --project="${GCP_PROJECT_ID}" \
+            --secret="${CONSUMER_SECRET}" \
+            --format='value(name,createTime,state)'
+
+          gcloud secrets versions access "${KEY_VERSION}" \
+            --project="${GCP_PROJECT_ID}" \
+            --secret="${KEY_SECRET}" > "${KEY_FILE}"
+          gcloud secrets versions access "${CONSUMER_SECRET_VERSION}" \
+            --project="${GCP_PROJECT_ID}" \
+            --secret="${CONSUMER_SECRET}" > "${SECRET_FILE}"
+
+          node - "${KEY_FILE}" "${SECRET_FILE}" <<'NODE'
+          const fs = require("node:fs");
+          for (const path of process.argv.slice(2)) {
+            const trimmed = fs.readFileSync(path, "utf8").trim();
+            if (!trimmed) {
+              throw new Error("A production OAuth credential is empty after trimming.");
+            }
+            fs.writeFileSync(path, trimmed, { mode: 0o600 });
+          }
+          NODE
+
+          CONSUMER_KEY="$(<"${KEY_FILE}")"
+          CONSUMER_SECRET_VALUE="$(<"${SECRET_FILE}")"
+          echo "::add-mask::${CONSUMER_KEY}"
+          echo "::add-mask::${CONSUMER_SECRET_VALUE}"
+
+          if ! HTTP_STATUS="$(curl \
+            --silent \
+            --show-error \
+            --output "${RESPONSE_FILE}" \
+            --write-out '%{http_code}' \
+            --user "${CONSUMER_KEY}:${CONSUMER_SECRET_VALUE}" \
+            'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials')"; then
+            echo "OAUTH_RESULT=network_error"
+            exit 1
+          fi
+
+          echo "OAUTH_HTTP_STATUS=${HTTP_STATUS}"
+          if [[ "${HTTP_STATUS}" =~ ^2[0-9][0-9]$ ]] \
+            && jq -e '.access_token | type == "string" and length > 0' "${RESPONSE_FILE}" >/dev/null 2>&1; then
+            echo "OAUTH_RESULT=success"
+            exit 0
+          fi
+
+          ERROR_MESSAGE="$(jq -r '
+            (.errorMessage // .error_description // .error // "provider response redacted")
+            | tostring
+          ' "${RESPONSE_FILE}" 2>/dev/null || echo "provider response was not JSON and was redacted")"
+          ERROR_MESSAGE="$(printf '%s' "${ERROR_MESSAGE}" | tr '\r\n' ' ' | cut -c1-200)"
+          echo "OAUTH_RESULT=rejected"
+          echo "OAUTH_ERROR=${ERROR_MESSAGE}"
+          exit 1
+
       - name: Audit domain load balancer resources
         shell: bash
         run: |
