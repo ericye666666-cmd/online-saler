@@ -80,6 +80,49 @@ jobs:
                 ]
               }'
 
+      - name: Correlate recent OAuth rejections to Cloud Run revision
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SERVICE_JSON="${RUNNER_TEMP}/storefront-revision.json"
+          LOGS_JSON="${RUNNER_TEMP}/mpesa-oauth-rejections.json"
+
+          gcloud run services describe "${STOREFRONT_SERVICE}" \
+            --project="${GCP_PROJECT_ID}" \
+            --region="${GCP_REGION}" \
+            --format=json > "${SERVICE_JSON}"
+
+          LATEST_REVISION="$(jq -r '.status.latestReadyRevisionName' "${SERVICE_JSON}")"
+          echo "LATEST_READY_REVISION=${LATEST_REVISION}"
+          gcloud run revisions describe "${LATEST_REVISION}" \
+            --project="${GCP_PROJECT_ID}" \
+            --region="${GCP_REGION}" \
+            --format='value(metadata.creationTimestamp,status.conditions[0].status)'
+
+          FILTER="resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${STOREFRONT_SERVICE}\" AND timestamp>=\"2026-08-09T22:00:00Z\" AND \"Wrong credentials\""
+          if gcloud logging read "${FILTER}" \
+            --project="${GCP_PROJECT_ID}" \
+            --limit=50 \
+            --order=desc \
+            --format=json > "${LOGS_JSON}"; then
+            jq -r '
+              if length == 0 then
+                "OAUTH_REJECTION_LOGS=none_found"
+              else
+                "OAUTH_REJECTION_LOGS=" + (length | tostring),
+                (.[] | [
+                  "OAUTH_REJECTION",
+                  (.timestamp // "unknown-time"),
+                  (.resource.labels.revision_name // "unknown-revision"),
+                  (.severity // "unknown-severity")
+                ] | join(" "))
+              end
+            ' "${LOGS_JSON}"
+          else
+            echo "OAUTH_REJECTION_LOGS=unavailable"
+          fi
+
       - name: Diagnose production Safaricom OAuth without payment
         shell: bash
         run: |
