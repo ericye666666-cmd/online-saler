@@ -167,10 +167,6 @@ function assertMpesaProductionConfig(config: MpesaConfig): void {
     throw new MpesaConfigurationError("Production M-Pesa Till payments must use CustomerBuyGoodsOnline.");
   }
 
-  if (config.shortcode === config.tillNumber) {
-    throw new MpesaConfigurationError("Production M-Pesa H.O. shortcode and Till number must be configured separately.");
-  }
-
   const callbackUrl = mpesaCallbackUrl(config);
   const parsedCallbackUrl = new URL(callbackUrl);
   if (parsedCallbackUrl.protocol !== "https:") {
