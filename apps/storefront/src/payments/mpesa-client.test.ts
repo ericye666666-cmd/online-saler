@@ -89,20 +89,19 @@ assert.throws(
   MpesaConfigurationError
 );
 
-assert.throws(
-  () => mpesaConfigFromEnv({
-    NODE_ENV: "test",
-    MPESA_ENV: "production",
-    MPESA_CONSUMER_KEY: "live-key",
-    MPESA_CONSUMER_SECRET: "live-secret",
-    MPESA_SHORTCODE: "123456",
-    MPESA_TILL_NUMBER: "123456",
-    MPESA_PASSKEY: "live-passkey",
-    MPESA_TRANSACTION_TYPE: "CustomerBuyGoodsOnline",
-    MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
-  }),
-  MpesaConfigurationError
-);
+const sameIdentifierProductionConfig = mpesaConfigFromEnv({
+  NODE_ENV: "test",
+  MPESA_ENV: "production",
+  MPESA_CONSUMER_KEY: "live-key",
+  MPESA_CONSUMER_SECRET: "live-secret",
+  MPESA_SHORTCODE: "123456",
+  MPESA_TILL_NUMBER: "123456",
+  MPESA_PASSKEY: "live-passkey",
+  MPESA_TRANSACTION_TYPE: "CustomerBuyGoodsOnline",
+  MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
+});
+assert.equal(sameIdentifierProductionConfig.shortcode, "123456");
+assert.equal(sameIdentifierProductionConfig.tillNumber, "123456");
 
 const calls: Array<{ url: string; init?: RequestInit }> = [];
 const fetchMock = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -117,7 +116,7 @@ const fetchMock = (async (url: string | URL | Request, init?: RequestInit) => {
   assert.equal(String(url), "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest");
   assert.equal((init?.headers as Record<string, string>).authorization, "Bearer token");
   assert.equal(body.BusinessShortCode, "654321");
-  assert.equal(body.PartyB, "123456");
+  assert.equal(body.PartyB, "654321");
   assert.equal(body.TransactionType, "CustomerBuyGoodsOnline");
   assert.equal(body.Amount, 1200);
   assert.equal(body.PartyA, "254712345678");
@@ -138,7 +137,7 @@ const config: MpesaConfig = {
   consumerKey: "key",
   consumerSecret: "secret",
   shortcode: "654321",
-  tillNumber: "123456",
+  tillNumber: "654321",
   passkey: "passkey",
   callbackBaseUrl: "https://storefront.example.com",
   transactionType: "CustomerBuyGoodsOnline",

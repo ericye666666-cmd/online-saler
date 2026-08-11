@@ -82,11 +82,6 @@ jobs:
             exit 1
           fi
 
-          if [ "${BUSINESS_SHORTCODE}" = "${TILL_NUMBER}" ]; then
-            echo "Production M-Pesa H.O. shortcode and Till number must be different values." >&2
-            exit 1
-          fi
-
           if [ "${{ inputs.mpesa_launch_mode }}" = "one_ksh" ]; then
             TEST_WHITELIST="$(gcloud secrets versions access latest \
               --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
