@@ -17,13 +17,16 @@ const productionConfig = mpesaConfigFromEnv({
   MPESA_ENV: "production",
   MPESA_CONSUMER_KEY: "live-key",
   MPESA_CONSUMER_SECRET: "live-secret",
-  MPESA_SHORTCODE: "123456",
+  MPESA_SHORTCODE: "654321",
+  MPESA_TILL_NUMBER: "123456",
   MPESA_PASSKEY: "live-passkey",
   MPESA_TRANSACTION_TYPE: "CustomerBuyGoodsOnline",
   MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
 });
 assert.equal(productionConfig.environment, "production");
 assert.equal(productionConfig.transactionType, "CustomerBuyGoodsOnline");
+assert.equal(productionConfig.shortcode, "654321");
+assert.equal(productionConfig.tillNumber, "123456");
 assert.equal(productionConfig.oauthUrl, "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials");
 assert.equal(productionConfig.stkPushUrl, "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest");
 assert.equal(mpesaCallbackUrl(productionConfig), "https://shop.example.com/api/payments/mpesa/callback");
@@ -35,6 +38,7 @@ assert.throws(
     MPESA_CONSUMER_KEY: "live-key",
     MPESA_CONSUMER_SECRET: "live-secret",
     MPESA_SHORTCODE: "123456",
+    MPESA_TILL_NUMBER: "654321",
     MPESA_PASSKEY: "live-passkey",
     MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
   }),
@@ -48,6 +52,7 @@ assert.throws(
     MPESA_CONSUMER_KEY: "live-key",
     MPESA_CONSUMER_SECRET: "live-secret",
     MPESA_SHORTCODE: "123456",
+    MPESA_TILL_NUMBER: "654321",
     MPESA_PASSKEY: "live-passkey",
     MPESA_TRANSACTION_TYPE: "CustomerPayBillOnline",
     MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
@@ -62,9 +67,39 @@ assert.throws(
     MPESA_CONSUMER_KEY: "live-key",
     MPESA_CONSUMER_SECRET: "live-secret",
     MPESA_SHORTCODE: "123456",
+    MPESA_TILL_NUMBER: "654321",
     MPESA_PASSKEY: "live-passkey",
     MPESA_TRANSACTION_TYPE: "CustomerBuyGoodsOnline",
     MPESA_CALLBACK_URL: "http://shop.example.com/api/payments/mpesa/callback"
+  }),
+  MpesaConfigurationError
+);
+
+assert.throws(
+  () => mpesaConfigFromEnv({
+    NODE_ENV: "test",
+    MPESA_ENV: "production",
+    MPESA_CONSUMER_KEY: "live-key",
+    MPESA_CONSUMER_SECRET: "live-secret",
+    MPESA_SHORTCODE: "123456",
+    MPESA_PASSKEY: "live-passkey",
+    MPESA_TRANSACTION_TYPE: "CustomerBuyGoodsOnline",
+    MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
+  }),
+  MpesaConfigurationError
+);
+
+assert.throws(
+  () => mpesaConfigFromEnv({
+    NODE_ENV: "test",
+    MPESA_ENV: "production",
+    MPESA_CONSUMER_KEY: "live-key",
+    MPESA_CONSUMER_SECRET: "live-secret",
+    MPESA_SHORTCODE: "123456",
+    MPESA_TILL_NUMBER: "123456",
+    MPESA_PASSKEY: "live-passkey",
+    MPESA_TRANSACTION_TYPE: "CustomerBuyGoodsOnline",
+    MPESA_CALLBACK_URL: "https://shop.example.com/api/payments/mpesa/callback"
   }),
   MpesaConfigurationError
 );
@@ -73,16 +108,17 @@ const calls: Array<{ url: string; init?: RequestInit }> = [];
 const fetchMock = (async (url: string | URL | Request, init?: RequestInit) => {
   calls.push({ url: String(url), init });
   if (calls.length === 1) {
-    assert.equal(String(url), "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials");
+    assert.equal(String(url), "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials");
     assert.equal((init?.headers as Record<string, string>).authorization.startsWith("Basic "), true);
     return Response.json({ access_token: "token" });
   }
 
   const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-  assert.equal(String(url), "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest");
+  assert.equal(String(url), "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest");
   assert.equal((init?.headers as Record<string, string>).authorization, "Bearer token");
-  assert.equal(body.BusinessShortCode, "174379");
-  assert.equal(body.TransactionType, "CustomerPayBillOnline");
+  assert.equal(body.BusinessShortCode, "654321");
+  assert.equal(body.PartyB, "123456");
+  assert.equal(body.TransactionType, "CustomerBuyGoodsOnline");
   assert.equal(body.Amount, 1200);
   assert.equal(body.PartyA, "254712345678");
   assert.equal(body.PhoneNumber, "254712345678");
@@ -98,16 +134,17 @@ const fetchMock = (async (url: string | URL | Request, init?: RequestInit) => {
 }) as typeof fetch;
 
 const config: MpesaConfig = {
-  environment: "sandbox",
+  environment: "production",
   consumerKey: "key",
   consumerSecret: "secret",
-  shortcode: "174379",
+  shortcode: "654321",
+  tillNumber: "123456",
   passkey: "passkey",
   callbackBaseUrl: "https://storefront.example.com",
-  transactionType: "CustomerPayBillOnline",
+  transactionType: "CustomerBuyGoodsOnline",
   accountReferencePrefix: "DLOOP",
-  oauthUrl: "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
-  stkPushUrl: "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+  oauthUrl: "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
+  stkPushUrl: "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
 };
 
 async function main() {

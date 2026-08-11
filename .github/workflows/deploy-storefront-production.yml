@@ -61,6 +61,7 @@ jobs:
             PRODUCTION_MPESA_CONSUMER_KEY \
             PRODUCTION_MPESA_CONSUMER_SECRET \
             PRODUCTION_MPESA_SHORTCODE \
+            PRODUCTION_MPESA_TILL_NUMBER \
             PRODUCTION_MPESA_PASSKEY \
             PRODUCTION_MPESA_TEST_PHONE_WHITELIST
           do
@@ -68,6 +69,23 @@ jobs:
               --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
               --secret "${secret}" >/dev/null
           done
+
+          BUSINESS_SHORTCODE="$(gcloud secrets versions access latest \
+            --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
+            --secret PRODUCTION_MPESA_SHORTCODE | tr -d '[:space:]')"
+          TILL_NUMBER="$(gcloud secrets versions access latest \
+            --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
+            --secret PRODUCTION_MPESA_TILL_NUMBER | tr -d '[:space:]')"
+
+          if ! [[ "${BUSINESS_SHORTCODE}" =~ ^[0-9]+$ ]] || ! [[ "${TILL_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "Production M-Pesa H.O. shortcode and Till number must both be numeric." >&2
+            exit 1
+          fi
+
+          if [ "${BUSINESS_SHORTCODE}" = "${TILL_NUMBER}" ]; then
+            echo "Production M-Pesa H.O. shortcode and Till number must be different values." >&2
+            exit 1
+          fi
 
           if [ "${{ inputs.mpesa_launch_mode }}" = "one_ksh" ]; then
             TEST_WHITELIST="$(gcloud secrets versions access latest \
@@ -160,6 +178,7 @@ jobs:
             MPESA_CONSUMER_KEY=PRODUCTION_MPESA_CONSUMER_KEY:latest
             MPESA_CONSUMER_SECRET=PRODUCTION_MPESA_CONSUMER_SECRET:latest
             MPESA_SHORTCODE=PRODUCTION_MPESA_SHORTCODE:latest
+            MPESA_TILL_NUMBER=PRODUCTION_MPESA_TILL_NUMBER:latest
             MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest
             MPESA_TEST_PHONE_WHITELIST=PRODUCTION_MPESA_TEST_PHONE_WHITELIST:latest
 

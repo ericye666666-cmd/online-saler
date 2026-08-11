@@ -5,6 +5,7 @@ export type MpesaConfig = {
   consumerKey: string;
   consumerSecret: string;
   shortcode: string;
+  tillNumber: string;
   passkey: string;
   callbackBaseUrl: string;
   callbackUrl?: string;
@@ -59,11 +60,15 @@ export function mpesaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MpesaC
   const environment = mpesaEnvironmentFromEnv(env);
   const baseUrl = environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
   const explicitCallbackUrl = env.MPESA_CALLBACK_URL?.trim() || undefined;
+  const shortcode = required(env.MPESA_SHORTCODE, "MPESA_SHORTCODE");
   const config: MpesaConfig = {
     environment,
     consumerKey: required(env.MPESA_CONSUMER_KEY, "MPESA_CONSUMER_KEY"),
     consumerSecret: required(env.MPESA_CONSUMER_SECRET, "MPESA_CONSUMER_SECRET"),
-    shortcode: required(env.MPESA_SHORTCODE, "MPESA_SHORTCODE"),
+    shortcode,
+    tillNumber: environment === "production"
+      ? required(env.MPESA_TILL_NUMBER, "MPESA_TILL_NUMBER")
+      : env.MPESA_TILL_NUMBER?.trim() || shortcode,
     passkey: required(env.MPESA_PASSKEY, "MPESA_PASSKEY"),
     callbackBaseUrl: callbackBaseUrlFromEnv(env, explicitCallbackUrl),
     callbackUrl: explicitCallbackUrl,
@@ -96,7 +101,7 @@ export class MpesaClient {
       TransactionType: this.config.transactionType,
       Amount: input.amountKsh,
       PartyA: input.phone,
-      PartyB: this.config.shortcode,
+      PartyB: this.config.tillNumber,
       PhoneNumber: input.phone,
       CallBackURL: callbackUrl,
       AccountReference: accountReference,
@@ -160,6 +165,10 @@ function assertMpesaProductionConfig(config: MpesaConfig): void {
 
   if (config.transactionType !== "CustomerBuyGoodsOnline") {
     throw new MpesaConfigurationError("Production M-Pesa Till payments must use CustomerBuyGoodsOnline.");
+  }
+
+  if (config.shortcode === config.tillNumber) {
+    throw new MpesaConfigurationError("Production M-Pesa H.O. shortcode and Till number must be configured separately.");
   }
 
   const callbackUrl = mpesaCallbackUrl(config);
