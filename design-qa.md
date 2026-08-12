@@ -55,3 +55,12 @@ final result: direct replacement passed local, GitHub CI, API staging deployment
 - Operations: relative product image URLs are routed through `/api-proxy`; the order-card image column is enlarged from 112 px to 176 px with a 4:5 containment area.
 - Automated verification: Storefront and Operations targeted UI tests, TypeScript checks, production builds, and repository structure checks pass.
 - Browser verification: local catalog rendered without result-count copy. Live authenticated checkout and Operations data remain deployment-gated; no real order or payment was used.
+
+### Mobile catalog typography correction
+
+- Reference evidence: the production iPhone screenshot showed `Filter` at 13 px while `Newest` remained 17 px.
+- Corrected rendering contract: both labels now use 17 px type, 750 weight, and the same 48 px control height.
+- Regression coverage: the storefront UI test locks the shared mobile control size and the explicit sort-label typography.
+- Production build and TypeScript validation pass.
+
+final result: passed
