@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock3,
   CreditCard,
-  MapPin,
   MessageCircle,
   Navigation,
   PackageCheck,
@@ -20,11 +19,8 @@ import type { ReactNode } from "react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { KIKUYU_DELIVERY_FEE_KSH } from "@online-saler/business-rules";
 import {
-  checkoutStage,
-  checkoutStepStatus,
   deliveryRequiresAddress,
   googleMapsConfigured,
-  type CheckoutStage,
   type FulfillmentChoice
 } from "../cart-checkout-ui";
 import {
@@ -337,21 +333,32 @@ export function CheckoutPageClient() {
   const isPaymentSucceeded = paymentSucceeded(payment?.orderStatus, paymentStatus);
   const isPaymentFailed = paymentFailed(paymentStatus);
   const isPaymentRetryable = canRetryPayment(paymentStatus, secondsRemaining);
-  const currentStage = checkoutStage(Boolean(reservation), isPaymentSucceeded);
+  if (reservation && isPaymentSucceeded) {
+    return (
+      <section className="commerceCheckoutShell checkoutSuccessShell" aria-label="Payment confirmation">
+        <PaymentPanel
+          fulfillment={fulfillment}
+          isPaymentFailed={isPaymentFailed}
+          isPaymentRetryable={isPaymentRetryable}
+          isPaymentSucceeded={isPaymentSucceeded}
+          payment={payment}
+          paymentError={paymentError}
+          paymentLoading={paymentLoading}
+          refreshPaymentStatus={refreshPaymentStatus}
+          refreshingPayment={refreshingPayment}
+          reservation={reservation}
+          retryPayment={() => initiatePayment(reservation.orderId)}
+          secondsRemaining={secondsRemaining}
+          timerLabel={secondsRemaining > 0 ? `${minutes}:${seconds}` : "Expired"}
+        />
+      </section>
+    );
+  }
 
   return (
     <section className="commerceCheckoutShell" aria-label="Checkout">
       <div className="checkoutHero">
-        <div>
-          <span className="checkoutKicker">Checkout</span>
-          <h1>{reservation ? "Complete payment" : "Review your order"}</h1>
-          <p className="checkoutLead">
-            {reservation
-              ? `Order ${reservation.orderNumber} is reserved while you complete M-Pesa.`
-              : "Confirm the items, choose pickup or Kikuyu delivery, then pay with M-Pesa."}
-          </p>
-        </div>
-        <CheckoutProgress stage={currentStage} />
+        <h1>{reservation ? "Complete payment" : "Checkout"}</h1>
       </div>
 
       <div className="commerceCheckoutGrid">
@@ -361,6 +368,7 @@ export function CheckoutPageClient() {
 
             {reservation ? (
               <PaymentPanel
+                fulfillment={fulfillment}
                 isPaymentFailed={isPaymentFailed}
                 isPaymentRetryable={isPaymentRetryable}
                 isPaymentSucceeded={isPaymentSucceeded}
@@ -376,29 +384,12 @@ export function CheckoutPageClient() {
               />
             ) : (
               <form className="checkoutForm" onSubmit={submitCheckout}>
-                <div className="checkoutServiceStrip" aria-label="Checkout handoff steps">
-                  <div>
-                    <span>01</span>
-                    <strong>M-Pesa phone</strong>
-                    <p>We send the payment prompt to this number.</p>
-                  </div>
-                  <div>
-                    <span>02</span>
-                    <strong>Choose handoff</strong>
-                    <p>Pickup is free. Kikuyu delivery is {moneyKsh(KIKUYU_DELIVERY_FEE_KSH)}.</p>
-                  </div>
-                  <div>
-                    <span>03</span>
-                    <strong>Staff confirms</strong>
-                    <p>After payment, our team calls or WhatsApps you.</p>
-                  </div>
-                </div>
                 <CheckoutItemsPreview items={validation.items} />
                 {unavailableItems.length ? (
                   <p className="checkoutError" role="alert">Some cart items cannot be paid for. Return to cart to remove them before payment.</p>
                 ) : null}
                 <label className="checkoutField">
-                  <span>M-Pesa phone for payment and handoff</span>
+                  <span>M-Pesa phone</span>
                   <input
                     autoComplete="tel"
                     inputMode="tel"
@@ -408,7 +399,6 @@ export function CheckoutPageClient() {
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                   />
-                  <small>The M-Pesa prompt is sent here, and customer service uses the same number to confirm pickup or delivery.</small>
                 </label>
 
                 <div className="commerceOptionGrid" role="radiogroup" aria-label="Fulfillment">
@@ -424,7 +414,6 @@ export function CheckoutPageClient() {
                     <div>
                       <span>Free</span>
                       <strong>Kikuyu pickup</strong>
-                      <p>Our team prepares the order and confirms the pickup time after payment.</p>
                     </div>
                   </label>
                   <label className={`commerceOption ${fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "selected" : ""}`}>
@@ -439,7 +428,6 @@ export function CheckoutPageClient() {
                     <div>
                       <span>{moneyKsh(KIKUYU_DELIVERY_FEE_KSH)}</span>
                       <strong>Kikuyu local delivery</strong>
-                      <p>Share an estate, road, shop, gate, or landmark. We confirm the exact spot by phone.</p>
                     </div>
                   </label>
                 </div>
@@ -462,53 +450,22 @@ export function CheckoutPageClient() {
                   />
                 </label>
 
-                <div className="checkoutSupportNotice">
-                  <Smartphone size={17} />
-                  <div>
-                    <strong>Customer service arranges the final handoff</strong>
-                    <p>Keep your phone reachable after payment. We will confirm pickup or local delivery before the order moves out.</p>
-                  </div>
-                </div>
-
                 {error ? <p className="checkoutError" role="alert">{error}</p> : null}
                 <button className="commercePrimaryButton full" type="submit" disabled={submitting || !checkoutableItems.length || Boolean(unavailableItems.length)}>
-                  <CreditCard size={17} /> {submitting ? "Checking stock..." : "Pay with M-Pesa"}
+                  <CreditCard size={17} /> {submitting ? "Checking stock..." : `Pay ${totalLabel} with M-Pesa`}
                 </button>
               </form>
             )}
-          </section>
-
-          <section className="commerceFeatureGrid" aria-label="Checkout safeguards">
-            <div className="commerceFeature">
-              <Clock3 size={18} />
-              <div><strong>15 minute lock</strong><span>All items are locked together only at payment.</span></div>
-            </div>
-            <div className="commerceFeature">
-              <CheckCircle2 size={18} />
-              <div><strong>Live check</strong><span>The server checks price and availability again.</span></div>
-            </div>
-            <div className="commerceFeature">
-              <MapPin size={18} />
-              <div><strong>Customer service handoff</strong><span>Pickup or local delivery is confirmed by staff after payment.</span></div>
-            </div>
           </section>
         </div>
 
         <aside className="checkoutSummaryPanel">
           <h2>Order summary</h2>
-          <SummaryItems items={checkoutableItems} />
           <div className="commerceSummaryRows">
             <div className="commerceSummaryRow"><span>Items</span><strong>{itemTotalLabel}</strong></div>
             <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{deliveryFeeLabel}</strong></div>
             <div className="commerceSummaryRow total"><span>Total</span><strong>{totalLabel}</strong></div>
           </div>
-          <div className="checkoutSummaryHandoff">
-            <strong>After payment</strong>
-            <span>Customer service will call or WhatsApp you to confirm the pickup time or local delivery landmark.</span>
-          </div>
-          <p className="commerceSummaryLine"><CreditCard size={16} /> M-Pesa request is sent to your phone after stock is locked.</p>
-          <p className="commerceSummaryLine"><Smartphone size={16} /> Keep the same phone reachable for handoff confirmation.</p>
-          <p className="commerceSummaryLine"><Clock3 size={16} /> If payment fails or expires, every locked item is released.</p>
         </aside>
       </div>
     </section>
@@ -527,6 +484,7 @@ async function validateCart(productIds: string[]): Promise<CartValidationRespons
 }
 
 function PaymentPanel({
+  fulfillment,
   isPaymentFailed,
   isPaymentRetryable,
   isPaymentSucceeded,
@@ -540,6 +498,7 @@ function PaymentPanel({
   secondsRemaining,
   timerLabel
 }: {
+  fulfillment: FulfillmentChoice;
   isPaymentFailed: boolean;
   isPaymentRetryable: boolean;
   isPaymentSucceeded: boolean;
@@ -572,6 +531,55 @@ function PaymentPanel({
       : tone === "review"
         ? <ReceiptText size={22} />
         : <Smartphone size={22} />;
+
+  if (isPaymentSucceeded) {
+    const isPickup = fulfillment === "PICKUP";
+    const whatsappUrl = `https://wa.me/254742001507?text=${encodeURIComponent(`Hello Direct Loop, I need help with order ${reservation.orderNumber}.`)}`;
+    return (
+      <div className="paymentSuccessPanel" role="status">
+        <div className="paymentSuccessMark"><CheckCircle2 size={36} aria-hidden="true" /></div>
+        <div className="paymentSuccessHeading">
+          <h1>Payment successful</h1>
+          <p>Your item is secured and the order is now with our team.</p>
+        </div>
+
+        <dl className="paymentSuccessFacts">
+          <div><dt>Order</dt><dd>{reservation.orderNumber}</dd></div>
+          <div><dt>Paid</dt><dd>{moneyKsh(reservation.totalKsh)}</dd></div>
+          <div><dt>M-Pesa receipt</dt><dd>{payment?.receiptNumber ?? "Confirmed"}</dd></div>
+        </dl>
+
+        <section className="paymentNextStep">
+          <PackageCheck size={24} aria-hidden="true" />
+          <div>
+            <h2>{isPickup ? "Next: wait for pickup confirmation" : "Next: we arrange your delivery"}</h2>
+            <p>
+              {isPickup
+                ? `We are preparing your order in Kikuyu. We will call or WhatsApp +${reservation.phone} when it is ready—please wait for that confirmation before travelling.`
+                : `We will call or WhatsApp +${reservation.phone} to confirm the Kikuyu delivery location and timing.`}
+            </p>
+          </div>
+        </section>
+
+        <section className="paymentSupportRow">
+          <MessageCircle size={22} aria-hidden="true" />
+          <div>
+            <h2>Direct Loop customer service</h2>
+            <p>WhatsApp 0742 001 507 if you need help with this order.</p>
+          </div>
+          <a className="commerceSecondaryButton" href={whatsappUrl} target="_blank" rel="noreferrer">Contact us</a>
+        </section>
+
+        <div className="paymentSuccessActions">
+          <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
+            Track order <ArrowRight size={16} />
+          </Link>
+          <Link className="commerceTextButton" href="/">Continue shopping</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`reservationCard ${tone}`} role="status">
       <div className="reservationTimer">
@@ -627,27 +635,12 @@ function PaymentPanel({
           {isPaymentFailed ? <AlertCircle size={16} /> : isPaymentSucceeded ? <CheckCircle2 size={16} /> : <Smartphone size={16} />}
           <span>M-Pesa confirmation</span>
         </div>
-        <div className={isPaymentSucceeded ? "current" : "pending"}><MessageCircle size={16} /><span>Staff handoff call</span></div>
+        <div className="pending"><MessageCircle size={16} /><span>Staff handoff call</span></div>
       </div>
-
-      {isPaymentSucceeded ? (
-        <div className="paymentHandoffNotice">
-          <MessageCircle size={18} />
-          <div>
-            <strong>Customer service will contact you next</strong>
-            <span>Keep +{reservation.phone} reachable. We will confirm pickup time or Kikuyu local delivery by phone or WhatsApp.</span>
-          </div>
-        </div>
-      ) : null}
       <div className="checkoutPaymentActions">
         <button className="commerceSecondaryButton" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
           <RefreshCw size={16} /> {refreshingPayment ? "Refreshing..." : "Refresh status"}
         </button>
-        {isPaymentSucceeded ? (
-          <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
-            View order <ArrowRight size={16} />
-          </Link>
-        ) : null}
       </div>
       {paymentError || isPaymentRetryable ? (
         <button className="commerceSecondaryButton full" type="button" disabled={paymentLoading || secondsRemaining <= 0} onClick={retryPayment}>
@@ -676,24 +669,6 @@ function CheckoutItemsPreview({ items }: { items: ValidatedCartItem[] }) {
   );
 }
 
-function SummaryItems({ items }: { items: ValidatedCartItem[] }) {
-  return (
-    <div className="summaryItemsList">
-      {items.map((item) => (
-        <div className="summaryProduct" key={item.requestedProductId}>
-          <div className="summaryProductImage">
-            {item.storefrontImage ? <img src={item.storefrontImage} alt="" /> : null}
-          </div>
-          <div>
-            <strong>{item.title}</strong>
-            <span>{[item.size, item.condition].filter(Boolean).join(" / ") || "Kikuyu warehouse"}</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function CheckoutEmpty({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
     <section className="checkoutEmptyState">
@@ -701,25 +676,6 @@ function CheckoutEmpty({ title, body, action }: { title: string; body: string; a
       <p>{body}</p>
       {action}
     </section>
-  );
-}
-
-function CheckoutProgress({ stage }: { stage: CheckoutStage }) {
-  const steps: Array<{ key: CheckoutStage; label: string }> = [
-    { key: "details", label: "Review" },
-    { key: "payment", label: "M-Pesa" },
-    { key: "complete", label: "Confirmed" }
-  ];
-
-  return (
-    <div className="checkoutProgress" aria-label="Checkout progress">
-      {steps.map((step, index) => (
-        <div key={step.key} className={`checkoutStep ${checkoutStepStatus(stage, step.key)}`}>
-          <span>{String(index + 1).padStart(2, "0")}</span>
-          <strong>{step.label}</strong>
-        </div>
-      ))}
-    </div>
   );
 }
 

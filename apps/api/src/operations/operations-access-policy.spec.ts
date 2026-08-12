@@ -3,10 +3,14 @@ import test from "node:test";
 import {
   OPERATIONS_PERMISSIONS,
   OPERATIONS_ROLE_BLUEPRINTS,
+  bearerOperationsAccessToken,
   hasOperationsPermission,
   hashPassword,
+  issueOperationsAccessToken,
+  operationsAccessTokenSubject,
   rolePermissionCodes,
   uniquePermissionCodes,
+  verifyOperationsAccessToken,
   verifyPassword
 } from "./operations-access-policy";
 
@@ -66,4 +70,18 @@ test("password hashing verifies only the original password", () => {
   const hash = hashPassword("ChangeMe43!", "fixedsalt");
   assert.equal(verifyPassword("ChangeMe43!", hash), true);
   assert.equal(verifyPassword("wrong-password", hash), false);
+});
+
+test("operations access tokens are signed, expire, and reject tampering", () => {
+  const now = new Date("2026-08-12T10:00:00.000Z");
+  const passwordHash = hashPassword("ChangeMe43!", "fixedsalt");
+  const issued = issueOperationsAccessToken("admin-123", passwordHash, now);
+
+  assert.equal(operationsAccessTokenSubject(issued.accessToken), "admin-123");
+  assert.equal(verifyOperationsAccessToken(issued.accessToken, passwordHash, now)?.sub, "admin-123");
+  assert.equal(verifyOperationsAccessToken(`${issued.accessToken}x`, passwordHash, now), null);
+  assert.equal(verifyOperationsAccessToken(issued.accessToken, `${passwordHash}changed`, now), null);
+  assert.equal(verifyOperationsAccessToken(issued.accessToken, passwordHash, new Date("2026-08-12T22:00:01.000Z")), null);
+  assert.equal(bearerOperationsAccessToken(`Bearer ${issued.accessToken}`), issued.accessToken);
+  assert.equal(bearerOperationsAccessToken("admin-123"), null);
 });

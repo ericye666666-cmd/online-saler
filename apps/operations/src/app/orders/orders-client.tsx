@@ -98,6 +98,7 @@ type OrderRow = {
     id: string;
     unitPriceKsh: number;
     quantity: number;
+    displayImageUrl?: string | null;
     snapshot?: { title: string; barcode?: string | null; imageUrl?: string | null } | null;
     inventoryItem?: { id: string; barcode: string; status: string; location?: { id: string; locationCode: string } | null } | null;
   }>;
@@ -210,7 +211,7 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
 
 export function OrderCenterPage({ scope }: { scope: Scope }) {
   const { session } = useOperationsSession();
-  const adminUserId = session?.adminUser?.id ?? "";
+  const accessToken = session?.accessToken ?? "";
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [counts, setCounts] = useState<Record<OrderStatusTab, number>>({} as Record<OrderStatusTab, number>);
@@ -229,15 +230,16 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
   }, [scope]);
 
   const load = useCallback(async () => {
-    if (!adminUserId) return;
+    if (!accessToken) return;
     setBusy(true);
     setError("");
-    const query = queryFromFilters(adminUserId, scope, tab, appliedFilters);
+    const query = queryFromFilters(scope, tab, appliedFilters);
+    const headers = authorizationHeaders(accessToken);
     try {
       const [nextOrders, nextCounts, nextEmployees] = await Promise.all([
-        request<OrderRow[]>("/operations/orders", { query }),
-        request<Record<OrderStatusTab, number>>("/operations/orders/summary", { query: { ...query, tab: "all" } }),
-        request<Employee[]>("/operations/orders/employees", { query: { adminUserId } })
+        request<OrderRow[]>("/operations/orders", { query, headers }),
+        request<Record<OrderStatusTab, number>>("/operations/orders/summary", { query: { ...query, tab: "all" }, headers }),
+        request<Employee[]>("/operations/orders/employees", { headers })
       ]);
       setOrders(nextOrders);
       setCounts(nextCounts);
@@ -247,7 +249,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
     } finally {
       setBusy(false);
     }
-  }, [adminUserId, appliedFilters, scope, tab]);
+  }, [accessToken, appliedFilters, scope, tab]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -257,7 +259,8 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
     try {
       await request(`/operations/orders/${order.id}/${action}`, {
         method: "POST",
-        body: JSON.stringify({ adminUserId, ...(body ?? {}) })
+        headers: authorizationHeaders(accessToken),
+        body: JSON.stringify(body ?? {})
       });
       await load();
     } catch (caught) {
@@ -336,7 +339,6 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
         state={dialog}
         employees={employees}
         session={session}
-        adminUserId={adminUserId}
         onClose={() => setDialog(null)}
         onDone={async () => { setDialog(null); await load(); }}
       />
@@ -346,7 +348,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
 
 export function OrderDetailPage({ orderId }: { orderId: string }) {
   const { session } = useOperationsSession();
-  const adminUserId = session?.adminUser?.id ?? "";
+  const accessToken = session?.accessToken ?? "";
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -354,20 +356,20 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    if (!adminUserId) return;
+    if (!accessToken) return;
     setBusy(true);
     setError("");
     try {
       const [detail, people] = await Promise.all([
-        request<OrderRow>(`/operations/orders/${orderId}`, { query: { adminUserId } }),
-        request<Employee[]>("/operations/orders/employees", { query: { adminUserId } })
+        request<OrderRow>(`/operations/orders/${orderId}`, { headers: authorizationHeaders(accessToken) }),
+        request<Employee[]>("/operations/orders/employees", { headers: authorizationHeaders(accessToken) })
       ]);
       setOrder(detail);
       setEmployees(people);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法读取订单详情。");
     } finally { setBusy(false); }
-  }, [adminUserId, orderId]);
+  }, [accessToken, orderId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -376,7 +378,8 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
     try {
       await request(`/operations/orders/${current.id}/${action}`, {
         method: "POST",
-        body: JSON.stringify({ adminUserId, ...(body ?? {}) })
+        headers: authorizationHeaders(accessToken),
+        body: JSON.stringify(body ?? {})
       });
       await load();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "订单操作失败。"); }
@@ -398,7 +401,6 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
         state={dialog}
         employees={employees}
         session={session}
-        adminUserId={adminUserId}
         onClose={() => setDialog(null)}
         onDone={async () => { setDialog(null); await load(); }}
       />
@@ -533,9 +535,9 @@ function OrderCard(props: {
           {order.items.map((item, index) => {
             const scan = fulfillment?.items.find((candidate) => candidate.orderItemId === item.id);
             return (
-              <div key={item.id} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[64px_1fr_auto] sm:items-center">
-                <div className="size-16 overflow-hidden rounded-md border bg-muted">
-                  {item.snapshot?.imageUrl ? <img src={item.snapshot.imageUrl} alt={item.snapshot.title} className="size-full object-cover" /> : null}
+              <div key={item.id} className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[112px_1fr_auto] sm:items-center">
+                <div className="flex h-32 w-28 items-center justify-center overflow-hidden rounded-md border bg-white">
+                  <OrderItemImage src={item.displayImageUrl ?? item.snapshot?.imageUrl} alt={item.snapshot?.title ?? "商品图片"} />
                 </div>
                 <div className="min-w-0">
                   <p className="font-medium">{index + 1}. {item.snapshot?.title ?? "未命名商品"}</p>
@@ -569,6 +571,20 @@ function OrderCard(props: {
   );
 }
 
+function OrderItemImage({ src, alt }: { src?: string | null; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (!src || failed) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-2 text-center text-muted-foreground text-xs">
+        <PackageCheckIcon className="size-7" />
+        <span>暂无商品图</span>
+      </div>
+    );
+  }
+  return <img src={src} alt={alt} className="size-full object-contain" onError={() => setFailed(true)} />;
+}
+
 function OrderActions({ order, session, busy, onDialog, onDirect }: {
   order: OrderRow;
   session: OperationsSession | null;
@@ -598,11 +614,10 @@ function OrderActionDialog(props: {
   state: DialogState;
   employees: Employee[];
   session: OperationsSession | null;
-  adminUserId: string;
   onClose: () => void;
   onDone: () => Promise<void>;
 }) {
-  const { state, employees, session, adminUserId, onClose, onDone } = props;
+  const { state, employees, session, onClose, onDone } = props;
   const [employeeId, setEmployeeId] = useState("");
   const [barcode, setBarcode] = useState("");
   const [packagingMethod, setPackagingMethod] = useState("BAG");
@@ -648,7 +663,7 @@ function OrderActionDialog(props: {
     setBusy(true); setError(null);
     const orderId = state.order.id;
     let path = "";
-    let body: Record<string, unknown> = { adminUserId, note };
+    let body: Record<string, unknown> = { note };
     if (state.kind === "assign-picker") { path = "assign-picker"; body.employeeId = employeeId; }
     if (state.kind === "scan") { path = `items/${state.item!.id}/scan`; body.barcode = barcode; }
     if (state.kind === "start-packing") { path = "start-packing"; body.employeeId = employeeId; }
@@ -659,7 +674,11 @@ function OrderActionDialog(props: {
     if (state.kind === "assign-after-sale") { path = "assign-after-sale"; body = { ...body, employeeId, caseId: state.order.customerServiceCases.find((item) => item.issueType === "AFTER_SALE")?.id, status: afterSaleStatus, afterSaleReason, customerRequest, requiresReturn: requiresReturn === "true", requiresRefund: requiresRefund === "true", affectsAffiliateCommission: affectsAffiliateCommission === "true" }; }
     if (state.kind === "cancel") { path = "cancel"; }
     try {
-      await request(`/operations/orders/${orderId}/${path}`, { method: "POST", body: JSON.stringify(body) });
+      await request(`/operations/orders/${orderId}/${path}`, {
+        method: "POST",
+        headers: authorizationHeaders(session?.accessToken ?? ""),
+        body: JSON.stringify(body)
+      });
       await onDone();
     } catch (caught) {
       setError(caught instanceof ApiRequestError ? caught : new ApiRequestError(caught instanceof Error ? caught.message : "订单操作失败。"));
@@ -741,8 +760,12 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={destructive ? "destructive" : positive ? "secondary" : "outline"}>{statusLabel(status)}</Badge>;
 }
 
-function queryFromFilters(adminUserId: string, scope: Scope, tab: OrderStatusTab, filters: Filters) {
-  return { adminUserId, scope, tab, ...Object.fromEntries(Object.entries(filters).map(([key, value]) => [key, value || undefined])) };
+function queryFromFilters(scope: Scope, tab: OrderStatusTab, filters: Filters) {
+  return { scope, tab, ...Object.fromEntries(Object.entries(filters).map(([key, value]) => [key, value || undefined])) };
+}
+
+function authorizationHeaders(accessToken: string): Record<string, string> {
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 }
 
 function dateShortcut(filters: Filters, daysAgoStart: number, daysAgoEnd: number): Filters {

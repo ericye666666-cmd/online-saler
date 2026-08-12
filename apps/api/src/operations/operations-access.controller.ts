@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Patch, Post } from "@nestjs/common";
 import { AdminUserStatus } from "@online-saler/database";
 import { OperationsAccessService } from "./operations-access.service";
 
@@ -45,47 +45,47 @@ export class OperationsAccessController {
   }
 
   @Get("session")
-  session(@Query("adminUserId") adminUserId?: string) {
-    return this.access.session(adminUserId);
+  session(@Headers("authorization") authorization?: string) {
+    return this.access.sessionFromAccessToken(authorization);
   }
 
   @Get("accounts")
-  accounts(@Query("adminUserId") adminUserId?: string) {
-    return this.access.accounts(adminUserId);
+  async accounts(@Headers("authorization") authorization?: string) {
+    return this.access.accounts(await this.access.requireAccessToken(authorization));
   }
 
   @Post("accounts")
-  createAccount(@Body() body: CreateAdminUserBody) {
-    return this.access.createAdminUser(body.requesterAdminUserId, body);
+  async createAccount(@Headers("authorization") authorization: string | undefined, @Body() body: CreateAdminUserBody) {
+    return this.access.createAdminUser(await this.access.requireAccessToken(authorization), body);
   }
 
   @Patch("accounts/:id/status")
-  updateAccountStatus(@Param("id") id: string, @Body() body: AdminUserStatusBody) {
-    return this.access.updateAdminUserStatus(body.requesterAdminUserId, id, body);
+  async updateAccountStatus(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: AdminUserStatusBody) {
+    return this.access.updateAdminUserStatus(await this.access.requireAccessToken(authorization), id, body);
   }
 
   @Patch("accounts/:id/roles")
-  updateAccountRoles(@Param("id") id: string, @Body() body: AdminUserRolesBody) {
-    return this.access.updateAdminUserRoles(body.requesterAdminUserId, id, body);
+  async updateAccountRoles(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: AdminUserRolesBody) {
+    return this.access.updateAdminUserRoles(await this.access.requireAccessToken(authorization), id, body);
   }
 
   @Get("roles")
-  roles(@Query("adminUserId") adminUserId?: string) {
-    return this.access.roles(adminUserId);
+  async roles(@Headers("authorization") authorization?: string) {
+    return this.access.roles(await this.access.requireAccessToken(authorization));
   }
 
   @Post("roles")
-  createRole(@Body() body: RoleBody) {
-    return this.access.createRole(body.requesterAdminUserId, body);
+  async createRole(@Headers("authorization") authorization: string | undefined, @Body() body: RoleBody) {
+    return this.access.createRole(await this.access.requireAccessToken(authorization), body);
   }
 
   @Patch("roles/:id")
-  updateRole(@Param("id") id: string, @Body() body: RoleBody) {
-    return this.access.updateRole(body.requesterAdminUserId, id, body);
+  async updateRole(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: RoleBody) {
+    return this.access.updateRole(await this.access.requireAccessToken(authorization), id, body);
   }
 
   @Get("permissions")
-  permissions(@Query("adminUserId") adminUserId?: string) {
-    return this.access.permissions(adminUserId);
+  async permissions(@Headers("authorization") authorization?: string) {
+    return this.access.permissions(await this.access.requireAccessToken(authorization));
   }
 }
