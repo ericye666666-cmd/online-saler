@@ -14,7 +14,10 @@ const orderClient = readFileSync(new URL("./orders-client.tsx", import.meta.url)
 assert.match(orderClient, /order\.items\.map/);
 assert.match(orderClient, /inventoryItem\?\.location\?\.locationCode/);
 assert.match(orderClient, /displayImageUrl/);
-assert.match(orderClient, /h-32 w-28/);
+assert.match(orderClient, /operationsImageUrl/);
+assert.match(orderClient, /API_PROXY_URL/);
+assert.match(orderClient, /sm:grid-cols-\[176px_1fr_auto\]/);
+assert.match(orderClient, /aspect-\[4\/5\].*max-w-44/);
 assert.match(orderClient, /预期 Barcode/);
 assert.match(orderClient, /错误|失败|does not match|Barcode/);
 assert.match(orderClient, /Authorization/);

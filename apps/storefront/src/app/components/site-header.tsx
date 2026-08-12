@@ -34,6 +34,11 @@ type SiteHeaderProps = {
   onSelectCategory?: (category: CatalogCategory) => void;
   onSelectBrowse?: (selection: BrowseSelection) => void;
   productDetail?: boolean;
+  customerIdentity?: {
+    displayName?: string | null;
+    email: string;
+    avatarUrl?: string | null;
+  };
 };
 
 type MenuItem = BrowseSelection & { label: string };
@@ -222,6 +227,7 @@ export function SiteHeader({
   onSelectCategory,
   onSelectBrowse,
   productDetail = false,
+  customerIdentity,
 }: SiteHeaderProps) {
   const [localSearch, setLocalSearch] = useState("");
   const [desktopMenuId, setDesktopMenuId] = useState<string | null>(null);
@@ -394,6 +400,15 @@ export function SiteHeader({
           </Link>
         </div>
       </div>
+
+      {customerIdentity ? (
+        <div className="depopCustomerIdentity" aria-label="Signed-in customer">
+          {customerIdentity.avatarUrl
+            ? <img src={customerIdentity.avatarUrl} alt="" />
+            : <span aria-hidden="true">{(customerIdentity.displayName ?? customerIdentity.email).slice(0, 1).toUpperCase()}</span>}
+          <strong>{customerIdentity.displayName ?? customerIdentity.email}</strong>
+        </div>
+      ) : null}
 
       {mobileSearchOpen ? (
         <form className="depopMobileSearch" action="/" onSubmit={handleSubmit}>
