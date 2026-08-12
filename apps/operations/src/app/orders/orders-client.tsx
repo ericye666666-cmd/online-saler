@@ -535,9 +535,9 @@ function OrderCard(props: {
           {order.items.map((item, index) => {
             const scan = fulfillment?.items.find((candidate) => candidate.orderItemId === item.id);
             return (
-              <div key={item.id} className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[112px_1fr_auto] sm:items-center">
-                <div className="flex h-32 w-28 items-center justify-center overflow-hidden rounded-md border bg-white">
-                  <OrderItemImage src={item.displayImageUrl ?? item.snapshot?.imageUrl} alt={item.snapshot?.title ?? "商品图片"} />
+              <div key={item.id} className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[176px_1fr_auto] sm:items-center">
+                <div className="flex aspect-[4/5] w-full max-w-44 items-center justify-center overflow-hidden rounded-md border bg-white sm:w-44">
+                  <OrderItemImage src={operationsImageUrl(item.displayImageUrl ?? item.snapshot?.imageUrl)} alt={item.snapshot?.title ?? "商品图片"} />
                 </div>
                 <div className="min-w-0">
                   <p className="font-medium">{index + 1}. {item.snapshot?.title ?? "未命名商品"}</p>
@@ -583,6 +583,12 @@ function OrderItemImage({ src, alt }: { src?: string | null; alt: string }) {
     );
   }
   return <img src={src} alt={alt} className="size-full object-contain" onError={() => setFailed(true)} />;
+}
+
+export function operationsImageUrl(src?: string | null) {
+  if (!src) return null;
+  if (/^(https?:|data:|blob:)/.test(src) || src.startsWith(API_PROXY_URL)) return src;
+  return `${API_PROXY_URL}${src.startsWith("/") ? "" : "/"}${src}`;
 }
 
 function OrderActions({ order, session, busy, onDialog, onDirect }: {

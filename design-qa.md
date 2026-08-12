@@ -45,3 +45,13 @@
 - The detail-factory first step performs the batch AI display-image workflow, and the Model View placeholder remains absent.
 
 final result: direct replacement passed local, GitHub CI, API staging deployment, and staging browser QA
+
+## Storefront checkout and Operations order-card QA (2026-08-12)
+
+- Reference: user-supplied mobile catalog, checkout, payment-success, and Operations screenshots.
+- Catalog: mobile Filter and Newest controls use the same two-column track, 48 px height, border, and padding; result-count copy is absent.
+- Checkout: the standalone signed-in card, intro copy, and checkout step rail are absent; signed-in identity is reduced to a compact header row.
+- Payment success: the first message is `Payment successful`, followed by order/payment facts, the pickup-or-delivery next step, customer-service contact, and order tracking. The pre-payment timeline is not rendered after success.
+- Operations: relative product image URLs are routed through `/api-proxy`; the order-card image column is enlarged from 112 px to 176 px with a 4:5 containment area.
+- Automated verification: Storefront and Operations targeted UI tests, TypeScript checks, production builds, and repository structure checks pass.
+- Browser verification: local catalog rendered without result-count copy. Live authenticated checkout and Operations data remain deployment-gated; no real order or payment was used.

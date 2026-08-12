@@ -10,18 +10,14 @@ export default async function CheckoutPage() {
 
   return (
     <main className="productPage">
-      <SiteHeader />
+      <SiteHeader customerIdentity={session ? {
+        displayName: session.displayName,
+        email: session.email,
+        avatarUrl: session.avatarUrl
+      } : undefined} />
       <div className="productPageShell checkoutPageShell">
         {session ? (
-          <>
-            <section className="checkoutIdentity" aria-label="Signed-in customer">
-              {session.avatarUrl
-                ? <img src={session.avatarUrl} alt="" />
-                : <span className="checkoutIdentityFallback" aria-hidden="true">{(session.displayName ?? session.email).slice(0, 1).toUpperCase()}</span>}
-              <strong>{session.displayName ?? session.email}</strong>
-            </section>
-            <CheckoutPageClient />
-          </>
+          <CheckoutPageClient />
         ) : (
           <section className="customerLoginCard">
             <p className="detail-meta">Checkout</p>

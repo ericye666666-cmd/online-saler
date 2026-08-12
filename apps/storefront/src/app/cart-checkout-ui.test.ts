@@ -35,6 +35,8 @@ assert.match(checkoutPage, /Track order/);
 
 const checkoutRoute = readFileSync(new URL("./checkout/page.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(checkoutRoute, /Signed in as/);
+assert.doesNotMatch(checkoutRoute, /className="checkoutIdentity"/);
+assert.match(checkoutRoute, /customerIdentity=/);
 
 const catalog = readFileSync(new URL("./components/catalog-app.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(catalog, /filteredProducts\.length\} results/);
