@@ -2,7 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "../../components/site-header";
 import { currentCustomerSession } from "../../../auth/customer-auth";
-import { getCustomerOrderByNumber, orderStatusLabel, paymentStatusLabel } from "../../../orders/order-service";
+import {
+  customerFulfillmentProgress,
+  customerOrderStatusLabel,
+  customerOrderStatusMessage,
+  getCustomerOrderByNumber,
+  paymentStatusLabel
+} from "../../../orders/order-service";
 import { moneyKsh } from "../../storefront-products";
 
 type OrderPageProps = {
@@ -39,8 +45,13 @@ export default async function OrderPage({ params }: OrderPageProps) {
   if (!order) notFound();
 
   const latestPayment = order.payments[0] ?? null;
-  const item = order.items[0] ?? null;
-  const snapshot = item?.snapshot ?? null;
+  const statusInput = {
+    orderStatus: order.status,
+    fulfillmentMethod: order.fulfillmentMethod,
+    fulfillmentStatus: order.fulfillment?.status
+  };
+  const statusLabel = customerOrderStatusLabel(statusInput);
+  const progress = customerFulfillmentProgress(statusInput);
 
   return (
     <main className="productPage">
@@ -50,15 +61,22 @@ export default async function OrderPage({ params }: OrderPageProps) {
           <p className="detail-meta">Order {order.orderNumber}</p>
           <div className="orderStatusHeading">
             <div>
-              <h1>{orderStatusLabel(order.status)}</h1>
-              <p>
-                {order.status === "PAID"
-                  ? "Payment is confirmed. The warehouse team can prepare this item next."
-                  : "Keep this page open while payment is being confirmed."}
-              </p>
+              <h1>{statusLabel}</h1>
+              <p>{customerOrderStatusMessage(statusLabel)}</p>
             </div>
-            <span className={`orderBadge ${order.status.toLowerCase()}`}>{orderStatusLabel(order.status)}</span>
+            <span className={`orderBadge ${order.status.toLowerCase()}`}>{statusLabel}</span>
           </div>
+
+          {progress.length ? (
+            <ol className="orderProgress" aria-label="Order fulfillment progress">
+              {progress.map((step, index) => (
+                <li key={step.key} className={step.state} aria-current={step.state === "current" ? "step" : undefined}>
+                  <span aria-hidden="true">{step.state === "complete" ? "✓" : index + 1}</span>
+                  <strong>{step.label}</strong>
+                </li>
+              ))}
+            </ol>
+          ) : null}
 
           <div className="orderStatusGrid">
             <article>
@@ -82,20 +100,22 @@ export default async function OrderPage({ params }: OrderPageProps) {
             </article>
           </div>
 
-          {snapshot ? (
-            <article className="orderItemCard">
-              {snapshot.imageUrl ? <img src={snapshot.imageUrl} alt={snapshot.title} /> : null}
-              <div>
-                <h2>{snapshot.title}</h2>
-                <p>{[snapshot.brand, snapshot.category, snapshot.sizeLabel].filter(Boolean).join(" / ")}</p>
-                <strong>{moneyKsh(snapshot.unitPriceKsh)}</strong>
-              </div>
-            </article>
-          ) : null}
+          <div className="orderItemList">
+            {order.items.map((orderItem) => orderItem.snapshot ? (
+              <article className="orderItemCard" key={orderItem.id}>
+                {orderItem.snapshot.imageUrl ? <img src={orderItem.snapshot.imageUrl} alt={orderItem.snapshot.title} /> : null}
+                <div>
+                  <h2>{orderItem.snapshot.title}</h2>
+                  <p>{[orderItem.snapshot.brand, orderItem.snapshot.category, orderItem.snapshot.sizeLabel].filter(Boolean).join(" / ")}</p>
+                  <strong>{moneyKsh(orderItem.snapshot.unitPriceKsh)}</strong>
+                </div>
+              </article>
+            ) : null)}
+          </div>
 
           <div className="orderStatusActions">
             <Link className="reserve-link" href="/">Continue shopping</Link>
-            {order.status !== "PAID" ? <Link className="reserve-button secondary" href="/checkout">Back to checkout</Link> : null}
+            {!["PAID", "FULFILLING", "COMPLETED"].includes(order.status) ? <Link className="reserve-button secondary" href="/checkout">Back to checkout</Link> : null}
           </div>
         </section>
       </div>

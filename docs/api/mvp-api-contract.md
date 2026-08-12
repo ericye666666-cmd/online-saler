@@ -76,6 +76,10 @@ M-Pesa callbacks must also be idempotent using provider ids and receipt numbers.
 | Admin | Employee session plus permission required. |
 | Webhooks | Provider verification and secret configuration required. |
 
+Operations and Admin requests send the employee access token in the
+`Authorization: Bearer <token>` header. Query-string or request-body user ids
+are never accepted as proof of identity.
+
 ## Foundation APIs
 
 ### `POST /api/v1/admin/auth/login`
@@ -580,6 +584,8 @@ Operations uses one order-centered API surface:
 
 Every endpoint checks the matching `orders.*` permission on the server. Employee
 actions additionally require an active employee linked to the admin account.
+Order Center responses mask customer and payment phone numbers; server-side
+search and pickup verification continue to use the stored value.
 Wrong barcode responses include expected barcode, actual barcode, product, and
 correct location.
 

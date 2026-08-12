@@ -10,12 +10,19 @@ import {
   allFulfillmentItemsVerified,
   barcodeMatchesOrder,
   canTransitionFulfillment,
+  maskCustomerPhone,
   normalizeScannedBarcode,
   orderCenterTab,
   verifyFulfillmentItemBarcode
 } from "./operations-fulfillment-state";
 
 describe("unified order fulfillment state machine", () => {
+  it("masks customer phone numbers before returning order-center rows", () => {
+    assert.equal(maskCustomerPhone("+254712345678"), "+254•••••5678");
+    assert.equal(maskCustomerPhone("0712345678"), "071•••5678");
+    assert.equal(maskCustomerPhone(null), null);
+  });
+
   it("requires item verification before packing", () => {
     assert.equal(canTransitionFulfillment({ from: FulfillmentStatus.PAID, to: FulfillmentStatus.PICKING }), true);
     assert.equal(canTransitionFulfillment({ from: FulfillmentStatus.PICKING, to: FulfillmentStatus.PACKED }), false);

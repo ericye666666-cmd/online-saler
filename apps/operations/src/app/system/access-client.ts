@@ -1,11 +1,17 @@
 import type { OperationsPermission, OperationsRole, OperationsSession } from "@/components/admin/operations-access";
 
 const API_PROXY_URL = "/api-proxy";
+const SESSION_ACCESS_TOKEN_KEY = "operations.access.accessToken";
 
 export async function accessRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const accessToken = typeof window === "undefined" ? null : window.localStorage.getItem(SESSION_ACCESS_TOKEN_KEY);
   const response = await fetch(`${API_PROXY_URL}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(options?.headers ?? {})
+    }
   });
   const text = await response.text();
   let body: unknown = {};

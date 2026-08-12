@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from "@nestjs/common";
 import { InventoryItemStatus, WarehouseLocationStatus } from "@online-saler/database";
 import {
   OperationsFulfillmentService,
@@ -12,100 +12,111 @@ import {
   type RiderInput,
   type ScanInput
 } from "./operations-fulfillment.service";
+import { OperationsAccessService } from "./operations-access.service";
 import { OperationsWarehouseService } from "./operations-warehouse.service";
 
 @Controller("operations/orders")
 export class OperationsFulfillmentController {
-  constructor(private readonly orders: OperationsFulfillmentService) {}
+  constructor(
+    private readonly orders: OperationsFulfillmentService,
+    private readonly access: OperationsAccessService
+  ) {}
 
   @Get("summary")
-  summary(@Query() query: OrderCenterListInput) {
-    return this.orders.summary(query);
+  async summary(@Headers("authorization") authorization: string | undefined, @Query() query: OrderCenterListInput) {
+    return this.orders.summary({ ...query, adminUserId: await this.access.requireAccessToken(authorization) });
   }
 
   @Get("employees")
-  employees(@Query("adminUserId") adminUserId?: string) {
-    return this.orders.employees(adminUserId);
+  async employees(@Headers("authorization") authorization?: string) {
+    return this.orders.employees(await this.access.requireAccessToken(authorization));
   }
 
   @Get()
-  list(@Query() query: OrderCenterListInput) {
-    return this.orders.listOrders(query);
+  async list(@Headers("authorization") authorization: string | undefined, @Query() query: OrderCenterListInput) {
+    return this.orders.listOrders({ ...query, adminUserId: await this.access.requireAccessToken(authorization) });
   }
 
   @Get(":orderId")
-  detail(@Param("orderId") orderId: string, @Query("adminUserId") adminUserId?: string) {
-    return this.orders.orderDetail(orderId, adminUserId);
+  async detail(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string) {
+    return this.orders.orderDetail(orderId, await this.access.requireAccessToken(authorization));
   }
 
   @Post(":orderId/assign-picker")
-  assignPicker(@Param("orderId") orderId: string, @Body() body: EmployeeInput) {
-    return this.orders.assignPicker(orderId, body);
+  async assignPicker(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: EmployeeInput) {
+    return this.orders.assignPicker(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/claim-picking")
-  claimPicking(@Param("orderId") orderId: string, @Body() body: AdminInput) {
-    return this.orders.claimPicking(orderId, body);
+  async claimPicking(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.claimPicking(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/items/:orderItemId/scan")
-  scanItem(@Param("orderId") orderId: string, @Param("orderItemId") orderItemId: string, @Body() body: ScanInput) {
-    return this.orders.scanItem(orderId, orderItemId, body);
+  async scanItem(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Param("orderItemId") orderItemId: string, @Body() body: ScanInput) {
+    return this.orders.scanItem(orderId, orderItemId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/start-packing")
-  startPacking(@Param("orderId") orderId: string, @Body() body: EmployeeInput) {
-    return this.orders.startPacking(orderId, body);
+  async startPacking(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: EmployeeInput) {
+    return this.orders.startPacking(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/complete-packing")
-  completePacking(@Param("orderId") orderId: string, @Body() body: PackingInput) {
-    return this.orders.completePacking(orderId, body);
+  async completePacking(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: PackingInput) {
+    return this.orders.completePacking(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/ready-for-pickup")
-  readyForPickup(@Param("orderId") orderId: string, @Body() body: AdminInput) {
-    return this.orders.readyForPickup(orderId, body);
+  async readyForPickup(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.readyForPickup(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/ready-for-dispatch")
-  readyForDispatch(@Param("orderId") orderId: string, @Body() body: AdminInput) {
-    return this.orders.readyForDispatch(orderId, body);
+  async readyForDispatch(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.readyForDispatch(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/assign-rider")
-  assignRider(@Param("orderId") orderId: string, @Body() body: RiderInput) {
-    return this.orders.assignRider(orderId, body);
+  async assignRider(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: RiderInput) {
+    return this.orders.assignRider(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/dispatch")
-  dispatch(@Param("orderId") orderId: string, @Body() body: AdminInput) {
-    return this.orders.dispatch(orderId, body);
+  async dispatch(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.dispatch(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/confirm-pickup")
-  confirmPickup(@Param("orderId") orderId: string, @Body() body: PickupInput) {
-    return this.orders.confirmPickup(orderId, body);
+  async confirmPickup(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: PickupInput) {
+    return this.orders.confirmPickup(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/complete-delivery")
-  completeDelivery(@Param("orderId") orderId: string, @Body() body: AdminInput) {
-    return this.orders.completeDelivery(orderId, body);
+  async completeDelivery(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.completeDelivery(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/exception")
-  exception(@Param("orderId") orderId: string, @Body() body: ExceptionInput) {
-    return this.orders.markException(orderId, body);
+  async exception(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: ExceptionInput) {
+    return this.orders.markException(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/cancel")
-  cancel(@Param("orderId") orderId: string, @Body() body: AdminInput) {
-    return this.orders.cancel(orderId, body);
+  async cancel(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.cancel(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/assign-after-sale")
-  assignAfterSale(@Param("orderId") orderId: string, @Body() body: AfterSaleInput) {
-    return this.orders.assignAfterSale(orderId, body);
+  async assignAfterSale(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AfterSaleInput) {
+    return this.orders.assignAfterSale(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  private async authorizedInput<T extends AdminInput>(authorization: string | undefined, input: T): Promise<T> {
+    return {
+      ...input,
+      adminUserId: await this.access.requireAccessToken(authorization)
+    };
   }
 }
 
