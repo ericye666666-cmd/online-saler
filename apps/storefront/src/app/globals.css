@@ -3717,7 +3717,7 @@ select:focus-visible {
   padding-right: 12px;
 }
 
-.depopSortControl > span {
+.depopSortPrefix {
   color: #737373;
   font-size: 13px;
 }
@@ -3731,8 +3731,10 @@ select:focus-visible {
   cursor: pointer;
 }
 
-.depopSortControl strong {
+.depopSortControl .depopMobileControlLabel {
+  color: #262626;
   font-size: 17px;
+  font-weight: 700;
 }
 
 .depopMobileFilterButton {
@@ -4322,6 +4324,7 @@ select:focus-visible {
     border-radius: 0;
     background: #fff;
     color: #262626;
+    align-items: center;
     gap: 7px;
     justify-content: center;
     font-size: 17px;
@@ -4329,10 +4332,12 @@ select:focus-visible {
     padding: 0 12px;
   }
 
-  .depopSortControl strong {
+  .depopMobileControlLabel {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-size: 17px;
-    font-weight: 750;
+    font-weight: 700;
     line-height: 1;
+    letter-spacing: 0;
   }
 
   .depopMobileFilterButton {
@@ -4343,7 +4348,7 @@ select:focus-visible {
     align-self: stretch;
   }
 
-  .depopSortControl > span {
+  .depopSortPrefix {
     display: none;
   }
 

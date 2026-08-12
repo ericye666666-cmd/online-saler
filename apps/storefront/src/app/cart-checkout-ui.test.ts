@@ -41,7 +41,9 @@ assert.match(checkoutRoute, /customerIdentity=/);
 const catalog = readFileSync(new URL("./components/catalog-app.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
 assert.doesNotMatch(catalog, /filteredProducts\.length\} results/);
+assert.equal((catalog.match(/className="depopMobileControlLabel"/g) ?? []).length, 2);
+assert.doesNotMatch(catalog, /<strong>\{sort ===/);
 assert.match(styles, /\.depopMobileFilterButton,[\s\S]*?\.depopSortControl[\s\S]*?font-size:\s*17px/);
-assert.match(styles, /\.depopSortControl strong \{[\s\S]*?font-size:\s*17px;[\s\S]*?font-weight:\s*750/);
+assert.match(styles, /\.depopMobileControlLabel \{[\s\S]*?font-family:[\s\S]*?font-size:\s*17px;[\s\S]*?font-weight:\s*700/);
 
 console.log("Cart checkout UI helper tests passed");
