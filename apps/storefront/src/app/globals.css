@@ -3552,13 +3552,6 @@ select:focus-visible {
   letter-spacing: -0.035em;
 }
 
-.depopCatalogTitle > span {
-  display: block;
-  margin-top: 8px;
-  color: #6b6b6b;
-  font-size: 13px;
-}
-
 .depopPopularRow {
   display: none;
   min-height: 64px;
@@ -4259,7 +4252,7 @@ select:focus-visible {
 
   .depopFilterBar {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     position: sticky;
     z-index: 9;
@@ -4273,6 +4266,7 @@ select:focus-visible {
 
   .depopMobileFilterButton,
   .depopSortControl {
+    box-sizing: border-box;
     display: inline-flex;
     width: 100%;
     min-width: 0;

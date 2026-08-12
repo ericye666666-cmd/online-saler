@@ -441,7 +441,6 @@ export function CatalogApp({
           <div className="depopCatalogTitle">
             <p><button type="button" onClick={() => applyBrowseSelection({ category: "All" })}>Home</button><span>/</span>{category === "All" ? "All items" : category}</p>
             <h1>{category === "All" ? "Explore today's finds" : category}</h1>
-            <span>{filteredProducts.length} results</span>
           </div>
 
           <div className="depopPopularRow" aria-label={category === "Shoes" ? "Popular brands" : "Popular categories"}>

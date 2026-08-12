@@ -40,6 +40,8 @@ export type OperationsSession = {
   adminUser: OperationsAdminUser | null;
   roles: OperationsRole[];
   permissions: string[];
+  accessToken?: string;
+  accessTokenExpiresAt?: string;
 };
 
 export type NavigationItem = {

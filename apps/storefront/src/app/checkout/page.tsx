@@ -11,16 +11,14 @@ export default async function CheckoutPage() {
   return (
     <main className="productPage">
       <SiteHeader />
-      <div className="productPageShell">
+      <div className="productPageShell checkoutPageShell">
         {session ? (
           <>
             <section className="checkoutIdentity" aria-label="Signed-in customer">
-              {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : null}
-              <div>
-                <span>Signed in as</span>
-                <strong>{session.displayName ?? session.email}</strong>
-                <small>{session.email}</small>
-              </div>
+              {session.avatarUrl
+                ? <img src={session.avatarUrl} alt="" />
+                : <span className="checkoutIdentityFallback" aria-hidden="true">{(session.displayName ?? session.email).slice(0, 1).toUpperCase()}</span>}
+              <strong>{session.displayName ?? session.email}</strong>
             </section>
             <CheckoutPageClient />
           </>

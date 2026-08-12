@@ -5,7 +5,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { OperationsSession } from "./operations-access";
 
 const API_PROXY_URL = "/api-proxy";
-const SESSION_ADMIN_USER_KEY = "operations.access.adminUserId";
+const SESSION_ACCESS_TOKEN_KEY = "operations.access.accessToken";
+const LEGACY_SESSION_ADMIN_USER_KEY = "operations.access.adminUserId";
 const DEFAULT_ADMIN_LOGIN = "superadmin";
 
 type OperationsAccessContextValue = {
@@ -45,8 +46,8 @@ export function OperationsAccessProvider({ children }: { children: ReactNode }) 
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
-    const adminUserId = localStorage.getItem(SESSION_ADMIN_USER_KEY);
-    if (!adminUserId) {
+    const accessToken = localStorage.getItem(SESSION_ACCESS_TOKEN_KEY);
+    if (!accessToken) {
       setSession(null);
       setError("");
       setLoading(false);
@@ -56,15 +57,19 @@ export function OperationsAccessProvider({ children }: { children: ReactNode }) 
     setLoading(true);
     setError("");
     try {
-      const next = await request(`/operations/access/session?adminUserId=${encodeURIComponent(adminUserId)}`);
-      if (!next.adminUser) {
-        localStorage.removeItem(SESSION_ADMIN_USER_KEY);
+      const next = await request("/operations/access/session", {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!next.adminUser || !next.accessToken) {
+        localStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
         setSession(null);
       } else {
+        localStorage.setItem(SESSION_ACCESS_TOKEN_KEY, next.accessToken);
         setSession(next);
       }
     } catch (caught) {
-      localStorage.removeItem(SESSION_ADMIN_USER_KEY);
+      localStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
+      localStorage.removeItem(LEGACY_SESSION_ADMIN_USER_KEY);
       setSession(null);
       setError(caught instanceof Error ? caught.message : "Could not restore the employee session.");
     } finally {
@@ -80,8 +85,9 @@ export function OperationsAccessProvider({ children }: { children: ReactNode }) 
         method: "POST",
         body: JSON.stringify({ login: loginAccount.trim() || DEFAULT_ADMIN_LOGIN, password })
       });
-      if (!next.adminUser) throw new Error("Admin account was not returned.");
-      localStorage.setItem(SESSION_ADMIN_USER_KEY, next.adminUser.id);
+      if (!next.adminUser || !next.accessToken) throw new Error("A protected employee session was not returned.");
+      localStorage.setItem(SESSION_ACCESS_TOKEN_KEY, next.accessToken);
+      localStorage.removeItem(LEGACY_SESSION_ADMIN_USER_KEY);
       setSession(next);
     } catch (caught) {
       setSession(null);
@@ -93,7 +99,8 @@ export function OperationsAccessProvider({ children }: { children: ReactNode }) 
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(SESSION_ADMIN_USER_KEY);
+    localStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
+    localStorage.removeItem(LEGACY_SESSION_ADMIN_USER_KEY);
     setSession(null);
     setError("");
   }, []);

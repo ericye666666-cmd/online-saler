@@ -13,8 +13,12 @@ assert.equal(legacyWarehouseRedirect("/warehouse/inventory"), "/system/warehouse
 const orderClient = readFileSync(new URL("./orders-client.tsx", import.meta.url), "utf8");
 assert.match(orderClient, /order\.items\.map/);
 assert.match(orderClient, /inventoryItem\?\.location\?\.locationCode/);
+assert.match(orderClient, /displayImageUrl/);
+assert.match(orderClient, /h-32 w-28/);
 assert.match(orderClient, /预期 Barcode/);
 assert.match(orderClient, /错误|失败|does not match|Barcode/);
+assert.match(orderClient, /Authorization/);
+assert.doesNotMatch(orderClient, /JSON\.stringify\(\{ adminUserId/);
 
 const shell = readFileSync(new URL("../../components/admin/operations-admin-shell.tsx", import.meta.url), "utf8");
 assert.deepEqual(

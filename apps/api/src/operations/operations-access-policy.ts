@@ -1,4 +1,12 @@
-import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
+
+const OPERATIONS_ACCESS_TOKEN_TTL_SECONDS = 12 * 60 * 60;
+
+export type OperationsAccessTokenPayload = {
+  v: 1;
+  sub: string;
+  exp: number;
+};
 
 export type PermissionScopeValue = "MODULE" | "PAGE" | "ACTION";
 
@@ -420,6 +428,70 @@ export function verifyPassword(password: string, storedHash: string | null | und
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+export function issueOperationsAccessToken(
+  adminUserId: string,
+  passwordHash: string,
+  now = new Date()
+): { accessToken: string; accessTokenExpiresAt: string } {
+  const expiresAt = new Date(now.getTime() + OPERATIONS_ACCESS_TOKEN_TTL_SECONDS * 1000);
+  const payload: OperationsAccessTokenPayload = {
+    v: 1,
+    sub: adminUserId,
+    exp: Math.floor(expiresAt.getTime() / 1000)
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = operationsAccessTokenSignature(encodedPayload, passwordHash).toString("base64url");
+  return {
+    accessToken: `${encodedPayload}.${signature}`,
+    accessTokenExpiresAt: expiresAt.toISOString()
+  };
+}
+
+export function operationsAccessTokenSubject(token: string): string | null {
+  return parseOperationsAccessToken(token)?.payload.sub ?? null;
+}
+
+export function verifyOperationsAccessToken(
+  token: string,
+  passwordHash: string,
+  now = new Date()
+): OperationsAccessTokenPayload | null {
+  const parsed = parseOperationsAccessToken(token);
+  if (!parsed || parsed.payload.exp <= Math.floor(now.getTime() / 1000)) return null;
+
+  const expected = operationsAccessTokenSignature(parsed.encodedPayload, passwordHash);
+  let actual: Buffer;
+  try {
+    actual = Buffer.from(parsed.signature, "base64url");
+  } catch {
+    return null;
+  }
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
+  return parsed.payload;
+}
+
+export function bearerOperationsAccessToken(authorization?: string): string | null {
+  const match = authorization?.trim().match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
 export function inviteTokenHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function operationsAccessTokenSignature(encodedPayload: string, passwordHash: string): Buffer {
+  const key = createHash("sha256").update(passwordHash).digest();
+  return createHmac("sha256", key).update(encodedPayload).digest();
+}
+
+function parseOperationsAccessToken(token: string): { encodedPayload: string; signature: string; payload: OperationsAccessTokenPayload } | null {
+  const [encodedPayload, signature, extra] = token.split(".");
+  if (!encodedPayload || !signature || extra) return null;
+  try {
+    const value = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as Partial<OperationsAccessTokenPayload>;
+    if (value.v !== 1 || typeof value.sub !== "string" || !value.sub.trim() || !Number.isInteger(value.exp)) return null;
+    return { encodedPayload, signature, payload: value as OperationsAccessTokenPayload };
+  } catch {
+    return null;
+  }
 }

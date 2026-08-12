@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   checkoutStage,
   checkoutStepStatus,
@@ -24,5 +25,18 @@ assert.equal(checkoutStepStatus("payment", "payment"), "current");
 assert.equal(checkoutStepStatus("payment", "complete"), "pending");
 assert.equal(checkoutStepStatus("complete", "payment"), "done");
 assert.equal(checkoutStepStatus("complete", "complete"), "current");
+
+const checkoutPage = readFileSync(new URL("./checkout/checkout-page-client.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(checkoutPage, /checkoutServiceStrip|commerceFeatureGrid|CheckoutProgress/);
+assert.match(checkoutPage, /Payment successful/);
+assert.match(checkoutPage, /wait for pickup confirmation/);
+assert.match(checkoutPage, /Direct Loop customer service/);
+assert.match(checkoutPage, /Track order/);
+
+const checkoutRoute = readFileSync(new URL("./checkout/page.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(checkoutRoute, /Signed in as/);
+
+const catalog = readFileSync(new URL("./components/catalog-app.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(catalog, /filteredProducts\.length\} results/);
 
 console.log("Cart checkout UI helper tests passed");
