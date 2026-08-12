@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   canAccessPath,
   filterNavigation,
@@ -89,5 +90,11 @@ assert.equal(canAccessPath("/system/warehouse/locations", modules, managerSessio
 assert.equal(canAccessPath("/product/warehouse-locations", modules, managerSession), true);
 assert.equal(canAccessPath("/product/inventory-overview", modules, managerSession), true);
 assert.equal(canAccessPath("/warehouse/inventory", modules, managerSession), true);
+
+const accessProvider = readFileSync(new URL("../components/admin/operations-access-provider.tsx", import.meta.url), "utf8");
+const accessClient = readFileSync(new URL("./system/access-client.ts", import.meta.url), "utf8");
+assert.match(accessProvider, /operations\.access\.accessToken/);
+assert.match(accessProvider, /Authorization: `Bearer \$\{accessToken\}`/);
+assert.match(accessClient, /Authorization: `Bearer \$\{accessToken\}`/);
 
 console.log("Operations access tests passed");

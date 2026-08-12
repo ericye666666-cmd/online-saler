@@ -12,9 +12,13 @@ import {
   OPERATIONS_PERMISSIONS,
   OPERATIONS_ROLE_BLUEPRINTS,
   STAGING_SUPER_ADMIN,
+  bearerOperationsAccessToken,
   hashPassword,
+  issueOperationsAccessToken,
   normalizeLogin,
+  operationsAccessTokenSubject,
   uniquePermissionCodes,
+  verifyOperationsAccessToken,
   verifyPassword
 } from "./operations-access-policy";
 
@@ -170,7 +174,24 @@ export class OperationsAccessService {
       include: this.accessInclude()
     });
 
-    return this.serializeAdminUser(updated);
+    return {
+      ...this.serializeAdminUser(updated),
+      ...issueOperationsAccessToken(updated.id, updated.passwordHash!)
+    };
+  }
+
+  async sessionFromAccessToken(authorization?: string) {
+    const { accessToken, adminUser, expiresAt } = await this.authenticatedAdminUser(authorization);
+    return {
+      ...this.serializeAdminUser(adminUser),
+      accessToken,
+      accessTokenExpiresAt: expiresAt.toISOString()
+    };
+  }
+
+  async requireAccessToken(authorization?: string) {
+    const { adminUser } = await this.authenticatedAdminUser(authorization);
+    return adminUser.id;
   }
 
   async session(adminUserId?: string) {
@@ -352,6 +373,28 @@ export class OperationsAccessService {
       where,
       include: this.accessInclude()
     });
+  }
+
+  private async authenticatedAdminUser(authorization?: string) {
+    const accessToken = bearerOperationsAccessToken(authorization);
+    const adminUserId = accessToken ? operationsAccessTokenSubject(accessToken) : null;
+    if (!accessToken || !adminUserId) {
+      throw new UnauthorizedException("Employee session token is required.");
+    }
+
+    const adminUser = await this.findAdminUserWithAccess({ id: adminUserId });
+    const payload = adminUser?.passwordHash
+      ? verifyOperationsAccessToken(accessToken, adminUser.passwordHash)
+      : null;
+    if (!adminUser || adminUser.status !== AdminUserStatus.ACTIVE || !payload || payload.sub !== adminUser.id) {
+      throw new UnauthorizedException("Employee session token is invalid or expired.");
+    }
+
+    return {
+      accessToken,
+      adminUser,
+      expiresAt: new Date(payload.exp * 1000)
+    };
   }
 
   private accessInclude() {

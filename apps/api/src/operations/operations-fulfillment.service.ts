@@ -19,6 +19,7 @@ import {
 import { OperationsAccessService } from "./operations-access.service";
 import {
   canTransitionFulfillment,
+  maskCustomerPhone,
   orderCenterTab,
   type OrderCenterTab,
   verifyFulfillmentItemBarcode
@@ -406,6 +407,7 @@ export class OperationsFulfillmentService {
     const actor = await this.employeeForPermission(input.adminUserId, "orders.pack");
     const order = await this.requireOrderWithTask(orderId);
     const fulfillment = order.fulfillment!;
+    if (fulfillment.status === FulfillmentStatus.PACKED) return this.orderDetail(orderId, input.adminUserId);
     if (!fulfillment.packingStartedAt) throw new BadRequestException("Start packing before completing it.");
     this.assertTransition(order, FulfillmentStatus.PACKED);
     const packerId = input.employeeId?.trim() || fulfillment.packingStartedByEmployeeId || actor.actorEmployeeId!;
@@ -854,11 +856,30 @@ export class OperationsFulfillmentService {
     const productIds = [...new Set(orders.flatMap((order) => order.items.map((item) => item.productId)))];
     const inventory = productIds.length ? await prisma.inventoryItem.findMany({
       where: { productId: { in: productIds } },
-      include: { location: true }
+      include: {
+        location: true,
+        product: {
+          select: {
+            images: {
+              orderBy: { sortOrder: "asc" },
+              take: 1,
+              select: { publicUrl: true, originalUrl: true }
+            }
+          }
+        }
+      }
     }) : [];
     const byProduct = new Map(inventory.map((item) => [item.productId, item]));
     return orders.map((order) => ({
       ...order,
+      customer: {
+        ...order.customer,
+        phone: maskCustomerPhone(order.customer.phone)
+      },
+      payments: order.payments.map((payment) => ({
+        ...payment,
+        phone: maskCustomerPhone(payment.phone)
+      })),
       centerTab: orderCenterTab({
         orderStatus: order.status,
         fulfillmentStatus: order.fulfillment?.status,
@@ -866,7 +887,20 @@ export class OperationsFulfillmentService {
           (item) => item.issueType === CustomerServiceIssueType.AFTER_SALE && item.status !== CustomerServiceCaseStatus.CLOSED
         )
       }),
-      items: order.items.map((item) => ({ ...item, inventoryItem: byProduct.get(item.productId) ?? null }))
+      items: order.items.map((item) => {
+        const inventoryItem = byProduct.get(item.productId);
+        const currentImage = inventoryItem?.product.images[0];
+        return {
+          ...item,
+          displayImageUrl: currentImage?.publicUrl || currentImage?.originalUrl || item.snapshot?.imageUrl || null,
+          inventoryItem: inventoryItem ? {
+            id: inventoryItem.id,
+            barcode: inventoryItem.barcode,
+            status: inventoryItem.status,
+            location: inventoryItem.location
+          } : null
+        };
+      })
     }));
   }
 

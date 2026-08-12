@@ -171,6 +171,56 @@
   color: #9d2d20;
 }
 
+.orderProgress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.orderProgress li {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  border-top: 3px solid #dedbd7;
+  color: #88827c;
+  padding-top: 10px;
+}
+
+.orderProgress li > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: #efedeb;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.orderProgress li > strong {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.orderProgress li.complete,
+.orderProgress li.current {
+  border-color: #147d43;
+  color: #174d31;
+}
+
+.orderProgress li.complete > span,
+.orderProgress li.current > span {
+  background: #e4f6ec;
+  color: #147d43;
+}
+
+.orderProgress li.current > strong {
+  font-weight: 900;
+}
+
 .orderStatusGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -225,6 +275,15 @@
   padding-top: 18px;
 }
 
+.orderItemList {
+  display: grid;
+  gap: 16px;
+}
+
+.orderItemList .orderItemCard:first-child {
+  border-top: 1px solid #ebe5de;
+}
+
 .orderItemCard img {
   width: 118px;
   height: 118px;
@@ -250,6 +309,18 @@
 
   .orderStatusGrid {
     grid-template-columns: 1fr;
+  }
+
+  .orderProgress {
+    grid-template-columns: 1fr;
+  }
+
+  .orderProgress li {
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: center;
+    border-top: 0;
+    border-left: 3px solid #dedbd7;
+    padding: 4px 0 4px 10px;
   }
 
   .orderStatusGrid dd {
