@@ -485,12 +485,13 @@ export function CatalogApp({
               aria-controls="depop-mobile-filters"
               aria-expanded={mobileFiltersOpen}
             >
-              <SlidersHorizontal size={18} /> Filter {activeFilterCount > 0 ? `(${activeFilterCount})` : ""}
+              <SlidersHorizontal size={18} />
+              <span className="depopMobileControlLabel">Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}</span>
             </button>
 
             <label className="depopSortControl">
-              <span>Sort by</span>
-              <strong>{sort === "Newest first" ? "Newest" : sort === "Price: low to high" ? "Lowest price" : "Highest price"}</strong>
+              <span className="depopSortPrefix">Sort by</span>
+              <span className="depopMobileControlLabel">{sort === "Newest first" ? "Newest" : sort === "Price: low to high" ? "Lowest price" : "Highest price"}</span>
               <select value={sort} onChange={(event) => setSort(event.target.value)}>
                 <option>Newest first</option>
                 <option>Price: low to high</option>

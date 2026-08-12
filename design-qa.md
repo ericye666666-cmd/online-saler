@@ -64,3 +64,12 @@ final result: direct replacement passed local, GitHub CI, API staging deployment
 - Production build and TypeScript validation pass.
 
 final result: passed
+
+### Mobile catalog semantic parity correction
+
+- Follow-up reference evidence: iPhone Chrome still rendered the labels differently after numeric font-size parity.
+- Root cause: `Filter` was a raw button text node while `Newest` was a `strong` element; the Filter label also stretched through the button cross-axis.
+- Correction: both visible labels now use the same `span.depopMobileControlLabel` element and one shared font family, 17 px size, 700 weight, 17 px line-height, and zero letter-spacing contract. Both parent controls explicitly center their children.
+- Regression coverage asserts exactly two shared label elements and prevents the sort label from returning to `strong`.
+
+final result: passed
