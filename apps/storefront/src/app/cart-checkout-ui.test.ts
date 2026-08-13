@@ -28,10 +28,10 @@ assert.equal(checkoutStepStatus("complete", "complete"), "current");
 
 const checkoutPage = readFileSync(new URL("./checkout/checkout-page-client.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(checkoutPage, /checkoutServiceStrip|commerceFeatureGrid|CheckoutProgress/);
-assert.match(checkoutPage, /Payment successful/);
-assert.match(checkoutPage, /wait for pickup confirmation/);
+assert.match(checkoutPage, /payment\.confirmed/);
+assert.match(checkoutPage, /payment\.nextTitle/);
 assert.match(checkoutPage, /Direct Loop customer service/);
-assert.match(checkoutPage, /Track order/);
+assert.match(checkoutPage, /payment\.viewOrder/);
 
 const checkoutRoute = readFileSync(new URL("./checkout/page.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(checkoutRoute, /Signed in as/);

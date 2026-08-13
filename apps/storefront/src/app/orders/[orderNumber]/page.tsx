@@ -10,6 +10,7 @@ import {
   paymentStatusLabel
 } from "../../../orders/order-service";
 import { moneyKsh } from "../../storefront-products";
+import { getStorefrontI18n } from "../../../i18n/server";
 
 type OrderPageProps = {
   params: Promise<{ orderNumber: string }>;
@@ -18,7 +19,8 @@ type OrderPageProps = {
 export const dynamic = "force-dynamic";
 
 export default async function OrderPage({ params }: OrderPageProps) {
-  const [{ orderNumber }, session] = await Promise.all([params, currentCustomerSession()]);
+  const [{ orderNumber }, session, i18n] = await Promise.all([params, currentCustomerSession(), getStorefrontI18n()]);
+  const { t } = i18n;
   const returnTo = `/orders/${encodeURIComponent(orderNumber)}`;
 
   if (!session) {
@@ -27,14 +29,13 @@ export default async function OrderPage({ params }: OrderPageProps) {
         <SiteHeader />
         <div className="productPageShell">
           <section className="customerLoginCard">
-            <p className="detail-meta">Order status</p>
-            <h1>Sign in to view this order</h1>
-            <p>Use the same Google account you used at checkout.</p>
+            <p className="detail-meta">{t("order.progress")}</p>
+            <h1>{t("order.signInTitle")}</h1>
+            <p>{t("order.signInBody")}</p>
             <Link className="googleLoginButton" href={`/login?returnTo=${encodeURIComponent(returnTo)}`}>
-              <span aria-hidden="true">G</span>
-              Continue with Google
+              {t("auth.google")}
             </Link>
-            <Link className="customerLoginBack" href="/">Back to catalog</Link>
+            <Link className="customerLoginBack" href="/">{t("order.backCatalog")}</Link>
           </section>
         </div>
       </main>
@@ -52,6 +53,18 @@ export default async function OrderPage({ params }: OrderPageProps) {
   };
   const statusLabel = customerOrderStatusLabel(statusInput);
   const progress = customerFulfillmentProgress(statusInput);
+  const translatedStatus = statusLabel === "Paid" ? t("order.paid")
+    : statusLabel === "Preparing" ? t("order.preparing")
+      : statusLabel === "Ready for pickup" ? t("order.ready")
+        : statusLabel === "Out for delivery" ? t("order.outForDelivery")
+          : statusLabel === "Completed" ? t("order.completed")
+            : statusLabel;
+  const translatedMessage = statusLabel === "Paid" ? t("order.paidMessage")
+    : statusLabel === "Preparing" ? t("order.preparingMessage")
+      : statusLabel === "Ready for pickup" ? t("order.readyMessage")
+        : statusLabel === "Out for delivery" ? t("order.deliveryMessage")
+          : statusLabel === "Completed" ? t("order.completedMessage")
+            : customerOrderStatusMessage(statusLabel);
 
   return (
     <main className="productPage">
@@ -61,10 +74,10 @@ export default async function OrderPage({ params }: OrderPageProps) {
           <p className="detail-meta">Order {order.orderNumber}</p>
           <div className="orderStatusHeading">
             <div>
-              <h1>{statusLabel}</h1>
-              <p>{customerOrderStatusMessage(statusLabel)}</p>
+              <h1>{translatedStatus}</h1>
+              <p>{translatedMessage}</p>
             </div>
-            <span className={`orderBadge ${order.status.toLowerCase()}`}>{statusLabel}</span>
+            <span className={`orderBadge ${order.status.toLowerCase()}`}>{translatedStatus}</span>
           </div>
 
           {progress.length ? (
@@ -72,7 +85,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
               {progress.map((step, index) => (
                 <li key={step.key} className={step.state} aria-current={step.state === "current" ? "step" : undefined}>
                   <span aria-hidden="true">{step.state === "complete" ? "✓" : index + 1}</span>
-                  <strong>{step.label}</strong>
+                  <strong>{step.key === "paid" ? t("order.paid") : step.key === "preparing" ? t("order.preparing") : step.key === "completed" ? t("order.completed") : order.fulfillmentMethod === "PICKUP" ? t("order.ready") : t("order.outForDelivery")}</strong>
                 </li>
               ))}
             </ol>
@@ -80,22 +93,22 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
           <div className="orderStatusGrid">
             <article>
-              <h2>Payment</h2>
+              <h2>{t("order.payment")}</h2>
               <dl>
-                <div><dt>Status</dt><dd>{paymentStatusLabel(latestPayment?.status)}</dd></div>
-                <div><dt>Amount</dt><dd>{moneyKsh(order.totalKsh)}</dd></div>
-                <div><dt>Phone</dt><dd>{latestPayment?.phone ? `+${latestPayment.phone}` : "Not started"}</dd></div>
-                <div><dt>Receipt</dt><dd>{latestPayment?.providerReceiptNumber ?? "Pending"}</dd></div>
+                <div><dt>{t("order.status")}</dt><dd>{paymentStatusLabel(latestPayment?.status)}</dd></div>
+                <div><dt>{t("order.amount")}</dt><dd>{moneyKsh(order.totalKsh)}</dd></div>
+                <div><dt>{t("order.phone")}</dt><dd>{latestPayment?.phone ? `+${latestPayment.phone}` : "Not started"}</dd></div>
+                <div><dt>{t("order.receipt")}</dt><dd>{latestPayment?.providerReceiptNumber ?? "Pending"}</dd></div>
               </dl>
             </article>
 
             <article>
-              <h2>Fulfillment</h2>
+              <h2>{t("order.fulfillment")}</h2>
               <dl>
-                <div><dt>Method</dt><dd>{order.fulfillmentMethod === "PICKUP" ? "Kikuyu pickup" : "Kikuyu local delivery"}</dd></div>
-                <div><dt>Delivery fee</dt><dd>{moneyKsh(order.deliveryFeeKsh)}</dd></div>
-                <div><dt>Address</dt><dd>{order.deliveryAddress ?? "Kikuyu pickup"}</dd></div>
-                <div><dt>Note</dt><dd>{order.deliveryNote ?? "None"}</dd></div>
+                <div><dt>{t("order.method")}</dt><dd>{order.fulfillmentMethod === "PICKUP" ? t("checkout.pickup") : t("checkout.delivery")}</dd></div>
+                <div><dt>{t("order.deliveryFee")}</dt><dd>{moneyKsh(order.deliveryFeeKsh)}</dd></div>
+                <div><dt>{t("order.address")}</dt><dd>{order.deliveryAddress ?? t("checkout.pickup")}</dd></div>
+                <div><dt>{t("order.note")}</dt><dd>{order.deliveryNote ?? "—"}</dd></div>
               </dl>
             </article>
           </div>
@@ -114,7 +127,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
           </div>
 
           <div className="orderStatusActions">
-            <Link className="reserve-link" href="/">Continue shopping</Link>
+            <Link className="reserve-link" href="/">{t("cart.continueShopping")}</Link>
             {!["PAID", "FULFILLING", "COMPLETED"].includes(order.status) ? <Link className="reserve-button secondary" href="/checkout">Back to checkout</Link> : null}
           </div>
         </section>

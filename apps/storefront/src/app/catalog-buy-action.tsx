@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Product as CatalogProduct } from "./data/products";
+import { useStorefrontI18n } from "../i18n/use-storefront-i18n";
 import {
   CART_STORAGE_KEY,
   addCartItem,
@@ -11,6 +12,7 @@ import {
 } from "./storefront-cart";
 
 export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
+  const { t } = useStorefrontI18n();
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState<"cart" | "buy" | null>(null);
   const available = product.status === "Available";
@@ -22,7 +24,7 @@ export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
     const nextSnapshot = addCartItem(snapshot, catalogProductToCartItem(product));
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
     notifyCartUpdated();
-    setMessage(nextSnapshot.items.length === snapshot?.items.length ? "Already in your cart." : "Added to cart.");
+    setMessage(nextSnapshot.items.length === snapshot?.items.length ? t("product.alreadyInBag") : t("product.addedToBag"));
     if (nextStep === "buy") {
       window.location.href = "/checkout";
       return;
@@ -39,7 +41,7 @@ export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
           type="button"
           onClick={() => saveToCart("cart")}
         >
-          {available ? (saving === "cart" ? "Adding..." : "Add to cart") : "Unavailable"}
+          {available ? (saving === "cart" ? t("product.adding") : t("product.addToBag")) : t("common.unavailable")}
         </button>
         <button
           className="catalogBuyButton"
@@ -47,10 +49,10 @@ export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
           type="button"
           onClick={() => saveToCart("buy")}
         >
-          {available ? (saving === "buy" ? "Opening checkout..." : "Buy now") : "Unavailable"}
+          {available ? (saving === "buy" ? t("product.openingCheckout") : t("product.buyNow")) : t("common.unavailable")}
         </button>
       </div>
-      <p>This item is not reserved until payment is completed.</p>
+      <p>{t("product.notReserved")}</p>
       {message ? <p className="catalogBuyMessage" role="status">{message}</p> : null}
     </div>
   );
