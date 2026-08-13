@@ -4,6 +4,7 @@
   "private": true,
   "description": "Second-hand Digital Platform monorepo.",
   "scripts": {
+    "dev": "npm run dev -w @online-saler/storefront --",
     "check:repo": "node scripts/check-repo.mjs",
     "build": "npm run build --workspaces --if-present",
     "build:api": "npm run db:generate && npm run build -w @online-saler/database && npm run build -w @online-saler/shared-types && npm run build -w @online-saler/business-rules && npm run build -w @online-saler/api",

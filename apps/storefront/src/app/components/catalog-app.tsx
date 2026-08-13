@@ -37,6 +37,9 @@ import {
   notifyCartUpdated,
   parseCartSnapshot
 } from "../storefront-cart";
+import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
+import type { DictionaryKey } from "../../i18n/dictionary";
+import { translateValue } from "../../i18n/dictionary";
 
 type CatalogCategory = (typeof categories)[number];
 type FilterMenu = "category" | "subcategory" | "brand" | "price" | "size" | "color" | "material" | "condition" | "store" | null;
@@ -60,6 +63,7 @@ type ProductCardProps = {
 };
 
 function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, placement, campaign, priority = false }: ProductCardProps) {
+  const { locale, t } = useStorefrontI18n();
   const detailHref = sellerRef
     ? `/p/${product.code}?${new URLSearchParams({ ref: sellerRef, ...(source ? { source } : {}), ...(placement ? { placement } : {}), ...(campaign ? { campaign } : {}) }).toString()}`
     : `/p/${product.code}`;
@@ -71,14 +75,14 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
     const nextSnapshot = addCartItem(snapshot, catalogProductToCartItem(product));
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
     notifyCartUpdated();
-    setCartMessage(nextSnapshot.items.length === snapshot?.items.length ? "In cart" : "Added");
+    setCartMessage(nextSnapshot.items.length === snapshot?.items.length ? t("catalog.inCart") : t("catalog.added"));
     window.setTimeout(() => setCartMessage(""), 1200);
   }
 
   return (
     <article className={`marketCard depopProductCard ${product.status !== "Available" ? "unavailable" : ""}`}>
       <div className="marketImageWrap depopProductImage group relative">
-        <Link href={detailHref} aria-label={`View ${product.title}`}>
+        <Link href={detailHref} aria-label={t("catalog.viewItem", { item: product.title })}>
           <img
             src={product.image}
             alt={product.title}
@@ -87,7 +91,7 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
             loading={priority ? "eager" : "lazy"}
           />
         </Link>
-        {product.status !== "Available" ? <span className="depopSoldLabel">{product.status}</span> : null}
+        {product.status !== "Available" ? <span className="depopSoldLabel">{translateValue(locale, product.status)}</span> : null}
         <ProductCollectionButton product={product} />
       </div>
 
@@ -98,14 +102,14 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
             className={`depopSaveButton ${isSaved ? "saved" : ""}`}
             type="button"
             onClick={() => onToggleSaved(product.code)}
-            aria-label={isSaved ? `Remove ${product.title} from saved` : `Save ${product.title}`}
+            aria-label={isSaved ? t("catalog.removeSaved", { item: product.title }) : t("catalog.saveItem", { item: product.title })}
             aria-pressed={isSaved}
           >
             <Heart size={21} fill={isSaved ? "currentColor" : "none"} />
           </button>
         </div>
         <Link href={detailHref} className="depopProductTitle">{product.title}</Link>
-        <p className="depopProductMeta">{product.size}</p>
+        <p className="depopProductMeta">{translateValue(locale, product.size)}</p>
         <strong className="depopProductPrice">{formatPrice(product.price)}</strong>
         <div className="depopProductBottom">
           <span className="depopProductLocation"><MapPin size={13} strokeWidth={1.6} /> {product.store}</span>
@@ -114,7 +118,7 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
             disabled={product.status !== "Available"}
             type="button"
             onClick={addToCart}
-            aria-label={`Add ${product.title} to cart`}
+            aria-label={t("catalog.addToCart", { item: product.title })}
           >
             <ShoppingBag size={16} />
             <span>{cartMessage || "Cart"}</span>
@@ -154,6 +158,7 @@ export function CatalogApp({
   placement?: string;
   campaign?: string;
 }) {
+  const { locale, t } = useStorefrontI18n();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CatalogCategory>(initialCategory);
   const [size, setSize] = useState("All");
@@ -367,21 +372,22 @@ export function CatalogApp({
   function filterLabel(type: Exclude<FilterMenu, null>) {
     if (type === "subcategory") {
       const selected = category === "Shoes" ? shoeType : category === "Bags" ? bagType : textileType;
-      return selected === "All" ? "Subcategory" : selected;
+      return selected === "All" ? t("filter.subcategory") : translateValue(locale, selected);
     }
     const values = { category, brand, price, size, color, material, condition, store };
     const selected = values[type as keyof typeof values];
-    return selected === "All" ? type[0].toUpperCase() + type.slice(1) : selected;
+    const key = `filter.${type}` as DictionaryKey;
+    return selected === "All" ? t(key) : translateValue(locale, selected);
   }
 
   function renderFilterOptions(type: Exclude<FilterMenu, null>) {
     if (type === "category") {
       return (
         <>
-          {categories.map((item) => <OptionButton key={item} label={item} active={category === item} onClick={() => { selectCategory(item); setOpenFilter(null); }} />)}
-          {category === "Shoes" ? <div className="depopSubFilter"><strong>Shoe type</strong>{["All", ...shoeTypes].map((item) => <OptionButton key={item} label={item} active={shoeType === item} onClick={() => setShoeType(item)} />)}</div> : null}
-          {category === "Bags" ? <div className="depopSubFilter"><strong>Bag type</strong>{["All", ...bagTypes].map((item) => <OptionButton key={item} label={item} active={bagType === item} onClick={() => setBagType(item)} />)}</div> : null}
-          {category === "Home Textiles" ? <div className="depopSubFilter"><strong>Textile type</strong>{["All", ...textileTypes].map((item) => <OptionButton key={item} label={item} active={textileType === item} onClick={() => setTextileType(item)} />)}</div> : null}
+          {categories.map((item) => <OptionButton key={item} label={translateValue(locale, item)} active={category === item} onClick={() => { selectCategory(item); setOpenFilter(null); }} />)}
+          {category === "Shoes" ? <div className="depopSubFilter"><strong>{t("filter.shoeType")}</strong>{["All", ...shoeTypes].map((item) => <OptionButton key={item} label={item} active={shoeType === item} onClick={() => setShoeType(item)} />)}</div> : null}
+          {category === "Bags" ? <div className="depopSubFilter"><strong>{t("filter.bagType")}</strong>{["All", ...bagTypes].map((item) => <OptionButton key={item} label={item} active={bagType === item} onClick={() => setBagType(item)} />)}</div> : null}
+          {category === "Home Textiles" ? <div className="depopSubFilter"><strong>{t("filter.textileType")}</strong>{["All", ...textileTypes].map((item) => <OptionButton key={item} label={item} active={textileType === item} onClick={() => setTextileType(item)} />)}</div> : null}
         </>
       );
     }
@@ -394,7 +400,7 @@ export function CatalogApp({
       const selected = category === "Shoes" ? shoeType : category === "Bags" ? bagType : textileType;
       const setter = category === "Shoes" ? setShoeType : category === "Bags" ? setBagType : setTextileType;
       return options.map((item) => (
-        <OptionButton key={item} label={item} active={selected === item} onClick={() => { setter(item); setOpenFilter(null); }} />
+        <OptionButton key={item} label={translateValue(locale, item)} active={selected === item} onClick={() => { setter(item); setOpenFilter(null); }} />
       ));
     }
     const options = type === "brand" ? brands : type === "price" ? priceOptions : type === "size" ? sizeOptions : type === "color" ? colors : type === "material" ? materials : type === "store" ? stores : (category === "Shoes" ? shoeConditionOptions : apparelConditionOptions);
@@ -402,7 +408,7 @@ export function CatalogApp({
     const setters = { brand: setBrand, price: setPrice, size: setSize, color: setColor, material: setMaterial, condition: setCondition, store: setStore };
     const setter = setters[type as keyof typeof setters];
     return options.map((item) => (
-      <OptionButton key={item} label={item} active={selected === item} onClick={() => { setter(item); setOpenFilter(null); }} />
+      <OptionButton key={item} label={translateValue(locale, item)} active={selected === item} onClick={() => { setter(item); setOpenFilter(null); }} />
     ));
   }
 
@@ -410,13 +416,13 @@ export function CatalogApp({
     <>
       {filterTypes.map((type) => (
         <section className="depopMobileFilterSection" key={type}>
-          <h3>{type[0].toUpperCase() + type.slice(1)}</h3>
+          <h3>{t(`filter.${type}` as DictionaryKey)}</h3>
           <div>{renderFilterOptions(type)}</div>
         </section>
       ))}
       <section className="depopMobileFilterSection availabilitySection">
         <button type="button" className="depopAvailability" onClick={() => setAvailableOnly((current) => !current)}>
-          <span>Available items only</span>
+          <span>{t("catalog.availableItemsOnly")}</span>
           <i className={availableOnly ? "active" : ""}><b /></i>
         </button>
       </section>
@@ -439,12 +445,12 @@ export function CatalogApp({
       <section className="marketShell depopMarketShell" id="catalog">
         <div className="marketResults depopMarketResults">
           <div className="depopCatalogTitle">
-            <p><button type="button" onClick={() => applyBrowseSelection({ category: "All" })}>Home</button><span>/</span>{category === "All" ? "All items" : category}</p>
-            <h1>{category === "All" ? "Explore today's finds" : category}</h1>
+            <p><button type="button" onClick={() => applyBrowseSelection({ category: "All" })}>{t("common.home")}</button><span>/</span>{category === "All" ? t("catalog.allItems") : category}</p>
+            <h1>{category === "All" ? t("catalog.explore") : translateValue(locale, category)}</h1>
           </div>
 
-          <div className="depopPopularRow" aria-label={category === "Shoes" ? "Popular brands" : "Popular categories"}>
-            <strong>{category === "Shoes" ? "Popular brands" : "Popular categories"}</strong>
+          <div className="depopPopularRow" aria-label={category === "Shoes" ? t("catalog.popularBrands") : t("catalog.popularCategories")}>
+            <strong>{category === "Shoes" ? t("catalog.popularBrands") : t("catalog.popularCategories")}</strong>
             <div>
               {popularChoices.map((choice) => (
                 <button
@@ -452,7 +458,7 @@ export function CatalogApp({
                   key={`${choice.label}-${choice.brand ?? choice.bagType ?? choice.textileType ?? choice.category}`}
                   onClick={() => applyBrowseSelection(choice)}
                 >
-                  {choice.label}
+                  {translateValue(locale, choice.label)}
                 </button>
               ))}
             </div>
@@ -474,7 +480,7 @@ export function CatalogApp({
                 </div>
               ))}
               <button className={`depopAvailableChip ${availableOnly ? "active" : ""}`} type="button" onClick={() => setAvailableOnly((current) => !current)}>
-                {availableOnly ? <Check size={14} /> : null} Available only
+                {availableOnly ? <Check size={14} /> : null} {t("catalog.availableOnly")}
               </button>
             </div>
 
@@ -486,12 +492,12 @@ export function CatalogApp({
               aria-expanded={mobileFiltersOpen}
             >
               <SlidersHorizontal size={18} />
-              <span className="depopMobileControlLabel">Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}</span>
+              <span className="depopMobileControlLabel">{t("catalog.filter")}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}</span>
             </button>
 
             <label className="depopSortControl">
-              <span className="depopSortPrefix">Sort by</span>
-              <span className="depopMobileControlLabel">{sort === "Newest first" ? "Newest" : sort === "Price: low to high" ? "Lowest price" : "Highest price"}</span>
+              <span className="depopSortPrefix">{t("catalog.sortBy")}</span>
+              <span className="depopMobileControlLabel">{sort === "Newest first" ? t("catalog.newest") : sort === "Price: low to high" ? t("catalog.lowestPrice") : t("catalog.highestPrice")}</span>
               <select value={sort} onChange={(event) => setSort(event.target.value)}>
                 <option>Newest first</option>
                 <option>Price: low to high</option>
@@ -525,9 +531,9 @@ export function CatalogApp({
             </div>
           ) : (
             <div className="emptyResults depopEmptyResults">
-              <h2>No items match these filters.</h2>
-              <p>Try clearing one or two filters to see more one-of-one finds.</p>
-              <button type="button" onClick={resetFilters}>Clear filters</button>
+              <h2>{t("catalog.noMatches")}</h2>
+              <p>{t("catalog.noMatchesHint")}</p>
+              <button type="button" onClick={resetFilters}>{t("catalog.clearFilters")}</button>
             </div>
           )}
         </div>
@@ -537,13 +543,13 @@ export function CatalogApp({
         <div className="depopMobileFilterLayer">
           <section id="depop-mobile-filters" className="depopMobileFilters" role="dialog" aria-modal="true" aria-labelledby="mobile-filter-title">
             <div className="depopMobileFilterHeading">
-              <button type="button" onClick={() => setMobileFiltersOpen(false)} aria-label="Close filters"><X size={24} /></button>
-              <strong id="mobile-filter-title">Filter</strong>
-              <button className="textButton" type="button" onClick={resetFilters}><RotateCcw size={15} /> Clear</button>
+              <button type="button" onClick={() => setMobileFiltersOpen(false)} aria-label={t("common.close")}><X size={24} /></button>
+              <strong id="mobile-filter-title">{t("catalog.filter")}</strong>
+              <button className="textButton" type="button" onClick={resetFilters}><RotateCcw size={15} /> {t("common.clear")}</button>
             </div>
             <div className="depopMobileFilterScroll">{mobileFilterSections}</div>
             <div className="depopMobileFilterFooter">
-              <button type="button" onClick={() => setMobileFiltersOpen(false)}>View {filteredProducts.length} items</button>
+              <button type="button" onClick={() => setMobileFiltersOpen(false)}>{t("catalog.viewItems", { count: filteredProducts.length })}</button>
             </div>
           </section>
         </div>

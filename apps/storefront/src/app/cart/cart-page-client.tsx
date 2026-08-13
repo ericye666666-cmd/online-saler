@@ -14,10 +14,12 @@ import {
 } from "../storefront-cart";
 import type { CartValidationResponse, ValidatedCartItem } from "../../cart/cart-validation-types";
 import { moneyKsh } from "../storefront-products";
+import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 
 type CartState = "loading" | "empty" | "ready" | "error";
 
 export function CartPageClient() {
+  const { t } = useStorefrontI18n();
   const [snapshot, setSnapshot] = useState<CartSnapshot | null>(null);
   const [validation, setValidation] = useState<CartValidationResponse | null>(null);
   const [state, setState] = useState<CartState>("loading");
@@ -107,15 +109,15 @@ export function CartPageClient() {
   ), [unavailableItems]);
 
   if (state === "loading") {
-    return <CheckoutEmpty title="Your cart" body="Checking your items against live stock..." />;
+    return <CheckoutEmpty title={t("cart.title")} body={t("common.loading")} />;
   }
 
   if (state === "empty") {
     return (
       <CheckoutEmpty
-        title="Your cart is empty"
-        body="Add one-of-one pieces from the shop, then come back here to confirm them before payment."
-        action={<Link className="commercePrimaryButton" href="/">Browse items <ArrowRight size={16} /></Link>}
+        title={t("cart.empty")}
+        body={t("cart.emptyBody")}
+        action={<Link className="commercePrimaryButton" href="/">{t("cart.browse")} <ArrowRight size={16} /></Link>}
       />
     );
   }
@@ -134,13 +136,9 @@ export function CartPageClient() {
     <section className="commerceCheckoutShell" aria-label="Shopping cart">
       <div className="checkoutHero">
         <div>
-          <span className="checkoutKicker">Cart</span>
-          <h1>Review your bag</h1>
-          <p className="checkoutLead">
-            Cart does not reserve stock. We check every piece again before M-Pesa.
-          </p>
+          <span className="checkoutKicker">{t("header.cart")}</span>
+          <h1>{t("cart.review")}</h1>
         </div>
-        <CheckoutProgress stage="details" />
       </div>
 
       <div className="commerceCheckoutGrid">
@@ -181,9 +179,9 @@ export function CartPageClient() {
 
             <div className="commerceActions">
               <button className="commerceTextButton" type="button" onClick={clearCart}>
-                <Trash2 size={16} /> Clear cart
+                <Trash2 size={16} /> {t("cart.clear")}
               </button>
-              <Link className="commerceSecondaryButton" href="/">Continue shopping</Link>
+              <Link className="commerceSecondaryButton" href="/">{t("cart.continueShopping")}</Link>
             </div>
           </section>
 
@@ -204,16 +202,16 @@ export function CartPageClient() {
         </div>
 
         <aside className="checkoutSummaryPanel cartStickySummary">
-          <h2>Order summary</h2>
+          <h2>{t("cart.orderSummary")}</h2>
           <div className="commerceSummaryRows">
-            <div className="commerceSummaryRow"><span>Available items</span><strong>{checkoutableItems.length}</strong></div>
-            <div className="commerceSummaryRow"><span>Unavailable items</span><strong>{unavailableItems.length}</strong></div>
-            <div className="commerceSummaryRow total"><span>Item subtotal</span><strong>{moneyKsh(validation.summary.itemSubtotalKsh)}</strong></div>
+            <div className="commerceSummaryRow"><span>{t("cart.available")}</span><strong>{checkoutableItems.length}</strong></div>
+            <div className="commerceSummaryRow"><span>{t("cart.unavailable")}</span><strong>{unavailableItems.length}</strong></div>
+            <div className="commerceSummaryRow total"><span>{t("cart.subtotal")}</span><strong>{moneyKsh(validation.summary.itemSubtotalKsh)}</strong></div>
           </div>
           <p className="commerceSummaryLine"><CreditCard size={16} /> M-Pesa starts only after login, phone, and final review.</p>
           <p className="commerceSummaryLine"><Clock3 size={16} /> Payment step locks stock for 15 minutes.</p>
           {checkoutableItems.length ? (
-            <Link className="commercePrimaryButton full" href="/checkout">Continue to checkout <ArrowRight size={16} /></Link>
+            <Link className="commercePrimaryButton full" href="/checkout">{t("cart.continueCheckout")} <ArrowRight size={16} /></Link>
           ) : (
             <button className="commercePrimaryButton full" type="button" disabled>No available items</button>
           )}
@@ -235,6 +233,7 @@ async function validateCart(productIds: string[]): Promise<CartValidationRespons
 }
 
 function CartLine({ item, onRemove }: { item: ValidatedCartItem; onRemove: () => void }) {
+  const { t } = useStorefrontI18n();
   return (
     <article className={`cartLine ${item.canCheckout ? "" : "unavailable"}`}>
       <div className="cartLineImage">
@@ -252,7 +251,7 @@ function CartLine({ item, onRemove }: { item: ValidatedCartItem; onRemove: () =>
           <span className={`cartStatusPill ${item.availability.toLowerCase()}`}>{availabilityLabel(item.availability)}</span>
           <p>{item.statusMessage}</p>
           <button className="commerceTextButton" type="button" onClick={onRemove}>
-            <Trash2 size={16} /> Remove
+            <Trash2 size={16} /> {t("cart.remove")}
           </button>
         </div>
       </div>
