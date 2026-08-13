@@ -1,75 +1,48 @@
-# Measurement guide v4 direct-replacement QA
+# Storefront Vestiaire-style UI design QA
 
-> The code-redrawn contact sheets are superseded. Production now uses the exact 24 approved Measurement Studio diagram assets as the geometry source; no garment outline is redrawn or non-uniformly scaled.
+- source visual truth: `/workspace/scratch/54a01ce071e7/upload/04-9f9fb2acaec792a69c17296cd3a96f96.jpg` (account layout) and `/workspace/scratch/54a01ce071e7/upload/09-83a6828c72b228aa2ecc33e075a5a1f1.jpg` through `/workspace/scratch/54a01ce071e7/upload/11-7758d3877c657c6f3f41547dd2b6a0e2.jpg` (product detail layout)
+- implementation: `http://terminal.local:4173/login` and locally rendered `/p/[code]`
+- browser-rendered implementation evidence: Cloud Browser viewport screenshot emitted during QA
+- browser viewport: 1363 × 936 CSS px, device scale 1
+- source pixels: 945 × 2048 (account), 945 × 2048 (product detail); reference is a mobile-density capture, so comparison was normalized by content proportions rather than raw pixel density
+- implementation pixels: 1363 × 936 at 1×; responsive mobile rules are applied below 900 CSS px
+- state: signed out; English and Simplified Chinese; product detail with development-only fixture while production API was unavailable locally
 
-- Approved source: the user-approved 24-template Measurement Studio preview set.
-- Checked-in replacements: `apps/api/src/product/measurement-guide-assets/*.png`.
-- Local QA generated a 24-template contact sheet, an approved-vs-replacement comparison, and a full-size sleeveless-dress render.
-- Output: 1200 x 1200 px per template
-- Version: `measurement-guides-v4.0.0`
+## Full-view comparison evidence
 
-## Root cause and correction
+- Account screen preserves the reference hierarchy: minimal back/title header, large intentional whitespace, centered account decision, full-width black primary action, divider, outlined secondary action.
+- Product detail preserves the reference hierarchy: minimal product navigation on mobile, one-of-one notice, large 4:5 product image, gallery progress, compact metadata, save action, recommendation grid, fixed purchase actions.
+- Existing catalog grid remains intact; the Filter/Newest controls continue to share the same typography and proportions.
 
-1. The rejected implementation rebuilt the silhouettes in code and then applied `scale(.93, 1.4)` to every category, distorting each garment vertically.
-2. The approved 24 source assets already contained the correct category-specific proportions, construction details, and measurement positions.
-3. The correction directly extracts the approved left-hand diagrams, converts only the teal visual token to storefront coral, and preserves their original aspect ratio with `preserveAspectRatio="xMidYMid meet"`.
-4. The API renderer overlays the current storefront header and a database-driven measurement table. Sample values from the source artwork are never used as product data.
-5. Optional missing values render as an explicit dash so the fixed A-H diagram code order remains aligned and no value is fabricated.
+## Focused-region comparison evidence
 
-## Asset and runtime boundary
+- Typography: neutral sans-serif, bold black primary actions, restrained labels, compact metadata. Direct Loop brand wordmark remains the product’s existing serif asset rather than copying the reference brand.
+- Spacing: account content is vertically centered with broad negative space; product image is promoted to the dominant mobile region; purchase actions stay within thumb reach.
+- Colors: white, near-black and neutral grey dominate. Existing semantic payment-success green is retained only where status meaning requires it.
+- Image quality: existing catalog and detail assets use `object-fit: contain` with no stretching or screenshot-derived placeholders.
+- Copy: redundant checkout steps and explanatory blocks were removed from the cart entry; payment success leads with confirmation, next action and service contact. Global English/Simplified Chinese interface copy is provided by a centralized dictionary.
 
-- All 24 approved diagram assets are versioned under `apps/api/src/product/measurement-guide-assets`.
-- The API build copies them into `dist/product/measurement-guide-assets`; the production Docker image already copies the complete API `dist` directory.
-- The renderer loads the asset matching the selected template code and embeds it into the generated SVG before Sharp produces the final WebP.
-- Activating v4 does not rewrite existing `ProductDetailAsset` rows. Only future generation uses the direct-replacement assets.
+## Comparison history
 
-## Visual comparison
+1. P1 — language toggle changed the cookie but not the rendered language. Fixed by adding a server route with same-origin relative redirect and a root i18n provider seeded by the cookie. Post-fix evidence: `/login` changed from `Join Direct Loop`, `lang=en` to `加入 Direct Loop`, `lang=zh-CN` and preserved the route.
+2. P1 — translated server page contained English client labels after hydration. Fixed by replacing document reads with a server-seeded context provider. Post-fix evidence: product actions and search placeholder render in Simplified Chinese when `lang=zh-CN`.
+3. P2 — product header showed both back and menu actions. Fixed by using back-only navigation and share/bag actions in product-detail mode.
+4. P2 — product image and purchasing hierarchy were too small and card-heavy. Fixed with a 4:5 mobile gallery, linear facts, compact status treatment and fixed bottom actions.
 
-- Garment proportions and line construction: identical to the approved asset set.
-- Measurement lines and A-H badge positions: identical to the approved asset set.
-- Color change only: approved teal becomes storefront coral `#e84c35`.
-- UI treatment: white surface, charcoal type, warm-neutral dividers, current Measurement Studio header and database-driven table.
+## Primary interactions tested
 
-## Verification
+- English → Simplified Chinese switch on `/login`, including cookie persistence and same-route redirect.
+- Product detail rendering with real repository product imagery and localized client/server copy.
+- Add-to-bag button enabled state and cart update handler reached without a framework error overlay.
 
-- Business-rules tests cover safe asset embedding, data-driven values, missing-value disclosure, and default standalone SVG behavior.
-- API build verifies the 24 assets are copied into runtime output.
-- A checksum regression test locks all 24 approved files at 750 x 1082 px so the selected drawings and their aspect ratio cannot drift silently.
-- API renderer and existing-data boundary tests pass.
-- Full repository CI and GitHub repository checks pass.
-- The API staging deployment passed all image-processing, Operations API, public-storefront, OpenAI-recognition, and cleanup checks.
-- Browser QA used only the new batch `BATCH-1785813567011`; existing product detail assets were not regenerated.
-- All 3 new products completed detail generation: 3 `READY`, 0 failed. Their AI display images were selected as the default main images.
-- The short-sleeve dress rendered `DRESS_SHORT_SLEEVE · measurement-guides-v4.0.0` with A-F markers and its actual 38/46/37/50/110/22 cm measurements.
-- The approved reference and staging result were reviewed side by side. Garment geometry, proportions, construction lines, and marker positions align; only the intentional teal-to-coral token and live product values differ.
-- The detail-factory first step performs the batch AI display-image workflow, and the Model View placeholder remains absent.
+## Console errors checked
 
-final result: direct replacement passed local, GitHub CI, API staging deployment, and staging browser QA
+- No application or Next.js errors found.
+- Cloud Browser extension reported its own `chrome-extension://` metadata errors; these are unrelated to the storefront.
 
-## Storefront checkout and Operations order-card QA (2026-08-12)
+## Remaining P3 polish
 
-- Reference: user-supplied mobile catalog, checkout, payment-success, and Operations screenshots.
-- Catalog: mobile Filter and Newest controls use the same two-column track, 48 px height, border, and padding; result-count copy is absent.
-- Checkout: the standalone signed-in card, intro copy, and checkout step rail are absent; signed-in identity is reduced to a compact header row.
-- Payment success: the first message is `Payment successful`, followed by order/payment facts, the pickup-or-delivery next step, customer-service contact, and order tracking. The pre-payment timeline is not rendered after success.
-- Operations: relative product image URLs are routed through `/api-proxy`; the order-card image column is enlarged from 112 px to 176 px with a 4:5 containment area.
-- Automated verification: Storefront and Operations targeted UI tests, TypeScript checks, production builds, and repository structure checks pass.
-- Browser verification: local catalog rendered without result-count copy. Live authenticated checkout and Operations data remain deployment-gated; no real order or payment was used.
-
-### Mobile catalog typography correction
-
-- Reference evidence: the production iPhone screenshot showed `Filter` at 13 px while `Newest` remained 17 px.
-- Corrected rendering contract: both labels now use 17 px type, 750 weight, and the same 48 px control height.
-- Regression coverage: the storefront UI test locks the shared mobile control size and the explicit sort-label typography.
-- Production build and TypeScript validation pass.
-
-final result: passed
-
-### Mobile catalog semantic parity correction
-
-- Follow-up reference evidence: iPhone Chrome still rendered the labels differently after numeric font-size parity.
-- Root cause: `Filter` was a raw button text node while `Newest` was a `strong` element; the Filter label also stretched through the button cross-axis.
-- Correction: both visible labels now use the same `span.depopMobileControlLabel` element and one shared font family, 17 px size, 700 weight, 17 px line-height, and zero letter-spacing contract. Both parent controls explicitly center their children.
-- Regression coverage asserts exactly two shared label elements and prevents the sort label from returning to `strong`.
+- The supplied reference includes a Google brand mark. It is intentionally not approximated with text or a hand-made asset; the current button uses typography only until an approved official asset is added.
+- Brand names and live product data remain untranslated by design.
 
 final result: passed

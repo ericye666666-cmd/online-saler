@@ -34,6 +34,7 @@ import {
 import type { CartValidationResponse, ValidatedCartItem } from "../../cart/cart-validation-types";
 import { moneyKsh } from "../storefront-products";
 import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded, paymentTone } from "../../payments/payment-ui";
+import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 
 type CheckoutState = "loading" | "empty" | "ready" | "error";
 type Reservation = {
@@ -512,6 +513,7 @@ function PaymentPanel({
   secondsRemaining: number;
   timerLabel: string;
 }) {
+  const { t } = useStorefrontI18n();
   const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
   const tone = paymentTone({
     orderStatus: payment?.orderStatus,
@@ -539,8 +541,8 @@ function PaymentPanel({
       <div className="paymentSuccessPanel" role="status">
         <div className="paymentSuccessMark"><CheckCircle2 size={36} aria-hidden="true" /></div>
         <div className="paymentSuccessHeading">
-          <h1>Payment successful</h1>
-          <p>Your item is secured and the order is now with our team.</p>
+          <h1>{t("payment.confirmed")}</h1>
+          <p>{t("payment.nextBody")}</p>
         </div>
 
         <dl className="paymentSuccessFacts">
@@ -552,11 +554,11 @@ function PaymentPanel({
         <section className="paymentNextStep">
           <PackageCheck size={24} aria-hidden="true" />
           <div>
-            <h2>{isPickup ? "Next: wait for pickup confirmation" : "Next: we arrange your delivery"}</h2>
+            <h2>{t("payment.nextTitle")}</h2>
             <p>
               {isPickup
-                ? `We are preparing your order in Kikuyu. We will call or WhatsApp +${reservation.phone} when it is ready—please wait for that confirmation before travelling.`
-                : `We will call or WhatsApp +${reservation.phone} to confirm the Kikuyu delivery location and timing.`}
+                ? `${t("payment.nextBody")} ${t("payment.keepPhone", { phone: `+${reservation.phone}` })}`
+                : `${t("payment.nextBody")} ${t("payment.keepPhone", { phone: `+${reservation.phone}` })}`}
             </p>
           </div>
         </section>
@@ -572,9 +574,9 @@ function PaymentPanel({
 
         <div className="paymentSuccessActions">
           <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
-            Track order <ArrowRight size={16} />
+            {t("payment.viewOrder")} <ArrowRight size={16} />
           </Link>
-          <Link className="commerceTextButton" href="/">Continue shopping</Link>
+          <Link className="commerceTextButton" href="/">{t("cart.continueShopping")}</Link>
         </div>
       </div>
     );

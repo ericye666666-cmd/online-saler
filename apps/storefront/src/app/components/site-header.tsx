@@ -7,6 +7,7 @@ import {
   Heart,
   Menu,
   Search,
+  Share2,
   ShoppingBag,
   X,
 } from "lucide-react";
@@ -14,6 +15,9 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { categories } from "../data/products";
 import { SellerHeaderAction } from "./seller-header-action";
 import { CART_STORAGE_KEY, CART_UPDATED_EVENT, cartItemCount, parseCartSnapshot } from "../storefront-cart";
+import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
+import { translateValue } from "../../i18n/dictionary";
+import { LanguageSwitcher } from "./language-switcher";
 
 type CatalogCategory = (typeof categories)[number];
 
@@ -229,6 +233,7 @@ export function SiteHeader({
   productDetail = false,
   customerIdentity,
 }: SiteHeaderProps) {
+  const { locale, t } = useStorefrontI18n();
   const [localSearch, setLocalSearch] = useState("");
   const [desktopMenuId, setDesktopMenuId] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -334,6 +339,14 @@ export function SiteHeader({
     else window.location.assign(homeHref);
   }
 
+  async function shareProduct() {
+    if (navigator.share) {
+      await navigator.share({ title: document.title, url: window.location.href }).catch(() => undefined);
+      return;
+    }
+    await navigator.clipboard?.writeText(window.location.href).catch(() => undefined);
+  }
+
   return (
     <header className="siteHeader depopHeader" ref={headerRef}>
       <div className={`depopHeaderMain ${productDetail ? "productDetailHeaderMain" : ""}`}>
@@ -343,20 +356,22 @@ export function SiteHeader({
               <ArrowLeft size={24} />
             </button>
           ) : null}
-          <button
-            className="depopMobileMenuButton"
-            type="button"
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open menu"
-          >
-            <Menu size={24} />
-          </button>
+          {!productDetail ? (
+            <button
+              className="depopMobileMenuButton"
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              aria-label={t("header.openMenu")}
+            >
+              <Menu size={24} />
+            </button>
+          ) : null}
         </div>
 
         <Link
           href={homeHref}
           className="wordmark depopWordmark"
-          aria-label="Direct Loop home"
+          aria-label={t("header.homeLabel")}
         >
           Direct Loop
         </Link>
@@ -367,13 +382,13 @@ export function SiteHeader({
             name="q"
             value={value}
             onChange={(event) => updateSearch(event.target.value)}
-            placeholder="Search for items, brands or styles"
-            aria-label="Search catalog"
+            placeholder={t("header.searchPlaceholder")}
+            aria-label={t("header.search")}
           />
         </form>
 
         <div className="depopHeaderActions">
-          <button className="depopIconButton" type="button" aria-label="Saved items">
+          <button className="depopIconButton" type="button" aria-label={t("header.saved")}>
             <Heart size={24} />
           </button>
           <Link className="depopIconButton depopCartIcon" href="/cart" aria-label={`Open cart${cartCount ? `, ${cartCount} items` : ""}`}>
@@ -382,18 +397,25 @@ export function SiteHeader({
             <small className="depopMiniCart">Cart has {cartCount} {cartCount === 1 ? "item" : "items"}. Review before payment.</small>
           </Link>
           <SellerHeaderAction />
+          <LanguageSwitcher compact />
         </div>
 
         <div className="depopMobileNavRight">
-          <button
-            className="depopMobileSearchButton"
-            type="button"
-            onClick={() => setMobileSearchOpen((current) => !current)}
-            aria-label="Search"
-            aria-expanded={mobileSearchOpen}
-          >
-            <Search size={23} />
-          </button>
+          {productDetail ? (
+            <button className="depopMobileSearchButton" type="button" onClick={shareProduct} aria-label="Share">
+              <Share2 size={23} />
+            </button>
+          ) : (
+            <button
+              className="depopMobileSearchButton"
+              type="button"
+              onClick={() => setMobileSearchOpen((current) => !current)}
+              aria-label={t("header.search")}
+              aria-expanded={mobileSearchOpen}
+            >
+              <Search size={23} />
+            </button>
+          )}
           <Link className="depopCartIcon mobile" href="/cart" aria-label={`Open cart${cartCount ? `, ${cartCount} items` : ""}`}>
             <ShoppingBag size={23} />
             {cartCount ? <span>{cartCount}</span> : null}
@@ -402,7 +424,7 @@ export function SiteHeader({
       </div>
 
       {customerIdentity ? (
-        <div className="depopCustomerIdentity" aria-label="Signed-in customer">
+        <div className="depopCustomerIdentity" aria-label={t("header.signedIn")}>
           {customerIdentity.avatarUrl
             ? <img src={customerIdentity.avatarUrl} alt="" />
             : <span aria-hidden="true">{(customerIdentity.displayName ?? customerIdentity.email).slice(0, 1).toUpperCase()}</span>}
@@ -416,14 +438,14 @@ export function SiteHeader({
           <input
             value={value}
             onChange={(event) => updateSearch(event.target.value)}
-            placeholder="Search for anything"
-            aria-label="Search catalog"
+            placeholder={t("header.searchPlaceholder")}
+            aria-label={t("header.search")}
             autoFocus
           />
         </form>
       ) : null}
 
-      <nav className="depopCategoryNav" aria-label="Main categories">
+      <nav className="depopCategoryNav" aria-label={t("header.categories")}>
         <div className="depopCategoryNavInner" role="menubar">
           {navigationGroups.map((group) => {
             const open = desktopMenuId === group.id;
@@ -437,7 +459,7 @@ export function SiteHeader({
                 aria-controls="depop-category-mega-menu"
                 onClick={() => setDesktopMenuId((current) => current === group.id ? null : group.id)}
               >
-                {group.label}
+                {translateValue(locale, group.label)}
               </button>
             );
           })}
@@ -447,7 +469,7 @@ export function SiteHeader({
             className="dropNavItem"
             onClick={() => chooseSelection({ category: "All" })}
           >
-            Daily drop
+            {t("header.dailyDrop")}
           </button>
         </div>
       </nav>
@@ -460,7 +482,7 @@ export function SiteHeader({
         >
           <div className="depopMegaMenuInner">
             <div className="depopMegaColumn depopMegaShop">
-              <h2>Shop by category</h2>
+              <h2>{t("header.shopByCategory")}</h2>
               <div className="depopMegaLinks twoColumns">
                 {activeDesktopGroup.items.map((item) => (
                   <button type="button" key={`${item.label}-${item.shoeType ?? item.bagType ?? item.textileType ?? "all"}`} onClick={() => chooseSelection(item)}>
@@ -504,7 +526,7 @@ export function SiteHeader({
               <>
                 <div className="depopMobileMenuTop subpage">
                   <button type="button" onClick={() => setMobilePanelId(null)} aria-label="Back"><ArrowLeft size={24} /></button>
-                  <strong>{activeMobileGroup.label}</strong>
+                  <strong>{translateValue(locale, activeMobileGroup.label)}</strong>
                   <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close"><X size={25} /></button>
                 </div>
                 <div className="depopMobilePanelScroll">
@@ -532,16 +554,17 @@ export function SiteHeader({
                 </div>
                 <div className="depopMobileMenuActions">
                   <SellerHeaderAction variant="mobile-menu" />
+                  <LanguageSwitcher />
                 </div>
                 <div className="depopMobileMenuList">
                   {navigationGroups.map((group) => (
                     <button type="button" key={group.id} onClick={() => setMobilePanelId(group.id)}>
-                      <span>{group.label}</span>
+                      <span>{translateValue(locale, group.label)}</span>
                       <ArrowRight size={23} />
                     </button>
                   ))}
                   <button className="dropNavItem" type="button" onClick={() => chooseSelection({ category: "All" })}>
-                    <span>Daily drop</span>
+                    <span>{t("header.dailyDrop")}</span>
                     <ArrowRight size={23} />
                   </button>
                 </div>

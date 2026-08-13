@@ -4,6 +4,7 @@ import { ChevronRight, MapPin } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ProductGallery } from "../../components/product-gallery";
 import { ProductShareSheet } from "../../components/product-share-sheet";
+import { ProductSaveButton } from "../../components/product-save-button";
 import { ReferralTracker } from "../../components/referral-tracker";
 import { SiteHeader } from "../../components/site-header";
 import { CatalogBuyAction } from "../../catalog-buy-action";
@@ -20,6 +21,7 @@ import {
   visibleMeasurements,
 } from "../../product-detail-commerce";
 import { getPublishedProduct, listPublishedProducts } from "../../../db/catalog";
+import { getStorefrontI18n } from "../../../i18n/server";
 
 type ProductPageProps = {
   params: Promise<{ code: string }>;
@@ -75,6 +77,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 
 export default async function ProductPage({ params, searchParams }: ProductPageProps) {
   const [{ code }, query] = await Promise.all([params, searchParams]);
+  const { t } = await getStorefrontI18n();
   const [product, products] = await Promise.all([
     getPublishedProduct(code),
     listPublishedProducts(),
@@ -109,7 +112,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
 
       <div className="productPageShell">
         <nav className="breadcrumbs" aria-label="Breadcrumb">
-          <Link href={sellerRef ? `/?ref=${sellerRef}` : "/"}>Home</Link>
+          <Link href={sellerRef ? `/?ref=${sellerRef}` : "/"}>{t("common.home")}</Link>
           <ChevronRight size={14} />
           <Link href={`/?category=${encodeURIComponent(product.category)}${sellerRef ? `&ref=${sellerRef}` : ""}`}>
             {product.category}
@@ -118,24 +121,28 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           <span>{product.title}</span>
         </nav>
 
+        <aside className="productAvailabilityNotice">{t("product.availabilityNotice")}</aside>
+
         <section className="productDetailGrid">
           <ProductGallery items={gallery} productTitle={product.title} />
 
           <div className="productPurchasePanel">
+            <p className="productDetailBrand">{product.brand}</p>
             <h1>{product.title}</h1>
+            <ProductSaveButton productTitle={product.title} />
             <div className="commercePriceRow">
               <strong>{formatPrice(product.price)}</strong>
-              <span>Only one available</span>
+              <span>{t("product.onlyOne")}</span>
             </div>
 
             <dl className="quickFacts" aria-label="Item summary">
-              <div><dt>Size</dt><dd>{product.size}</dd></div>
-              {fit ? <div><dt>Fit</dt><dd>{fit}</dd></div> : null}
-              {stretch ? <div><dt>Stretch</dt><dd>{stretch}</dd></div> : null}
-              {fabricWeight ? <div><dt>Fabric weight</dt><dd>{fabricWeight}</dd></div> : null}
-              <div><dt>Condition</dt><dd>{product.condition}</dd></div>
-              {color ? <div><dt>Colour</dt><dd>{color}</dd></div> : null}
-              <div><dt>Location</dt><dd><MapPin size={14} /> {product.store}</dd></div>
+              <div><dt>{t("product.size")}</dt><dd>{product.size}</dd></div>
+              {fit ? <div><dt>{t("product.fit")}</dt><dd>{fit}</dd></div> : null}
+              {stretch ? <div><dt>{t("product.stretch")}</dt><dd>{stretch}</dd></div> : null}
+              {fabricWeight ? <div><dt>{t("product.fabricWeight")}</dt><dd>{fabricWeight}</dd></div> : null}
+              <div><dt>{t("product.condition")}</dt><dd>{product.condition}</dd></div>
+              {color ? <div><dt>{t("product.colour")}</dt><dd>{color}</dd></div> : null}
+              <div><dt>{t("product.location")}</dt><dd><MapPin size={14} /> {product.store}</dd></div>
             </dl>
 
             <CatalogBuyAction product={product} />
@@ -146,8 +153,8 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
         {measurements.length ? (
           <section className="commerceDetailSection measurementSection" aria-labelledby="measurements-heading">
             <div className="commerceSectionHeading">
-              <p>Measured size</p>
-              <h2 id="measurements-heading">Flat garment measurements</h2>
+              <p>{t("product.measurements")}</p>
+              <h2 id="measurements-heading">{t("product.flatMeasurements")}</h2>
             </div>
             <dl className="measurementSummaryGrid">
               {measurements.slice(0, 4).map((measurement) => (
@@ -158,7 +165,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               ))}
             </dl>
             <details className="measurementGuide">
-              <summary>View full measurement guide</summary>
+              <summary>{t("product.fullMeasurementGuide")}</summary>
               <div className={measurementAsset ? "measurementGuideLayout" : "measurementGuideLayout textOnly"}>
                 {measurementAsset ? (
                   <img src={measurementAsset.image} alt={`${product.title} measurement guide`} loading="lazy" />
@@ -172,7 +179,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                       </div>
                     ))}
                   </dl>
-                  <p>Flat garment measurements in centimetres.<br />Compare with a similar item you own.</p>
+                  <p>{t("product.measurementHelp")}</p>
                 </div>
               </div>
             </details>
@@ -182,27 +189,27 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
         {fit || stretch || fabricWeight ? (
           <section className="commerceDetailSection" aria-labelledby="fit-heading">
             <div className="commerceSectionHeading">
-              <p>Size and fit</p>
-              <h2 id="fit-heading">How this item is expected to fit</h2>
+              <p>{t("product.sizeAndFit")}</p>
+              <h2 id="fit-heading">{t("product.fitHeading")}</h2>
             </div>
             <dl className="fitFacts">
               {fit ? <div><dt>Fit</dt><dd>{fit}</dd></div> : null}
               {stretch ? <div><dt>Stretch</dt><dd>{stretch}</dd></div> : null}
               {fabricWeight ? <div><dt>Fabric weight</dt><dd>{fabricWeight}</dd></div> : null}
             </dl>
-            <p className="fitDisclaimer">Fit recommendations are approximate.<br />Please compare the garment measurements with an item that fits you well.</p>
+            <p className="fitDisclaimer">{t("product.fitDisclaimer")}</p>
           </section>
         ) : null}
 
         <section className="commerceDetailSection" aria-labelledby="condition-heading">
           <div className="commerceSectionHeading">
-            <p>Condition</p>
-            <h2 id="condition-heading">Condition: {product.condition}</h2>
+            <p>{t("product.condition")}</p>
+            <h2 id="condition-heading">{t("product.condition")}: {product.condition}</h2>
           </div>
           {conditionSummary ? <p className="commerceBodyCopy">{conditionSummary}</p> : null}
           {defects.length ? (
             <div className="visibleWear">
-              <h3>Visible wear</h3>
+              <h3>{t("product.visibleWear")}</h3>
               <ul>
                 {defects.map((defect, index) => (
                   <li key={`${defect.type}-${index}`}>
@@ -217,8 +224,8 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
         {description || sellingPoints.length ? (
           <section className="commerceDetailSection" aria-labelledby="description-heading">
             <div className="commerceSectionHeading">
-              <p>Item details</p>
-              <h2 id="description-heading">About this item</h2>
+              <p>{t("product.itemDetails")}</p>
+              <h2 id="description-heading">{t("product.about")}</h2>
             </div>
             {description ? <p className="commerceBodyCopy">{description}</p> : null}
             {sellingPoints.length ? <ul className="commerceSellingPoints">
@@ -229,31 +236,31 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
 
         <section className="commerceDetailSection" aria-labelledby="delivery-heading">
           <div className="commerceSectionHeading">
-            <p>Delivery and support</p>
-            <h2 id="delivery-heading">Collection, local delivery and support</h2>
+            <p>{t("product.handoff")}</p>
+            <h2 id="delivery-heading">{t("product.handoffHeading")}</h2>
           </div>
           <div className="deliveryOptions">
             <section>
-              <h3>Collection</h3>
-              <p>Pickup available in Kikuyu.<br />Exact collection details are confirmed after order.</p>
+              <h3>{t("product.collection")}</h3>
+              <p>{t("product.collectionBody")}</p>
             </section>
             <section>
-              <h3>Local delivery</h3>
-              <p>Delivery options and fees are shown at checkout based on your area.</p>
+              <h3>{t("product.localDelivery")}</h3>
+              <p>{t("product.localDeliveryBody")}</p>
             </section>
             <section>
-              <h3>Support</h3>
-              <p>This is a unique second-hand item. Review the original photos and measurements before purchase. Contact Direct Loop support if the received item does not match the approved listing.</p>
+              <h3>{t("product.support")}</h3>
+              <p>{t("product.supportBody")}</p>
             </section>
           </div>
-          <p className="deliveryFootnote">Only one available · Second-hand item · Check measurements before buying</p>
+          <p className="deliveryFootnote">{t("product.footnote")}</p>
         </section>
 
         {related.length ? (
           <section className="relatedSection">
             <div className="relatedHeading">
-              <h2>You might also like</h2>
-              <Link href={sellerRef ? `/?ref=${sellerRef}` : "/"}>See all items</Link>
+              <h2>{t("product.related")}</h2>
+              <Link href={sellerRef ? `/?ref=${sellerRef}` : "/"}>{t("product.seeAll")}</Link>
             </div>
             <div className="relatedGrid">
               {related.map((item) => (
