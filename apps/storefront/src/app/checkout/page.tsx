@@ -2,11 +2,13 @@ import Link from "next/link";
 import { CheckoutPageClient } from "./checkout-page-client";
 import { SiteHeader } from "../components/site-header";
 import { currentCustomerSession } from "../../auth/customer-auth";
+import { getStorefrontI18n } from "../../i18n/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function CheckoutPage() {
   const session = await currentCustomerSession();
+  const { t } = await getStorefrontI18n();
 
   return (
     <main className="productPage">
@@ -20,14 +22,13 @@ export default async function CheckoutPage() {
           <CheckoutPageClient />
         ) : (
           <section className="customerLoginCard">
-            <p className="detail-meta">Checkout</p>
-            <h1>Sign in before checkout</h1>
-            <p>Google sign-in connects this purchase to your account. Your M-Pesa phone number is collected only when you start payment.</p>
+            <p className="detail-meta">{t("checkout.title")}</p>
+            <h1>{t("auth.checkoutTitle")}</h1>
+            <p>{t("auth.checkoutBody")}</p>
             <Link className="googleLoginButton" href="/login?returnTo=%2Fcheckout">
-              <span aria-hidden="true">G</span>
-              Continue with Google
+              {t("auth.google")}
             </Link>
-            <Link className="customerLoginBack" href="/cart">Back to cart</Link>
+            <Link className="customerLoginBack" href="/cart">{t("auth.backToCart")}</Link>
           </section>
         )}
       </div>
