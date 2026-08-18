@@ -30,6 +30,29 @@ describe("OpenAIProductDisplayImageProvider", () => {
     );
   });
 
+  it("uses the low-cost image model and quality by default", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    delete process.env.OPENAI_IMAGE_EDIT_MODEL;
+    delete process.env.OPENAI_IMAGE_EDIT_QUALITY;
+    let form: FormData | null = null;
+    globalThis.fetch = (async (_input, init) => {
+      form = init?.body as FormData;
+      return new Response(JSON.stringify({
+        data: [{ b64_json: Buffer.from("generated-png").toString("base64") }]
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+
+    await new OpenAIProductDisplayImageProvider().generate({
+      body: Buffer.from("white-background-source"),
+      contentType: "image/jpeg",
+      filename: "white.jpg"
+    });
+
+    const submittedForm = form as unknown as FormData;
+    assert.equal(submittedForm.get("model"), "gpt-image-1-mini");
+    assert.equal(submittedForm.get("quality"), "low");
+  });
+
   it("sends a high-fidelity catalog arrangement prompt and returns the edited PNG", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENAI_IMAGE_EDIT_MODEL = "gpt-image-test";

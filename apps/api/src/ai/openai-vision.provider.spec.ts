@@ -13,8 +13,8 @@ import {
 test("reserves the output budget for structured product fields", () => {
   const settings = openAIVisionResponseSettings();
 
-  assert.equal(settings.reasoning.effort, "none");
-  assert.equal(settings.text.verbosity, "low");
+  assert.equal("reasoning" in settings, false);
+  assert.equal("verbosity" in settings.text, false);
   assert.equal(settings.text.format.type, "json_object");
   assert.ok(settings.max_output_tokens >= 5000);
 });

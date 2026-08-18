@@ -10,7 +10,7 @@ import {
 } from "./product-detail-copy";
 
 const RESPONSES_API_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-5.6-sol";
+const DEFAULT_MODEL = "gpt-4o-mini";
 
 type SourceImage = {
   id: string;
