@@ -60,14 +60,19 @@ the current production setting.
 
 | ID | Deliverable | Implementation | Validation | Completion evidence / remaining gate |
 |---|---|---|---|---|
-| CLOSE-001 | Reconcile this register, employee/admin SOPs and field acceptance plan | In Progress | Not Run | Confirm all documents match the batch workflow; staff training and production evidence remain separate |
-| AI-002 | Finish cost-control changes and prevent unnecessary paid deployment checks | In Progress | Not Run | Relevant regression and CI required; live model quality and actual cost remain pending |
-| PROD-004 | Enforce required, human-confirmed AI display image and publication readiness across entry points | In Progress | Not Run | CR-003; test invalid alternate paths and normal batch flow |
-| AFF-003 | Enforce commission delivery/return timing, safe transitions and refund reconciliation | In Progress | Not Run | CR-003/004; verify 24-hour eligibility, duplicate handling and preservation of paid history |
-| PAY-004 | Re-run checkout/payment/inventory abnormal-case regression and repair demonstrated gaps | In Progress | Not Run | Duplicate callbacks, concurrency, failed initiation, expiry and late callback; record real-environment gaps |
-| RET-002 | Audited return decision, physical inspection and externally verified refund recording | In Progress | Not Run | CR-004; record scope accurately, including remaining UI or payment-provider gaps |
-| QA-001 | Integrate and test the changed modules together | In Progress | Not Run | Required CI and relevant scenario evidence; isolated unit tests do not establish full end-to-end acceptance |
-| REL-001 | Inspect deployment/POS dependencies and prepare rollout/rollback | In Progress | Not Run | Record environment access findings, release references and additive migration handling |
+| CLOSE-001 | Reconcile this register, employee/admin SOPs and field acceptance plan | Implemented | Passed (document checks) | SOPs, status distinctions, links, table structure and diff checked; staff training and production evidence remain pending |
+| AI-002 | Finish cost-control changes and prevent unnecessary paid deployment checks | Implemented | Passed (targeted: 17 mocked tests) | Provider/configuration behavior verified; actual model access, garment quality, billed cost and final CI remain pending |
+| PROD-004 | Enforce required, human-confirmed AI display image and publication readiness across entry points | Implemented | Passed (targeted: 55 tests) | CR-003; alternate paths, batch retries and return-to-review covered; native database CI and field verification remain pending |
+| AFF-003 | Enforce commission delivery/return timing, safe transitions and refund reconciliation | Implemented | Passed (targeted: 13 tests; 3 PGlite scenarios) | CR-003/004; 24-hour eligibility, paid-history preservation and audit covered; two native concurrency scenarios and final CI pending |
+| PAY-004 | Re-run checkout/payment/inventory abnormal-case regression and repair demonstrated gaps | Implemented | Passed (targeted: 12 PGlite scenarios); Tests Present (native CI pending) | Sequential retry/callback/expiry behavior passed; five native concurrency scenarios explicitly skipped locally and must pass in PostgreSQL CI |
+| RET-002 | Audited return decision, physical inspection and externally verified refund recording | Implemented | Passed (targeted: 8 after-sales + 8 legacy customer-service tests; 1 PGlite chain) | CR-004; newer fulfillment changes require refreshed results; browser, final CI and actual refund execution pending |
+| QA-001 | Integrate and test the changed modules together | In Progress | Tests Present (full/native CI pending) | Local targeted checks and 16 PGlite scenarios passed; seven native concurrency checks skipped; browser and final candidate CI remain pending |
+| REL-001 | Inspect deployment/POS dependencies and prepare rollout/rollback | Implemented | Passed (static/document checks) | [Rollout plan](../docs/deployment/mvp-readiness-rollout.md) prepared; staging-named Storefront uses live M-Pesa. Actual targets, POS dependencies, backup/restore and deployment remain unverified |
+
+Dated counts, their limitations and PR/CI references are recorded in the
+[2026-09-06 readiness results](../docs/testing/mvp-readiness-results-2026-09-06.md).
+Implementation completion above describes the prepared changes and documentation;
+it does not promote any production or field acceptance status.
 
 ## Field and commercial launch
 

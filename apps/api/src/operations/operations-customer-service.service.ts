@@ -148,6 +148,7 @@ export class OperationsCustomerServiceService {
     return prisma.customerServiceCase.findMany({
       where: serviceCaseWhere(input),
       include: {
+        afterSaleReturn: { select: { id: true } },
         customer: true,
         order: {
           include: {

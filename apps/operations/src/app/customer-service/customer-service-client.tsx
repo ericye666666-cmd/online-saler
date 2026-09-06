@@ -673,9 +673,11 @@ async function apiRequest<T>(path: string, options?: RequestOptions): Promise<T>
   for (const [key, value] of Object.entries(options?.query ?? {})) {
     if (value) url.searchParams.set(key, value);
   }
+  const headers = new Headers(options?.headers);
+  headers.set("Content-Type", "application/json");
   const response = await fetch(url.toString(), {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
+    headers
   });
   const text = await response.text();
   let body: unknown = {};
