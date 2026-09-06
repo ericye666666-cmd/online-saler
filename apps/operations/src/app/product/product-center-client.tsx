@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  isShoeCategory,
   AI_AUDIENCES,
   AI_COLORS,
   AI_KIDS_AGE_RANGES,
@@ -35,6 +36,7 @@ import {
 } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
+import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { lightweightCutoutWarning } from "./image-processing-quality";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,8 @@ import {
   calibrationValidationReasons,
   formFromProductAndAi,
   normalizedAiOutput,
+  normalizeWorkspaceForm,
+  measurementFields,
   stringValue,
   type JsonRecord,
   type WorkspaceForm
@@ -743,6 +747,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
   const productId = stringValue(props.product?.id);
   const latestExtraction = objectRecord((props.product?.aiExtractions as unknown[])?.[0]);
   const latestImage = latestImageRecord(props.product);
+  const shoes = isShoeCategory(form.category);
   const reasons = calibrationValidationReasons(form, { hasPhoto: Boolean(latestImage), hasAi: Boolean(latestExtraction) });
   const draftKey = productId ? `operations.product.calibration.draft.${productId}` : "";
 
@@ -763,7 +768,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     const saved = draftKey ? localStorage.getItem(draftKey) : null;
     if (saved) {
       try {
-        setForm({ ...formFromProductAndAi(props.product, latestExtraction), ...(JSON.parse(saved) as Partial<WorkspaceForm>) });
+        setForm(normalizeWorkspaceForm({ ...formFromProductAndAi(props.product, latestExtraction), ...(JSON.parse(saved) as Partial<WorkspaceForm>) }));
         return;
       } catch {
         localStorage.removeItem(draftKey);
@@ -790,7 +795,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  function updateForm(key: keyof WorkspaceForm, value: string) {
+  function updateForm(key: Exclude<keyof WorkspaceForm, "tags" | "shoePairConfirmed">, value: string) {
     setForm((current) => {
       const next = { ...current, [key]: value };
       if (key === "category") {
@@ -798,7 +803,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
         next.subcategory = options.includes(next.subcategory) ? next.subcategory : options[0] ?? "OTHER";
       }
       if (key === "audience" && value !== "KIDS") next.kidsAgeRange = "NOT_APPLICABLE";
-      return next;
+      return normalizeWorkspaceForm(next, current.category);
     });
   }
 
@@ -824,9 +829,9 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
   }
 
   async function generateAiDisplayMain() {
-    const sourceId = comparison?.cutoutWhite?.imageId;
+    const sourceId = shoes ? comparison?.original?.imageId : comparison?.cutoutWhite?.imageId;
     if (!sourceId) {
-      setError("请先生成白底图。");
+      setError(shoes ? "请先上传整双原图。" : "请先生成白底图。");
       return;
     }
     setImageBusy("ai-display");
@@ -865,8 +870,8 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       setError(reasons.join(" "));
       return;
     }
-    if (!comparison?.selectedMainImageId) {
-      setError("请选择白底图、优化主图或原图作为商城主图。");
+    if (shoes ? !comparison?.original?.imageId : !comparison?.selectedMainImageId) {
+      setError(shoes ? "请先上传整双原图。" : "请选择白底图、优化主图或原图作为商城主图。");
       return;
     }
     setBusy(true);
@@ -907,6 +912,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
                 <p className="text-xs text-muted-foreground">原图永久保留；抠图和主图只生成新版本。</p>
               </div>
               <div className="flex flex-wrap gap-2">
+                {!shoes ? <>
                 <Button size="sm" variant="outline" disabled={Boolean(imageBusy)} onClick={() => void processImages("lightweight")}>
                   <RefreshCwIcon data-icon="inline-start" />
                   {imageBusy === "lightweight" ? "处理中" : "重跑 lightweight"}
@@ -915,18 +921,26 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
                   <WandSparklesIcon data-icon="inline-start" />
                   {imageBusy === "rembg_birefnet" ? "处理中" : "强制 BiRefNet"}
                 </Button>
-                <Button size="sm" variant="outline" disabled={Boolean(imageBusy) || !comparison?.cutoutWhite?.imageId} onClick={() => void generateAiDisplayMain()}>
+                </> : null}
+                <Button size="sm" variant="outline" disabled={Boolean(imageBusy) || !(shoes ? comparison?.original?.imageId : comparison?.cutoutWhite?.imageId)} onClick={() => void generateAiDisplayMain()}>
                   <WandSparklesIcon data-icon="inline-start" />
                   {imageBusy === "ai-display" ? "生成中" : "生成 AI 陈列图"}
                 </Button>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ImageVariantTile label="白底正面" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-              <ImageVariantTile label="白底背面" asset={comparison?.backCutoutWhite ?? null} busy={Boolean(imageBusy)} />
+              {shoes ? (
+                <>
+                  <ImageVariantTile label="整双原图" asset={comparison?.original ?? null} busy={Boolean(imageBusy)} />
+                  {shoeSupportingImages(props.product).map(({ label, asset }) => <ImageVariantTile key={asset.imageId} label={label} asset={asset} busy={Boolean(imageBusy)} />)}
+                </>
+              ) : <>
+                <ImageVariantTile label="白底正面" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+                <ImageVariantTile label="白底背面" asset={comparison?.backCutoutWhite ?? null} busy={Boolean(imageBusy)} />
+              </>}
               <ImageVariantTile label="AI 陈列图" asset={comparison?.aiDisplayMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
             </div>
-            {latestRemovalJob ? (
+            {!shoes && latestRemovalJob ? (
               <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-muted/30 p-3 text-xs">
                 <span>处理引擎：<strong>{latestRemovalJob.provider ?? "-"}</strong></span>
                 <span>质量分：<strong>{latestRemovalJob.qualityScore?.toFixed(3) ?? "-"}</strong></span>
@@ -943,23 +957,27 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               <RequiredSelect label="分类" value={form.category} invalid={!form.category.trim()} values={PRODUCT_CATEGORY_OPTIONS} onChange={(value) => updateForm("category", value)} />
               <RequiredSelect label="子分类" value={form.subcategory} invalid={!form.subcategory.trim()} values={subcategoriesFor(form.category, form.subcategory)} onChange={(value) => updateForm("subcategory", value)} />
               <RequiredSelect label="适用人群" value={form.audience} invalid={!form.audience.trim()} values={AI_AUDIENCES} onChange={(value) => updateForm("audience", value)} />
-              <RequiredSelect label="儿童年龄段" value={form.kidsAgeRange} invalid={form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE"} values={AI_KIDS_AGE_RANGES} disabled={form.audience !== "KIDS"} onChange={(value) => updateForm("kidsAgeRange", value)} />
+              {!shoes ? <RequiredSelect label="儿童年龄段" value={form.kidsAgeRange} invalid={form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE"} values={AI_KIDS_AGE_RANGES} disabled={form.audience !== "KIDS"} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
               <RequiredSelect label="颜色" value={form.color} invalid={!form.color.trim()} values={AI_COLORS} onChange={(value) => updateForm("color", value)} />
               <FormField label="品牌"><Input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} /></FormField>
-              <RequiredInput label="尺码" value={form.sizeLabel} invalid={!form.sizeLabel.trim()} onChange={(value) => updateForm("sizeLabel", value)} />
+              {!shoes ? <RequiredInput label="尺码" value={form.sizeLabel} invalid={!form.sizeLabel.trim()} onChange={(value) => updateForm("sizeLabel", value)} /> : null}
               <RequiredSelect label="图案" value={form.pattern} invalid={!form.pattern.trim()} values={AI_PATTERNS} onChange={(value) => updateForm("pattern", value)} />
-              <RequiredSelect label="袖型" value={form.sleeveType} invalid={!form.sleeveType.trim()} values={AI_SLEEVE_TYPES} onChange={(value) => updateForm("sleeveType", value)} />
+              {!shoes ? <RequiredSelect label="袖型" value={form.sleeveType} invalid={!form.sleeveType.trim()} values={AI_SLEEVE_TYPES} onChange={(value) => updateForm("sleeveType", value)} /> : null}
               <RequiredSelect label="成色" value={form.conditionGrade} invalid={!form.conditionGrade.trim()} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} onChange={(value) => updateForm("conditionGrade", value)} />
               <RequiredInput label="价格 KSh" value={form.priceKsh} invalid={!positiveInteger(form.priceKsh)} onChange={(value) => updateForm("priceKsh", value)} />
             </div>
             <Separator />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <RequiredInput label="衣长 cm" value={form.lengthCm} invalid={!positiveNumber(form.lengthCm)} onChange={(value) => updateForm("lengthCm", value)} />
-              <RequiredInput label="胸宽 cm" value={form.chestWidthCm} invalid={!positiveNumber(form.chestWidthCm)} onChange={(value) => updateForm("chestWidthCm", value)} />
-              <FormField label="肩宽 cm"><Input inputMode="decimal" value={form.shoulderWidthCm} onChange={(event) => updateForm("shoulderWidthCm", event.target.value)} /></FormField>
-              <FormField label="腰围 cm"><Input inputMode="decimal" value={form.waistCm} onChange={(event) => updateForm("waistCm", event.target.value)} /></FormField>
-              <FormField label="臀围 cm"><Input inputMode="decimal" value={form.hipCm} onChange={(event) => updateForm("hipCm", event.target.value)} /></FormField>
-            </div>
+            {shoes ? (
+              <ShoeCalibrationFields form={form} onChange={updateForm} onPairConfirmed={(confirmed) => setForm((current) => ({ ...current, shoePairConfirmed: confirmed }))} />
+            ) : (
+              <FieldGroup>
+                {measurementFields(form).map((field) => (
+                  <FormField key={field.key} label={`${field.label} cm${field.required ? " *" : ""}`}>
+                    <Input inputMode="decimal" value={form[field.key]} aria-invalid={field.required && !positiveNumber(form[field.key])} onChange={(event) => updateForm(field.key, event.target.value)} />
+                  </FormField>
+                ))}
+              </FieldGroup>
+            )}
             <Field data-invalid={!form.defects.trim()}>
               <FieldLabel>瑕疵确认 *</FieldLabel>
               <Textarea aria-invalid={!form.defects.trim()} rows={3} value={form.defects} onChange={(event) => updateForm("defects", event.target.value)} />
@@ -970,7 +988,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => props.onOpenChange(false)}>取消</Button>
-          <Button disabled={busy || Boolean(imageBusy) || reasons.length > 0 || !comparison?.selectedMainImageId} onClick={() => void save()}>
+          <Button disabled={busy || Boolean(imageBusy) || reasons.length > 0 || (shoes ? !comparison?.original?.imageId : !comparison?.selectedMainImageId)} onClick={() => void save()}>
             <SaveIcon data-icon="inline-start" />
             保存并下一件
           </Button>
@@ -978,6 +996,20 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       </DialogContent>
     </Dialog>
   );
+}
+
+function shoeSupportingImages(product: JsonRecord | null): Array<{ label: string; asset: ProductImageVariantRecord }> {
+  const images = Array.isArray(product?.images) ? product.images.map(objectRecord) : [];
+  const labels: Record<string, string> = { BACK: "侧面原图", DETAIL: "鞋底原图", LABEL: "尺码标原图", DEFECT: "瑕疵原图" };
+  return Object.entries(labels).flatMap(([type, label]) => {
+    const image = images.find((item) => item?.type === type && (!item.variant || item.variant === "ORIGINAL"));
+    if (!image?.publicUrl) return [];
+    return [{ label, asset: {
+      imageId: stringValue(image.id), productId: stringValue(product?.id), sourceImageId: null, variant: "ORIGINAL",
+      originalUrl: stringValue(image.originalUrl), publicUrl: stringValue(image.publicUrl), widthPx: null, heightPx: null,
+      mimeType: null, selectedAsMain: false, createdAt: stringValue(image.createdAt)
+    } }];
+  });
 }
 
 function ImageVariantTile(props: {

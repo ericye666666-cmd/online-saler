@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import type { AIExtractionNormalizedOutput, AIExtractionRequest } from "@online-saler/shared-types";
+import { isShoeCategory, type AIExtractionNormalizedOutput, type AIExtractionRequest } from "@online-saler/shared-types";
+import { normalizeShoeExtraction } from "./openai-vision-normalizer";
 import type { AIProvider, AIProviderResult } from "./ai-provider";
 
 @Injectable()
@@ -40,7 +41,14 @@ export class MockAIProvider implements AIProvider {
       provider: "mock",
       model: "deterministic-v1",
       rawOutput: normalizedOutput,
-      normalizedOutput,
+      normalizedOutput: isShoeCategory(request.categoryHint) ? normalizeShoeExtraction({
+        ...normalizedOutput,
+        category: { value: "SHOES", confidence: 1, evidenceImageIds },
+        subcategory: { value: "OTHER", confidence: 1, evidenceImageIds },
+        sizeLabel: { value: null, confidence: 0, evidenceImageIds: [] },
+        title: { value: "Second-hand shoes", confidence: 0.5, evidenceImageIds },
+        tags: { value: ["CASUAL"], confidence: 0.5, evidenceImageIds }
+      }) : normalizedOutput,
       latencyMs: Date.now() - startedAt
     };
   }

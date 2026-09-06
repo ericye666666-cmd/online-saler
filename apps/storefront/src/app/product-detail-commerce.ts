@@ -31,6 +31,7 @@ const MEASUREMENT_LABELS: Record<string, string> = {
   THIGH_WIDTH: "Thigh width",
   HEM_WIDTH: "Hem width",
   RISE: "Rise",
+  INSOLE_LENGTH: "Insole length",
 };
 
 const MEASUREMENT_PRIORITIES: Record<string, string[]> = {
@@ -89,22 +90,26 @@ export function sellingPointsWithoutPrice(values: readonly string[]): string[] {
 }
 
 export function buildProductGallery(product: Product): ProductGalleryItem[] {
+  const isShoe = product.category === "Shoes";
   const detailAssets = product.detail?.assets ?? [];
   const sourceImages = product.detail?.sourceImages ?? [];
   const candidates: ProductGalleryItem[] = [
-    { id: "optimized-main", image: product.image, label: "Front main" },
+    { id: "optimized-main", image: product.image, label: isShoe ? "Pair overview" : "Front main" },
     ...detailAssets
       .filter((asset) => asset.type === "BACK_MAIN")
-      .map((asset) => ({ id: asset.id, image: asset.image, label: "Back main" })),
+      .map((asset) => ({ id: asset.id, image: asset.image, label: isShoe ? "Side view" : "Back main" })),
+    ...(isShoe ? sourceImages
+      .filter((image) => image.type === "FRONT" || image.type === "BACK")
+      .map((image) => ({ id: image.id, image: image.image, label: image.type === "FRONT" ? "Pair photo" : "Side photo" })) : []),
     ...sourceImages
       .filter((image) => image.type === "DETAIL")
-      .map((image, index) => ({ id: image.id, image: image.image, label: `Detail ${index + 1}` })),
+      .map((image, index) => ({ id: image.id, image: image.image, label: isShoe ? `Soles / detail ${index + 1}` : `Detail ${index + 1}` })),
     ...sourceImages
       .filter((image) => image.type === "DEFECT")
       .map((image, index) => ({ id: image.id, image: image.image, label: `Defect ${index + 1}` })),
     ...sourceImages
       .filter((image) => image.type === "LABEL")
-      .map((image) => ({ id: image.id, image: image.image, label: "Label" })),
+      .map((image) => ({ id: image.id, image: image.image, label: isShoe ? "Size label" : "Label" })),
   ];
 
   const seen = new Set<string>();
@@ -121,6 +126,7 @@ export function visibleMeasurements(
   category: string,
 ): VisibleMeasurement[] {
   const visible = (measurements ?? []).flatMap((measurement) => {
+    if (category === "Shoes" && measurement.type !== "INSOLE_LENGTH") return [];
     const valueCm = Number(measurement.valueCm);
     if (!Number.isFinite(valueCm) || valueCm <= 0) return [];
     return [{

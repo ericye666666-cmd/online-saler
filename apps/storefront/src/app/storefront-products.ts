@@ -49,6 +49,11 @@ export type PublicProduct = {
   material: string | null;
   tags: string[];
   size: string | null;
+  tagSize?: string | null;
+  shoeSizeSystem?: string | null;
+  shoeType?: string | null;
+  shoeConditionNotes?: string | null;
+  saleUnit?: "PAIR" | "ITEM";
   conditionGrade: string | null;
   fitType: string | null;
   stretchLevel: string | null;

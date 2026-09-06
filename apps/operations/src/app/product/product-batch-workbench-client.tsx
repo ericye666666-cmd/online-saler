@@ -20,6 +20,8 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -71,6 +73,7 @@ type ProductBatch = {
   batchCode: string;
   status: string;
   targetCount: number;
+  intakeCategory?: string | null;
   completedCount: number;
   createdByEmployeeId?: string | null;
   createdAt: string;
@@ -268,6 +271,8 @@ export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean 
   const router = useRouter();
   const { hasPermission } = useOperationsSession();
   const [note, setNote] = useState("");
+  const [intakeCategory, setIntakeCategory] = useState<"" | "SHOES">("");
+  const unit = intakeCategory === "SHOES" ? "双" : "件";
   const [targetCount, setTargetCount] = useState(
     pilotEnabled ? STAGING_PILOT_PRODUCT_BATCH_SIZE : PRODUCTION_PRODUCT_BATCH_SIZE
   );
@@ -280,7 +285,7 @@ export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean 
     try {
       const batch = await request<ProductBatch>("/operations/product-batches", {
         method: "POST",
-        body: JSON.stringify({ ...ids, targetCount, note: note.trim() || undefined })
+        body: JSON.stringify({ ...ids, targetCount, note: note.trim() || undefined, intakeCategory: intakeCategory || null })
       });
       router.push(`/product/batches/${batch.id}`);
     } catch (caught) {
@@ -295,15 +300,25 @@ export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean 
       <PageHeader
         eyebrow="商品工厂"
         title="新建批次"
-        description={pilotEnabled ? "先用 3 件测试完整流程；正式生产仍使用 10 件批次。" : "每批固定 10 件。创建后直接进入连续上传。"}
+        description={pilotEnabled ? `可用 3 ${unit}测试完整流程；正式生产使用 10 ${unit}批次。` : `每批固定 10 ${unit}。先集中拍照，再坐下批量上传。`}
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       <Card>
         <CardHeader>
-          <CardTitle>{targetCount} 件商品{targetCount === STAGING_PILOT_PRODUCT_BATCH_SIZE ? "测试" : ""}批次</CardTitle>
+          <CardTitle>{targetCount} {unit}{intakeCategory === "SHOES" ? "鞋类" : "商品"}{targetCount === STAGING_PILOT_PRODUCT_BATCH_SIZE ? "测试" : ""}批次</CardTitle>
           <CardDescription>系统会生成 {targetCount} 个有顺序的商品位置，正式 Barcode 在全部校准完成后生成。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="batch-intake-category">本批录入类型</FieldLabel>
+              <NativeSelect id="batch-intake-category" value={intakeCategory} disabled={busy} onChange={(event) => setIntakeCategory(event.target.value === "SHOES" ? "SHOES" : "")}>
+                <NativeSelectOption value="">服装 / 其他商品</NativeSelectOption>
+                <NativeSelectOption value="SHOES">鞋类 · 一双一个商品</NativeSelectOption>
+              </NativeSelect>
+              <FieldDescription>{intakeCategory === "SHOES" ? "保持左右鞋配对，按 1–10 编号。每双拍整双、侧面、鞋底和尺码标签，瑕疵另补图。" : "按 1–10 编号摆放，服装使用测量板拍照。"}</FieldDescription>
+            </Field>
+          </FieldGroup>
           {pilotEnabled ? (
             <div className="space-y-2">
               <div className="text-sm font-medium">批次数量</div>
@@ -329,7 +344,7 @@ export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean 
               className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={note}
               maxLength={200}
-              placeholder="例如：8月1日上午女装选货"
+              placeholder={intakeCategory === "SHOES" ? "例如：上午成人鞋选货" : "例如：上午女装选货"}
               onChange={(event) => setNote(event.target.value)}
             />
           </label>
@@ -428,7 +443,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
       <PageHeader
         eyebrow="商品工厂 / 批次详情"
         title={batch.batchCode}
-        description={`创建于 ${formatDateTime(batch.createdAt)} · 操作员工 ${batch.createdByEmployeeId || "未记录"}`}
+        description={`${batch.intakeCategory === "SHOES" ? "鞋类 · 一双一个商品 · " : ""}创建于 ${formatDateTime(batch.createdAt)} · 操作员工 ${batch.createdByEmployeeId || "未记录"}`}
         action={<Button variant="outline" size="icon" title="刷新" disabled={busy} onClick={() => void load()}><RefreshCwIcon /></Button>}
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}

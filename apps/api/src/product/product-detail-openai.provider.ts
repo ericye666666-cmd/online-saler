@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException } from "@nestjs/common";
 import type { ProductImageType } from "@online-saler/database";
+import { isShoeProduct } from "@online-saler/shared-types";
 import { ProductImageStorageService } from "./product-image-storage.service";
 import {
   normalizeProductDetailCopy,
@@ -47,6 +48,7 @@ export class ProductDetailOpenAIProvider {
     if (images.length === 0) throw new BadRequestException("At least one original product image is required");
 
     const startedAt = Date.now();
+    const isShoe = isShoeProduct(facts.category, facts.subcategory);
     const imageInputs = await Promise.all(images.map((image) => this.imageInput(image)));
     const requestRecord = {
       productId: facts.productId,
@@ -65,16 +67,23 @@ export class ProductDetailOpenAIProvider {
           {
             role: "system",
             content: [
-              "You write concise second-hand clothing catalog copy for a Kenyan mobile storefront.",
+              isShoe
+                ? "You write concise factual second-hand shoe catalog copy for a Kenyan mobile storefront. One product is one matching pair of shoes."
+                : "You write concise second-hand clothing catalog copy for a Kenyan mobile storefront.",
               "Use only the supplied employee-confirmed facts and original product photos.",
               "Never change or invent measurements, material composition, stretch, condition or defects.",
               "Never infer a missing factual value. Add a concise warning only when a missing fact materially affects purchase review.",
-              "Summarize only flat garment measurements. Never recommend a wearer height, weight, age, body range or who the item should fit.",
+              isShoe
+                ? "For fitSummary report only the original shoe size label and its confirmed size system; never convert between EU, UK, US or CM, infer a size from photos, or use a clothing size such as S/M/L. If supplied, INSOLE_LENGTH is an employee-measured removable insole length in cm, never outsole length or a guaranteed foot fit. If the size is unconfirmed, say so."
+                : "Summarize only flat garment measurements.",
+              "Never recommend a wearer height, weight, age, body range or who the item should fit.",
               "Keep the short description to one or two sentences and selling points to three concise facts.",
               "Do not repeat the price, brand, or a full attribute list in the description or selling points.",
               "Do not exaggerate condition or invent material composition, stretch, or a size range.",
               "An empty confirmed defect list is not proof that there are no defects; never claim no defects unless an employee-confirmed fact says so.",
-              "Never describe an adult garment as childrenswear unless the employee-confirmed category explicitly says KIDS.",
+              isShoe
+                ? "Do not infer the wearer's age, adult/child use or US men's/women's/kids' sizing from a numeric size alone. Preserve the confirmed shoe type, pair status, outsole wear, scuffs, cracks, sole separation and all supplied shoe condition notes and defects. Never claim an unconfirmed pair is matching or that unseen odor, lining or soles have been checked."
+                : "Never describe an adult garment as childrenswear unless the employee-confirmed category explicitly says KIDS.",
               "Do not claim waterproofing, authenticity or performance unless explicitly supplied.",
               "Return only the requested structured JSON."
             ].join(" ")

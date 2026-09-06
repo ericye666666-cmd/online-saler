@@ -337,6 +337,10 @@ model Product {
   gender               ProductGender?
   kidsAgeRange         String?
   tagSize              String?
+  shoeSizeSystem       String?
+  shoeType             String?
+  shoePairConfirmed    Boolean              @default(false)
+  shoeConditionNotes   String?
   finalSizeLabel       String?
   ukSizeLabel          String?
   conditionGrade       ConditionGrade?
@@ -381,6 +385,7 @@ model ProductBatch {
   batchCode           String             @unique
   status              ProductBatchStatus @default(OPEN)
   targetCount         Int                @default(10)
+  intakeCategory      String?
   createdByEmployeeId String?
   createdBy           Employee?          @relation("ProductBatchCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   products            Product[]

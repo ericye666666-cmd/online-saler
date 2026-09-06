@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { ActorType, Prisma, ProductStatus, prisma } from "@online-saler/database";
 import { stateConflict } from "./product.errors";
-import { productPublicationBlocker } from "./product-publication-readiness";
+import { productPublicationBlocker, shoeIntakeBlocker } from "./product-publication-readiness";
 import { loadConfirmedDisplayImage } from "./product-publication-evidence";
 import type { ProductRepository } from "./product.repository";
 import type {
@@ -72,6 +72,8 @@ export class PrismaProductRepository implements ProductRepository {
         if (!product.barcode || !product.labelPrintedAt || !mainImage) {
           throw stateConflict("Approval and publication require a printed barcode and a confirmed AI display image.");
         }
+        const shoeBlocker = shoeIntakeBlocker(product);
+        if (shoeBlocker) throw stateConflict(shoeBlocker);
         if (input.data.status === ProductStatus.PUBLISHED) {
           const blocker = productPublicationBlocker(product, mainImage);
           if (blocker) throw stateConflict(blocker);

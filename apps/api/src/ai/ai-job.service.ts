@@ -4,10 +4,14 @@ import {
   AI_EXTRACTED_FIELDS,
   AI_MEASUREMENT_FIELDS,
   requiresHumanConfirmation,
+  isShoeCategory,
+  isShoeProduct,
+  SHOE_REQUIRED_IMAGE_TYPES,
   type AIExtractionRequest,
   type AIExtractionResult,
   type AIExtractedField
 } from "@online-saler/shared-types";
+import { normalizeShoeExtraction } from "./openai-vision-normalizer";
 import { AI_PROVIDER, type AIProvider } from "./ai-provider";
 
 @Injectable()
@@ -22,12 +26,16 @@ export class AIJobService {
     const product = await prisma.product.findUnique({ where: { id: request.productId } });
     if (!product) throw new NotFoundException("Product not found");
 
+    const providerRequest = { ...request, categoryHint: isShoeProduct(product.category, product.subcategory) ? "SHOES" : product.category };
+    if (isShoeCategory(providerRequest.categoryHint)) {
+      providerRequest.imageIds = await this.requireShoeOriginals(providerRequest);
+    }
     const extraction = await prisma.aIExtraction.create({
       data: {
         productId: request.productId,
         promptVersion: request.promptVersion,
-        requestJson: request as unknown as Prisma.InputJsonValue,
-        inputImageIds: request.imageIds,
+        requestJson: providerRequest as unknown as Prisma.InputJsonValue,
+        inputImageIds: providerRequest.imageIds,
         status: AIExtractionStatus.RUNNING,
         startedAt: new Date()
       }
@@ -39,7 +47,11 @@ export class AIJobService {
     });
 
     try {
-      const output = await this.provider.extract(request);
+      const output = await this.provider.extract(providerRequest);
+      if (isShoeCategory(providerRequest.categoryHint) || isShoeProduct(output.normalizedOutput.category.value, output.normalizedOutput.subcategory.value)) {
+        if (!isShoeCategory(providerRequest.categoryHint)) await this.requireShoeOriginals(providerRequest);
+        output.normalizedOutput = normalizeShoeExtraction(output.normalizedOutput);
+      }
       const completedAt = new Date();
       await prisma.$transaction([
         prisma.aIExtraction.update({
@@ -56,8 +68,9 @@ export class AIJobService {
             completedAt
           }
         }),
-        ...AI_EXTRACTED_FIELDS.map((field) => {
+        ...AI_EXTRACTED_FIELDS.flatMap((field) => {
           const value = output.normalizedOutput[field];
+          if (!value) return [];
           return prisma.aIFieldDecision.create({
             data: {
               extractionId: extraction.id,
@@ -121,6 +134,32 @@ export class AIJobService {
       ]);
       throw new BadRequestException(message);
     }
+  }
+
+  private async requireShoeOriginals(request: AIExtractionRequest) {
+    const originals = await prisma.productImage.findMany({
+      where: { productId: request.productId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, type: true }
+    });
+    const requestedIds = new Set(request.imageIds);
+    if (request.imageIds.some((id) => !originals.some((image) => image.id === id))) {
+      throw new BadRequestException("Shoe recognition accepts only this product's original images");
+    }
+    const missing = SHOE_REQUIRED_IMAGE_TYPES.filter((type) => {
+      const latest = originals.find((image) => image.type === type);
+      return !latest || !requestedIds.has(latest.id);
+    });
+    if (missing.length) {
+      throw new BadRequestException(`Shoe recognition requires the latest original pair, side, soles and size-label photos; missing: ${missing.join(", ")}`);
+    }
+    // Retakes are retained for the audit trail but must not compete with the
+    // current label or inflate every recognition request. Include the latest
+    // defect photo when present, even when a caller omits that optional slot.
+    return [...SHOE_REQUIRED_IMAGE_TYPES, "DEFECT" as const].flatMap((type) => {
+      const latest = originals.find((image) => image.type === type);
+      return latest ? [latest.id] : [];
+    });
   }
 
   async get(id: string): Promise<AIExtractionResult> {

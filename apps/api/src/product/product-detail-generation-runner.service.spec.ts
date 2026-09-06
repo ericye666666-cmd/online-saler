@@ -61,7 +61,7 @@ test("generates an AI display image first and selects it without changing the de
     imageJobs as never
   );
 
-  const selected = await runner.ensureAiDisplayMain("product-1");
+  const selected = await runner.ensureAiDisplayMain("product-1", { category: "TOPS", subcategory: "SHIRT" });
 
   assert.equal(selected.imageId, "ai-1");
   assert.deepEqual(starts, [{
@@ -97,7 +97,7 @@ test("reuses an existing AI display image and makes it the default main image", 
     {} as never
   );
 
-  const selected = await runner.ensureAiDisplayMain("product-1");
+  const selected = await runner.ensureAiDisplayMain("product-1", { category: "TOPS", subcategory: "SHIRT" });
 
   assert.equal(selected.imageId, "ai-existing");
   assert.equal(startCalled, false);
@@ -112,5 +112,33 @@ test("detail regeneration can retain an unselected candidate without replacing a
       return { aiDisplayMain: candidate, selectedMainImageId: "ai-live" };
     }
   } as never, {} as never);
-  assert.equal((await runner.ensureAiDisplayMain("live-product")).imageId, "ai-candidate");
+  assert.equal((await runner.ensureAiDisplayMain("live-product", { category: "TOPS", subcategory: "SHIRT" })).imageId, "ai-candidate");
+});
+
+test("shoe detail generation uses the original pair image and needs no garment cutout", async () => {
+  const originalFindUnique = prisma.product.findUnique;
+  prisma.product.findUnique = (async () => ({ category: "KIDS", subcategory: "KIDS_SHOES" })) as never;
+  const starts: unknown[] = [];
+  const runner = new ProductDetailGenerationRunnerService({} as never, {} as never, {
+    getComparison: async () => ({ original: { imageId: "pair-original" }, cutoutWhite: null, aiDisplayMain: null }),
+    start: async (input: unknown) => { starts.push(input); return { id: "shoe-ai", status: "PENDING" }; },
+    selectMainImage: async () => ({ aiDisplayMain: { imageId: "pair-ai", selectedAsMain: true } })
+  } as never, {
+    run: async () => ({ status: "SUCCEEDED", outputImageId: "pair-ai" })
+  } as never);
+  try {
+    assert.equal((await runner.ensureAiDisplayMain("shoe-1")).imageId, "pair-ai");
+    assert.deepEqual(starts, [{ productId: "shoe-1", sourceImageId: "pair-original", operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" }]);
+  } finally {
+    prisma.product.findUnique = originalFindUnique;
+  }
+});
+
+test("shoe detail generation will not substitute a one-object cutout for a missing original pair", async () => {
+  const runner = new ProductDetailGenerationRunnerService({} as never, {} as never, {
+    getComparison: async () => ({ original: null, cutoutWhite: { imageId: "one-shoe" }, aiDisplayMain: null }),
+    start: async () => { throw new Error("must not generate from a garment cutout"); }
+  } as never, {} as never);
+  await assert.rejects(runner.ensureAiDisplayMain("shoe-1", { category: "SHOES", subcategory: "LADIES_SHOES" }),
+    /original image showing both shoes is required/);
 });

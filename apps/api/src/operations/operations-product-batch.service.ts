@@ -202,9 +202,13 @@ export class OperationsProductBatchService {
     return batches.map((batch) => this.serializeBatch(batch));
   }
 
-  async createBatch(input: { adminUserId?: string; employeeId?: string; targetCount?: number; note?: string }) {
+  async createBatch(input: { adminUserId?: string; employeeId?: string; targetCount?: number; note?: string; intakeCategory?: "SHOES" | null }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
     await this.access.requirePermission(input.adminUserId, PRODUCT_CREATE_ACTION);
+    if (input.intakeCategory != null && input.intakeCategory !== "SHOES") {
+      throw new BadRequestException("Choose the clothing workflow or SHOES intake category.");
+    }
+    const intakeCategory = input.intakeCategory ?? null;
     const targetCount = input.targetCount ?? PRODUCTION_PRODUCT_BATCH_SIZE;
     const pilotEnabled = stagingPilotBatchEnabled();
     if (!isAllowedProductBatchSize(targetCount, pilotEnabled)) {
@@ -221,6 +225,7 @@ export class OperationsProductBatchService {
         data: {
           batchCode: code,
           targetCount,
+          intakeCategory,
           createdByEmployeeId: employeeId,
           note: input.note?.trim() || null
         }
@@ -231,6 +236,7 @@ export class OperationsProductBatchService {
           productCode: `${code}-${String(index + 1).padStart(2, "0")}`,
           batchId: created.id,
           batchItemNumber: index + 1,
+          category: intakeCategory,
           createdByEmployeeId: employeeId
         }))
       });
@@ -714,6 +720,7 @@ export class OperationsProductBatchService {
     batchCode: string;
     status: ProductBatchStatus;
     targetCount: number;
+    intakeCategory?: string | null;
     createdByEmployeeId: string | null;
     note: string | null;
     createdAt: Date;
@@ -730,6 +737,7 @@ export class OperationsProductBatchService {
       batchCode: batch.batchCode,
       status: batch.status,
       targetCount: batch.targetCount,
+      intakeCategory: batch.intakeCategory ?? null,
       createdByEmployeeId: batch.createdByEmployeeId,
       note: batch.note,
       createdAt: batch.createdAt.toISOString(),

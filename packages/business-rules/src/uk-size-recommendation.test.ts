@@ -57,3 +57,9 @@ test("returns null without enough evidence or for non-clothing categories", () =
   assert.equal(recommendUkSize({ category: "SHIRTS", audience: "WOMEN", measurements: {} }), null);
   assert.equal(recommendUkSize({ category: "BAG", audience: "WOMEN", platformSize: "M", measurements: {} }), null);
 });
+
+test("children's shoes do not receive an age-based UK clothing label", () => {
+  for (const category of ["SHOES", "KIDS"]) {
+    assert.equal(recommendUkSize({ category, subcategory: "KIDS_SHOES", audience: "KIDS", kidsAgeRange: "KIDS_6_8Y", platformSize: "L", measurements: {} }), null);
+  }
+});

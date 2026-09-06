@@ -60,18 +60,12 @@ export const apparelConditions = [
   "Fair",
 ] as const;
 
-export const shoeConditionGrades = [
-  "70%",
-  "80%",
-  "85%",
-  "90%",
-  "95%",
-  "99%",
-] as const;
+export const shoeConditionGrades = ["Like new", "Very good", "Good", "Fair"] as const;
 
 export type ProductCondition =
   | (typeof apparelConditions)[number]
-  | (typeof shoeConditionGrades)[number];
+  | (typeof shoeConditionGrades)[number]
+  | "Not specified";
 
 export type ProductDetailAsset = {
   id: string;
@@ -105,6 +99,10 @@ export type Product = {
   category: string;
   brand: string;
   shoeType?: ShoeType;
+  shoeSizeSystem?: string | null;
+  tagSize?: string | null;
+  shoeConditionNotes?: string | null;
+  saleUnit?: "PAIR" | "ITEM";
   bagType?: BagType;
   textileType?: TextileType;
   price: number;
@@ -219,7 +217,7 @@ export const seedProducts: Product[] = [
     color: "White",
     store: "Kikuyu",
     status: "Available",
-    condition: "90%",
+    condition: "Very good",
     image: "/products/920260718006.webp",
     ogImage: "/og/920260718006.jpg",
     description:
@@ -274,10 +272,7 @@ export const categories = [
   "Home Textiles",
 ] as const;
 
-export const conditions: ProductCondition[] = [
-  ...apparelConditions,
-  ...shoeConditionGrades,
-];
+export const conditions: ProductCondition[] = [...apparelConditions];
 
 export const featuredShoeBrands = [
   "Nike",

@@ -1,3 +1,5 @@
+import { SHOE_REQUIRED_IMAGE_TYPES, isShoeProduct } from "@online-saler/shared-types";
+
 export const PRODUCT_FACTORY_IMAGE_TYPES = ["FRONT", "BACK", "LABEL", "DEFECT", "DETAIL"] as const;
 export type ProductFactoryImageType = (typeof PRODUCT_FACTORY_IMAGE_TYPES)[number];
 export const PRODUCT_IMAGE_ROTATIONS = [0, 90, 180, 270] as const;
@@ -11,6 +13,29 @@ export const PRODUCT_FACTORY_IMAGE_LABELS: Record<ProductFactoryImageType, strin
   DEFECT: "瑕疵图",
   DETAIL: "细节图"
 };
+
+export const SHOE_IMAGE_LABELS: Record<ProductFactoryImageType, string> = {
+  FRONT: "整双主图", BACK: "侧面图", DETAIL: "鞋底图", LABEL: "尺码标签图", DEFECT: "瑕疵图"
+};
+
+type CaptureProduct = { category?: string | null; subcategory?: string | null; images?: Array<{ type?: unknown }> };
+
+export function requiredCaptureImageTypes(category?: string | null, subcategory?: string | null): readonly ProductFactoryImageType[] {
+  return isShoeProduct(category, subcategory) ? SHOE_REQUIRED_IMAGE_TYPES : ["FRONT"];
+}
+
+export function missingCaptureImageTypes(product: CaptureProduct): ProductFactoryImageType[] {
+  return requiredCaptureImageTypes(product.category, product.subcategory).filter((type) => !product.images?.some((image) => image.type === type));
+}
+
+export function firstProductMissingCapture(products: CaptureProduct[]): number {
+  const index = products.findIndex((product) => missingCaptureImageTypes(product).length > 0);
+  return index === -1 ? Math.max(0, products.length - 1) : index;
+}
+
+export function completedCaptureCount(products: CaptureProduct[]): number {
+  return products.filter((product) => missingCaptureImageTypes(product).length === 0).length;
+}
 
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;

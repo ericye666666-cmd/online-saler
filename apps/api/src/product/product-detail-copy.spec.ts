@@ -95,4 +95,37 @@ describe("product detail copy", () => {
     assert.equal("fitRecommendation" in facts, false);
     assert.equal(facts.sourceDataVersion, 4);
   });
+
+  it("keeps original shoe sizes and human insole measurements while discarding stale garment fit facts", () => {
+    const product = {
+      id: "shoe-1", title: "Used kids shoes", category: "KIDS", subcategory: "KIDS_SHOES",
+      gender: "KIDS", color: "BLACK", pattern: "SOLID", sleeveType: "LONG", brand: null,
+      tagSize: "32", finalSizeLabel: "L", shoeSizeSystem: "EU", shoeType: "Kids' shoes",
+      shoePairConfirmed: true, shoeConditionNotes: "Heel wear and scuff on left toe",
+      conditionGrade: "GOOD", fitType: "REGULAR", stretchLevel: "NONE", fabricWeight: "REGULAR",
+      material: null, tags: [], priceKsh: 500,
+      measurements: [
+        { measurementType: "CHEST_WIDTH", finalValueCm: 52, finalSource: "HUMAN_ENTERED" },
+        { measurementType: "INSOLE_LENGTH", finalValueCm: 20, finalSource: "HUMAN_ENTERED" }
+      ],
+      defects: [{ defectType: "SCUFF", severity: "MINOR", description: "Left toe scuff", customerSafeDescription: "Scuff on the left toe" }]
+    };
+    const facts = buildProductDetailFacts(product, { expectedFit: "L", heightMinCm: 150 }, 5);
+    assert.deepEqual(facts.measurementsCm, { INSOLE_LENGTH: 20 });
+    assert.equal(facts.platformSize, "EU 32");
+    assert.equal(facts.tagSize, "32");
+    assert.equal(facts.shoePairConfirmed, true);
+    assert.equal(facts.shoeConditionNotes, product.shoeConditionNotes);
+    assert.equal(facts.sleeveType, null);
+    assert.equal(facts.fitType, null);
+    assert.equal(facts.stretchLevel, null);
+    assert.equal(facts.fabricWeight, null);
+    assert.equal(facts.defects[0]?.description, "Left toe scuff");
+    assert.equal("fitRecommendation" in facts, false);
+
+    const unknown = buildProductDetailFacts({ ...product, tagSize: "unreadable", shoeSizeSystem: null,
+      measurements: [{ measurementType: "INSOLE_LENGTH", finalValueCm: 20, finalSource: "AI_ACCEPTED" }] }, {}, 6);
+    assert.equal(unknown.platformSize, null);
+    assert.deepEqual(unknown.measurementsCm, {});
+  });
 });

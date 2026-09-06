@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { prisma } from "@online-saler/database";
 import {
+  OpenAIVisionProvider,
   HOODED_GARMENT_MEASUREMENT_RULES,
   MEASUREMENT_GEOMETRY_RULES,
   PRODUCT_AUDIENCE_TITLE_RULES,
@@ -85,4 +87,46 @@ test("reports an incomplete response reason when no output text exists", () => {
     }),
     /incomplete: max_output_tokens/
   );
+});
+
+
+test("shoe recognition reads original pair and size label without invoking garment board detection", async () => {
+  const original = { fetch: globalThis.fetch, apiKey: process.env.OPENAI_API_KEY,
+    images: prisma.productImage.findMany, setting: prisma.systemSetting.findUnique };
+  let boardCalls = 0;
+  let payload: Record<string, any> = {};
+  const downloaded: string[] = [];
+  try {
+    process.env.OPENAI_API_KEY = "test-key";
+    prisma.systemSetting.findUnique = (async () => null) as never;
+    prisma.productImage.findMany = (async () => [
+      { id: "pair", type: "FRONT", originalUrl: "gs://test/pair.jpg" },
+      { id: "label", type: "LABEL", originalUrl: "gs://test/label.jpg" }
+    ]) as never;
+    globalThis.fetch = (async (_url, init) => {
+      payload = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ output_text: JSON.stringify({
+        category: { value: "KIDS", confidence: 1 }, sizeLabel: { value: "EU 28", confidence: 0.8 },
+        shoeSizeSystem: { value: "EU", confidence: 0.8 }, chestWidthCm: { value: 30, confidence: 0.9 }
+      }) }));
+    }) as typeof fetch;
+    const provider = new OpenAIVisionProvider({ bucket: "test", download: async (path: string) => {
+      downloaded.push(path); return { body: Buffer.from(path), contentType: "image/jpeg" };
+    } } as never, { detect: async () => { boardCalls += 1; throw new Error("Board detection must not run for shoes"); } } as never);
+    const result = await provider.extract({ productId: "shoe", imageIds: ["pair", "label"], promptVersion: "test", categoryHint: "SHOES" });
+    assert.equal(boardCalls, 0);
+    assert.deepEqual(downloaded, ["pair.jpg", "label.jpg"]);
+    assert.match(payload.input[0].content, /second-hand shoes/);
+    const input = payload.input[1].content;
+    assert.match(input[0].text, /Never convert EU\/UK\/US sizes/);
+    assert.equal(input[2].detail, "high");
+    assert.equal(result.normalizedOutput.category.value, "SHOES");
+    assert.equal(result.normalizedOutput.sizeLabel.value, "EU 28");
+    assert.equal(result.normalizedOutput.chestWidthCm.value, null);
+  } finally {
+    globalThis.fetch = original.fetch;
+    if (original.apiKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = original.apiKey;
+    prisma.productImage.findMany = original.images;
+    prisma.systemSetting.findUnique = original.setting;
+  }
 });

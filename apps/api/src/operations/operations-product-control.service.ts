@@ -501,8 +501,7 @@ export class OperationsProductControlService {
   private productInclude() {
     return {
       images: {
-        orderBy: { createdAt: "desc" },
-        take: 1
+        orderBy: { createdAt: "desc" }
       },
       measurements: {
         orderBy: { measurementType: "asc" }

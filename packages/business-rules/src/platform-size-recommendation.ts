@@ -82,6 +82,9 @@ export function recommendPlatformSize(
   const subcategory = code(input.subcategory);
   const audience = code(input.audience);
 
+  // Check the item category before the audience: a child's shoes are not size L clothing.
+  if (["SHOE", "SHOES", "BAG", "OTHERS", "TEXTILE", "OTHER"].includes(category) || subcategory.endsWith("_SHOES")) return null;
+
   if (audience === "KIDS" || category === "KIDS") {
     const ageRange = code(input.kidsAgeRange);
     const size = KIDS_SIZE_BY_AGE_RANGE[ageRange];

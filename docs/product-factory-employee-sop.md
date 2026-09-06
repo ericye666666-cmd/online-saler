@@ -1,7 +1,8 @@
 # Product Factory employee SOP
 
 Updated 2026-09-06. Follow the three stages shown in the batch workbench.
-For the first training run, use **one batch of ten unique garments**. Keep them
+For shoes, use the **鞋类 · 一双一个商品** batch option and the [shoe intake SOP](shoe-intake-employee-sop.md).
+For the first clothing training run, use **one batch of ten unique garments**. Keep them
 in positions 1–10 until the matching labels are attached. The first 1,000
 online garments must stay separate from store stock.
 

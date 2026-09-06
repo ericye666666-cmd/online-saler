@@ -1,3 +1,5 @@
+import type { ShoeSizeSystem, ShoeType } from "./shoe-intake";
+
 export const AI_JOB_STATUSES = [
   "PENDING",
   "RUNNING",
@@ -5,7 +7,7 @@ export const AI_JOB_STATUSES = [
   "FAILED"
 ] as const;
 
-export const PRODUCT_AI_PROMPT_VERSION = "product-fit-tags-v6";
+export const PRODUCT_AI_PROMPT_VERSION = "product-fit-tags-shoes-v7";
 
 export type AIJobStatus = (typeof AI_JOB_STATUSES)[number];
 
@@ -332,6 +334,8 @@ export const AI_EXTRACTED_FIELDS = [
   "brandLabel",
   "sizeLabel",
   "ukSizeLabel",
+  "shoeSizeSystem",
+  "shoeType",
   "title",
   "lengthCm",
   "chestWidthCm",
@@ -401,6 +405,8 @@ export interface AIExtractionNormalizedOutput {
   brandLabel: AIFieldValue<string>;
   sizeLabel: AIFieldValue<string>;
   ukSizeLabel: AIFieldValue<string>;
+  shoeSizeSystem?: AIFieldValue<ShoeSizeSystem>;
+  shoeType?: AIFieldValue<ShoeType>;
   title: AIFieldValue<string>;
   lengthCm: AIFieldValue<number>;
   chestWidthCm: AIFieldValue<number>;
@@ -418,6 +424,8 @@ export interface AIExtractionRequest {
   productId: string;
   imageIds: string[];
   promptVersion: string;
+  /** Server-owned intake category hint. Shoe recognition never uses garment sizing. */
+  categoryHint?: string | null;
 }
 
 export interface AIExtractionResult {
@@ -459,6 +467,8 @@ export const requiresHumanConfirmation = (field: AIExtractedField, confidence: n
     "tags",
     "sizeLabel",
     "ukSizeLabel",
+    "shoeSizeSystem",
+    "shoeType",
     "lengthCm",
     "chestWidthCm",
     "shoulderWidthCm",

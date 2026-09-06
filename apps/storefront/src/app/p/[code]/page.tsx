@@ -93,12 +93,13 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
     .sort((left, right) => Number(right.category === product.category) - Number(left.category === product.category))
     .slice(0, 4);
   const detail = product.detail;
+  const isShoe = product.category === "Shoes";
   const gallery = buildProductGallery(product);
   const measurements = visibleMeasurements(detail?.measurements ?? [], product.category);
-  const measurementAsset = detail?.assets.find((asset) => asset.type === "MEASUREMENT_GUIDE") ?? null;
-  const fit = optionalDisplayValue(detail?.fitType);
-  const stretch = optionalDisplayValue(detail?.stretchLevel);
-  const fabricWeight = optionalDisplayValue(detail?.fabricWeight);
+  const measurementAsset = isShoe ? null : detail?.assets.find((asset) => asset.type === "MEASUREMENT_GUIDE") ?? null;
+  const fit = isShoe ? null : optionalDisplayValue(detail?.fitType);
+  const stretch = isShoe ? null : optionalDisplayValue(detail?.stretchLevel);
+  const fabricWeight = isShoe ? null : optionalDisplayValue(detail?.fabricWeight);
   const color = optionalDisplayValue(product.color);
   const conditionSummary = optionalDisplayValue(detail?.conditionSummary);
   const description = optionalDisplayValue(product.description);
@@ -121,7 +122,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           <span>{product.title}</span>
         </nav>
 
-        <aside className="productAvailabilityNotice">{t("product.availabilityNotice")}</aside>
+        <aside className="productAvailabilityNotice">{t(isShoe ? "product.pairAvailabilityNotice" : "product.availabilityNotice")}</aside>
 
         <section className="productDetailGrid">
           <ProductGallery items={gallery} productTitle={product.title} />
@@ -132,11 +133,13 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             <ProductSaveButton productTitle={product.title} />
             <div className="commercePriceRow">
               <strong>{formatPrice(product.price)}</strong>
-              <span>{t("product.onlyOne")}</span>
+              <span>{t(isShoe ? "product.onlyOnePair" : "product.onlyOne")}</span>
             </div>
 
             <dl className="quickFacts" aria-label="Item summary">
-              <div><dt>{t("product.size")}</dt><dd>{product.size}</dd></div>
+              <div><dt>{t("product.size")}</dt><dd>{product.size === "Size not confirmed" ? t("product.sizeNotConfirmed") : product.size}</dd></div>
+              {isShoe && product.shoeType ? <div><dt>{t("filter.shoeType")}</dt><dd>{product.shoeType}</dd></div> : null}
+              {isShoe && product.tagSize ? <div><dt>{t("product.originalSizeLabel")}</dt><dd>{product.tagSize}</dd></div> : null}
               {fit ? <div><dt>{t("product.fit")}</dt><dd>{fit}</dd></div> : null}
               {stretch ? <div><dt>{t("product.stretch")}</dt><dd>{stretch}</dd></div> : null}
               {fabricWeight ? <div><dt>{t("product.fabricWeight")}</dt><dd>{fabricWeight}</dd></div> : null}
@@ -144,6 +147,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               {color ? <div><dt>{t("product.colour")}</dt><dd>{color}</dd></div> : null}
               <div><dt>{t("product.location")}</dt><dd><MapPin size={14} /> {product.store}</dd></div>
             </dl>
+            {isShoe ? <p className="fitDisclaimer">{t("product.shoeSizeHelp")}</p> : null}
 
             <CatalogBuyAction product={product} />
             <ProductShareSheet product={product} />
@@ -154,7 +158,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           <section className="commerceDetailSection measurementSection" aria-labelledby="measurements-heading">
             <div className="commerceSectionHeading">
               <p>{t("product.measurements")}</p>
-              <h2 id="measurements-heading">{t("product.flatMeasurements")}</h2>
+              <h2 id="measurements-heading">{t(isShoe ? "product.shoeMeasurements" : "product.flatMeasurements")}</h2>
             </div>
             <dl className="measurementSummaryGrid">
               {measurements.slice(0, 4).map((measurement) => (
@@ -179,7 +183,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
                       </div>
                     ))}
                   </dl>
-                  <p>{t("product.measurementHelp")}</p>
+                  <p>{t(isShoe ? "product.shoeMeasurementHelp" : "product.measurementHelp")}</p>
                 </div>
               </div>
             </details>
@@ -253,7 +257,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               <p>{t("product.supportBody")}</p>
             </section>
           </div>
-          <p className="deliveryFootnote">{t("product.footnote")}</p>
+          <p className="deliveryFootnote">{t(isShoe ? "product.shoeFootnote" : "product.footnote")}</p>
         </section>
 
         {related.length ? (

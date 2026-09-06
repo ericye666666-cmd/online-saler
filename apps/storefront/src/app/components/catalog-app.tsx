@@ -13,20 +13,17 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  adultShoeSizes,
   apparelConditions,
-  apparelSizes,
   bagTypes,
   categories,
-  extendedShoeSizes,
   featuredShoeBrands,
   formatPrice,
-  kidsShoeSizes,
   Product,
   shoeConditionGrades,
   shoeTypes,
   textileTypes,
 } from "../data/products";
+import { catalogSizeOptions, filterCatalogProducts } from "../catalog-filters";
 import { ProductCollectionButton, ProductShareSheet } from "./product-share-sheet";
 import { ReferralTracker } from "./referral-tracker";
 import { BrowseSelection, SiteHeader } from "./site-header";
@@ -194,9 +191,7 @@ export function CatalogApp({
     () => ["All", ...Array.from(new Set(initialProducts.map((product) => product.store))).sort()],
     [initialProducts],
   );
-  const sizeOptions = category === "Shoes"
-    ? ["All", ...kidsShoeSizes, ...adultShoeSizes, ...extendedShoeSizes]
-    : apparelSizes;
+  const sizeOptions = useMemo(() => catalogSizeOptions(initialProducts, category), [initialProducts, category]);
 
   useEffect(() => {
     if (!mobileFiltersOpen) return;
@@ -227,47 +222,10 @@ export function CatalogApp({
     };
   }, [openFilter]);
 
-  const filteredProducts = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const matches = initialProducts.filter((product) => {
-      const matchesQuery = !normalizedQuery || [
-        product.title,
-        product.category,
-        product.brand,
-        product.bagType,
-        product.textileType,
-        product.shoeType,
-        product.size,
-        product.material,
-        product.color,
-        product.code,
-      ].join(" ").toLowerCase().includes(normalizedQuery);
-      const matchesPrice =
-        price === "All" ||
-        (price === "Under KSh 500" && product.price < 500) ||
-        (price === "KSh 500–799" && product.price >= 500 && product.price < 800) ||
-        (price === "KSh 800+" && product.price >= 800);
-
-      return matchesQuery &&
-        (category === "All" || product.category === category) &&
-        (brand === "All" || product.brand === brand) &&
-        (color === "All" || product.color === color) &&
-        (material === "All" || product.material === material) &&
-        (store === "All" || product.store === store) &&
-        (shoeType === "All" || product.shoeType === shoeType) &&
-        (bagType === "All" || product.bagType === bagType) &&
-        (textileType === "All" || product.textileType === textileType) &&
-        (size === "All" || product.size === size) &&
-        (condition === "All" || product.condition === condition) &&
-        matchesPrice &&
-        (!availableOnly || product.status === "Available");
-    });
-
-    const statusRank = (product: Product) => product.status === "Available" ? 0 : product.status === "Reserved" ? 1 : 2;
-    if (sort === "Price: low to high") return [...matches].sort((a, b) => statusRank(a) - statusRank(b) || a.price - b.price);
-    if (sort === "Price: high to low") return [...matches].sort((a, b) => statusRank(a) - statusRank(b) || b.price - a.price);
-    return [...matches].sort((a, b) => statusRank(a) - statusRank(b));
-  }, [availableOnly, bagType, brand, category, color, condition, initialProducts, material, price, query, shoeType, size, sort, store, textileType]);
+  const filteredProducts = useMemo(() => filterCatalogProducts(initialProducts, {
+    availableOnly, bagType, brand, category, color, condition, material, price,
+    query, shoeType, size, sort, store, textileType,
+  }), [availableOnly, bagType, brand, category, color, condition, initialProducts, material, price, query, shoeType, size, sort, store, textileType]);
 
   const activeFilterCount = [brand, color, material, price, shoeType, bagType, textileType, size, condition, store]
     .filter((item) => item !== "All").length + (availableOnly ? 1 : 0);

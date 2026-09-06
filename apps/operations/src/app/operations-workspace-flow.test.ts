@@ -4,6 +4,8 @@ import {
   calibrationValidationIssues,
   emptyWorkspaceForm,
   formFromProductAndAi,
+  normalizeWorkspaceForm,
+  measurementFields,
   workspaceReadiness,
   type JsonRecord
 } from "./operations-workspace-flow";
@@ -205,5 +207,96 @@ assert.throws(() =>
     form: { ...emptyWorkspaceForm(), lengthCm: "", chestWidthCm: "48" }
   })
 );
+
+// Shoe AI may suggest a visible label, but cannot confirm a matching physical pair or shoe condition.
+const shoeAi = {
+  status: "SUCCEEDED",
+  normalizedOutput: {
+    ...job.normalizedOutput as JsonRecord,
+    category: { value: "SHOES" },
+    subcategory: { value: "KIDS_SHOES" },
+    audience: { value: "KIDS" },
+    sizeLabel: { value: "33" },
+    shoeSizeSystem: { value: "EU" },
+    shoeType: { value: "Kids' shoes" },
+    shoePairConfirmed: { value: true },
+    shoeConditionNotes: { value: "AI thinks these are unworn" },
+    insoleLengthCm: { value: 21 }
+  }
+};
+const shoeFromAi = formFromProductAndAi(product, shoeAi);
+assert.equal(shoeFromAi.category, "SHOES");
+assert.equal(shoeFromAi.tagSize, "33");
+assert.equal(shoeFromAi.shoeSizeSystem, "EU");
+assert.equal(shoeFromAi.sizeLabel, "EU 33");
+assert.equal(shoeFromAi.ukSizeLabel, "");
+assert.equal(shoeFromAi.shoePairConfirmed, false);
+assert.equal(shoeFromAi.shoeConditionNotes, "");
+assert.equal(shoeFromAi.insoleLengthCm, "");
+assert.equal(shoeFromAi.fitType, "");
+assert.equal(shoeFromAi.sleeveType, "");
+
+const calibratedPair = {
+  ...shoeFromAi,
+  priceKsh: "1200",
+  shoePairConfirmed: true,
+  shoeConditionNotes: "Light sole wear; no separation or tears in lining.",
+  defects: "None"
+};
+assert.deepEqual(calibrationValidationIssues(calibratedPair), []);
+assert.equal(workspaceReadiness({ product, image, job: shoeAi, form: calibratedPair }).canSaveAndNext, true);
+assert.deepEqual(measurementFields(calibratedPair), [{ key: "insoleLengthCm", type: "INSOLE_LENGTH", label: "鞋垫实测长度", required: false }]);
+const shoeBody = buildCalibrationBody({
+  employeeId: "employee-1", extractionId: "ai-1",
+  form: { ...calibratedPair, sizeLabel: "L", ukSizeLabel: "UK 12", lengthCm: "62", chestWidthCm: "40", insoleLengthCm: "21.5" }
+});
+assert.equal(shoeBody.sizeLabel, "EU 33");
+assert.equal(shoeBody.tagSize, "33");
+assert.equal(shoeBody.shoeSizeSystem, "EU");
+assert.equal(shoeBody.shoeType, "Kids' shoes");
+assert.equal(shoeBody.shoePairConfirmed, true);
+assert.equal(shoeBody.shoeConditionNotes, calibratedPair.shoeConditionNotes);
+assert.equal(shoeBody.kidsAgeRange, undefined);
+assert.equal(shoeBody.ukSizeLabel, undefined);
+assert.equal(shoeBody.sleeveType, undefined);
+assert.equal(shoeBody.fitType, undefined);
+assert.equal(shoeBody.stretchLevel, undefined);
+assert.equal(shoeBody.fabricWeight, undefined);
+assert.deepEqual(shoeBody.measurements, [{ type: "INSOLE_LENGTH", valueCm: 21.5 }]);
+assert.deepEqual(buildCalibrationBody({ employeeId: "employee-1", extractionId: "ai-1", form: calibratedPair }).measurements, []);
+
+for (const [field, value] of [
+  ["tagSize", ""], ["tagSize", "L"], ["tagSize", "UK 7"], ["shoeSizeSystem", ""], ["shoeSizeSystem", "GUESS"],
+  ["shoeType", ""], ["shoeType", "Jacket"], ["shoeConditionNotes", ""], ["shoePairConfirmed", false],
+  ["insoleLengthCm", "0"], ["insoleLengthCm", "not measured"]
+] as const) {
+  const issues = calibrationValidationIssues({ ...calibratedPair, [field]: value });
+  assert.ok(issues.some((issue) => issue.field === field), `${field}=${String(value)} must require correction`);
+}
+
+const switchedToShoes = normalizeWorkspaceForm({ ...completeForm, category: "SHOES", subcategory: "MEN_SHOES" }, "DRESSES");
+assert.equal(switchedToShoes.tagSize, "");
+assert.equal(switchedToShoes.sizeLabel, "");
+assert.equal(switchedToShoes.lengthCm, "");
+assert.equal(switchedToShoes.chestWidthCm, "");
+assert.equal(switchedToShoes.shoePairConfirmed, false);
+assert.equal(switchedToShoes.kidsAgeRange, "NOT_APPLICABLE");
+const switchedToClothing = normalizeWorkspaceForm({ ...calibratedPair, category: "TSHIRTS", subcategory: "TSHIRT" }, "SHOES");
+assert.equal(switchedToClothing.sizeLabel, "");
+assert.equal(switchedToClothing.tagSize, "");
+assert.equal(switchedToClothing.shoeSizeSystem, "");
+assert.equal(switchedToClothing.shoePairConfirmed, false);
+
+const persistedShoe = formFromProductAndAi({
+  ...product, category: "KIDS", subcategory: "KIDS_SHOES", gender: "KIDS", finalSizeLabel: "L",
+  tagSize: "UK 2.5", shoeSizeSystem: "UK", shoeType: "Kids' shoes", shoePairConfirmed: true,
+  shoeConditionNotes: "Soles checked by employee", measurements: [{ measurementType: "INSOLE_LENGTH", finalValueCm: "22" }]
+}, shoeAi);
+assert.equal(persistedShoe.category, "SHOES");
+assert.equal(persistedShoe.sizeLabel, "UK 2.5");
+assert.equal(persistedShoe.tagSize, "UK 2.5");
+assert.equal(persistedShoe.shoePairConfirmed, true);
+assert.equal(persistedShoe.shoeConditionNotes, "Soles checked by employee");
+assert.equal(persistedShoe.insoleLengthCm, "22");
 
 console.log("Operations workspace flow tests passed");
