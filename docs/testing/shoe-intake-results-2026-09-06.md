@@ -44,3 +44,47 @@ change payment, order quantity, commission or shelf allocation rules.
   generated images with their originals before publishing.
 
 Employee instructions: [shoe intake SOP](../shoe-intake-employee-sop.md).
+
+## Merged release and deployed services
+
+- [PR 183](https://github.com/ericye666666-cmd/online-saler/pull/183) contains
+  the intake feature; [PR 184](https://github.com/ericye666666-cmd/online-saler/pull/184)
+  corrects the two shoe navigation cards to Boots and Sandals with matching filters.
+  Both are merged into `develop`; the application commit is
+  `7acf43092cd2f58589dda08a604363de6444f9f7`.
+- Local `npm run ci` passed, including 247 API tests and all application builds.
+  [Native PostgreSQL CI](https://github.com/ericye666666-cmd/online-saler/actions/runs/34059177576)
+  passed the schema diff and all 25 database integration tests with no skipped
+  tests. [Final application CI](https://github.com/ericye666666-cmd/online-saler/actions/runs/34059671044)
+  also passed both jobs.
+- The [API deployment](https://github.com/ericye666666-cmd/online-saler/actions/runs/34059311193)
+  succeeded, including its migration job, API smoke checks and scoped smoke-data
+  cleanup. [Operations deployment](https://github.com/ericye666666-cmd/online-saler/actions/runs/34059311191)
+  succeeded. [Staging-named Storefront deployment](https://github.com/ericye666666-cmd/online-saler/actions/runs/34059670969)
+  succeeded with seven smoke checks and revision
+  `online-saler-storefront-staging-00095-9x4` serving all traffic.
+- A browser check confirmed Boots/Sandals on the staging-named Storefront.
+  The customer domain still showed the previous navigation. Its Shoes category
+  was empty; this release has not entered or published the user's physical pairs.
+  On the customer domain, one existing garment could be added to the cart and
+  was shown as available after inventory refresh; it was then removed. No order
+  or payment was created. Operations required sign-in, so authenticated live
+  intake acceptance remains outstanding.
+
+## Customer-domain deployment remains pending
+
+The customer domain `dloop.co.ke` targets
+`online-saler-storefront-production`, not `online-saler-storefront-staging`.
+The [domain audit](https://github.com/ericye666666-cmd/online-saler/actions/runs/31362760329)
+records its load balancer and serverless NEG route. The
+[last production deployment](https://github.com/ericye666666-cmd/online-saler/actions/runs/31688652751)
+used application commit `e319fe94febb0479fe143914c0e2b6f6d87b764d`, the
+staging-named API, production payment mode `live`, and
+`DATABASE_URL=PRODUCTION_DATABASE_URL:latest`.
+
+The API migration uses `STAGING_DATABASE_URL:latest`. Both services attach the
+same Cloud SQL instance, but this alone does not establish that their database
+and schema are identical. The production release must verify the targets and
+current schema before switching its application image. Do not count green
+staging-named deployments as customer-domain acceptance. The existing production
+workflow remains manual, with its confirmation and payment-mode inputs intact.
