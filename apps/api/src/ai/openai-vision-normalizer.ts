@@ -1,5 +1,9 @@
 import {
   AI_MEASUREMENT_FIELDS,
+  SHOE_SIZE_SYSTEMS,
+  SHOE_TYPES,
+  isShoeCategory,
+  isShoeProduct,
   AI_AUDIENCES,
   AI_COLORS,
   AI_KIDS_AGE_RANGES,
@@ -144,7 +148,8 @@ export function normalizeOpenAIVisionOutput(
   evidenceImageIds: string[],
   runtimeTaxonomy: RuntimeProductTaxonomy = {},
   measurementImageId = evidenceImageIds[0] ?? null,
-  measurementBoardOverride: MeasurementBoardOverride | null = null
+  measurementBoardOverride: MeasurementBoardOverride | null = null,
+  categoryHint?: string | null
 ): AIExtractionNormalizedOutput {
   const record = asRecord(raw);
   const categorySet = runtimeSet(runtimeTaxonomy.categories, CATEGORY_SET);
@@ -195,6 +200,8 @@ export function normalizeOpenAIVisionOutput(
     brandLabel: stringField(record, ["brandLabel", "brand"], evidenceImageIds),
     sizeLabel: stringField(record, ["sizeLabel", "size"], evidenceImageIds),
     ukSizeLabel: stringField(record, ["ukSizeLabel", "ukSize", "uk_size"], evidenceImageIds),
+    shoeSizeSystem: shoeEnumField(record, "shoeSizeSystem", SHOE_SIZE_SYSTEMS, evidenceImageIds),
+    shoeType: shoeEnumField(record, "shoeType", SHOE_TYPES, evidenceImageIds),
     title: catalogTitleField(record, ["title"], evidenceImageIds),
     lengthCm: numberField(record, ["lengthCm", "length_cm", "bodyLengthCm"], evidenceImageIds),
     chestWidthCm: numberField(record, ["chestWidthCm", "chest_width_cm", "pitToPitCm"], evidenceImageIds),
@@ -206,6 +213,9 @@ export function normalizeOpenAIVisionOutput(
     legOpeningCm: numberField(record, ["legOpeningCm", "leg_opening_cm"], evidenceImageIds),
     inseamCm: numberField(record, ["inseamCm", "inseam_cm"], evidenceImageIds)
   };
+  if (isShoeCategory(categoryHint) || isShoeProduct(output.category.value, output.subcategory.value)) {
+    return normalizeShoeExtraction(output);
+  }
   const geometry = normalizeMeasurementGeometry(record, measurementImageId, measurementBoardOverride);
   output.measurementGeometry = geometry;
   if (geometry.boardCorners) {
@@ -223,6 +233,30 @@ export function normalizeOpenAIVisionOutput(
     }
   }
   return output;
+}
+
+/** Apply the same safety boundary to every provider, including mocks and legacy output. */
+export function normalizeShoeExtraction(output: AIExtractionNormalizedOutput): AIExtractionNormalizedOutput {
+  const normalized = { ...output, category: { ...output.category, value: "SHOES" as const } };
+  const empty = { value: null, confidence: 0, evidenceImageIds: [] };
+  for (const { field } of AI_MEASUREMENT_FIELDS) normalized[field] = { ...empty };
+  normalized.measurementGeometry = { imageId: null, boardCorners: null, boardConfidence: 0, lines: {} };
+  normalized.ukSizeLabel = { ...empty }; // The original label is the only source; never synthesize UK equivalents.
+  normalized.sleeveType = { value: "NOT_APPLICABLE", confidence: 1, evidenceImageIds: [] };
+  normalized.fitType = { value: "UNKNOWN", confidence: 1, evidenceImageIds: [] };
+  normalized.stretchLevel = { value: "UNKNOWN", confidence: 1, evidenceImageIds: [] };
+  normalized.fabricWeight = { value: "UNKNOWN", confidence: 1, evidenceImageIds: [] };
+  if (!/\d/.test(normalized.sizeLabel.value ?? "")) normalized.sizeLabel = { ...empty };
+  return normalized;
+}
+
+function shoeEnumField<T extends string>(record: RawExtraction, key: string, values: readonly T[], imageIds: string[]): AIFieldValue<T> {
+  const raw = asRecord(record[key]);
+  const candidate = typeof raw.value === "string" ? raw.value.trim() : "";
+  const value = values.find((allowed) => allowed.toLowerCase() === candidate.toLowerCase()) ?? null;
+  const confidence = typeof raw.confidence === "number" && Number.isFinite(raw.confidence)
+    ? Math.max(0, Math.min(1, raw.confidence)) : 0;
+  return { value, confidence: value ? confidence : 0, evidenceImageIds: value ? imageIds : [] };
 }
 
 function normalizeMeasurementGeometry(

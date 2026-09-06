@@ -99,3 +99,21 @@ test("does not call OpenAI without credentials or original images", async () => 
   await assert.rejects(provider.generate(facts, []), /original product image is required/);
   assert.equal(requests.length, 0);
 });
+
+test("shoe copy uses original sizing and checked shoe condition without garment fitting instructions", async () => {
+  const shoeFacts: ProductDetailFacts = {
+    ...facts, category: "KIDS", subcategory: "KIDS_SHOES", sleeveType: null,
+    tagSize: "32", platformSize: "EU 32", shoeSizeSystem: "EU", shoePairConfirmed: true,
+    shoeType: "Kids' shoes", shoeConditionNotes: "Sole wear", measurementsCm: { INSOLE_LENGTH: 20 }
+  };
+  const result = await provider.generate(shoeFacts, images);
+  const instructions = requests[0]!.input[0].content;
+  assert.match(instructions, /one matching pair of shoes/i);
+  assert.match(instructions, /original shoe size label/);
+  assert.match(instructions, /never convert between EU, UK, US or CM/);
+  assert.match(instructions, /Never recommend a wearer height, weight, age/);
+  assert.match(instructions, /sole separation/);
+  assert.match(instructions, /authenticity/);
+  assert.doesNotMatch(instructions, /Summarize only flat garment measurements/);
+  assert.equal((result.requestRecord.facts as ProductDetailFacts).shoeConditionNotes, "Sole wear");
+});

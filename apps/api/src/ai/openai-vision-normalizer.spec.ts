@@ -273,3 +273,42 @@ test("uses a deterministic complete-board override for centimeter conversion", (
   assert.notEqual(output.chestWidthCm.value, 69.5);
   assert.equal(output.chestWidthCm.confidence, 0.87);
 });
+
+for (const subcategory of ["MEN_SPORT_SHOES", "KIDS_SHOES"]) {
+  test(`shoe normalization preserves original label and strips garment measurements: ${subcategory}`, () => {
+    const output = normalizeOpenAIVisionOutput({
+      category: { value: subcategory === "KIDS_SHOES" ? "KIDS" : "SHOES", confidence: 0.9 },
+      subcategory: { value: subcategory, confidence: 0.9 },
+      sizeLabel: { value: "EU 42", confidence: 0.95 },
+      ukSizeLabel: { value: "UK 8", confidence: 0.9 },
+      shoeSizeSystem: { value: "EU", confidence: 0.95 },
+      shoeType: { value: "Sneakers", confidence: 0.8 },
+      shoePairConfirmed: { value: true, confidence: 1 },
+      chestWidthCm: { value: 50, confidence: 0.9 },
+      lengthCm: { value: 70, confidence: 0.9 },
+      fitType: { value: "REGULAR", confidence: 0.9 }
+    }, ["pair", "label"]);
+    assert.equal(output.category.value, "SHOES");
+    assert.equal(output.sizeLabel.value, "EU 42");
+    assert.equal(output.shoeSizeSystem?.value, "EU");
+    assert.equal(output.shoeType?.value, "Sneakers");
+    assert.equal(output.ukSizeLabel.value, null);
+    assert.equal(output.lengthCm.value, null);
+    assert.equal(output.chestWidthCm.value, null);
+    assert.equal(output.fitType.value, "UNKNOWN");
+    assert.equal(output.measurementGeometry?.boardCorners, null);
+    assert.equal("shoePairConfirmed" in output, false);
+  });
+}
+
+test("server shoe intake hint overrides misclassified clothing and never accepts a guessed L size", () => {
+  const output = normalizeOpenAIVisionOutput({
+    category: { value: "KIDS", confidence: 0.99 },
+    sizeLabel: { value: "L", confidence: 0.99 },
+    shoulderWidthCm: { value: 20, confidence: 0.99 }
+  }, ["pair"], {}, "pair", null, "SHOES");
+  assert.equal(output.category.value, "SHOES");
+  assert.equal(output.sizeLabel.value, null);
+  assert.equal(output.shoeSizeSystem?.value, null);
+  assert.equal(output.shoulderWidthCm.value, null);
+});

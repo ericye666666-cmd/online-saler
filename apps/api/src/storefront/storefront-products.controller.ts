@@ -1,4 +1,5 @@
 import { Controller, Get, NotFoundException, Param, Query } from "@nestjs/common";
+import { formatShoeSizeLabel, isShoeProduct } from "@online-saler/shared-types";
 import {
   InventoryItemStatus,
   Prisma,
@@ -45,10 +46,12 @@ export class StorefrontProductsController {
       where: basePublicWhere(),
       select: {
         category: true,
+        subcategory: true,
         color: true,
         gender: true,
         finalSizeLabel: true,
         tagSize: true,
+        shoeSizeSystem: true,
         priceKsh: true
       },
       take: 1000
@@ -61,7 +64,9 @@ export class StorefrontProductsController {
     return {
       categories: unique(products.map((product) => product.category)),
       colors: unique(products.map((product) => product.color)),
-      sizes: unique(products.flatMap((product) => [product.finalSizeLabel, product.tagSize])),
+      sizes: unique(products.flatMap((product) => isShoeProduct(product.category, product.subcategory)
+        ? [formatShoeSizeLabel(product.tagSize || product.finalSizeLabel, product.shoeSizeSystem)]
+        : [product.finalSizeLabel, product.tagSize])),
       audiences: unique(products.map((product) => product.gender)),
       price: {
         min: prices.length ? Math.min(...prices) : null,
@@ -208,6 +213,7 @@ type ProductWithPublicRelations = Awaited<ReturnType<typeof prisma.product.findM
   measurements: Array<{
     measurementType: string;
     finalValueCm: unknown;
+    finalSource?: string | null;
   }>;
   defects: Array<{
     defectType: string;
@@ -247,6 +253,7 @@ type ProductWithPublicRelations = Awaited<ReturnType<typeof prisma.product.findM
 };
 
 export function publicProduct(product: ProductWithPublicRelations) {
+  const isShoe = isShoeProduct(product.category, product.subcategory);
   const detailProfile = product.detailProfiles.find(
     (profile) => profile.sourceDataVersion === product.detailSourceVersion
   );
@@ -272,16 +279,26 @@ export function publicProduct(product: ProductWithPublicRelations) {
     brand: product.brand,
     material: product.material,
     tags: product.tags,
-    size: product.finalSizeLabel ?? product.tagSize,
+    size: isShoe
+      ? formatShoeSizeLabel(product.tagSize || product.finalSizeLabel, product.shoeSizeSystem)
+      : product.finalSizeLabel ?? product.tagSize,
+    tagSize: product.tagSize,
+    shoeSizeSystem: isShoe ? product.shoeSizeSystem : null,
+    shoeType: isShoe ? product.shoeType : null,
+    shoeConditionNotes: isShoe ? product.shoeConditionNotes : null,
+    saleUnit: isShoe ? "PAIR" as const : "ITEM" as const,
     conditionGrade: product.conditionGrade,
-    fitType: product.fitType,
-    stretchLevel: product.stretchLevel,
-    fabricWeight: product.fabricWeight,
+    fitType: isShoe ? null : product.fitType,
+    stretchLevel: isShoe ? null : product.stretchLevel,
+    fabricWeight: isShoe ? null : product.fabricWeight,
     priceKsh: product.priceKsh,
     publishedAt: product.publishedAt,
     onlyOneAvailable: true,
     images,
-    measurements: product.measurements.map((measurement) => ({
+    measurements: product.measurements
+      .filter((measurement) => !isShoe || (measurement.measurementType === "INSOLE_LENGTH"
+        && ["HUMAN_ENTERED", "HUMAN_EDITED"].includes(measurement.finalSource ?? "")))
+      .map((measurement) => ({
       type: measurement.measurementType,
       valueCm: measurement.finalValueCm?.toString() ?? null
     })),
@@ -290,24 +307,26 @@ export function publicProduct(product: ProductWithPublicRelations) {
       severity: defect.severity,
       description: defect.customerSafeDescription ?? defect.description
     })),
-    detail: detailProfile ? publicDetail(detailProfile) : null
+    detail: detailProfile ? publicDetail(detailProfile, isShoe) : null
   };
 }
 
-export function publicDetail(profile: ProductWithPublicRelations["detailProfiles"][number]) {
+export function publicDetail(profile: ProductWithPublicRelations["detailProfiles"][number], isShoe = false) {
   const output = isRecord(profile.finalOutputJson) ? profile.finalOutputJson : {};
   return {
     profileId: profile.id,
     title: stringValue(output.title),
     sellingPoints: stringArray(output.sellingPoints),
     shortDescription: stringValue(output.shortDescription),
-    measurementSummary: stringValue(output.measurementSummary),
+    measurementSummary: isShoe ? null : stringValue(output.measurementSummary),
     conditionSummary: stringValue(output.conditionSummary),
     styleTags: stringArray(output.styleTags),
-    fitType: profile.fitType,
-    stretchLevel: profile.stretchLevel,
-    fabricWeight: profile.fabricWeight,
-    assets: profile.assets.map((asset) => ({
+    fitType: isShoe ? null : profile.fitType,
+    stretchLevel: isShoe ? null : profile.stretchLevel,
+    fabricWeight: isShoe ? null : profile.fabricWeight,
+    assets: profile.assets
+      .filter((asset) => !isShoe || asset.type !== "MEASUREMENT_GUIDE")
+      .map((asset) => ({
       id: asset.id,
       type: asset.type,
       url: asset.publicUrl ?? `/product-detail-assets/${asset.id}/content`

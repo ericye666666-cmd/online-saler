@@ -1,3 +1,4 @@
+import { isShoeCategory } from "@online-saler/shared-types";
 import { Injectable } from "@nestjs/common";
 import { BackgroundRemovalProviderError, type BackgroundRemovalInput } from "./background-removal.provider";
 import type { ProductImageTransformResult } from "./product-image-transformer.service";
@@ -21,6 +22,17 @@ export const PRODUCT_DISPLAY_IMAGE_PROMPT = [
   "Return a realistic front-facing ecommerce catalog image of this exact garment, not a redesigned or replacement garment."
 ].join("\n");
 
+export const SHOE_DISPLAY_PROMPT_VERSION = "shoe-display-v1";
+export const SHOE_DISPLAY_IMAGE_PROMPT = [
+  "Create a clean white-background catalog image of the exact pair of second-hand shoes in the original photo.",
+  "Keep both original shoes fully visible. Preserve the left and right shoe separately, their side-specific geometry, toe shape, heel height, soles, tread, laces, labels, logos, color and material texture.",
+  "Preserve all real wear, stains, scuffs, cracks, sole wear, creases, discoloration, tears, holes and glue separation. Do not repair, clean away, hide, repaint or improve any defect.",
+  "Remove only the background. Keep the supplied viewpoint and relative arrangement; do not synthesize an unseen side, mirror or duplicate one shoe to fabricate its partner, or invent a missing shoe.",
+  "Do not straighten shoes as trouser legs, add garment parts, change size or proportions, or create a replacement product.",
+  "Keep balanced white margins around the full pair. No feet, person, mannequin, props, added text, size claims, borders or decorative shadows.",
+  "Return a realistic catalog photo of this exact pair. If only one shoe is visible, keep the visible evidence without fabricating another shoe; an employee must reject incomplete pair photos."
+].join("\n");
+
 type OpenAIImageEditPayload = {
   data?: Array<{ b64_json?: string }>;
   error?: { message?: string } | string;
@@ -32,7 +44,7 @@ export class OpenAIProductDisplayImageProvider {
     return Boolean(this.apiKey());
   }
 
-  async generate(input: BackgroundRemovalInput): Promise<ProductImageTransformResult> {
+  async generate(input: BackgroundRemovalInput & { category?: string | null }): Promise<ProductImageTransformResult> {
     const apiKey = this.apiKey();
     if (!apiKey) {
       throw new BackgroundRemovalProviderError(
@@ -43,7 +55,8 @@ export class OpenAIProductDisplayImageProvider {
 
     const form = new FormData();
     form.set("model", this.model());
-    form.set("prompt", PRODUCT_DISPLAY_IMAGE_PROMPT);
+    const shoes = isShoeCategory(input.category);
+    form.set("prompt", shoes ? SHOE_DISPLAY_IMAGE_PROMPT : PRODUCT_DISPLAY_IMAGE_PROMPT);
     form.set("size", "1024x1024");
     form.set("quality", this.quality());
     form.set("background", "opaque");
@@ -84,7 +97,7 @@ export class OpenAIProductDisplayImageProvider {
         body: Buffer.from(encoded, "base64"),
         contentType: "image/png",
         provider: "openai-image-edit",
-        processorVersion: `${this.model()}:${PRODUCT_DISPLAY_PROMPT_VERSION}:${this.quality()}`,
+        processorVersion: `${this.model()}:${shoes ? SHOE_DISPLAY_PROMPT_VERSION : PRODUCT_DISPLAY_PROMPT_VERSION}:${this.quality()}`,
         widthPx: 1024,
         heightPx: 1024
       };

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import {
   assignBatchFrontFiles,
+  completedCaptureCount,
+  firstProductMissingCapture,
+  missingCaptureImageTypes,
   frontImage,
   firstProductMissingFront,
   imageUploadIssue,
@@ -10,6 +13,18 @@ import {
 } from "./product-factory-upload-flow";
 
 assert.equal(imageUploadIssue({ type: "image/jpeg", size: 1024 }), null);
+const shoeImages = ["FRONT", "BACK", "DETAIL", "LABEL"].map((type) => ({ type }));
+assert.deepEqual(missingCaptureImageTypes({ category: "SHOES", images: [{ type: "FRONT" }] }), ["BACK", "DETAIL", "LABEL"]);
+assert.deepEqual(missingCaptureImageTypes({ category: "KIDS", subcategory: "KIDS_SHOES", images: shoeImages }), []);
+assert.equal(completedCaptureCount([
+  { category: "SHOES", images: shoeImages },
+  { category: "SHOES", images: shoeImages.filter((image) => image.type !== "LABEL") },
+  { category: "TSHIRTS", images: [{ type: "FRONT" }] }
+]), 2);
+assert.equal(firstProductMissingCapture([
+  { category: "SHOES", images: shoeImages },
+  { category: "SHOES", images: [{ type: "FRONT" }] }
+]), 1);
 assert.match(imageUploadIssue({ type: "image/heic", size: 1024 }) ?? "", /HEIC/);
 assert.match(imageUploadIssue({ type: "image/jpeg", size: 11 * 1024 * 1024 }) ?? "", /10 MB/);
 assert.equal(rotateProductImage(0, "RIGHT"), 90);

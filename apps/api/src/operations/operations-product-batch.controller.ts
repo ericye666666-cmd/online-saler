@@ -10,6 +10,7 @@ type AdminEmployeeBody = {
 type CreateBatchBody = AdminEmployeeBody & {
   targetCount?: number;
   note?: string;
+  intakeCategory?: "SHOES" | null;
 };
 
 type ReviewBody = AdminEmployeeBody & {

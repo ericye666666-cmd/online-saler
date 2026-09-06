@@ -2,6 +2,9 @@ import { BadRequestException, Injectable, InternalServerErrorException } from "@
 import { prisma } from "@online-saler/database";
 import {
   AI_AUDIENCES,
+  SHOE_SIZE_SYSTEMS,
+  SHOE_TYPES,
+  isShoeCategory,
   AI_KIDS_AGE_RANGES,
   AI_PATTERNS,
   AI_SLEEVE_TYPES,
@@ -49,6 +52,16 @@ export const PRODUCT_AUDIENCE_TITLE_RULES = [
   "Keep title gender-neutral. Never put Women's, Men's, Boys', Girls' or Unisex in title; the employee confirms audience separately."
 ] as const;
 
+export const SHOE_RECOGNITION_RULES = [
+  "This intake is SHOES: one product is one matching pair. Set category=SHOES, including children's shoes; use subcategory=KIDS_SHOES for children's footwear.",
+  "FRONT shows the entire pair; BACK is a side view; DETAIL shows soles; LABEL shows the original size label. Inspect only visible evidence.",
+  "sizeLabel must transcribe the visible original size label exactly. shoeSizeSystem must be explicit on the label; distinguish US_MEN, US_WOMEN and US_KIDS only when visible text identifies the range.",
+  "Never convert EU/UK/US sizes, guess a missing size, infer shoe size from age or outsole length, or output clothing sizes XS/S/M/L. If the size label is unreadable, return null for sizeLabel and shoeSizeSystem.",
+  "shoeType uses the supplied footwear enum. Pair matching and condition notes are employee-confirmed facts: do not output shoePairConfirmed or pretend a photo verifies both sizes, hidden damage, smell or authenticity.",
+  "All garment centimeter fields and measurementGeometry must be null. No measurement board is required for shoes. Insole length is a separate optional human measurement, never estimated by AI.",
+  "Set sleeveType=NOT_APPLICABLE, fitType=UNKNOWN, stretchLevel=UNKNOWN, fabricWeight=UNKNOWN and ukSizeLabel=null. Never recommend a clothing fit or a child's age from shoe size."
+] as const;
+
 @Injectable()
 export class OpenAIVisionProvider implements AIProvider {
   constructor(
@@ -67,6 +80,7 @@ export class OpenAIVisionProvider implements AIProvider {
     }
 
     const startedAt = Date.now();
+    const shoes = isShoeCategory(request.categoryHint);
     const taxonomy = await loadProductTaxonomy();
     const runtimeTaxonomy = {
       categories: activeTaxonomyCodes(taxonomy, "CATEGORY"),
@@ -99,11 +113,11 @@ export class OpenAIVisionProvider implements AIProvider {
         return {
           type: "input_image",
           image_url: `data:${stored.contentType};base64,${base64}`,
-          detail: image.type === "FRONT" ? "high" : "low"
+          detail: image.type === "FRONT" || (shoes && image.type === "LABEL") ? "high" : "low"
         };
       });
     const frontStored = storedImages.find(({ image }) => image.type === "FRONT") ?? storedImages[0];
-    const boardDetectionPromise = frontStored
+    const boardDetectionPromise = frontStored && !shoes
       ? this.measurementBoard.detect({
           body: Buffer.from(frontStored.stored.body),
           contentType: frontStored.stored.contentType,
@@ -122,8 +136,9 @@ export class OpenAIVisionProvider implements AIProvider {
         input: [
           {
             role: "system",
-            content:
-              "You identify and measure second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, use its documented UNKNOWN or OTHER fallback, return an empty array for tags, and null for text or measurement fields. Use the 120 cm by 160 cm measurement board, edge rulers, and perspective cues when visible. Never infer a centimeter measurement from the tag size alone. Confidence must be a number from 0 to 1."
+            content: shoes
+              ? "You identify second-hand shoes from original product photos for a Kenyan mobile resale catalog. Return JSON only, using exact supplied enums and objects { value, confidence }. Preserve the visible original label and factual wear. Use null for facts that cannot be read. Do not infer shoe size or make size conversions. Confidence must be from 0 to 1."
+              : "You identify and measure second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, use its documented UNKNOWN or OTHER fallback, return an empty array for tags, and null for text or measurement fields. Use the 120 cm by 160 cm measurement board, edge rulers, and perspective cues when visible. Never infer a centimeter measurement from the tag size alone. Confidence must be a number from 0 to 1."
           },
           {
             role: "user",
@@ -132,7 +147,9 @@ export class OpenAIVisionProvider implements AIProvider {
                 type: "input_text",
                 text: [
                   "Return one JSON object with these fields:",
-                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, fitType, stretchLevel, fabricWeight, material, tags, brandLabel, sizeLabel, ukSizeLabel, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm, measurementGeometry.",
+                  "category, subcategory, primaryColor, audience, kidsAgeRange, pattern, sleeveType, fitType, stretchLevel, fabricWeight, material, tags, brandLabel, sizeLabel, ukSizeLabel, shoeSizeSystem, shoeType, title, lengthCm, chestWidthCm, shoulderWidthCm, sleeveLengthCm, waistCm, hipCm, thighWidthCm, legOpeningCm, inseamCm, measurementGeometry.",
+                  `shoeSizeSystem enum: ${SHOE_SIZE_SYSTEMS.join(", ")}`,
+                  `shoeType enum: ${SHOE_TYPES.join(", ")}`,
                   `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
                   `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
                   `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
@@ -149,6 +166,7 @@ export class OpenAIVisionProvider implements AIProvider {
                   "Each catalog and centimeter field must be an object: { value, confidence }.",
                   ...PRODUCT_AUDIENCE_TITLE_RULES,
                   ...PRODUCT_MATERIAL_TAG_RULES,
+                  ...(shoes ? SHOE_RECOGNITION_RULES : [
                   "ukSizeLabel is the best UK size notation supported by the visible tag and measured garment fit, for example UK 12, UK W32, or UK M. Use null when the evidence is insufficient; do not convert from sizeLabel alone.",
                   "All centimeter values are flat-lay garment measurements, not body circumference.",
                   "lengthCm: shoulder high point at the neck/shoulder seam to hem for tops/dresses; top waistband to hem for bottoms.",
@@ -157,6 +175,9 @@ export class OpenAIVisionProvider implements AIProvider {
                   ...HOODED_GARMENT_MEASUREMENT_RULES,
                   "waistCm and hipCm are flat widths. thighWidthCm is one leg flat width. legOpeningCm is one opening flat width. inseamCm is crotch to hem.",
                   ...MEASUREMENT_GEOMETRY_RULES,
+                  "If the item is shoes, apply these overrides:",
+                  ...SHOE_RECOGNITION_RULES.slice(1)
+                  ]),
                   "Base the answer only on the attached images."
                 ].join("\n")
               },
@@ -185,7 +206,8 @@ export class OpenAIVisionProvider implements AIProvider {
         request.imageIds,
         runtimeTaxonomy,
         images.find((image) => image.type === "FRONT")?.id ?? request.imageIds[0] ?? null,
-        boardDetection
+        boardDetection,
+        request.categoryHint
       ),
       latencyMs: Date.now() - startedAt,
       inputTokens: numberOrUndefined(payload.usage?.input_tokens),

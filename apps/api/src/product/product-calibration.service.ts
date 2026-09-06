@@ -14,6 +14,7 @@ import {
 } from "@online-saler/database";
 import { ProductStateMachine } from "./product-state-machine";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
+import { formatShoeSizeLabel, isShoeProduct, SHOE_SIZE_SYSTEMS, SHOE_TYPES } from "@online-saler/shared-types";
 
 export interface CalibrationMeasurementInput {
   type: string;
@@ -51,6 +52,10 @@ export interface CalibrateProductInput {
   tags: string[];
   brand?: string;
   tagSize?: string;
+  shoeSizeSystem?: string;
+  shoeType?: string;
+  shoePairConfirmed?: boolean;
+  shoeConditionNotes?: string;
   sizeLabel?: string;
   ukSizeLabel?: string;
   conditionGrade: ConditionGrade;
@@ -69,6 +74,24 @@ export class ProductCalibrationService {
   ) {}
 
   async calibrate(productId: string, input: CalibrateProductInput) {
+    const shoes = isShoeProduct(input.category, input.subcategory);
+    if (shoes) {
+      input = {
+        ...input,
+        category: "SHOES",
+        kidsAgeRange: undefined,
+        pattern: "UNKNOWN",
+        sleeveType: "NOT_APPLICABLE",
+        fitType: ProductFitType.UNKNOWN,
+        stretchLevel: ProductStretchLevel.UNKNOWN,
+        fabricWeight: ProductFabricWeight.UNKNOWN,
+        sizeLabel: formatShoeSizeLabel(input.tagSize, input.shoeSizeSystem) ?? undefined,
+        ukSizeLabel: undefined,
+        measurements: Array.isArray(input.measurements)
+          ? input.measurements.filter((measurement) => measurement.type === "INSOLE_LENGTH")
+          : input.measurements
+      };
+    }
     this.validate(input);
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
@@ -86,7 +109,7 @@ export class ProductCalibrationService {
     });
 
     const reviewedAt = new Date();
-    const finalFields: Record<string, string | string[] | null> = {
+    const finalFields: Record<string, string | string[] | boolean | null> = {
       title: input.title,
       category: input.category,
       subcategory: input.subcategory ?? null,
@@ -102,6 +125,10 @@ export class ProductCalibrationService {
       tags: input.tags,
       brandLabel: input.brand ?? null,
       tagSize: input.tagSize ?? null,
+      shoeSizeSystem: shoes ? input.shoeSizeSystem! : null,
+      shoeType: shoes ? input.shoeType! : null,
+      shoePairConfirmed: shoes && input.shoePairConfirmed === true,
+      shoeConditionNotes: shoes ? input.shoeConditionNotes!.trim() : null,
       sizeLabel: input.sizeLabel ?? null,
       ukSizeLabel: input.ukSizeLabel ?? null
     };
@@ -126,6 +153,10 @@ export class ProductCalibrationService {
           kidsAgeRange: input.gender === ProductGender.KIDS ? input.kidsAgeRange ?? null : null,
           brand: input.brand ?? null,
           tagSize: input.tagSize ?? null,
+          shoeSizeSystem: shoes ? input.shoeSizeSystem! : null,
+          shoeType: shoes ? input.shoeType! : null,
+          shoePairConfirmed: shoes && input.shoePairConfirmed === true,
+          shoeConditionNotes: shoes ? input.shoeConditionNotes!.trim() : null,
           finalSizeLabel: input.sizeLabel ?? null,
           ukSizeLabel: input.ukSizeLabel ?? null,
           conditionGrade: input.conditionGrade,
@@ -259,8 +290,23 @@ export class ProductCalibrationService {
     if (!input.gender || !Object.values(ProductGender).includes(input.gender)) {
       throw new BadRequestException("audience must be confirmed by an employee");
     }
-    if (input.gender === ProductGender.KIDS && !input.kidsAgeRange?.trim()) {
+    const shoes = isShoeProduct(input.category, input.subcategory);
+    if (!shoes && input.gender === ProductGender.KIDS && !input.kidsAgeRange?.trim()) {
       throw new BadRequestException("kids age range is required for kids items");
+    }
+    if (shoes) {
+      if (!SHOE_SIZE_SYSTEMS.includes(input.shoeSizeSystem as never) || !formatShoeSizeLabel(input.tagSize, input.shoeSizeSystem)) {
+        throw new BadRequestException("Confirm the original shoe size and its size system; unknown sizes must remain uncalibrated.");
+      }
+      if (!SHOE_TYPES.includes(input.shoeType as never)) {
+        throw new BadRequestException("Confirm the shoe type.");
+      }
+      if (input.shoePairConfirmed !== true) {
+        throw new BadRequestException("Confirm both shoes form a matching pair with the same model and size.");
+      }
+      if (typeof input.shoeConditionNotes !== "string" || !input.shoeConditionNotes.trim()) {
+        throw new BadRequestException("Confirm customer-visible shoe condition notes, including sole wear and any damage.");
+      }
     }
     if (!input.conditionGrade) {
       throw new BadRequestException("conditionGrade must be confirmed by an employee");

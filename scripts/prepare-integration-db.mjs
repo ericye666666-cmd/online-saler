@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 // prove that the resulting database matches the proposed Prisma schema.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const baseline = "e319fe94febb0479fe143914c0e2b6f6d87b764d";
-const migration = "20260906140000_add_manual_after_sales";
+const migrations = ["20260906140000_add_manual_after_sales", "20260906180000_shoe_intake"];
 const raw = process.env.MVP_INTEGRATION_DATABASE_URL;
 if (!raw) throw new Error("MVP_INTEGRATION_DATABASE_URL must name a disposable local test database.");
 const url = new URL(raw);
@@ -44,7 +44,9 @@ try {
     writeFileSync(path.join(schemaDirectory, path.basename(file)), content);
   }
   runPrisma(["db", "push", "--schema", schemaDirectory, "--skip-generate"]);
-  runPrisma(["db", "execute", "--schema", "packages/database/prisma", "--file", `packages/database/prisma/migrations/${migration}/migration.sql`]);
+  for (const migration of migrations) {
+    runPrisma(["db", "execute", "--schema", "packages/database/prisma", "--file", `packages/database/prisma/migrations/${migration}/migration.sql`]);
+  }
   // --from-schema-datasource reads the connection without echoing it as an argument.
   runPrisma(["migrate", "diff", "--from-schema-datasource", "packages/database/prisma", "--to-schema-datamodel", "packages/database/prisma", "--exit-code"]);
   console.log("Disposable database verified: released schema + unchanged new migration equals proposed schema.");

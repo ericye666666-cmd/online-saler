@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 
-export const PRODUCT_DETAIL_PROMPT_VERSION = "product-detail-copy-v3";
+export const PRODUCT_DETAIL_PROMPT_VERSION = "product-detail-copy-v4-shoes";
 
 export type ProductDetailCopy = {
   title: string;
@@ -24,6 +24,10 @@ export type ProductDetailFacts = {
   brand: string | null;
   tagSize: string | null;
   platformSize: string | null;
+  shoeSizeSystem?: string | null;
+  shoeType?: string | null;
+  shoePairConfirmed?: boolean;
+  shoeConditionNotes?: string | null;
   conditionGrade: string | null;
   fitType: string | null;
   stretchLevel: string | null;

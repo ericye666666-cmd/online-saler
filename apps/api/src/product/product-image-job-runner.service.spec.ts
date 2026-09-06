@@ -86,3 +86,31 @@ describe("ProductImageJobRunnerService", () => {
     assert.equal(new Set(uploadedObjectNames).size, 2);
   });
 });
+
+
+it("shoe display reads exact original bytes and never sends the pair through garment processing", async () => {
+  const imageFind = prisma.productImage.findFirst;
+  const assetFind = prisma.productImageVariantAsset.findFirst;
+  let displayInput: Record<string, unknown> | undefined;
+  try {
+    prisma.productImage.findFirst = (async ({ where }: { where: { id: string; type: string } }) =>
+      where.id === "pair" && where.type === "FRONT" ? { id: "pair", originalUrl: "gs://test/pair.jpg" } : null) as never;
+    prisma.productImageVariantAsset.findFirst = (async () => { throw new Error("Shoe original must not load a cutout"); }) as never;
+    const runner = new ProductImageJobRunnerService({
+      bucket: "test", download: async () => ({ body: Buffer.from("both-shoes-original"), contentType: "image/jpeg" })
+    } as never, { removeBackground: async () => { throw new Error("No garment background processor"); } } as never,
+    {} as never, { balance: async () => { throw new Error("No garment balancing"); } } as never,
+    { generate: async (input: Record<string, unknown>) => { displayInput = input; return { body: Buffer.from("pair-display") }; } } as never);
+    const privateRunner = runner as unknown as {
+      loadSource: (job: Record<string, unknown>, category: string) => Promise<any>;
+      process: (operation: string, source: any, mode: undefined, category: string) => Promise<any>;
+    };
+    const source = await privateRunner.loadSource({ id: "job", productId: "shoe", sourceImageId: "pair", operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" }, "SHOES");
+    await privateRunner.process("GENERATE_AI_DISPLAY_MAIN_IMAGE", source, undefined, "SHOES");
+    assert.equal((displayInput?.body as Buffer).toString(), "both-shoes-original");
+    assert.equal(displayInput?.category, "SHOES");
+  } finally {
+    prisma.productImage.findFirst = imageFind;
+    prisma.productImageVariantAsset.findFirst = assetFind;
+  }
+});

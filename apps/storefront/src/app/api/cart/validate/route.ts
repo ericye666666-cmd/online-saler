@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { formatShoeSizeLabel, isShoeProduct } from "@online-saler/shared-types";
 import {
   InventoryItemStatus,
   ProductDetailAssetType,
@@ -155,7 +156,9 @@ function productToCartItem(
     title: product.title || "Second-hand item",
     storefrontImage: storefrontImage(product, selection, variantAssets),
     priceKsh: product.priceKsh,
-    size: product.finalSizeLabel || product.tagSize,
+    size: isShoeProduct(product.category, product.subcategory)
+      ? formatShoeSizeLabel(product.tagSize || product.finalSizeLabel, product.shoeSizeSystem)
+      : product.finalSizeLabel || product.tagSize,
     condition: product.conditionGrade,
     availability,
     canCheckout: availability === "AVAILABLE" && Boolean(product.priceKsh && product.priceKsh > 0),

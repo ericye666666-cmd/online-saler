@@ -1,3 +1,5 @@
+import { SHOE_REQUIRED_IMAGE_TYPES, isShoeProduct } from "@online-saler/shared-types";
+
 export const PRODUCT_FACTORY_BATCH_STAGES = [
   "UPLOAD",
   "AI_IMAGE",
@@ -28,6 +30,8 @@ export type ProductFactoryBatchNextAction =
 
 export type BatchFlowProduct = {
   status: string;
+  category?: string | null;
+  subcategory?: string | null;
   detailSourceVersion?: number | null;
   barcode?: string | null;
   labelPrintedAt?: Date | string | null;
@@ -165,6 +169,12 @@ function earliestIncompleteStage(products: BatchFlowProduct[]): (typeof PRODUCT_
 
 function productStageRank(product: BatchFlowProduct): number {
   const baseRank = STATUS_RANK[product.status] ?? 0;
+  if (baseRank < 3 && isShoeProduct(product.category, product.subcategory)) {
+    const types = new Set((product.images ?? []).map((image) =>
+      image && typeof image === "object" && "type" in image ? image.type : null
+    ));
+    if (SHOE_REQUIRED_IMAGE_TYPES.some((type) => !types.has(type))) return 0;
+  }
   if (product.status === "BARCODE_ASSIGNED") return product.labelPrintedAt ? 5 : 4;
   if (product.status === "APPROVED") return 6;
   if (product.status === "READY_FOR_STORAGE") {

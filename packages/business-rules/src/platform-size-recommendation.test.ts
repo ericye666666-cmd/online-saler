@@ -135,3 +135,12 @@ test("returns null for unsupported categories or missing primary measurements", 
   assert.equal(recommendPlatformSize({ category: "BAG", audience: "WOMEN", measurements: {} }), null);
   assert.equal(recommendPlatformSize({ category: "SHIRTS", audience: "MEN", measurements: {} }), null);
 });
+
+test("children's shoes never inherit the clothing letter size from their age", () => {
+  for (const category of ["SHOES", "KIDS"]) {
+    assert.equal(recommendPlatformSize({
+      category, subcategory: "KIDS_SHOES", audience: "KIDS", kidsAgeRange: "KIDS_6_8Y",
+      measurements: { lengthCm: 22, chestWidthCm: 20 }
+    }), null);
+  }
+});

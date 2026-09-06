@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  isShoeCategory,
   AI_AUDIENCES,
   AI_COLORS,
   AI_KIDS_AGE_RANGES,
@@ -55,10 +56,12 @@ import {
   measurementFields,
   measurementRequirements,
   normalizedAiOutput,
+  normalizeWorkspaceForm,
   stringValue,
   type JsonRecord,
   type WorkspaceForm
 } from "../operations-workspace-flow";
+import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { GarmentMeasurementGuide } from "./garment-measurement-guide";
 import { cutoutQualityWarning } from "./image-processing-quality";
 import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
@@ -100,6 +103,7 @@ const FACT_LABELS: Record<string, string> = {
 type ProductImage = {
   id: string;
   type: string;
+  variant?: string;
   publicUrl?: string | null;
   createdAt?: string;
 };
@@ -305,6 +309,7 @@ export function ProductBatchCalibrationPage({
   const product = batch?.products[currentIndex] ?? null;
   const latestExtraction = product?.aiExtractions?.[0] ?? null;
   const aiOutput = normalizedAiOutput(latestExtraction);
+  const shoes = isShoeCategory(form.category);
   const draftKey = product ? `operations.product.calibration.draft.${product.id}` : "";
   const measurementDraftKey = product ? `operations.product.calibration.measurement-lines.${product.id}` : "";
 
@@ -327,7 +332,7 @@ export function ProductBatchCalibrationPage({
     if (saved) {
       try {
         const savedForm = JSON.parse(saved) as Partial<WorkspaceForm>;
-        nextForm = { ...baseForm, ...savedForm };
+        nextForm = normalizeWorkspaceForm({ ...baseForm, ...savedForm });
         savedSizeLabel = typeof savedForm.sizeLabel === "string" ? savedForm.sizeLabel : "";
         savedUkSizeLabel = typeof savedForm.ukSizeLabel === "string" ? savedForm.ukSizeLabel : "";
       } catch {
@@ -344,7 +349,7 @@ export function ProductBatchCalibrationPage({
     void loadComparison(product.id, ids.adminUserId)
       .then((value) => {
         setComparison(value);
-        setActiveImage(value.cutoutWhite ? "white" : "back-white");
+        setActiveImage(isShoeCategory(nextForm.category) ? "original-FRONT" : value.cutoutWhite ? "white" : "back-white");
       })
       .catch((caught) => setError(errorMessage(caught, "无法读取图片版本。")));
   }, [ids.adminUserId, latestExtraction, product]);
@@ -363,10 +368,10 @@ export function ProductBatchCalibrationPage({
   const latestRemovalJob = comparison?.jobs.find((job) =>
     job.operation === "REMOVE_BACKGROUND" && job.sourceImageId === comparison.original?.imageId
   ) ?? null;
-  const cutoutWarning = latestRemovalJob ? cutoutQualityWarning(latestRemovalJob) : null;
+  const cutoutWarning = !shoes && latestRemovalJob ? cutoutQualityWarning(latestRemovalJob) : null;
   const imageTabs = useMemo(
-    () => buildImageTabs(comparison),
-    [comparison]
+    () => buildImageTabs(comparison, shoes ? product : null),
+    [comparison, product, shoes]
   );
   const currentImage = imageTabs.find((item) => item.key === activeImage) ?? imageTabs[0] ?? null;
   const reasons = calibrationValidationReasons(form, {
@@ -379,7 +384,7 @@ export function ProductBatchCalibrationPage({
   });
   const completedCount = batch?.products.filter((item) => isCalibrationComplete(item.status)).length ?? 0;
   const readOnly = Boolean(product && isCalibrationComplete(product.status));
-  const platformSizeRecommendation = useMemo(() => recommendPlatformSize({
+  const platformSizeRecommendation = useMemo(() => isShoeCategory(form.category) ? null : recommendPlatformSize({
     category: form.category,
     subcategory: form.subcategory,
     audience: form.audience,
@@ -413,7 +418,7 @@ export function ProductBatchCalibrationPage({
   const platformSizeBasis = platformSizeRecommendation
     ? platformSizeRecommendation.measurementsUsed.map(platformSizeMeasurementText).join("、")
     : "";
-  const ukSizeRecommendation = useMemo(() => recommendUkSize({
+  const ukSizeRecommendation = useMemo(() => isShoeCategory(form.category) ? null : recommendUkSize({
     platformSize: form.sizeLabel || platformSizeRecommendation?.size,
     category: form.category,
     subcategory: form.subcategory,
@@ -491,7 +496,7 @@ export function ProductBatchCalibrationPage({
       : { ...current, ukSizeLabel: ukSizeRecommendation.size });
   }, [formProductId, product, readOnly, ukSizeManuallyEdited, ukSizeRecommendation]);
 
-  function updateForm(key: Exclude<keyof WorkspaceForm, "tags">, value: string) {
+  function updateForm(key: Exclude<keyof WorkspaceForm, "tags" | "shoePairConfirmed">, value: string) {
     setForm((current) => {
       const next = { ...current, [key]: value };
       if (key === "category") {
@@ -499,8 +504,14 @@ export function ProductBatchCalibrationPage({
         next.subcategory = options.includes(next.subcategory) ? next.subcategory : options[0] ?? "OTHER";
       }
       if (key === "audience" && value !== "KIDS") next.kidsAgeRange = "NOT_APPLICABLE";
-      return next;
+      return normalizeWorkspaceForm(next, current.category);
     });
+    if (key === "category") {
+      setManualMeasurementLines([]);
+      setManualMeasurementEditorOpen(false);
+      setManualEditorOpen(false);
+      setActiveImage(isShoeCategory(value) ? "original-FRONT" : "white");
+    }
     setNotice("");
   }
 
@@ -599,7 +610,7 @@ export function ProductBatchCalibrationPage({
       const measurementKeys = new Map(visibleMeasurementFields.map((field) => [field.type, field.key]));
       const measurements = calibrationBody.measurements.map((measurement) => {
         const key = measurementKeys.get(measurement.type);
-        const line = manualMeasurementLines.find((item) => item.key === key);
+        const line = shoes ? undefined : manualMeasurementLines.find((item) => item.key === key);
         return line ? { ...measurement, manualLine: calibrationLinePayload(line) } : measurement;
       });
       await request(`/products/${product.id}/calibrate`, {
@@ -760,7 +771,7 @@ export function ProductBatchCalibrationPage({
         })
       });
       await load();
-      setNotice("AI 商品识别与测量已更新，请对照尺寸示意确认。 ");
+      setNotice(shoes ? "AI 鞋类识别已更新，请对照原图核对鞋码、鞋款和成双情况。" : "AI 商品识别与测量已更新，请对照尺寸示意确认。");
     } catch (caught) {
       setError(errorMessage(caught, "AI 测量失败。"));
     } finally {
@@ -803,7 +814,7 @@ export function ProductBatchCalibrationPage({
             <ArrowLeftIcon className="size-3" />返回批次
           </Link>
           <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：异常确认并发布</h1>
-          <p className="mt-1 text-sm text-muted-foreground">第 {currentIndex + 1}/{batch.targetCount} 件 · 已完成 {completedCount}/{batch.targetCount} · {productStatusLabel(product.status)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">第 {currentIndex + 1}/{batch.targetCount} {shoes ? "双" : "件"} · 已完成 {completedCount}/{batch.targetCount} · {productStatusLabel(product.status)}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="icon" title="上一件" disabled={currentIndex === 0 || Boolean(busy)} onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}><ArrowLeftIcon /></Button>
@@ -827,9 +838,9 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">原图永久保留；这里只快速核对抠图、商品事实与异常。整批确认后系统才按默认风格批量生成 AI 陈列图，员工不需要选择风格。</p>
+              <p className="text-xs text-muted-foreground">{shoes ? "核对整双、侧面、鞋底和尺码标原图。整批确认后生成 AI 陈列图，再逐双对照原图审核。" : "原图永久保留；这里只快速核对抠图、商品事实与异常。整批确认后系统才按默认风格批量生成 AI 陈列图，员工不需要选择风格。"}</p>
             </div>
-            {cutoutWarning ? <Badge variant="destructive">需要图片异常处理</Badge> : <Badge variant="secondary">自动图片处理通过</Badge>}
+            {shoes ? <Badge variant="secondary">保留成双原图</Badge> : cutoutWarning ? <Badge variant="destructive">需要图片异常处理</Badge> : <Badge variant="secondary">自动图片处理通过</Badge>}
           </div>
 
           {cutoutWarning ? (
@@ -862,19 +873,19 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />全屏</Button>
             {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
-            {!readOnly && !cutoutWarning && comparison?.original?.publicUrl ? (
+            {!shoes && !readOnly && !cutoutWarning && comparison?.original?.publicUrl ? (
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("auto")}>
                 {busy === "auto" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}重新自动抠图
               </Button>
             ) : null}
-            {!readOnly && comparison?.original?.publicUrl ? (
+            {!shoes && !readOnly && comparison?.original?.publicUrl ? (
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => setManualEditorOpen(true)}>
                 <ScissorsIcon data-icon="inline-start" />抠图不对，手动修正
               </Button>
             ) : null}
           </div>
 
-          {latestRemovalJob ? <ProcessingSummary job={latestRemovalJob} warning={cutoutWarning} /> : <StatusMessage tone="neutral">还没有图片处理记录。</StatusMessage>}
+          {!shoes ? latestRemovalJob ? <ProcessingSummary job={latestRemovalJob} warning={cutoutWarning} /> : <StatusMessage tone="neutral">还没有图片处理记录。</StatusMessage> : null}
           <details className="rounded-md border px-3 py-2 text-sm">
             <summary className="cursor-pointer font-medium">处理历史（{comparison?.jobs.length ?? 0}）</summary>
             <div className="mt-2 space-y-2">
@@ -896,7 +907,7 @@ export function ProductBatchCalibrationPage({
             {!readOnly ? (
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void rerunAiMeasurements()}>
                 {busy === "ai-measurements" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <WandSparklesIcon data-icon="inline-start" />}
-                重新 AI 识别与测量
+                {shoes ? "重新 AI 识别鞋子" : "重新 AI 识别与测量"}
               </Button>
             ) : null}
           </div>
@@ -907,140 +918,155 @@ export function ProductBatchCalibrationPage({
             <FormSelect fieldKey="subcategory" label="子分类" value={form.subcategory} values={subcategoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
             <FormSelect fieldKey="audience" label="适用人群" value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
             <FormSelect fieldKey="color" label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
-            {form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
-            <FormInput fieldKey="tagSize" label="标签尺码" value={form.tagSize} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("tagSize", value)} />
-            <div className="min-w-0">
-              <FormSelect
-                fieldKey="sizeLabel"
-                label="平台推荐尺码"
-                value={form.sizeLabel}
-                values={sizeOptions}
-                labels={taxonomyLabels}
-                required
-                disabled={readOnly}
-                suggestion={aiSuggestion(aiOutput, "sizeLabel")}
-                onChange={(value) => {
-                  setPlatformSizeManuallyEdited(true);
-                  updateForm("sizeLabel", value);
-                }}
-              />
-              {platformSizeRecommendation ? (
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
-                  <span className={platformSizeRecommendation.requiresHumanReview ? "text-amber-700" : "text-emerald-700"}>
-                    测量推荐：{platformSizeRecommendation.size}（{platformSizeBasis}）
-                  </span>
-                  {!platformSizeManuallyEdited && form.sizeLabel === platformSizeRecommendation.size ? (
-                    <span className="text-muted-foreground">已自动填入，可人工修改</span>
-                  ) : !readOnly && form.sizeLabel !== platformSizeRecommendation.size ? (
-                    <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useMeasuredPlatformSize}>
-                      采用测量推荐
-                    </Button>
-                  ) : null}
-                  {platformSizeRecommendation.requiresHumanReview ? (
-                    <span className="text-amber-700">比例存在冲突，请员工重点核对测量线和适用人群。</span>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="mt-1 text-xs font-normal text-muted-foreground">
-                  {platformSizePendingText(form)}
-                </p>
-              )}
-            </div>
-            <div className="min-w-0">
-              <FormInput
-                fieldKey="ukSizeLabel"
-                label="英码"
-                value={form.ukSizeLabel}
-                disabled={readOnly}
-                suggestion={aiSuggestion(aiOutput, "ukSizeLabel")}
-                hint="例如 UK 12、UK W32 或 UK M。"
-                onChange={(value) => {
-                  setUkSizeManuallyEdited(true);
-                  updateForm("ukSizeLabel", value);
-                }}
-              />
-              {ukSizeRecommendation ? (
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
-                  <span className="text-emerald-700">英码推荐：{ukSizeRecommendation.size}</span>
-                  {!ukSizeManuallyEdited && form.ukSizeLabel === ukSizeRecommendation.size ? (
-                    <span className="text-muted-foreground">已自动填入，可人工修改</span>
-                  ) : !readOnly && form.ukSizeLabel !== ukSizeRecommendation.size ? (
-                    <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useRecommendedUkSize}>
-                      采用英码推荐
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            {!shoes && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
+            {!shoes ? <>
+              <FormInput fieldKey="tagSize" label="标签尺码" value={form.tagSize} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("tagSize", value)} />
+              <div className="min-w-0">
+                <FormSelect
+                  fieldKey="sizeLabel"
+                  label="平台推荐尺码"
+                  value={form.sizeLabel}
+                  values={sizeOptions}
+                  labels={taxonomyLabels}
+                  required
+                  disabled={readOnly}
+                  suggestion={aiSuggestion(aiOutput, "sizeLabel")}
+                  onChange={(value) => {
+                    setPlatformSizeManuallyEdited(true);
+                    updateForm("sizeLabel", value);
+                  }}
+                />
+                {platformSizeRecommendation ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
+                    <span className={platformSizeRecommendation.requiresHumanReview ? "text-amber-700" : "text-emerald-700"}>
+                      测量推荐：{platformSizeRecommendation.size}（{platformSizeBasis}）
+                    </span>
+                    {!platformSizeManuallyEdited && form.sizeLabel === platformSizeRecommendation.size ? (
+                      <span className="text-muted-foreground">已自动填入，可人工修改</span>
+                    ) : !readOnly && form.sizeLabel !== platformSizeRecommendation.size ? (
+                      <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useMeasuredPlatformSize}>
+                        采用测量推荐
+                      </Button>
+                    ) : null}
+                    {platformSizeRecommendation.requiresHumanReview ? (
+                      <span className="text-amber-700">比例存在冲突，请员工重点核对测量线和适用人群。</span>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs font-normal text-muted-foreground">
+                    {platformSizePendingText(form)}
+                  </p>
+                )}
+              </div>
+              <div className="min-w-0">
+                <FormInput
+                  fieldKey="ukSizeLabel"
+                  label="英码"
+                  value={form.ukSizeLabel}
+                  disabled={readOnly}
+                  suggestion={aiSuggestion(aiOutput, "ukSizeLabel")}
+                  hint="例如 UK 12、UK W32 或 UK M。"
+                  onChange={(value) => {
+                    setUkSizeManuallyEdited(true);
+                    updateForm("ukSizeLabel", value);
+                  }}
+                />
+                {ukSizeRecommendation ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
+                    <span className="text-emerald-700">英码推荐：{ukSizeRecommendation.size}</span>
+                    {!ukSizeManuallyEdited && form.ukSizeLabel === ukSizeRecommendation.size ? (
+                      <span className="text-muted-foreground">已自动填入，可人工修改</span>
+                    ) : !readOnly && form.ukSizeLabel !== ukSizeRecommendation.size ? (
+                      <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useRecommendedUkSize}>
+                        采用英码推荐
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </> : null}
           </div>
 
-          <div className="border-t pt-4">
-            <h3 className="mb-3 text-sm font-semibold">尺寸（cm）</h3>
-            <GarmentMeasurementGuide
-              category={form.category}
-              subcategory={form.subcategory}
-              imageUrl={measurementGuideImage(imageTabs)}
-              manualLines={manualMeasurementLines}
-              aiLines={aiMeasurement.lines}
-              onManualCalibrate={measurementAction ? () => void openManualMeasurementCalibration() : undefined}
-              manualCalibrateLabel={manualMeasurementLines.length > 0
-                ? "修正已有测量线"
-                : aiMeasurement.lines.length > 0
-                  ? "校正 AI 测量线"
-                  : "打开测量板测量"}
-              manualCalibrateDisabled={Boolean(busy)}
-              measurements={measurementSuggestions.map((item) => ({
-                key: item.key,
-                label: item.label,
-                value: form[item.key],
-                aiValue: item.aiValue
-              }))}
+          {shoes ? (
+            <ShoeCalibrationFields
+              form={form}
+              disabled={readOnly}
+              onChange={updateForm}
+              onPairConfirmed={(confirmed) => setForm((current) => ({ ...current, shoePairConfirmed: confirmed }))}
             />
-            {!hasAiMeasurements && !readOnly ? (
-              <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                AI 没有给出可靠厘米值。可直接用软尺实测并填写下方字段，也可打开测量板连接起点和终点，由系统按板面换算厘米。
+          ) : (
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-sm font-semibold">尺寸（cm）</h3>
+              <GarmentMeasurementGuide
+                category={form.category}
+                subcategory={form.subcategory}
+                imageUrl={measurementGuideImage(imageTabs)}
+                manualLines={manualMeasurementLines}
+                aiLines={aiMeasurement.lines}
+                onManualCalibrate={measurementAction ? () => void openManualMeasurementCalibration() : undefined}
+                manualCalibrateLabel={manualMeasurementLines.length > 0
+                  ? "修正已有测量线"
+                  : aiMeasurement.lines.length > 0
+                    ? "校正 AI 测量线"
+                    : "打开测量板测量"}
+                manualCalibrateDisabled={Boolean(busy)}
+                measurements={measurementSuggestions.map((item) => ({
+                  key: item.key,
+                  label: item.label,
+                  value: form[item.key],
+                  aiValue: item.aiValue
+                }))}
+              />
+              {!hasAiMeasurements && !readOnly ? (
+                <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                  AI 没有给出可靠厘米值。可直接用软尺实测并填写下方字段，也可打开测量板连接起点和终点，由系统按板面换算厘米。
+                </div>
+              ) : null}
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {measurementSuggestions.map((field) => (
+                  <FormInput
+                    key={field.key}
+                    fieldKey={field.key}
+                    label={field.label}
+                    value={form[field.key]}
+                    required={requiredMeasurementKeys.has(field.key)}
+                    inputMode="decimal"
+                    disabled={readOnly}
+                    suggestion={field.suggestion}
+                    suggestionLabel="AI 测量"
+                    onChange={(value) => updateForm(field.key, value)}
+                  />
+                ))}
               </div>
-            ) : null}
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {measurementSuggestions.map((field) => (
-                <FormInput
-                  key={field.key}
-                  fieldKey={field.key}
-                  label={field.label}
-                  value={form[field.key]}
-                  required={requiredMeasurementKeys.has(field.key)}
-                  inputMode="decimal"
-                  disabled={readOnly}
-                  suggestion={field.suggestion}
-                  suggestionLabel="AI 测量"
-                  onChange={(value) => updateForm(field.key, value)}
-                />
-              ))}
             </div>
-          </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <FormSelect fieldKey="conditionGrade" label="成色" value={form.conditionGrade} values={conditionOptions} labels={taxonomyLabels} required disabled={readOnly} onChange={(value) => updateForm("conditionGrade", value)} />
             <FormInput fieldKey="brand" label="品牌" value={form.brand} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "brandLabel")} onChange={(value) => updateForm("brand", value)} />
             <FormInput fieldKey="priceKsh" label="价格（KSh）" value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
             <FormSelect fieldKey="pattern" label="图案" value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
-            <FormSelect fieldKey="sleeveType" label="袖型" value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
-            <FormSelect fieldKey="fitType" label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fitType")} onChange={(value) => updateForm("fitType", value)} />
-            <FormSelect fieldKey="stretchLevel" label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "stretchLevel")} onChange={(value) => updateForm("stretchLevel", value)} />
-            <FormSelect fieldKey="fabricWeight" label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fabricWeight")} onChange={(value) => updateForm("fabricWeight", value)} />
-            <FormSelect fieldKey="material" label="面料" value={form.material} values={materialOptions} labels={materialLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "material")} onChange={(value) => updateForm("material", value)} />
+            {!shoes ? <>
+              <FormSelect fieldKey="sleeveType" label="袖型" value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
+              <FormSelect fieldKey="fitType" label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fitType")} onChange={(value) => updateForm("fitType", value)} />
+              <FormSelect fieldKey="stretchLevel" label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "stretchLevel")} onChange={(value) => updateForm("stretchLevel", value)} />
+              <FormSelect fieldKey="fabricWeight" label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fabricWeight")} onChange={(value) => updateForm("fabricWeight", value)} />
+            </> : null}
+            <FormSelect fieldKey="material" label={shoes ? "材质" : "面料"} value={form.material} values={materialOptions} labels={materialLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "material")} onChange={(value) => updateForm("material", value)} />
           </div>
 
-          <FormTagPicker
-            fieldKey="tags"
-            label="商品标签"
-            values={tagOptions}
-            selected={form.tags}
-            labels={taxonomyLabels}
-            suggestion={aiArraySuggestion(aiOutput, "tags")}
-            disabled={readOnly}
-            onChange={updateTags}
-          />
+          {!shoes ? (
+            <FormTagPicker
+              fieldKey="tags"
+              label="商品标签"
+              values={tagOptions}
+              selected={form.tags}
+              labels={taxonomyLabels}
+              suggestion={aiArraySuggestion(aiOutput, "tags")}
+              disabled={readOnly}
+              onChange={updateTags}
+            />
+          ) : null}
 
           <FormTextarea fieldKey="defects" label="瑕疵" value={form.defects} required disabled={readOnly} hint="没有瑕疵请填写 None。" onChange={(value) => updateForm("defects", value)} />
           {reasons.length && !readOnly ? <StatusMessage tone="danger">{reasons.join(" ")}</StatusMessage> : null}
@@ -1240,7 +1266,17 @@ function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; childre
   return <div className={cn("rounded-md border px-4 py-3 text-sm", tone === "danger" ? "border-destructive/40 bg-destructive/5 text-destructive" : "bg-muted/40 text-muted-foreground")}>{children}</div>;
 }
 
-function buildImageTabs(comparison: ProductImageComparisonResponse | null): ImageTab[] {
+function buildImageTabs(comparison: ProductImageComparisonResponse | null, shoeProduct: ProductRecord | null): ImageTab[] {
+  if (shoeProduct) {
+    const labels: Record<string, string> = { FRONT: "整双原图", BACK: "侧面原图", DETAIL: "鞋底原图", LABEL: "尺码标原图", DEFECT: "瑕疵原图" };
+    const originals = Object.entries(labels).flatMap(([type, label]) => {
+      const source = shoeProduct.images?.find((item) => item.type === type && (!item.variant || item.variant === "ORIGINAL"));
+      if (!source?.publicUrl) return [];
+      return [{ key: `original-${type}`, label, url: source.publicUrl.startsWith("/") ? `${API_PROXY_URL}${source.publicUrl}` : source.publicUrl, imageId: source.id, selectable: false, selected: false }];
+    });
+    const aiDisplay = comparison?.aiDisplayMain;
+    return aiDisplay ? [...originals, variantTab("ai-display", "AI 陈列图", aiDisplay, false)] : originals;
+  }
   const tabs: ImageTab[] = [
     variantTab("white", "白底正面", comparison?.cutoutWhite ?? null, false),
     variantTab("back-white", "背面白底", comparison?.backCutoutWhite ?? null, false)
@@ -1273,8 +1309,9 @@ function formForProduct(product: ProductRecord, extraction: JsonRecord | null): 
     const raw = measurement?.finalValueCm ?? measurement?.aiValueCm ?? aiFieldValue;
     return raw == null ? "" : String(raw);
   };
-  return {
+  return normalizeWorkspaceForm({
     ...base,
+    insoleLengthCm: String(measurements.find((item) => item.measurementType === "INSOLE_LENGTH")?.finalValueCm ?? ""),
     lengthCm: value("LENGTH", "lengthCm"),
     chestWidthCm: value("CHEST_WIDTH", "chestWidthCm"),
     shoulderWidthCm: value("SHOULDER_WIDTH", "shoulderWidthCm"),
@@ -1284,8 +1321,8 @@ function formForProduct(product: ProductRecord, extraction: JsonRecord | null): 
     thighWidthCm: value("THIGH_WIDTH", "thighWidthCm"),
     legOpeningCm: value("LEG_OPENING", "legOpeningCm"),
     inseamCm: value("INSEAM", "inseamCm"),
-    defects: product.defects?.length ? product.defects.map((defect) => defect.description).filter(Boolean).join("; ") : "None"
-  };
+    defects: product.defects?.length ? product.defects.map((defect) => defect.description).filter(Boolean).join("; ") : isShoeCategory(base.category) ? "" : "None"
+  });
 }
 
 function newestImage(product: ProductRecord | null, type: string) {
@@ -1427,7 +1464,7 @@ function focusValidationIssue(
   }
   const wrapper = document.querySelector<HTMLElement>(`[data-field-key="${issue.field}"]`);
   wrapper?.scrollIntoView({ behavior: "smooth", block: "center" });
-  window.setTimeout(() => wrapper?.querySelector<HTMLElement>("input, select, textarea")?.focus(), 250);
+  window.setTimeout(() => wrapper?.querySelector<HTMLElement>("input, select, textarea, [role=checkbox]")?.focus(), 250);
 }
 
 function providerLabel(provider: string | null) {

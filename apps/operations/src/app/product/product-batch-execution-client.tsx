@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   PRODUCT_AI_PROMPT_VERSION,
+  isShoeProduct,
   type BackgroundRemovalMode,
   type ImageProcessingJobRecord,
   type ImageProcessingOperation,
@@ -41,12 +42,15 @@ import {
 import {
   PRODUCT_FACTORY_IMAGE_LABELS,
   PRODUCT_FACTORY_IMAGE_TYPES,
+  SHOE_IMAGE_LABELS,
+  requiredCaptureImageTypes,
+  missingCaptureImageTypes,
+  firstProductMissingCapture,
+  completedCaptureCount,
   assignBatchFrontFiles,
-  firstProductMissingFront,
   imageUploadIssue,
   rotateProductImage,
   shouldAdvanceWithoutUploading,
-  uploadedFrontCount,
   type ProductFactoryImageType,
   type ProductImageRotation,
   type ProductImageRotationDirection
@@ -72,6 +76,8 @@ type ProductRecord = {
   productCode: string;
   batchItemNumber?: number | null;
   status: string;
+  category?: string | null;
+  subcategory?: string | null;
   images?: ProductImage[];
   aiExtractions?: Array<{ status?: string | null; errorMessage?: string | null; inputImageIds?: unknown; promptVersion?: string | null }>;
 };
@@ -80,6 +86,7 @@ type ProductBatch = {
   id: string;
   batchCode: string;
   targetCount: number;
+  intakeCategory?: string | null;
   stage: string;
   stageLabel: string;
   nextAction: string;
@@ -197,6 +204,10 @@ async function runProductImagePipeline(
   const comparison = await getImageComparison(product.id, adminUserId);
   const frontOriginalId = comparison.original?.imageId ?? newestImageOfType(product, "FRONT")?.id;
   if (!frontOriginalId) throw new Error("缺少正面原图");
+  if (isShoeProduct(product.category, product.subcategory)) {
+    if (missingCaptureImageTypes(product).length) throw new Error("请先补齐整双、侧面、鞋底和尺码标签原图。");
+    return comparison;
+  }
 
   const processFront = async () => {
     let transparentId = comparison.cutoutTransparent?.sourceImageId === frontOriginalId
@@ -302,7 +313,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
     setCurrentIndex((index) => {
       const requested = initialProductId ? loaded.products.findIndex((product) => product.id === initialProductId) : -1;
       if (requested >= 0) return requested;
-      return Math.min(loaded.products.length - 1, index === 0 ? firstProductMissingFront(loaded.products) : index);
+      return Math.min(loaded.products.length - 1, index === 0 ? firstProductMissingCapture(loaded.products) : index);
     });
   }, [batchId, ids.adminUserId, initialProductId]);
 
@@ -311,7 +322,9 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
   }, [load]);
 
   const product = batch?.products[currentIndex] ?? null;
-  const frontCount = batch ? uploadedFrontCount(batch.products) : 0;
+  const frontCount = batch ? completedCaptureCount(batch.products) : 0;
+  const shoes = isShoeProduct(product?.category ?? batch?.intakeCategory, product?.subcategory);
+  const imageLabels = shoes ? SHOE_IMAGE_LABELS : PRODUCT_FACTORY_IMAGE_LABELS;
   const pendingBatchFrontCount = Object.keys(batchFrontFiles).length;
 
   function chooseFile(type: ProductFactoryImageType, file: File | null) {
@@ -386,9 +399,11 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
 
   async function saveAndContinue() {
     if (!batch || !product) return;
-    const hasFront = Boolean(newestImageOfType(product, "FRONT") || batchFrontFiles[product.id] || files.FRONT);
-    if (!hasFront) {
-      setError("正面图为必填，请先拍摄或选择正面图。");
+    const missing = requiredCaptureImageTypes(product.category, product.subcategory).filter((type) =>
+      !newestImageOfType(product, type) && !files[type] && !(type === "FRONT" && batchFrontFiles[product.id])
+    );
+    if (missing.length) {
+      setError(`请先拍摄或选择：${missing.map((type) => imageLabels[type]).join("、")}。`);
       return;
     }
     const selected = PRODUCT_FACTORY_IMAGE_TYPES.filter((type) => files[type]);
@@ -432,11 +447,11 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       setBulkUploadingProgress("");
       const updated = await loadBatch(batchId, ids.adminUserId);
       setBatch(updated);
-      const updatedFrontCount = uploadedFrontCount(updated.products);
+      const updatedFrontCount = completedCaptureCount(updated.products);
       if (updatedFrontCount === updated.targetCount) {
         router.push(`/product/batches/${encodeURIComponent(batchId)}/processing`);
       } else {
-        setCurrentIndex(firstProductMissingFront(updated.products));
+        setCurrentIndex(firstProductMissingCapture(updated.products));
       }
     } catch (caught) {
       setError(errorMessage(caught, "图片上传失败，请重试。"));
@@ -457,7 +472,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <FlowHeader
         title={`${batch.batchCode} · 第 1 步：批量上传`}
-        description={`第 ${currentIndex + 1}/${batch.targetCount} 件 · 已完成正面图 ${frontCount}/${batch.targetCount}`}
+        description={`第 ${currentIndex + 1}/${batch.targetCount} ${shoes ? "双" : "件"} · 已完成必需照片 ${frontCount}/${batch.targetCount}`}
         batchId={batch.id}
       />
       <ProgressBar value={frontCount} max={batch.targetCount} />
@@ -469,12 +484,12 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
           <span className="font-medium">{product.productCode}</span>
           <span className="ml-2 text-muted-foreground">{productStatusLabel(product.status)}</span>
           <p className="mt-1 text-xs text-muted-foreground">
-            批量入口只接收正面图，并按商品 1 到 {batch.targetCount} 的顺序分配。
+            批量入口接收{imageLabels.FRONT}，按商品 1 到 {batch.targetCount} 的顺序分配。
             {pendingBatchFrontCount ? ` 已分配 ${pendingBatchFrontCount} 件。` : ""}
           </p>
         </div>
         <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium">
-          <UploadIcon className="size-4" />批量选择正面图
+          <UploadIcon className="size-4" />批量选择{imageLabels.FRONT}
           <input
             className="sr-only"
             type="file"
@@ -489,12 +504,15 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         </label>
       </div>
 
+      {shoes ? <p className="text-sm text-muted-foreground">一双一个商品。整双主图同时拍到左右鞋；侧面和鞋底需展示两只鞋，标签需能核对左右尺码。按编号集中拍完，再坐下上传；有瑕疵补特写。</p> : null}
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {PRODUCT_FACTORY_IMAGE_TYPES.map((type) => (
           <ImageInputCard
             key={type}
             type={type}
-            required={type === "FRONT"}
+            required={requiredCaptureImageTypes(product.category, product.subcategory).includes(type)}
+            label={imageLabels[type]}
             existing={newestImageOfType(product, type)}
             selection={type === "FRONT" ? batchFrontFiles[product.id] ?? files.FRONT : files[type]}
             busy={busy}
@@ -530,7 +548,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         <Button disabled={busy} onClick={() => void saveAndContinue()}>
           {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
           {bulkUploadingProgress || (uploadingType
-            ? `正在上传${PRODUCT_FACTORY_IMAGE_LABELS[uploadingType]}`
+            ? `正在上传${imageLabels[uploadingType]}`
             : pendingBatchFrontCount
               ? `上传已分配的 ${pendingBatchFrontCount} 件正面图`
               : currentIndex === batch.targetCount - 1 ? "保存并开始处理" : "保存并下一件")}
@@ -576,7 +594,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
       ]);
       setStates((current) => ({
         ...current,
-        [product.id]: { status: "SUCCEEDED", comparison, message: "抠图与商品识别已完成，待人工快速确认" }
+        [product.id]: { status: "SUCCEEDED", comparison, message: isShoeProduct(product.category, product.subcategory) ? "鞋类原图识别完成，待核对鞋码和鞋况" : "抠图与商品识别已完成，待人工快速确认" }
       }));
       return true;
     } catch (caught) {
@@ -607,7 +625,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
           next[product.id] = {
             ...current[product.id],
             status: "RUNNING",
-            message: `本批 ${pending.length} 件正在同时抠图并生成白底图`
+            message: isShoeProduct(product.category, product.subcategory) ? "正在核对整双、侧面、鞋底和标签原图" : `本批 ${pending.length} 件正在同时抠图并生成白底图`
           };
         }
         return next;
@@ -618,7 +636,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
           imageResults.set(product.id, comparison);
           setStates((current) => ({
             ...current,
-            [product.id]: { status: "RUNNING", comparison, message: "抠图与白底图已生成，等待商品识别" }
+            [product.id]: { status: "RUNNING", comparison, message: isShoeProduct(product.category, product.subcategory) ? "鞋类原图已就绪，等待商品识别" : "抠图与白底图已生成，等待商品识别" }
           }));
         } catch (caught) {
           setStates((current) => ({
@@ -676,6 +694,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
     return <StatusMessage tone={error ? "danger" : "neutral"}>{error || "正在读取批次..."}</StatusMessage>;
   }
 
+  const shoesBatch = batch.intakeCategory === "SHOES";
   const completed = batch.products.filter((product) => states[product.id]?.status === "SUCCEEDED").length;
   const failed = batch.products.filter((product) => states[product.id]?.status === "FAILED").length;
 
@@ -693,14 +712,14 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>整批自动处理 {batch.targetCount} 件商品</CardTitle>
-              <CardDescription>系统先自动抠图、生成正反面白底并识别商品。员工快速确认整批结果后，系统才按 Direct Loop 默认风格批量生成 AI 陈列图；员工不需要选择风格。</CardDescription>
+              <CardTitle>整批自动处理 {batch.targetCount} {shoesBatch ? "双鞋" : "件商品"}</CardTitle>
+              <CardDescription>{shoesBatch ? "系统使用整双、侧面、鞋底和标签原图识别鞋款与原标鞋码。员工核对配对、鞋码和鞋况后，自动生成 AI 陈列图，再对照实物审核。" : "系统先自动抠图、生成正反面白底并识别商品。员工快速确认整批结果后，系统才按 Direct Loop 默认风格批量生成 AI 陈列图；员工不需要选择风格。"}</CardDescription>
             </div>
             {completed < batch.targetCount ? (
               <Button disabled={busy} onClick={() => void processAll()}>
                 {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
                 {batchPhase === "images"
-                  ? "正在批量抠图并生成白底图"
+                  ? shoesBatch ? "正在核对鞋类原图" : "正在批量抠图并生成白底图"
                   : batchPhase === "ai"
                     ? "正在批量 AI 识别"
                     : failed ? "重试未完成商品" : `一键处理本批 ${batch.targetCount} 件`}
@@ -729,6 +748,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
 
 function ImageInputCard(props: {
   type: ProductFactoryImageType;
+  label: string;
   required: boolean;
   existing?: ProductImage | null;
   selection?: PendingImageUpload;
@@ -758,8 +778,8 @@ function ImageInputCard(props: {
   return (
     <div className="min-w-0 rounded-md border bg-background p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{PRODUCT_FACTORY_IMAGE_LABELS[props.type]}{props.required ? " *" : ""}</span>
-        {props.selection ? <Badge>待上传</Badge> : props.existing ? <Badge variant="secondary">已上传</Badge> : <Badge variant="outline">可选</Badge>}
+        <span className="text-sm font-medium">{props.label}{props.required ? " *" : ""}</span>
+        {props.selection ? <Badge>待上传</Badge> : props.existing ? <Badge variant="secondary">已上传</Badge> : <Badge variant="outline">{props.required ? "待补充" : "可选"}</Badge>}
       </div>
       <label
         className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-md border border-dashed bg-muted/20 text-center"
@@ -769,7 +789,7 @@ function ImageInputCard(props: {
         {imageUrl ? (
           <img
             src={imageUrl}
-            alt={PRODUCT_FACTORY_IMAGE_LABELS[props.type]}
+            alt={props.label}
             className={cn(
               "size-full object-contain transition-transform",
               props.selection && props.selection.rotation % 180 !== 0 && "scale-[0.78]"
@@ -923,6 +943,15 @@ function newestImageOfType(product: ProductRecord | null, type: ProductFactoryIm
 }
 
 function hasSucceededAi(product: ProductRecord) {
+  if (isShoeProduct(product.category, product.subcategory)) {
+    const extraction = product.aiExtractions?.[0];
+    if (extraction?.status !== "SUCCEEDED" || extraction.promptVersion !== PRODUCT_AI_PROMPT_VERSION || !Array.isArray(extraction.inputImageIds)) return false;
+    const inputIds = extraction.inputImageIds;
+    return missingCaptureImageTypes(product).length === 0 && PRODUCT_FACTORY_IMAGE_TYPES.every((type) => {
+      const latest = newestImageOfType(product, type);
+      return !latest || inputIds.includes(latest.id);
+    });
+  }
   const extraction = product.aiExtractions?.find((candidate) => candidate.status === "SUCCEEDED");
   const latestFrontId = newestImageOfType(product, "FRONT")?.id;
   if (!extraction || !latestFrontId) return false;
@@ -931,6 +960,17 @@ function hasSucceededAi(product: ProductRecord) {
 }
 
 function stateFromProduct(product: ProductRecord, comparison: ProductImageComparisonResponse): ProcessingState {
+  if (isShoeProduct(product.category, product.subcategory)) {
+    const missing = missingCaptureImageTypes(product);
+    if (missing.length) return { status: "FAILED", comparison, message: `请补充${missing.map((type) => SHOE_IMAGE_LABELS[type]).join("、")}` };
+    if (hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status)) {
+      return { status: "SUCCEEDED", comparison, message: "鞋类原图识别完成，待核对配对、鞋码和鞋况" };
+    }
+    const extraction = product.aiExtractions?.[0];
+    return extraction?.status === "FAILED"
+      ? { status: "FAILED", comparison, message: extraction.errorMessage || "鞋类识别失败" }
+      : { status: "PENDING", comparison, message: "等待鞋类原图识别" };
+  }
   const persistedWarning = persistedFrontCutoutWarning(comparison);
   if (persistedWarning) return { status: "FAILED", comparison, message: persistedWarning };
   const frontReady = Boolean(comparison.cutoutWhite);

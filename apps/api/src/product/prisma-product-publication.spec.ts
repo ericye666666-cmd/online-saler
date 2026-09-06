@@ -24,7 +24,7 @@ function persistenceFixture() {
   const product = {
     id: "product-1", status: ProductStatus.READY_FOR_STORAGE as ProductStatus, barcode: "BC-1", labelPrintedAt: now,
     title: "Bag", category: "BAG", finalSizeLabel: "One size", conditionGrade: "GOOD", priceKsh: 500,
-    images: [{ id: "front-1" }], measurements: [], reviews: [{ result: "APPROVED", createdAt: now }],
+    images: [{ id: "front-1", type: "FRONT" }], measurements: [], reviews: [{ result: "APPROVED", createdAt: now }],
     inventoryItem: { status: "AVAILABLE", barcode: "BC-1", locationId: "shelf-1", checkedInAt: now }
   };
   const saved: string[] = [];
@@ -40,10 +40,17 @@ function persistenceFixture() {
     productMainImageSelection: {
       findUnique: async () => ({ selectedImageId: "ai-1", variant: "AI_DISPLAY_MAIN", confirmedAt: now })
     },
+    productImage: {
+      findFirst: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy: Record<string, unknown> }) => {
+        assert.deepEqual(where, { productId: "product-1", type: "FRONT" });
+        assert.deepEqual(orderBy, { createdAt: "desc" });
+        return product.images.find((image) => image.type === "FRONT") ?? null;
+      }
+    },
     productImageVariantAsset: {
       findFirst: async ({ where }: { where: Record<string, unknown> }) => {
         assert.deepEqual(where, { id: "ai-1", productId: "product-1", variant: "AI_DISPLAY_MAIN" });
-        return { id: "ai-1" };
+        return { id: "ai-1", sourceImageId: "FRONT" };
       }
     },
     productReview: {
@@ -112,4 +119,48 @@ test("a stale review decision cannot leave a review record when its state update
   input.review = { result: "APPROVED", reviewerEmployeeId: "employee-1" };
   await assert.rejects(new PrismaProductRepository().saveStateChange(input), /Product state changed/);
   assert.deepEqual(fixture.saved, []);
+});
+
+test("shoe approval and publication recheck all human shoe evidence and original photo types", async () => {
+  for (const status of [ProductStatus.APPROVED, ProductStatus.PUBLISHED]) {
+    const fixture = persistenceFixture();
+    const shoes = Object.assign(fixture.product, {
+      category: "KIDS", subcategory: "KIDS_SHOES", finalSizeLabel: "EU 32", tagSize: "EU 32", shoeSizeSystem: "EU",
+      shoeType: "Sneakers", shoePairConfirmed: true, shoeConditionNotes: "Light sole wear.",
+      images: ["FRONT", "BACK", "DETAIL", "LABEL"].map((type) => ({ id: type, type }))
+    });
+    const complete = { ...shoes, images: [...shoes.images] };
+    const cases = [
+      { shoePairConfirmed: false }, { shoeConditionNotes: " " }, { shoeType: "UNKNOWN" },
+      { shoeSizeSystem: null }, { tagSize: "UK 4" }, { finalSizeLabel: "L" },
+      ...["FRONT", "BACK", "DETAIL", "LABEL"].map((missing) => ({ images: complete.images.filter((image) => image.type !== missing) }))
+    ];
+    for (const invalid of cases) {
+      Object.assign(shoes, complete, invalid);
+      await assert.rejects(new PrismaProductRepository().saveStateChange(saveInput(status)), /shoe|pair|confirmed AI display image/i);
+      assert.deepEqual(fixture.saved, []);
+    }
+    Object.assign(shoes, complete);
+    await new PrismaProductRepository().saveStateChange(saveInput(status));
+    assert.deepEqual(fixture.saved, ["product", "audit"]);
+  }
+});
+
+test("shoe approval and publication reject old cutout chains and replaced pair originals inside the transaction", async () => {
+  for (const status of [ProductStatus.APPROVED, ProductStatus.PUBLISHED]) {
+    const fixture = persistenceFixture();
+    Object.assign(fixture.product, {
+      category: "SHOES", finalSizeLabel: "EU 42", tagSize: "42", shoeSizeSystem: "EU",
+      shoeType: "Sneakers", shoePairConfirmed: true, shoeConditionNotes: "Light sole wear.",
+      images: ["FRONT", "BACK", "DETAIL", "LABEL"].map((type) => ({ id: type, type }))
+    });
+    for (const sourceImageId of ["old-white-cutout", "replaced-pair-original"]) {
+      fixture.transaction.productImageVariantAsset.findFirst = async () => ({ id: "ai-1", sourceImageId });
+      await assert.rejects(new PrismaProductRepository().saveStateChange(saveInput(status)), /confirmed AI display image/);
+      assert.deepEqual(fixture.saved, [], "an invalid source cannot save a product, review or audit");
+    }
+    fixture.transaction.productImageVariantAsset.findFirst = async () => ({ id: "ai-1", sourceImageId: "FRONT" });
+    await new PrismaProductRepository().saveStateChange(saveInput(status));
+    assert.deepEqual(fixture.saved, ["product", "audit"]);
+  }
 });

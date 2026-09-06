@@ -1,4 +1,5 @@
 import { requiredProductMeasurementTypes } from "@online-saler/business-rules";
+import { formatShoeSizeLabel, isShoeProduct, SHOE_REQUIRED_IMAGE_TYPES, SHOE_TYPES } from "@online-saler/shared-types";
 
 type PublicationProduct = {
   barcode?: string | null;
@@ -8,6 +9,11 @@ type PublicationProduct = {
   subcategory?: string | null;
   sleeveType?: string | null;
   finalSizeLabel?: string | null;
+  tagSize?: string | null;
+  shoeSizeSystem?: string | null;
+  shoeType?: string | null;
+  shoePairConfirmed?: boolean;
+  shoeConditionNotes?: string | null;
   conditionGrade?: string | null;
   priceKsh?: number | null;
   images: readonly unknown[];
@@ -33,6 +39,7 @@ export function requiresAiMainImageConfirmation(selection?: PublicationMainImage
 export function missingPublishMeasurementTypes(product: Pick<PublicationProduct,
   "category" | "subcategory" | "sleeveType" | "measurements"
 >): string[] {
+  if (isShoeProduct(product.category, product.subcategory)) return [];
   const available = new Set(product.measurements.filter((measurement) => {
     const value = Number(measurement.finalValueCm);
     return Number.isFinite(value) && value > 0;
@@ -40,11 +47,31 @@ export function missingPublishMeasurementTypes(product: Pick<PublicationProduct,
   return requiredProductMeasurementTypes(product).filter((type) => !available.has(type));
 }
 
+export function shoeIntakeBlocker(product: Pick<PublicationProduct,
+  "category" | "subcategory" | "tagSize" | "shoeSizeSystem" | "shoeType" | "shoePairConfirmed" | "shoeConditionNotes" | "finalSizeLabel" | "images"
+>): string | null {
+  if (!isShoeProduct(product.category, product.subcategory)) return null;
+  const shoeSize = formatShoeSizeLabel(product.tagSize, product.shoeSizeSystem);
+  if (!shoeSize || product.finalSizeLabel !== shoeSize) return "Confirm the original shoe size and size system before approving shoes.";
+  if (!SHOE_TYPES.includes(product.shoeType as never)) return "Confirm the shoe type before approving shoes.";
+  if (product.shoePairConfirmed !== true) return "Confirm a matching pair with the same model and size before approving shoes.";
+  if (!product.shoeConditionNotes?.trim()) return "Confirm customer-visible shoe condition notes before approving shoes.";
+  const imageTypes = new Set(product.images.flatMap((image) => {
+    if (!image || typeof image !== "object" || !("type" in image)) return [];
+    return [String(image.type)];
+  }));
+  const missing = SHOE_REQUIRED_IMAGE_TYPES.filter((type) => !imageTypes.has(type));
+  if (missing.length) return `Add original shoe photos before approving shoes: ${missing.join(", ")} (pair, side, soles, size label).`;
+  return null;
+}
+
 export function productContentBlocker(product: PublicationProduct): string | null {
   if (!product.barcode?.trim()) return "Generate barcode before publishing.";
   if (!product.labelPrintedAt) return "Print the label before publishing.";
   if (!product.title?.trim()) return "Confirm the title before publishing.";
   if (!product.category?.trim()) return "Confirm the category before publishing.";
+  const shoeBlocker = shoeIntakeBlocker(product);
+  if (shoeBlocker) return shoeBlocker;
   if (!product.finalSizeLabel?.trim()) return "Confirm the size label before publishing.";
   if (!product.conditionGrade) return "Confirm the condition before publishing.";
   const missing = missingPublishMeasurementTypes(product);

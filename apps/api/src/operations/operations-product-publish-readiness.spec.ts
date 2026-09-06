@@ -29,4 +29,6 @@ test("pants require lower-body measurements instead of chest width", () => {
 
 test("non-apparel products do not require garment measurements", () => {
   assert.deepEqual(missingPublishMeasurementTypes({ category: "BAG", measurements: [] }), []);
+  assert.deepEqual(missingPublishMeasurementTypes({ category: "SHOES", measurements: [] }), []);
+  assert.deepEqual(missingPublishMeasurementTypes({ category: "KIDS", subcategory: "KIDS_SHOES", measurements: [] }), []);
 });

@@ -3,6 +3,8 @@ import { afterEach, describe, it } from "node:test";
 import {
   OpenAIProductDisplayImageProvider,
   PRODUCT_DISPLAY_IMAGE_PROMPT,
+  SHOE_DISPLAY_IMAGE_PROMPT,
+  SHOE_DISPLAY_PROMPT_VERSION,
   PRODUCT_DISPLAY_PROMPT_VERSION
 } from "./openai-product-display-image.provider";
 
@@ -110,6 +112,24 @@ describe("OpenAIProductDisplayImageProvider", () => {
     assert.equal(result.processorVersion, `gpt-image-test:${PRODUCT_DISPLAY_PROMPT_VERSION}:high`);
     assert.equal(result.widthPx, 1024);
     assert.equal(result.heightPx, 1024);
+  });
+
+  it("generates adult and kids shoe pairs from the original image with a shoe fidelity prompt", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    let submittedForm: FormData | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      submittedForm = init?.body as FormData;
+      return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("pair").toString("base64") }] }));
+    }) as typeof fetch;
+    const result = await new OpenAIProductDisplayImageProvider().generate({
+      body: Buffer.from("original-pair"), contentType: "image/jpeg", filename: "pair.jpg", category: "SHOES"
+    });
+    assert.equal(submittedForm?.get("prompt"), SHOE_DISPLAY_IMAGE_PROMPT);
+    assert.match(String(submittedForm?.get("prompt")), /Keep both original shoes fully visible/);
+    assert.match(String(submittedForm?.get("prompt")), /Do not repair, clean away, hide/);
+    assert.match(String(submittedForm?.get("prompt")), /mirror or duplicate one shoe/);
+    assert.equal(await (submittedForm?.get("image[]") as Blob).text(), "original-pair");
+    assert.match(result.processorVersion, new RegExp(SHOE_DISPLAY_PROMPT_VERSION));
   });
 
   it("rejects a successful response without image bytes", async () => {

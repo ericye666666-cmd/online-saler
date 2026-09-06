@@ -8,7 +8,7 @@ import {
   ProductImageVariant,
   prisma
 } from "@online-saler/database";
-import type { BackgroundRemovalMode, ImageProcessingJobRecord } from "@online-saler/shared-types";
+import { isShoeCategory, isShoeProduct, type BackgroundRemovalMode, type ImageProcessingJobRecord } from "@online-saler/shared-types";
 import {
   BackgroundRemovalProviderError,
   type BackgroundRemovalResult
@@ -67,8 +67,14 @@ export class ProductImageJobRunnerService {
     if (!job) throw new BadRequestException("Image processing job not found after claim");
 
     try {
-      const source = await this.loadSource(job);
-      const result = await this.process(job.operation, source, backgroundRemovalMode);
+      const product = await prisma.product.findUnique({ where: { id: job.productId }, select: { category: true, subcategory: true } });
+      if (!product) throw new BadRequestException("Product not found");
+      const category = isShoeProduct(product.category, product.subcategory) ? "SHOES" : product.category;
+      if (isShoeCategory(category) && job.operation !== ImageProcessingOperation.GENERATE_AI_DISPLAY_MAIN_IMAGE) {
+        throw new BadRequestException("Shoes must use the original pair photo without garment processing");
+      }
+      const source = await this.loadSource(job, category);
+      const result = await this.process(job.operation, source, backgroundRemovalMode, category);
       const asset = await this.saveResult(job, result);
       const completed = await prisma.productImageProcessingJob.findUnique({ where: { id: job.id } });
       if (!completed) throw new BadRequestException("Completed image processing job not found");
@@ -98,13 +104,14 @@ export class ProductImageJobRunnerService {
     productId: string;
     sourceImageId: string;
     operation: ImageProcessingOperation;
-  }): Promise<{ id: string; body: Buffer; contentType: string }> {
-    if (job.operation === ImageProcessingOperation.REMOVE_BACKGROUND) {
+  }, category?: string | null): Promise<{ id: string; body: Buffer; contentType: string }> {
+    const shoeDisplay = isShoeCategory(category) && job.operation === ImageProcessingOperation.GENERATE_AI_DISPLAY_MAIN_IMAGE;
+    if (job.operation === ImageProcessingOperation.REMOVE_BACKGROUND || shoeDisplay) {
       const source = await prisma.productImage.findFirst({
         where: {
           id: job.sourceImageId,
           productId: job.productId,
-          type: { in: [ProductImageType.FRONT, ProductImageType.BACK] }
+          type: shoeDisplay ? ProductImageType.FRONT : { in: [ProductImageType.FRONT, ProductImageType.BACK] }
         }
       });
       if (!source) {
@@ -138,7 +145,8 @@ export class ProductImageJobRunnerService {
   private async process(
     operation: ImageProcessingOperation,
     source: { id: string; body: Buffer; contentType: string },
-    backgroundRemovalMode?: BackgroundRemovalMode
+    backgroundRemovalMode?: BackgroundRemovalMode,
+    category?: string | null
   ): Promise<ProcessingResult> {
     if (operation === ImageProcessingOperation.REMOVE_BACKGROUND) {
       return this.backgroundRemoval.removeBackground(
@@ -161,6 +169,7 @@ export class ProductImageJobRunnerService {
     }
     if (operation === ImageProcessingOperation.GENERATE_AI_DISPLAY_MAIN_IMAGE) {
       return this.displayImage.generate({
+        category,
         body: source.body,
         contentType: source.contentType,
         filename: `${source.id}.png`

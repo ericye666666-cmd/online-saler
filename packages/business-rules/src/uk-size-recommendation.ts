@@ -56,7 +56,7 @@ export function recommendUkSize(input: UkSizeRecommendationInput): UkSizeRecomme
   const subcategory = code(input.subcategory);
   const audience = code(input.audience);
 
-  if (!CLOTHING_CATEGORIES.has(category)) return null;
+  if (!CLOTHING_CATEGORIES.has(category) || subcategory.endsWith("_SHOES")) return null;
 
   if (audience === "KIDS" || category === "KIDS") {
     const kidsSize = KIDS_UK_SIZE_BY_AGE_RANGE[code(input.kidsAgeRange)];

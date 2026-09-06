@@ -11,6 +11,7 @@ import {
 } from "@online-saler/database";
 import {
   isImageProcessingOperation,
+  isShoeProduct,
   type ImageProcessingJobRecord,
   type ImageProcessingOperation,
   type ProductImageComparisonResponse,
@@ -30,6 +31,7 @@ import {
 import { findDerivedImageForSource } from "./product-image-comparison";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
+import { hasCurrentShoeDisplaySource } from "./product-publication-evidence";
 
 @Injectable()
 export class ProductImageProcessingService {
@@ -49,12 +51,7 @@ export class ProductImageProcessingService {
     }
 
     const operation = input.operation;
-    const requiredSourceVariant = sourceVariantForOperation(operation);
-    await this.requireSourceImage({
-      productId: input.productId,
-      sourceImageId: input.sourceImageId,
-      variant: requiredSourceVariant
-    });
+    await this.requireOperationSource(input.productId, input.sourceImageId, operation);
 
     const activeJob = await prisma.productImageProcessingJob.findFirst({
       where: {
@@ -91,11 +88,7 @@ export class ProductImageProcessingService {
       throw new BadRequestException("Only failed jobs below the retry limit can be retried");
     }
 
-    await this.requireSourceImage({
-      productId: job.productId,
-      sourceImageId: job.sourceImageId,
-      variant: sourceVariantForOperation(job.operation)
-    });
+    await this.requireOperationSource(job.productId, job.sourceImageId, job.operation);
 
     const retried = await prisma.productImageProcessingJob.update({
       where: { id: input.jobId },
@@ -130,6 +123,7 @@ export class ProductImageProcessingService {
       sourceImageId: input.sourceImageId,
       variant: "ORIGINAL"
     });
+    await this.rejectShoeCutout(input.productId);
     this.storage.validate("image/png", input.body.length);
 
     const analyzed = await analyzeManualCutout(input.body);
@@ -155,6 +149,7 @@ export class ProductImageProcessingService {
     sourceImageId: string;
     points: unknown;
   }): Promise<ImageProcessingJobRecord> {
+    await this.rejectShoeCutout(input.productId);
     const points = validateGuidedCutoutPoints(input.points);
     const source = await prisma.productImage.findFirst({
       where: {
@@ -327,6 +322,18 @@ export class ProductImageProcessingService {
     const confirmedAt = options.humanConfirmed === false ? null : new Date();
     await prisma.$transaction(async (tx) => {
       const product = await this.lockProductForImageChange(tx, input.productId);
+      if (isShoeProduct(product.category, product.subcategory)) {
+        // Recheck after the product lock: legacy garment assets and replaced pair photos
+        // cannot become shoe display evidence through this generic selection endpoint.
+        const shoeDisplay = variant === "AI_DISPLAY_MAIN"
+          ? await tx.productImageVariantAsset.findFirst({
+            where: { id: input.imageId, productId: input.productId, variant: DatabaseProductImageVariant.AI_DISPLAY_MAIN },
+            select: { sourceImageId: true }
+          }) : null;
+        if (!shoeDisplay || !await hasCurrentShoeDisplaySource(tx, input.productId, shoeDisplay.sourceImageId)) {
+          throw new BadRequestException("Shoe main images must be AI display images generated directly from the latest original FRONT pair photo.");
+        }
+      }
       const currentSelection = await tx.productMainImageSelection.findUnique({ where: { productId: input.productId } });
       if (product.status === ProductStatus.PUBLISHED) {
         const confirmedDisplay = currentSelection?.variant === DatabaseProductImageVariant.AI_DISPLAY_MAIN && currentSelection.confirmedAt;
@@ -359,7 +366,7 @@ export class ProductImageProcessingService {
 
   private async lockProductForImageChange(tx: Prisma.TransactionClient, productId: string) {
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`);
-    const product = await tx.product.findUnique({ where: { id: productId }, select: { status: true } });
+    const product = await tx.product.findUnique({ where: { id: productId }, select: { status: true, category: true, subcategory: true } });
     if (!product) throw new BadRequestException("Product not found");
     return product;
   }
@@ -428,7 +435,7 @@ export class ProductImageProcessingService {
   async getComparison(productId: string): Promise<ProductImageComparisonResponse> {
     const product = await prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true }
+      select: { id: true, category: true, subcategory: true }
     });
     if (!product) throw new BadRequestException("Product not found");
 
@@ -477,7 +484,7 @@ export class ProductImageProcessingService {
       cutoutWhite: frontWhite,
       optimizedMain: mapAsset("OPTIMIZED_MAIN", frontWhite?.imageId ?? null),
       optimizedBalancedMain: mapAsset("OPTIMIZED_BALANCED_MAIN", frontTransparent?.imageId ?? null),
-      aiDisplayMain: mapAsset("AI_DISPLAY_MAIN", frontWhite?.imageId ?? null),
+      aiDisplayMain: mapAsset("AI_DISPLAY_MAIN", isShoeProduct(product.category, product.subcategory) ? frontOriginal?.id ?? null : frontWhite?.imageId ?? null),
       backOriginal: backOriginal ? this.toOriginalRecord(backOriginal, selection?.selectedImageId ?? null) : null,
       backCutoutTransparent: backTransparent,
       backCutoutWhite: mapAsset("CUTOUT_WHITE", backTransparent?.imageId ?? null),
@@ -485,6 +492,29 @@ export class ProductImageProcessingService {
       selectedMainImageConfirmedAt: selection?.confirmedAt?.toISOString() ?? null,
       jobs: jobs.map((job) => this.toJobRecord(job))
     };
+  }
+
+  private async rejectShoeCutout(productId: string) {
+    const product = await prisma.product.findUnique({ where: { id: productId }, select: { category: true, subcategory: true } });
+    if (isShoeProduct(product?.category, product?.subcategory)) {
+      throw new BadRequestException("Shoes use the original pair photo directly for AI display; garment cutout and balancing are unavailable.");
+    }
+  }
+
+  private async requireOperationSource(productId: string, sourceImageId: string, operation: ImageProcessingOperation) {
+    const product = await prisma.product.findUnique({ where: { id: productId }, select: { category: true, subcategory: true } });
+    if (!product) throw new BadRequestException("Product not found");
+    if (isShoeProduct(product.category, product.subcategory)) {
+      if (operation !== "GENERATE_AI_DISPLAY_MAIN_IMAGE") {
+        throw new BadRequestException("Shoes use the original pair photo directly for AI display; garment cutout and balancing are unavailable.");
+      }
+      const source = await prisma.productImage.findFirst({
+        where: { id: sourceImageId, productId, type: ProductImageType.FRONT }, select: { id: true }
+      });
+      if (!source) throw new BadRequestException("An original FRONT pair photo is required for shoe display generation");
+      return;
+    }
+    await this.requireSourceImage({ productId, sourceImageId, variant: sourceVariantForOperation(operation) });
   }
 
   private async requireSourceImage(input: {

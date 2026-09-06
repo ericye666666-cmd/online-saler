@@ -67,6 +67,7 @@ describe("guided cutout outline", () => {
 
 describe("published product main-image protection", () => {
   const originals = {
+    productFind: prisma.product.findUnique,
     imageFind: prisma.productImage.findFirst,
     assetFind: prisma.productImageVariantAsset.findFirst,
     jobFind: prisma.productImageProcessingJob.findUnique,
@@ -79,26 +80,45 @@ describe("published product main-image protection", () => {
   let writes: string[];
   let service: ProductImageProcessingService;
   let rowLocked: boolean;
+  let category: string;
+  let displaySourceImageId: string;
+  let latestFrontImageId: string;
 
   beforeEach(() => {
+    category = "TSHIRTS";
+    displaySourceImageId = "front-1";
+    latestFrontImageId = "front-1";
+    prisma.product.findUnique = (async () => ({ category })) as never;
     status = ProductStatus.PUBLISHED;
     selection = { selectedImageId: "ai-live", variant: "AI_DISPLAY_MAIN", confirmedAt: now };
     writes = [];
     rowLocked = false;
     prisma.productImage.findFirst = (async ({ where }: { where: { id: string } }) => where.id === "front-1" ? { id: "front-1" } : null) as never;
     prisma.productImageVariantAsset.findFirst = (async ({ where }: { where: { id: string } }) => where.id.startsWith("ai-")
-      ? { id: where.id, variant: "AI_DISPLAY_MAIN", sourceImageId: "front-1" } : null) as never;
+      ? { id: where.id, variant: "AI_DISPLAY_MAIN", sourceImageId: displaySourceImageId }
+      : where.id === "old-white-cutout" ? { id: where.id, variant: "CUTOUT_WHITE", sourceImageId: "front-1" } : null) as never;
     prisma.productImageProcessingJob.findUnique = (async () => null) as never;
     prisma.productImageProcessingJob.findFirst = (async () => null) as never;
     prisma.$transaction = (async (callback: (client: unknown) => Promise<unknown>) => callback({
       $queryRaw: async () => { rowLocked = true; return []; },
-      product: { findUnique: async () => { assert.equal(rowLocked, true); return { status }; } },
+      product: { findUnique: async () => { assert.equal(rowLocked, true); return { status, category, subcategory: category === "KIDS" ? "KIDS_SHOES" : null }; } },
+      productImage: {
+        findFirst: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy: Record<string, unknown> }) => {
+          assert.equal(rowLocked, true);
+          assert.deepEqual(where, { productId: "product-1", type: "FRONT" });
+          assert.deepEqual(orderBy, { createdAt: "desc" });
+          return { id: latestFrontImageId };
+        }
+      },
       productMainImageSelection: {
         findUnique: async () => selection,
         upsert: async ({ update }: { update: typeof selection }) => { selection = update; writes.push("selection"); },
         delete: async () => { writes.push("delete-selection"); }
       },
-      productImageVariantAsset: { create: async ({ data }: { data: { id: string } }) => { writes.push("candidate-asset"); return data; } },
+      productImageVariantAsset: {
+        findFirst: async (args: never) => { assert.equal(rowLocked, true); return prisma.productImageVariantAsset.findFirst(args); },
+        create: async ({ data }: { data: { id: string } }) => { writes.push("candidate-asset"); return data; }
+      },
       productImageProcessingJob: { create: async ({ data }: { data: Record<string, unknown> }) => ({
         ...data, id: "job-1", createdAt: now, updatedAt: now, retryCount: 0
       }) }
@@ -115,6 +135,7 @@ describe("published product main-image protection", () => {
   });
 
   afterEach(() => {
+    prisma.product.findUnique = originals.productFind;
     prisma.productImage.findFirst = originals.imageFind;
     prisma.productImageVariantAsset.findFirst = originals.assetFind;
     prisma.productImageProcessingJob.findUnique = originals.jobFind;
@@ -174,5 +195,46 @@ describe("published product main-image protection", () => {
     assert.deepEqual(writes, ["candidate-asset"]);
     assert.equal(selection.selectedImageId, "ai-live");
     assert.equal(selection.confirmedAt, now);
+  });
+
+  it("rejects a legacy garment cutout display for shoes without changing the selection", async () => {
+    category = "SHOES";
+    status = ProductStatus.CALIBRATED;
+    displaySourceImageId = "old-white-cutout";
+    await assert.rejects(service.selectMainImage({ productId: "product-1", imageId: "ai-new" }), /latest original FRONT pair photo/);
+    assert.deepEqual(writes, []);
+    assert.equal(selection.selectedImageId, "ai-live");
+  });
+
+  it("rejects a replaced pair original and accepts the current pair display for legacy kids shoes", async () => {
+    category = "KIDS";
+    status = ProductStatus.CALIBRATED;
+    latestFrontImageId = "front-replacement";
+    await assert.rejects(service.selectMainImage({ productId: "product-1", imageId: "ai-new" }), /latest original FRONT pair photo/);
+    await assert.rejects(service.selectMainImage({ productId: "product-1", imageId: "front-1" }), /latest original FRONT pair photo/);
+    assert.deepEqual(writes, []);
+    latestFrontImageId = "front-1";
+    await service.selectMainImage({ productId: "product-1", imageId: "ai-new" });
+    assert.deepEqual(writes, ["selection", "source-change"]);
+    assert.equal(selection.selectedImageId, "ai-new");
+    assert.ok(selection.confirmedAt);
+  });
+});
+
+
+describe("shoe image source validation", () => {
+  const productFind = prisma.product.findUnique;
+  const imageFind = prisma.productImage.findFirst;
+  afterEach(() => { prisma.product.findUnique = productFind; prisma.productImage.findFirst = imageFind; });
+  it("accepts only original FRONT for shoe display and rejects garment cutout operations", async () => {
+    prisma.product.findUnique = (async () => ({ category: "SHOES" })) as never;
+    prisma.productImage.findFirst = (async ({ where }: { where: { id: string; type: string } }) =>
+      where.id === "pair-original" && where.type === "FRONT" ? { id: where.id } : null) as never;
+    const service = new ProductImageProcessingService({} as never, {} as never, {} as never);
+    const validate = (service as unknown as { requireOperationSource: (productId: string, imageId: string, operation: string) => Promise<void> }).requireOperationSource.bind(service);
+    await validate("shoe", "pair-original", "GENERATE_AI_DISPLAY_MAIN_IMAGE");
+    await assert.rejects(validate("shoe", "old-cutout", "GENERATE_AI_DISPLAY_MAIN_IMAGE"), /original FRONT pair photo/);
+    await assert.rejects(validate("shoe", "pair-original", "REMOVE_BACKGROUND"), /garment cutout and balancing/);
+    await assert.rejects(validate("shoe", "pair-original", "OPTIMIZE_BALANCED_MAIN_IMAGE"), /garment cutout and balancing/);
   });
 });

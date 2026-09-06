@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException, type OnModuleInit } from "@nestjs/common";
 import {
   PRODUCT_DETAIL_MEASUREMENT_TEMPLATES,
-  selectProductDetailMeasurementTemplate,
-  type ProductDetailMeasurementTemplate
+  selectProductDetailMeasurementTemplate
 } from "@online-saler/business-rules";
+import { formatShoeSizeLabel, isShoeProduct } from "@online-saler/shared-types";
 import { randomUUID } from "node:crypto";
 import {
   ProductDetailAssetType,
@@ -21,6 +21,14 @@ import { ProductImageStorageService } from "./product-image-storage.service";
 import { ProductImageTransformerService } from "./product-image-transformer.service";
 
 const DETAIL_LOCALE = "en";
+const SHOE_SIZE_TEMPLATE = {
+  code: "shoe-size-v1",
+  version: "shoe-size-v1",
+  name: "Original shoe size",
+  garmentType: "SHOES",
+  svgSource: '<svg xmlns="http://www.w3.org/2000/svg"><title>Original shoe size information card</title></svg>',
+  measurementFields: ["INSOLE_LENGTH"]
+} as const;
 
 @Injectable()
 export class ProductDetailAssetService implements OnModuleInit {
@@ -56,22 +64,27 @@ export class ProductDetailAssetService implements OnModuleInit {
       throw new BadRequestException("Product facts changed before detail asset generation");
     }
 
+    const isShoe = isShoeProduct(profile.product.category, profile.product.subcategory);
     const measurements = Object.fromEntries(
       profile.product.measurements
-        .filter((measurement) => measurement.finalValueCm !== null)
+        .filter((measurement) => measurement.finalValueCm !== null &&
+          (!isShoe || (measurement.measurementType === "INSOLE_LENGTH" &&
+            ["HUMAN_ENTERED", "HUMAN_EDITED"].includes(String(measurement.finalSource)))) &&
+          Number.isFinite(Number(measurement.finalValueCm)) && Number(measurement.finalValueCm) > 0)
         .map((measurement) => [measurement.measurementType, Number(measurement.finalValueCm)])
     );
     const finalCopy = asRecord(profile.finalOutputJson);
     const title = stringValue(finalCopy.title) ?? profile.product.title ?? "Product details";
-    const measurementTemplate = selectProductDetailMeasurementTemplate(
+    const measurementTemplate = isShoe ? null : selectProductDetailMeasurementTemplate(
       profile.product.category,
       profile.product.subcategory,
       profile.product.sleeveType
     );
-    await this.syncMeasurementTemplates(profile.id, measurementTemplate);
+    const selectedTemplate = measurementTemplate ?? SHOE_SIZE_TEMPLATE;
+    await this.syncMeasurementTemplates(profile.id, selectedTemplate);
     const assets = [];
 
-    const front = await this.resolveFrontMain(profile.productId, profile.product.images);
+    const front = await this.resolveFrontMain(profile.productId, profile.product.images, isShoe);
     if (front) {
       assets.push(
         await this.persistReference(
@@ -90,7 +103,11 @@ export class ProductDetailAssetService implements OnModuleInit {
 
     const back = profile.product.images.find((image) => image.type === ProductImageType.BACK);
     if (back) {
-      assets.push(await this.generateBackMain(profile.id, profile.productId, profile.sourceDataVersion, back));
+      // A garment cutout can remove the second shoe. Preserve the original side photo.
+      assets.push(isShoe
+        ? await this.persistReference(profile.id, profile.productId, profile.sourceDataVersion,
+          ProductDetailAssetType.BACK_MAIN, back.originalUrl, back.publicUrl, mimeFromUrl(back.originalUrl))
+        : await this.generateBackMain(profile.id, profile.productId, profile.sourceDataVersion, back));
     } else {
       await this.markUnavailable(profile.id, ProductDetailAssetType.BACK_MAIN, "BACK_IMAGE_NOT_AVAILABLE");
     }
@@ -101,15 +118,23 @@ export class ProductDetailAssetService implements OnModuleInit {
         profile.productId,
         profile.sourceDataVersion,
         ProductDetailAssetType.MEASUREMENT_GUIDE,
-        await this.renderer.measurementCard({
-          template: measurementTemplate.code,
-          title,
-          measurements
-        }),
+        measurementTemplate
+          ? await this.renderer.measurementCard({ template: measurementTemplate.code, title, measurements })
+          : await this.renderer.informationCard({
+            eyebrow: "Shoe size",
+            title,
+            rows: [
+              { label: "Original size label", value: profile.product.tagSize?.trim() || "Not confirmed" },
+              { label: "Confirmed size", value: formatShoeSizeLabel(profile.product.tagSize, profile.product.shoeSizeSystem) || "Not confirmed" },
+              { label: "Pair checked", value: profile.product.shoePairConfirmed ? "Matching pair confirmed" : "Not confirmed" },
+              ...(measurements.INSOLE_LENGTH ? [{ label: "Removable insole length", value: `${measurements.INSOLE_LENGTH} cm` }] : [])
+            ],
+            note: "Size is shown as labelled, without conversion. Insole length, when supplied, is measured by staff and does not guarantee fit. Review the original photos and condition details."
+          }),
         "image/webp",
         1200,
         1200,
-        { code: measurementTemplate.code, version: measurementTemplate.version }
+        { code: selectedTemplate.code, version: selectedTemplate.version }
       )
     );
 
@@ -171,17 +196,22 @@ export class ProductDetailAssetService implements OnModuleInit {
     return assets;
   }
 
-  private async resolveFrontMain(productId: string, images: Array<{ id: string; type: ProductImageType; originalUrl: string; publicUrl: string | null }>) {
+  private async resolveFrontMain(productId: string, images: Array<{ id: string; type: ProductImageType; originalUrl: string; publicUrl: string | null }>, isShoe = false) {
     const selection = await prisma.productMainImageSelection.findUnique({ where: { productId } });
     if (selection?.variant === ProductImageVariant.ORIGINAL) {
       const image = images.find((item) => item.id === selection.selectedImageId);
       if (image) return { storageUrl: image.originalUrl, publicUrl: image.publicUrl, mimeType: mimeFromUrl(image.originalUrl) };
     }
-    if (selection && selection.variant !== ProductImageVariant.ORIGINAL) {
+    if (selection && selection.variant !== ProductImageVariant.ORIGINAL &&
+      (!isShoe || selection.variant === ProductImageVariant.AI_DISPLAY_MAIN)) {
       const selected = await prisma.productImageVariantAsset.findFirst({
         where: { id: selection.selectedImageId, productId }
       });
       if (selected) return { storageUrl: selected.storageUrl, publicUrl: selected.publicUrl, mimeType: selected.mimeType };
+    }
+    if (isShoe) {
+      const front = images.find((image) => image.type === ProductImageType.FRONT);
+      return front ? { storageUrl: front.originalUrl, publicUrl: front.publicUrl, mimeType: mimeFromUrl(front.originalUrl) } : null;
     }
     const optimized = await prisma.productImageVariantAsset.findFirst({
       where: {
@@ -323,7 +353,7 @@ export class ProductDetailAssetService implements OnModuleInit {
 
   private async syncMeasurementTemplates(
     profileId: string,
-    selectedTemplate: ProductDetailMeasurementTemplate
+    selectedTemplate: { code: string; version: string }
   ) {
     await this.syncTemplateCatalog();
     await prisma.productDetailAsset.updateMany({
@@ -347,7 +377,7 @@ export class ProductDetailAssetService implements OnModuleInit {
   }
 
   private async syncTemplateCatalog() {
-    const templates = Object.values(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES);
+    const templates = [...Object.values(PRODUCT_DETAIL_MEASUREMENT_TEMPLATES), SHOE_SIZE_TEMPLATE];
     const activeCodes = templates.map((template) => template.code);
     await prisma.$transaction([
       prisma.productDetailTemplate.updateMany({

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { formatShoeSizeLabel, isShoeProduct } from "@online-saler/shared-types";
 import {
   ProductDetailStatus,
   ProductImageType,
@@ -78,7 +79,7 @@ export class ProductDetailGenerationRunnerService {
         throw new BadRequestException("Product facts changed before detail generation started");
       }
 
-      await this.ensureAiDisplayMain(job.productId);
+      await this.ensureAiDisplayMain(job.productId, job.product);
       const facts = buildProductDetailFacts(job.product, job.detailProfile, job.sourceDataVersion);
       const originalImages = job.product.images.filter((image) => DETAIL_IMAGE_TYPES.has(image.type));
       const result = await this.provider.generate(facts, originalImages);
@@ -214,18 +215,27 @@ export class ProductDetailGenerationRunnerService {
     return { batchId, processed: results.length, results };
   }
 
-  async ensureAiDisplayMain(productId: string) {
+  async ensureAiDisplayMain(productId: string, knownProduct?: { category: string | null; subcategory: string | null }) {
+    const product = knownProduct ?? await prisma.product.findUnique({
+      where: { id: productId },
+      select: { category: true, subcategory: true }
+    });
+    if (!product) throw new NotFoundException("Product not found");
+    const isShoe = isShoeProduct(product.category, product.subcategory);
     let comparison = await this.imageProcessing.getComparison(productId);
     let aiDisplayMain = comparison.aiDisplayMain;
 
     if (!aiDisplayMain) {
-      const cutoutWhite = comparison.cutoutWhite;
-      if (!cutoutWhite) {
-        throw new BadRequestException("A completed white-background image is required before AI display generation");
+      // Garment cutout keeps a single connected object and can discard one shoe.
+      const sourceImage = isShoe ? comparison.original : comparison.cutoutWhite;
+      if (!sourceImage) {
+        throw new BadRequestException(isShoe
+          ? "An original image showing both shoes is required before AI display generation"
+          : "A completed white-background image is required before AI display generation");
       }
       const job = await this.imageProcessing.start({
         productId,
-        sourceImageId: cutoutWhite.imageId,
+        sourceImageId: sourceImage.imageId,
         operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"
       });
       if (job.status !== "PENDING") {
@@ -283,6 +293,10 @@ type SourceProduct = {
   brand: string | null;
   tagSize: string | null;
   finalSizeLabel: string | null;
+  shoeSizeSystem?: string | null;
+  shoeType?: string | null;
+  shoePairConfirmed?: boolean;
+  shoeConditionNotes?: string | null;
   conditionGrade: unknown;
   fitType: unknown;
   stretchLevel: unknown;
@@ -290,7 +304,7 @@ type SourceProduct = {
   material: string | null;
   tags: string[];
   priceKsh: number | null;
-  measurements: Array<{ measurementType: string; finalValueCm: unknown }>;
+  measurements: Array<{ measurementType: string; finalValueCm: unknown; finalSource?: unknown }>;
   defects: Array<{
     defectType: string;
     severity: unknown;
@@ -306,6 +320,7 @@ export function buildProductDetailFacts(
   _profile: SourceProfile,
   sourceDataVersion: number
 ): ProductDetailFacts {
+  const isShoe = isShoeProduct(product.category, product.subcategory);
   return {
     productId: product.id,
     sourceDataVersion,
@@ -315,20 +330,29 @@ export function buildProductDetailFacts(
     gender: stringOrNull(product.gender),
     color: product.color,
     pattern: product.pattern,
-    sleeveType: product.sleeveType,
+    sleeveType: isShoe ? null : product.sleeveType,
     brand: product.brand,
     tagSize: product.tagSize,
-    platformSize: product.finalSizeLabel,
+    platformSize: isShoe ? formatShoeSizeLabel(product.tagSize, product.shoeSizeSystem) : product.finalSizeLabel,
+    ...(isShoe ? {
+      shoeSizeSystem: product.shoeSizeSystem ?? null,
+      shoeType: product.shoeType ?? null,
+      shoePairConfirmed: product.shoePairConfirmed === true,
+      shoeConditionNotes: product.shoeConditionNotes ?? null
+    } : {}),
     conditionGrade: stringOrNull(product.conditionGrade),
-    fitType: stringOrNull(product.fitType),
-    stretchLevel: stringOrNull(product.stretchLevel),
-    fabricWeight: stringOrNull(product.fabricWeight),
+    fitType: isShoe ? null : stringOrNull(product.fitType),
+    stretchLevel: isShoe ? null : stringOrNull(product.stretchLevel),
+    fabricWeight: isShoe ? null : stringOrNull(product.fabricWeight),
     material: product.material,
     tags: product.tags,
     priceKsh: product.priceKsh,
     measurementsCm: Object.fromEntries(
       product.measurements
-        .filter((measurement) => measurement.finalValueCm !== null)
+        .filter((measurement) => measurement.finalValueCm !== null &&
+          (!isShoe || (measurement.measurementType === "INSOLE_LENGTH" &&
+            ["HUMAN_ENTERED", "HUMAN_EDITED"].includes(String(measurement.finalSource)))) &&
+          Number.isFinite(Number(measurement.finalValueCm)) && Number(measurement.finalValueCm) > 0)
         .map((measurement) => [measurement.measurementType, Number(measurement.finalValueCm)])
     ),
     defects: product.defects.map((defect) => ({
