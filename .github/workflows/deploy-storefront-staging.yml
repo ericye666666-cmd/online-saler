@@ -16,6 +16,7 @@ on:
       - ".dockerignore"
       - "scripts/gcloud/configure-staging-scheduler.sh"
       - ".github/workflows/deploy-storefront-staging.yml"
+      - "scripts/verify-storefront.mjs"
   workflow_dispatch:
 
 permissions:
@@ -160,86 +161,15 @@ jobs:
             MPESA_SHORTCODE=PRODUCTION_MPESA_SHORTCODE:latest
             MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest
 
+      - name: Set up Node.js for Storefront smoke checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Verify Storefront page
-        run: |
-          SERVICE_URL="${{ steps.deploy.outputs.url }}"
-
-          echo "Service URL: ${SERVICE_URL}"
-          curl \
-            --fail \
-            --show-error \
-            --silent \
-            --retry 24 \
-            --retry-all-errors \
-            --retry-delay 5 \
-            "${SERVICE_URL}" \
-            | grep -q "Direct Loop"
-
-          curl \
-            --fail \
-            --show-error \
-            --silent \
-            --retry 24 \
-            --retry-all-errors \
-            --retry-delay 5 \
-            "${SERVICE_URL}/api-proxy/public/products" \
-            | grep -q '^\['
-
-          curl \
-            --fail \
-            --show-error \
-            --silent \
-            --retry 24 \
-            --retry-all-errors \
-            --retry-delay 5 \
-            "${SERVICE_URL}/api-proxy/public/products/filters" \
-            | grep -q '"categories"'
-
-          curl \
-            --fail \
-            --show-error \
-            --silent \
-            --retry 24 \
-            --retry-all-errors \
-            --retry-delay 5 \
-            "${SERVICE_URL}/cart" \
-            | grep -q "Your cart"
-
-          curl \
-            --fail \
-            --show-error \
-            --silent \
-            --retry 24 \
-            --retry-all-errors \
-            --retry-delay 5 \
-            "${SERVICE_URL}/checkout" \
-            | grep -q "Checkout"
-
-          CALLBACK_STATUS="$(curl \
-            --show-error \
-            --silent \
-            --output /tmp/mpesa-callback-response.json \
-            --write-out "%{http_code}" \
-            --request POST \
-            --header "content-type: application/json" \
-            --data '{}' \
-            "${SERVICE_URL}/api/payments/mpesa/callback")"
-
-          if [ "${CALLBACK_STATUS}" != "400" ]; then
-            cat /tmp/mpesa-callback-response.json >&2
-            echo "Expected M-Pesa callback endpoint to reject malformed payload with HTTP 400, got ${CALLBACK_STATUS}." >&2
-            exit 1
-          fi
-
-          curl \
-            --fail \
-            --show-error \
-            --silent \
-            --retry 24 \
-            --retry-all-errors \
-            --retry-delay 5 \
-            "${SERVICE_URL}/seller/staging-affiliate" \
-            | grep -q "Staging Affiliate"
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+        run: node scripts/verify-storefront.mjs
 
       - name: Configure live reservation cleanup scheduler
         continue-on-error: true
