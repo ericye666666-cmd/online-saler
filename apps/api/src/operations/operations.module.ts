@@ -1,3 +1,5 @@
+import { OperationsAfterSalesController } from "./operations-after-sales.controller";
+import { OperationsAfterSalesService } from "./operations-after-sales.service";
 import { Module } from "@nestjs/common";
 import { AIModule } from "../ai/ai.module";
 import { ProductModule } from "../product/product.module";
@@ -28,6 +30,7 @@ import { OperationsWarehouseService } from "./operations-warehouse.service";
 @Module({
   imports: [ProductModule, AIModule],
   controllers: [
+    OperationsAfterSalesController,
     OperationsAccessController,
     OperationsWorkspaceController,
     OperationsProductBatchController,
@@ -41,6 +44,7 @@ import { OperationsWarehouseService } from "./operations-warehouse.service";
     OperationsCustomerServiceController
   ],
   providers: [
+    OperationsAfterSalesService,
     OperationsAccessService,
     OperationsWorkspaceService,
     OperationsProductBatchService,

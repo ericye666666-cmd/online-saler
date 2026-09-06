@@ -10,7 +10,7 @@ import {
 } from "./product-detail-copy";
 
 const RESPONSES_API_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-5.6-sol";
+const DEFAULT_MODEL = "gpt-4o-mini";
 
 type SourceImage = {
   id: string;
@@ -173,10 +173,15 @@ function finiteNumber(value: unknown): number | undefined {
 }
 
 function estimateCost(inputTokens?: number, outputTokens?: number): number | undefined {
-  const inputRate = Number(process.env.OPENAI_DETAIL_INPUT_USD_PER_MILLION);
-  const outputRate = Number(process.env.OPENAI_DETAIL_OUTPUT_USD_PER_MILLION);
+  const configuredInputRate = process.env.OPENAI_DETAIL_INPUT_USD_PER_MILLION?.trim();
+  const configuredOutputRate = process.env.OPENAI_DETAIL_OUTPUT_USD_PER_MILLION?.trim();
+  if (!configuredInputRate || !configuredOutputRate || inputTokens === undefined || outputTokens === undefined) {
+    return undefined;
+  }
+  const inputRate = Number(configuredInputRate);
+  const outputRate = Number(configuredOutputRate);
   if (!Number.isFinite(inputRate) || !Number.isFinite(outputRate) || inputRate < 0 || outputRate < 0) {
     return undefined;
   }
-  return Number((((inputTokens ?? 0) * inputRate + (outputTokens ?? 0) * outputRate) / 1_000_000).toFixed(6));
+  return Number(((inputTokens * inputRate + outputTokens * outputRate) / 1_000_000).toFixed(6));
 }

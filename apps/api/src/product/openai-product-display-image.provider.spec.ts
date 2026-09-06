@@ -19,6 +19,52 @@ afterEach(() => {
 });
 
 describe("OpenAIProductDisplayImageProvider", () => {
+  it("keeps mandatory display image generation enabled with lower-cost defaults", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    delete process.env.OPENAI_IMAGE_EDIT_MODEL;
+    delete process.env.OPENAI_IMAGE_EDIT_QUALITY;
+    let submittedForm: FormData | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      submittedForm = init?.body as FormData;
+      return new Response(JSON.stringify({
+        data: [{ b64_json: Buffer.from("generated-png").toString("base64") }]
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const provider = new OpenAIProductDisplayImageProvider();
+    assert.equal(provider.isConfigured(), true);
+    const result = await provider.generate({
+      body: Buffer.from("source"), contentType: "image/png", filename: "source.png"
+    });
+
+    assert.equal(submittedForm?.get("model"), "gpt-image-1-mini");
+    assert.equal(submittedForm?.get("quality"), "low");
+    assert.equal(submittedForm?.get("size"), "1024x1024");
+    assert.equal(result.body.toString(), "generated-png");
+    assert.equal(result.processorVersion, `gpt-image-1-mini:${PRODUCT_DISPLAY_PROMPT_VERSION}:low`);
+  });
+
+  it("honors an explicit medium quality override when low is the default", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_IMAGE_EDIT_MODEL = "gpt-image-2";
+    process.env.OPENAI_IMAGE_EDIT_QUALITY = "medium";
+    let submittedForm: FormData | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      submittedForm = init?.body as FormData;
+      return new Response(JSON.stringify({
+        data: [{ b64_json: Buffer.from("generated-png").toString("base64") }]
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await new OpenAIProductDisplayImageProvider().generate({
+      body: Buffer.from("source"), contentType: "image/png", filename: "source.png"
+    });
+
+    assert.equal(submittedForm?.get("model"), "gpt-image-2");
+    assert.equal(submittedForm?.get("quality"), "medium");
+    assert.equal(result.processorVersion, `gpt-image-2:${PRODUCT_DISPLAY_PROMPT_VERSION}:medium`);
+  });
+
   it("requires the shared OpenAI API key", async () => {
     delete process.env.OPENAI_API_KEY;
     const provider = new OpenAIProductDisplayImageProvider();

@@ -33,4 +33,6 @@ assert.throws(
   PaymentValidationError
 );
 
+assert.throws(() => parseMpesaCallback(null), PaymentValidationError);
+
 console.log("Payment callback parsing tests passed");

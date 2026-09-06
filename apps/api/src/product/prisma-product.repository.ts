@@ -1,5 +1,8 @@
 import { Injectable } from "@nestjs/common";
-import { ActorType, Prisma, prisma } from "@online-saler/database";
+import { ActorType, Prisma, ProductStatus, prisma } from "@online-saler/database";
+import { stateConflict } from "./product.errors";
+import { productPublicationBlocker } from "./product-publication-readiness";
+import { loadConfirmedDisplayImage } from "./product-publication-evidence";
 import type { ProductRepository } from "./product.repository";
 import type {
   CreateProductShellInput,
@@ -59,16 +62,52 @@ export class PrismaProductRepository implements ProductRepository {
 
   async saveStateChange(input: SaveProductStateChangeInput): Promise<ProductRecord> {
     return this.client.$transaction(async (transaction) => {
+      if (input.data.status === ProductStatus.PUBLISHED || input.data.status === ProductStatus.APPROVED) {
+        const product = await transaction.product.findUnique({
+          where: { id: input.id },
+          include: { images: true, measurements: true, reviews: true, inventoryItem: true }
+        });
+        if (!product) throw stateConflict("Product changed before the transition could be saved.");
+        const mainImage = await loadConfirmedDisplayImage(transaction, input.id);
+        if (!product.barcode || !product.labelPrintedAt || !mainImage) {
+          throw stateConflict("Approval and publication require a printed barcode and a confirmed AI display image.");
+        }
+        if (input.data.status === ProductStatus.PUBLISHED) {
+          const blocker = productPublicationBlocker(product, mainImage);
+          if (blocker) throw stateConflict(blocker);
+        }
+      }
       const updated = await transaction.product.update({
-        where: { id: input.id },
+        where: {
+          id: input.id,
+          ...(input.audit.before ? { status: input.audit.before.status } : {}),
+          ...(input.data.status === ProductStatus.PUBLISHED ? {
+            inventoryItem: { is: { status: "AVAILABLE", locationId: { not: null }, checkedInAt: { not: null } } }
+          } : {})
+        },
         data: this.toProductUpdateInput(input.data)
       });
+
+      if (input.review) {
+        await transaction.productReview.create({
+          data: { productId: input.id, ...input.review }
+        });
+      }
 
       await transaction.auditLog.create({
         data: this.toAuditCreateInput(input.audit)
       });
 
       return updated;
+    }, {
+      isolationLevel: input.review || input.data.status === ProductStatus.PUBLISHED || input.data.status === ProductStatus.APPROVED
+        ? Prisma.TransactionIsolationLevel.Serializable
+        : undefined
+    }).catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2034")) {
+        throw stateConflict("Product or inventory changed during this action. Refresh the product before retrying.", { productId: input.id });
+      }
+      throw error;
     });
   }
 

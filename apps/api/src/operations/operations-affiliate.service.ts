@@ -1,19 +1,31 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  ActorType,
   AffiliateLinkType,
   AffiliateStatus,
   CommissionStatus,
   OrderStatus,
+  Prisma,
+  SourceApp,
+  type Commission,
   prisma
 } from "@online-saler/database";
+import { resolveDefaultCommissionRate } from "@online-saler/business-rules";
 import { randomBytes } from "node:crypto";
 import { OperationsAccessService } from "./operations-access.service";
+import { commissionEligibility } from "./operations-commission-policy";
 
 const AFFILIATE_VIEW = "action.affiliate.view";
 const AFFILIATE_EDIT = "action.affiliate.edit";
 const AFFILIATE_APPROVE = "action.affiliate.approve";
 const AFFILIATE_EXPORT = "action.affiliate.export";
 const DEFAULT_COMMISSION_SETTING_KEY = "affiliate.defaultCommissionRateBps";
+const commissionOrderInclude = {
+  fulfillment: { select: { status: true, completedAt: true } },
+  payments: { select: { status: true, amountKsh: true } },
+  customerServiceCases: { select: { status: true, issueType: true, requiresReturn: true, requiresRefund: true, affectsAffiliateCommission: true } },
+  afterSaleReturns: { select: { status: true } }
+} as const;
 
 export type CommissionQueueKey = "pending" | "confirmed" | "paid" | "exceptions";
 
@@ -321,12 +333,13 @@ export class OperationsAffiliateService {
 
   async listCommissions(queue: CommissionQueueKey | undefined, adminUserId?: string) {
     await this.access.requirePermission(adminUserId, AFFILIATE_VIEW);
-    return prisma.commission.findMany({
+    const commissions = await prisma.commission.findMany({
       where: commissionWhere(queue),
       include: {
         affiliate: true,
         order: {
           include: {
+            ...commissionOrderInclude,
             customer: true,
             items: { include: { snapshot: true } }
           }
@@ -336,48 +349,86 @@ export class OperationsAffiliateService {
       orderBy: { createdAt: "desc" },
       take: 200
     });
+    const now = new Date();
+    return commissions.map((commission) => ({ ...commission, eligibility: commissionEligibility(commission, now) }));
   }
 
   async confirmCommission(commissionId: string, input: CommissionActionInput) {
-    await this.access.requirePermission(input.adminUserId, AFFILIATE_APPROVE);
-    return prisma.commission.update({
-      where: { id: commissionId },
-      data: {
-        status: CommissionStatus.CONFIRMED,
-        confirmedAt: new Date(),
-        holdReason: null,
-        note: cleanOptional(input.note)
-      }
-    });
+    return this.transitionCommission(commissionId, input, "CONFIRM");
   }
 
   async rejectCommission(commissionId: string, input: CommissionActionInput) {
-    await this.access.requirePermission(input.adminUserId, AFFILIATE_APPROVE);
-    return prisma.commission.update({
-      where: { id: commissionId },
-      data: {
-        status: CommissionStatus.REJECTED,
-        rejectedAt: new Date(),
-        holdReason: "MANUAL_REJECTED",
-        note: cleanOptional(input.note) ?? "Rejected by affiliate operations."
-      }
-    });
+    return this.transitionCommission(commissionId, input, "REJECT");
   }
 
   async markCommissionPaid(commissionId: string, input: CommissionActionInput) {
-    await this.access.requirePermission(input.adminUserId, AFFILIATE_APPROVE);
-    const commission = await prisma.commission.findUnique({ where: { id: commissionId } });
-    if (!commission) throw new NotFoundException("Commission was not found.");
-    if (commission.status !== CommissionStatus.CONFIRMED || commission.holdReason) {
-      throw new BadRequestException("Only confirmed commissions without a hold can be marked as paid.");
+    return this.transitionCommission(commissionId, input, "RECORD_PAYMENT");
+  }
+
+  private async transitionCommission(commissionId: string, input: CommissionActionInput, action: "CONFIRM" | "REJECT" | "RECORD_PAYMENT") {
+    const session = await this.access.requirePermission(input.adminUserId, AFFILIATE_APPROVE);
+    const actor = session.adminUser!;
+    const note = cleanOptional(input.note);
+    if (action !== "CONFIRM" && !note) {
+      throw new BadRequestException(action === "REJECT"
+        ? "A rejection reason is required."
+        : "Enter the verified external payment receipt or reference in the note. This action records payment; it does not transfer money.");
     }
-    return prisma.commission.update({
-      where: { id: commissionId },
-      data: {
-        status: CommissionStatus.PAID,
-        paidAt: new Date(),
-        note: cleanOptional(input.note) ?? commission.note
+    return prisma.$transaction(async (tx) => {
+      const identity = await tx.commission.findUnique({ where: { id: commissionId }, select: { orderId: true } });
+      if (!identity) throw new NotFoundException("Commission was not found.");
+      // After-sales and commission transitions share this lock; re-read after acquiring it.
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${identity.orderId} FOR UPDATE`;
+      const commission = await tx.commission.findUnique({
+        where: { id: commissionId },
+        include: { order: { include: commissionOrderInclude } }
+      });
+      if (!commission) throw new NotFoundException("Commission was not found.");
+      const expectedStatuses: CommissionStatus[] = action === "CONFIRM" ? [CommissionStatus.PENDING]
+        : action === "RECORD_PAYMENT" ? [CommissionStatus.CONFIRMED]
+          : [CommissionStatus.PENDING, CommissionStatus.CONFIRMED];
+      if (!expectedStatuses.includes(commission.status) || commission.paidAt) {
+        throw new ConflictException("Commission state has changed or this action was already recorded. Refresh before continuing.");
       }
+      const now = new Date();
+      const eligibility = commissionEligibility(commission, now);
+      if (action !== "REJECT" && eligibility.blockingReason) throw new BadRequestException(eligibility.blockingReason);
+      if (action === "RECORD_PAYMENT" && commission.commissionAmountKsh === 0) {
+        throw new BadRequestException("A zero-value commission cannot be recorded as a payment.");
+      }
+      const data: Prisma.CommissionUpdateManyMutationInput = action === "CONFIRM"
+        ? { status: CommissionStatus.CONFIRMED, eligibleAt: eligibility.eligibleAt, confirmedAt: now, note: note ?? commission.note }
+        : action === "REJECT"
+          ? { status: CommissionStatus.REJECTED, rejectedAt: now, holdReason: "MANUAL_REJECTED", note }
+          : { status: CommissionStatus.PAID, paidAt: now, note };
+      const changed = await tx.commission.updateMany({
+        where: {
+          id: commission.id,
+          status: commission.status,
+          paidAt: null,
+          updatedAt: commission.updatedAt,
+          holdReason: commission.holdReason
+        },
+        data
+      });
+      if (changed.count !== 1) throw new ConflictException("Commission changed during this request. Refresh and review its current state.");
+      const updated = await tx.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      await tx.auditLog.create({
+        data: {
+          actorType: ActorType.EMPLOYEE,
+          actorId: actor.linkedEmployeeId,
+          actorAdminUserId: actor.id,
+          sourceApp: SourceApp.OPERATIONS,
+          module: "AFFILIATE",
+          entityType: "Commission",
+          entityId: commission.id,
+          action: `COMMISSION_${action}`,
+          beforeJson: commissionAuditState(commission),
+          afterJson: commissionAuditState(updated),
+          reason: note ?? "Completed handover plus 24 hours; no blocking after-sales case."
+        }
+      });
+      return updated;
     });
   }
 
@@ -387,11 +438,12 @@ export class OperationsAffiliateService {
       where: { status: CommissionStatus.CONFIRMED, holdReason: null },
       include: {
         affiliate: true,
-        order: true
+        order: { include: commissionOrderInclude }
       },
       orderBy: { createdAt: "asc" }
     });
-    return commissions.map((commission) => ({
+    const now = new Date();
+    return commissions.filter((commission) => !commission.paidAt && commission.commissionAmountKsh > 0 && !commissionEligibility(commission, now).blockingReason).map((commission) => ({
       commissionId: commission.id,
       affiliateCode: commission.affiliate.affiliateCode,
       affiliateName: commission.affiliate.displayName,
@@ -408,7 +460,7 @@ export class OperationsAffiliateService {
     const setting = await prisma.systemSetting.findUnique({ where: { key: DEFAULT_COMMISSION_SETTING_KEY } });
     return {
       key: DEFAULT_COMMISSION_SETTING_KEY,
-      valueBps: typeof setting?.valueJson === "number" ? setting.valueJson : 1000
+      ...resolveDefaultCommissionRate(setting?.valueJson)
     };
   }
 
@@ -423,6 +475,23 @@ export class OperationsAffiliateService {
     }
     return affiliate;
   }
+}
+
+function commissionAuditState(commission: Commission): Prisma.InputJsonObject {
+  return {
+    status: commission.status,
+    orderId: commission.orderId,
+    affiliateId: commission.affiliateId,
+    rateBps: commission.rateBps,
+    orderSubtotalKsh: commission.orderSubtotalKsh,
+    commissionAmountKsh: commission.commissionAmountKsh,
+    holdReason: commission.holdReason,
+    eligibleAt: commission.eligibleAt?.toISOString() ?? null,
+    confirmedAt: commission.confirmedAt?.toISOString() ?? null,
+    rejectedAt: commission.rejectedAt?.toISOString() ?? null,
+    paidAt: commission.paidAt?.toISOString() ?? null,
+    note: commission.note
+  };
 }
 
 function commissionWhere(queue?: CommissionQueueKey) {

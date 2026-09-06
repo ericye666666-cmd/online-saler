@@ -11,7 +11,8 @@ import {
 import { ProductApplicationService } from "../product/product-application.service";
 import { OperationsAccessService } from "./operations-access.service";
 import { canReserveStorageLocation } from "./product-storage-reservation";
-import { missingPublishMeasurementTypes } from "./operations-product-publish-readiness";
+import { productPublicationBlocker } from "../product/product-publication-readiness";
+import { loadConfirmedDisplayImage } from "../product/product-publication-evidence";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
 import {
   WAREHOUSE_OCCUPYING_STATUSES,
@@ -350,6 +351,9 @@ export class OperationsProductControlService {
     if (!product.barcode) {
       throw new BadRequestException("Generate barcode before stock-in.");
     }
+    if (product.status !== ProductStatus.READY_FOR_STORAGE) {
+      throw new BadRequestException("Only storage-ready items can be confirmed placed.");
+    }
 
     const detail = await this.assignRandomLocation(productId, { employeeId, adminUserId: input.adminUserId });
     const item = detail.inventoryItem;
@@ -359,16 +363,27 @@ export class OperationsProductControlService {
     if (item.status === InventoryItemStatus.AVAILABLE) {
       return this.productDetail(productId);
     }
+    if (item.status !== InventoryItemStatus.PENDING_STOCK_IN) {
+      throw new BadRequestException("Only pending stock-in items can be confirmed placed.");
+    }
 
     await prisma.$transaction(async (transaction) => {
       const changed = await transaction.inventoryItem.updateMany({
-        where: { id: item.id, status: { not: InventoryItemStatus.AVAILABLE } },
+        where: {
+          id: item.id,
+          status: InventoryItemStatus.PENDING_STOCK_IN,
+          locationId: item.locationId,
+          barcode: product.barcode!,
+          product: { status: ProductStatus.READY_FOR_STORAGE }
+        },
         data: {
           status: InventoryItemStatus.AVAILABLE,
           checkedInAt: new Date()
         }
       });
-      if (changed.count === 0) return;
+      if (changed.count === 0) {
+        throw new BadRequestException("Inventory changed while confirming placement. Refresh the item before retrying.");
+      }
       const updated = await transaction.inventoryItem.findUniqueOrThrow({ where: { id: item.id } });
 
       await transaction.inventoryMovement.create({
@@ -396,7 +411,7 @@ export class OperationsProductControlService {
     if (detail.status !== ProductStatus.READY_FOR_STORAGE && detail.status !== ProductStatus.UNPUBLISHED) {
       throw new BadRequestException("Only storage-ready items can be published.");
     }
-    this.assertPublishable(detail);
+    await this.assertPublishable(detail);
 
     await this.products.transitionProduct({
       productId,
@@ -468,37 +483,10 @@ export class OperationsProductControlService {
     return product;
   }
 
-  private assertPublishable(product: Awaited<ReturnType<OperationsProductControlService["productDetail"]>>) {
-    if (!product.barcode) {
-      throw new BadRequestException("Generate barcode before publishing.");
-    }
-    if (!product.title?.trim()) {
-      throw new BadRequestException("Confirm the title before publishing.");
-    }
-    if (!product.category?.trim()) {
-      throw new BadRequestException("Confirm the category before publishing.");
-    }
-    if (!product.finalSizeLabel?.trim()) {
-      throw new BadRequestException("Confirm the size label before publishing.");
-    }
-    if (!product.conditionGrade) {
-      throw new BadRequestException("Confirm the condition before publishing.");
-    }
-    const missingMeasurements = missingPublishMeasurementTypes(product);
-    if (missingMeasurements.length > 0) {
-      throw new BadRequestException(
-        `Confirm required measurements before publishing: ${missingMeasurements.join(", ")}.`
-      );
-    }
-    if (!product.priceKsh || product.priceKsh <= 0) {
-      throw new BadRequestException("Set the price before publishing.");
-    }
-    if (!product.images.length) {
-      throw new BadRequestException("Add at least one product photo before publishing.");
-    }
-    if (product.inventoryItem?.status !== InventoryItemStatus.AVAILABLE) {
-      throw new BadRequestException("Confirm the item is placed in the warehouse before publishing.");
-    }
+  async assertPublishable(product: Awaited<ReturnType<OperationsProductControlService["productDetail"]>>) {
+    const mainImage = await loadConfirmedDisplayImage(prisma, product.id);
+    const blocker = productPublicationBlocker(product, mainImage);
+    if (blocker) throw new BadRequestException(blocker);
   }
 
   private async ensureDefaultLocations() {
@@ -522,6 +510,7 @@ export class OperationsProductControlService {
       defects: {
         orderBy: { createdAt: "asc" }
       },
+      reviews: { orderBy: { createdAt: "desc" }, take: 1 },
       inventoryItem: {
         include: { location: true }
       }

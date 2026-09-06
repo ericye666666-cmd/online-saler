@@ -10,13 +10,21 @@ import {
   parseOpenAIVisionOutput
 } from "./openai-vision.provider";
 
-test("reserves the output budget for structured product fields", () => {
+test("uses Mini-compatible JSON controls with sufficient structured output budget", () => {
   const settings = openAIVisionResponseSettings();
 
-  assert.equal(settings.reasoning.effort, "none");
-  assert.equal(settings.text.verbosity, "low");
+  assert.equal("reasoning" in settings, false);
+  assert.equal("verbosity" in settings.text, false);
   assert.equal(settings.text.format.type, "json_object");
   assert.ok(settings.max_output_tokens >= 5000);
+});
+
+test("preserves prior no-reasoning controls for an explicitly retained deployment model", () => {
+  const settings = openAIVisionResponseSettings("gpt-5.6-sol");
+
+  assert.equal(settings.reasoning?.effort, "none");
+  assert.equal(settings.text.verbosity, "low");
+  assert.equal(settings.text.format.type, "json_object");
 });
 
 test("keeps material and tags evidence-based", () => {

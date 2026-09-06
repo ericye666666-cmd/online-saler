@@ -821,6 +821,8 @@ model Order {
   commission           Commission?
   customerServiceCases CustomerServiceCase[]
   customerServiceNotes CustomerServiceNote[]
+  afterSaleReturns     AfterSaleReturn[]
+  afterSaleEvents      AfterSaleEvent[]
   sourceDraft          CheckoutDraft?        @relation("CheckoutDraftConvertedOrder")
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -839,6 +841,7 @@ model OrderItem {
   lineTotalKsh      Int
   order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
   snapshot          OrderSnapshot?
+  afterSaleReturn   AfterSaleReturn?
   fulfillmentItem   FulfillmentItem?
   fulfillmentEvents FulfillmentEvent[]
   createdAt         DateTime           @default(now())
@@ -1302,6 +1305,7 @@ model Commission {
   rateBps             Int
   orderSubtotalKsh    Int
   commissionAmountKsh Int
+  adjustments         CommissionAdjustment[]
   eligibleAt          DateTime?
   confirmedAt         DateTime?
   rejectedAt          DateTime?
@@ -1339,6 +1343,7 @@ model CustomerServiceCase {
   order                      Order?                    @relation(fields: [orderId], references: [id], onDelete: SetNull)
   createdByAdminUser         AdminUser?                @relation("CustomerServiceCaseCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
   assignedEmployee           Employee?                 @relation("CustomerServiceCaseOwner", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  afterSaleReturn            AfterSaleReturn?
   notes                      CustomerServiceNote[]
   createdAt                  DateTime                  @default(now())
   updatedAt                  DateTime                  @updatedAt
@@ -1368,4 +1373,109 @@ model CustomerServiceNote {
   @@index([customerId, createdAt])
   @@index([orderId, createdAt])
   @@index([authorAdminUserId, createdAt])
+}
+
+
+enum AfterSaleReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  RECEIVED
+  REFUND_RECORDED
+}
+
+enum AfterSaleReturnReason {
+  WRONG_ITEM
+  PHOTO_MISMATCH
+  UNDISCLOSED_DEFECT
+  MEASUREMENT_DIFFERENCE
+  DELIVERY_DAMAGE
+}
+
+enum CommissionAdjustmentKind {
+  REVERSAL
+  RECOVERY_REQUIRED
+}
+
+model AfterSaleReturn {
+  id                         String                  @id @default(uuid())
+  orderId                    String
+  orderItemId                String                  @unique
+  serviceCaseId              String                  @unique
+  status                     AfterSaleReturnStatus   @default(REQUESTED)
+  reason                     AfterSaleReturnReason
+  measurementDifferenceCm    Float?
+  requestNote                String
+  requestedByAdminUserId     String
+  requestedAt                DateTime                @default(now())
+  decidedByAdminUserId       String?
+  decidedAt                  DateTime?
+  decisionNote               String?
+  receivedByAdminUserId      String?
+  receivedAt                 DateTime?
+  receivedBarcode            String?
+  restockable                Boolean?
+  inspectionNote             String?
+  inventoryUpdatedAt         DateTime?
+  restockedAt                DateTime?
+  restockedByAdminUserId     String?
+  restockedLocationId         String?
+  order                      Order                   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderItem                  OrderItem               @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  serviceCase                CustomerServiceCase     @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
+  refunds                    RefundRecord[]
+  commissionAdjustment       CommissionAdjustment?
+  events                     AfterSaleEvent[]
+  updatedAt                  DateTime                @updatedAt
+
+  @@index([orderId, status])
+  @@index([status, requestedAt])
+}
+
+model RefundRecord {
+  id                    String          @id @default(uuid())
+  afterSaleReturnId     String
+  amountKsh             Int
+  externalReference     String          @unique
+  evidenceNote          String
+  refundedAt            DateTime
+  recordedByAdminUserId String
+  recordedAt            DateTime        @default(now())
+  afterSaleReturn       AfterSaleReturn @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
+}
+
+model CommissionAdjustment {
+  id                    String                   @id @default(uuid())
+  commissionId          String
+  afterSaleReturnId     String                   @unique
+  kind                  CommissionAdjustmentKind
+  amountKsh             Int
+  beforeAmountKsh       Int
+  afterAmountKsh        Int
+  recordedByAdminUserId String
+  createdAt             DateTime                 @default(now())
+  commission            Commission               @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+  afterSaleReturn       AfterSaleReturn           @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
+
+  @@index([commissionId, kind])
+}
+
+model AfterSaleEvent {
+  id               String          @id @default(uuid())
+  orderId          String
+  afterSaleReturnId String
+  action           String
+  actorAdminUserId String
+  sourceApp        SourceApp       @default(OPERATIONS)
+  reason           String
+  beforeJson       Json
+  afterJson        Json
+  idempotencyKey   String
+  requestHash      String
+  createdAt        DateTime        @default(now())
+  order            Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  afterSaleReturn  AfterSaleReturn @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, idempotencyKey])
+  @@index([afterSaleReturnId, createdAt])
 }

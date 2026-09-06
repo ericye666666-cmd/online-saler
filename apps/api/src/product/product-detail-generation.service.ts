@@ -154,8 +154,8 @@ export class ProductDetailGenerationService {
     return batches.map(summarizeDetailBatch);
   }
 
-  async recordSourceChange(productId: string, reason: string) {
-    return prisma.$transaction(async (transaction) => {
+  async recordSourceChange(productId: string, reason: string, client?: Prisma.TransactionClient) {
+    const update = async (transaction: Prisma.TransactionClient) => {
       const product = await transaction.product.update({
         where: { id: productId },
         data: { detailSourceVersion: { increment: 1 } },
@@ -163,7 +163,8 @@ export class ProductDetailGenerationService {
       });
       await this.markExistingVersionsOutdated(transaction, productId, reason);
       return product;
-    });
+    };
+    return client ? update(client) : prisma.$transaction(update);
   }
 
   async afterCalibration(productId: string, batchId?: string | null) {
@@ -360,8 +361,11 @@ export class ProductDetailGenerationService {
 
   async prepareMainImageChange(profileId: string) {
     const profile = await this.requireCurrentProfile(profileId);
+    if (profile.product.status === ProductStatus.PUBLISHED) {
+      throw new BadRequestException("Unpublish the product before changing its confirmed main image.");
+    }
     return prisma.productDetailProfile.update({
-      where: { id: profile.id },
+      where: { id: profile.id, product: { status: { not: ProductStatus.PUBLISHED } } },
       data: {
         status: ProductDetailStatus.READY,
         contentVersion: { increment: 1 },
@@ -409,8 +413,16 @@ export class ProductDetailGenerationService {
       orderBy: { createdAt: "desc" }
     });
     if (!job) throw new NotFoundException("Product detail generation job not found");
-    await prisma.$transaction([
-      prisma.productDetailProfile.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Product" WHERE "id" = ${profile.productId} FOR UPDATE`);
+      const current = await tx.productDetailProfile.findUniqueOrThrow({
+        where: { id: profile.id },
+        include: { product: { select: { status: true } } }
+      });
+      if (current.product.status === ProductStatus.PUBLISHED && current.status === ProductDetailStatus.APPROVED) {
+        throw new BadRequestException("Unpublish the product before regenerating its approved details.");
+      }
+      await tx.productDetailProfile.update({
         where: { id: profile.id },
         data: {
           status: ProductDetailStatus.PENDING,
@@ -419,12 +431,12 @@ export class ProductDetailGenerationService {
           outdatedAt: null,
           outdatedReason: null
         }
-      }),
-      prisma.productDetailAsset.updateMany({
+      });
+      await tx.productDetailAsset.updateMany({
         where: { detailProfileId: profile.id },
         data: { status: ProductDetailStatus.PENDING, failureCode: null, errorMessage: null }
-      }),
-      prisma.productDetailGenerationJob.update({
+      });
+      await tx.productDetailGenerationJob.update({
         where: { id: job.id },
         data: {
           status: ProductDetailStatus.PENDING,
@@ -436,8 +448,8 @@ export class ProductDetailGenerationService {
           outdatedAt: null,
           outdatedReason: null
         }
-      })
-    ]);
+      });
+    });
     return job.id;
   }
 

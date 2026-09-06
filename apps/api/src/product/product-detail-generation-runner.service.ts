@@ -237,19 +237,21 @@ export class ProductDetailGenerationRunnerService {
       }
       comparison = await this.imageProcessing.selectMainImage(
         { productId, imageId: completed.outputImageId },
-        { recordDetailSourceChange: false, humanConfirmed: false }
+        { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true }
       );
       aiDisplayMain = comparison.aiDisplayMain;
     } else if (!aiDisplayMain.selectedAsMain) {
       comparison = await this.imageProcessing.selectMainImage(
         { productId, imageId: aiDisplayMain.imageId },
-        { recordDetailSourceChange: false, humanConfirmed: false }
+        { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true }
       );
       aiDisplayMain = comparison.aiDisplayMain;
     }
 
-    if (!aiDisplayMain?.selectedAsMain) {
-      throw new BadRequestException("AI display image could not be selected as the storefront main image");
+    // For a live product, auto-selection preserves the previously confirmed main
+    // image. A newly generated candidate can remain unselected until review.
+    if (!aiDisplayMain) {
+      throw new BadRequestException("AI display image is unavailable after generation");
     }
     return aiDisplayMain;
   }

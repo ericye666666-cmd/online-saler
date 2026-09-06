@@ -310,6 +310,46 @@ describe("ProductDetailGenerationService", () => {
     assert.equal(updateData?.approvedByEmployeeId, null);
   });
 
+  it("does not unapprove live product details before rejecting a main-image change", async () => {
+    prisma.productDetailProfile.findUnique = (async () => ({
+      id: "profile-1", productId: "product-1", status: ProductDetailStatus.APPROVED, sourceDataVersion: 2,
+      product: { id: "product-1", status: ProductStatus.PUBLISHED, detailSourceVersion: 2 }
+    })) as never;
+    let writes = 0;
+    prisma.productDetailProfile.update = (async () => { writes++; }) as never;
+    await assert.rejects(new ProductDetailGenerationService().prepareMainImageChange("profile-1"), /Unpublish the product/);
+    assert.equal(writes, 0);
+  });
+
+  it("rechecks publication before resetting an approved detail profile and preserves all live assets", async () => {
+    const originalFindJob = prisma.productDetailGenerationJob.findFirst;
+    prisma.productDetailProfile.findUnique = (async () => ({
+      id: "profile-1", productId: "product-1", status: ProductDetailStatus.APPROVED, sourceDataVersion: 2,
+      product: { id: "product-1", status: ProductStatus.UNPUBLISHED, detailSourceVersion: 2 }
+    })) as never;
+    prisma.productDetailGenerationJob.findFirst = (async () => ({ id: "job-1" })) as never;
+    let locked = false;
+    let writes = 0;
+    prisma.$transaction = (async (callback: (tx: unknown) => Promise<unknown>) => callback({
+      $queryRaw: async () => { locked = true; return []; },
+      productDetailProfile: {
+        findUniqueOrThrow: async () => {
+          assert.equal(locked, true);
+          return { status: ProductDetailStatus.APPROVED, product: { status: ProductStatus.PUBLISHED } };
+        },
+        update: async () => { writes++; }
+      },
+      productDetailAsset: { updateMany: async () => { writes++; } },
+      productDetailGenerationJob: { update: async () => { writes++; } }
+    })) as never;
+    try {
+      await assert.rejects(new ProductDetailGenerationService().resetOpenAiGeneration("profile-1"), /Unpublish the product/);
+      assert.equal(writes, 0);
+    } finally {
+      prisma.productDetailGenerationJob.findFirst = originalFindJob;
+    }
+  });
+
   it("publishes every approved batch description to its product", async () => {
     prisma.productBatch.findUnique = (async () => ({
       id: "batch-1",

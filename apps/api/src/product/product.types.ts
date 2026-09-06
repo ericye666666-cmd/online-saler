@@ -7,6 +7,7 @@ import type {
   ProductMeasurement,
   ProductReview,
   ProductStatus,
+  ReviewResult,
   SourceApp
 } from "@online-saler/database";
 
@@ -69,6 +70,13 @@ export type ProductAuditEntry = {
 export type SaveProductStateChangeInput = Omit<SaveProductInput, "data"> & {
   data: ProductStateChangeData;
   audit: ProductAuditEntry;
+  review?: ProductReviewDecision;
+};
+
+type ProductReviewDecision = {
+  result: ReviewResult;
+  reviewerEmployeeId: string;
+  reason?: string;
 };
 
 export type ProductTransitionCommand = {
@@ -78,6 +86,7 @@ export type ProductTransitionCommand = {
   reason?: string;
   barcode?: string;
   inventoryAvailable?: boolean;
+  review?: ProductReviewDecision;
 };
 
 export type OperationsProductDetailQuery = {

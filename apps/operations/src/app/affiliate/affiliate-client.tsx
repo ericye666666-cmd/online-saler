@@ -149,6 +149,7 @@ type CommissionRow = {
   createdAt: string;
   confirmedAt?: string | null;
   paidAt?: string | null;
+  eligibility?: { eligibleAt: string | null; blockingReason: string | null };
   affiliate: {
     affiliateCode: string;
     displayName: string;
@@ -201,7 +202,7 @@ const emptyAffiliateForm: AffiliateForm = {
   affiliateCode: "",
   phone: "",
   email: "",
-  commissionRateBps: "1000"
+  commissionRateBps: ""
 };
 
 const emptyLinkForm: LinkForm = {
@@ -222,6 +223,11 @@ export function AffiliateCenterPage({
 }) {
   const { session, hasPermission } = useOperationsSession();
   const adminUserId = session?.adminUser?.id ?? "";
+  const accessToken = session?.accessToken ?? "";
+  const request = useCallback(<T,>(path: string, options?: RequestOptions): Promise<T> => apiRequest<T>(path, {
+    ...options,
+    headers: { ...options?.headers, Authorization: `Bearer ${accessToken}` }
+  }), [accessToken]);
   const canEdit = hasPermission("action.affiliate.edit");
   const canApprove = hasPermission("action.affiliate.approve");
   const canExport = hasPermission("action.affiliate.export");
@@ -268,7 +274,7 @@ export function AffiliateCenterPage({
         }));
       }
     }
-  }, [adminUserId, commissionQueue, view]);
+  }, [adminUserId, commissionQueue, request, view]);
 
   useEffect(() => {
     void load();
@@ -285,7 +291,7 @@ export function AffiliateCenterPage({
         body: JSON.stringify({
           adminUserId,
           ...affiliateForm,
-          commissionRateBps: Number(affiliateForm.commissionRateBps)
+          commissionRateBps: affiliateForm.commissionRateBps.trim() ? Number(affiliateForm.commissionRateBps) : undefined
         })
       });
       setAffiliateForm(emptyAffiliateForm);
@@ -373,10 +379,14 @@ export function AffiliateCenterPage({
   }
 
   async function commissionAction(commission: CommissionRow, actionName: "confirm" | "reject" | "paid") {
+    const note = actionName === "confirm" ? undefined : window.prompt(actionName === "reject"
+      ? "请输入驳回原因："
+      : "确认已在外部完成付款后，填写已核实的付款凭证或交易参考号。此操作仅记录付款，不会转账：");
+    if (actionName !== "confirm" && !note?.trim()) return;
     await action(`/operations/affiliate/commissions/${commission.id}/${actionName}`, {
       method: "POST",
-      body: JSON.stringify({ adminUserId })
-    }, actionName === "confirm" ? "佣金已确认。" : actionName === "reject" ? "佣金已驳回。" : "佣金已标记为已支付。");
+      body: JSON.stringify({ adminUserId, note })
+    }, actionName === "confirm" ? "佣金已确认。" : actionName === "reject" ? "佣金已驳回。" : "已保存外部付款记录及凭证说明。");
   }
 
   async function exportPayouts() {
@@ -632,7 +642,7 @@ function AffiliatesView({
               <Field>
                 <FieldLabel>佣金 bps</FieldLabel>
                 <div className="flex gap-2">
-                  <Input value={form.commissionRateBps} onChange={(event) => onFormChange({ ...form, commissionRateBps: event.target.value })} />
+                  <Input placeholder="留空使用系统默认比例" value={form.commissionRateBps} onChange={(event) => onFormChange({ ...form, commissionRateBps: event.target.value })} />
                   <Button disabled={busy || !form.displayName.trim()} onClick={onCreate}>创建</Button>
                 </div>
               </Field>
@@ -871,15 +881,15 @@ function CommissionsView({
           <TableCell>{commission.affiliate.displayName}<div className="font-mono text-muted-foreground text-xs">{commission.affiliate.affiliateCode}</div></TableCell>
           <TableCell className="font-mono text-xs">{commission.order.orderNumber}<div className="text-muted-foreground">{commission.order.items[0]?.snapshot?.title ?? "-"}</div></TableCell>
           <TableCell>{commission.order.customer.displayName || commission.order.customer.email}<div className="text-muted-foreground text-xs">{commission.order.customer.phone || "-"}</div></TableCell>
-          <TableCell><StatusBadge status={commission.status} />{commission.holdReason ? <div className="mt-1 text-destructive text-xs">{commission.holdReason}</div> : null}</TableCell>
+          <TableCell><StatusBadge status={commission.status} />{commission.holdReason ? <div className="mt-1 text-destructive text-xs">{commission.holdReason}</div> : null}{["PENDING", "CONFIRMED"].includes(commission.status) && commission.eligibility?.blockingReason ? <div className="mt-1 max-w-64 text-muted-foreground text-xs">{commission.eligibility.blockingReason}</div> : null}</TableCell>
           <TableCell>{commission.attribution?.source || "-"} / {commission.attribution?.campaign || "-"}</TableCell>
           <TableCell className="max-w-48 text-muted-foreground text-xs">{commission.note || "-"}</TableCell>
           <TableCell>
             {canApprove ? (
               <div className="flex flex-wrap gap-2">
-                {commission.status === "PENDING" ? <Button size="sm" onClick={() => void onAction(commission, "confirm")}>确认</Button> : null}
-                {commission.status === "PENDING" ? <Button size="sm" variant="outline" onClick={() => void onAction(commission, "reject")}>驳回</Button> : null}
-                {commission.status === "CONFIRMED" && !commission.holdReason ? <Button size="sm" onClick={() => void onAction(commission, "paid")}>已支付</Button> : null}
+                {commission.status === "PENDING" ? <Button size="sm" disabled={busy || Boolean(commission.eligibility?.blockingReason)} onClick={() => void onAction(commission, "confirm")}>确认</Button> : null}
+                {["PENDING", "CONFIRMED"].includes(commission.status) ? <Button size="sm" disabled={busy} variant="outline" onClick={() => void onAction(commission, "reject")}>驳回</Button> : null}
+                {commission.status === "CONFIRMED" && !commission.holdReason ? <Button size="sm" disabled={busy || Boolean(commission.eligibility?.blockingReason) || commission.commissionAmountKsh === 0} onClick={() => void onAction(commission, "paid")}>记录已付款</Button> : null}
               </div>
             ) : "-"}
           </TableCell>
@@ -1000,7 +1010,7 @@ function pageMeta(view: AffiliateView, queue?: CommissionQueueKey) {
   return { title: "推广者列表", description: "开通、停用小B推广者，并管理唯一 Affiliate ID。" };
 }
 
-async function request<T>(path: string, options?: RequestOptions): Promise<T> {
+async function apiRequest<T>(path: string, options?: RequestOptions): Promise<T> {
   const url = new URL(`${API_PROXY_URL}${path}`, window.location.origin);
   for (const [key, value] of Object.entries(options?.query ?? {})) {
     if (value) url.searchParams.set(key, value);

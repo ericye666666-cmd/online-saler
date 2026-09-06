@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  ActorType,
+  SourceApp,
   CustomerServiceCaseStatus,
   CustomerServiceIssueType,
   DeliveryRiderType,
@@ -64,7 +66,7 @@ const ORDER_INCLUDE = {
     }
   },
   customerServiceCases: {
-    include: { assignedEmployee: true, createdByAdminUser: true },
+    include: { assignedEmployee: true, createdByAdminUser: true, afterSaleReturn: { select: { id: true } } },
     orderBy: { updatedAt: "desc" }
   }
 } as const;
@@ -657,38 +659,59 @@ export class OperationsFulfillmentService {
   async assignAfterSale(orderId: string, input: AfterSaleInput) {
     const actor = await this.adminForPermission(input.adminUserId, "orders.after-sale");
     const employee = await this.requireEmployee(input.employeeId);
-    const order = await this.requireOrder(orderId);
-    if (!order.fulfillment) throw new BadRequestException("After-sale ownership requires an order fulfillment record.");
-    if (order.fulfillment.afterSaleOwnerEmployeeId === employee.id && !input.caseId) return this.orderDetail(orderId, input.adminUserId);
     const status = input.status && Object.values(CustomerServiceCaseStatus).includes(input.status) ? input.status : undefined;
     await prisma.$transaction(async (tx) => {
-      await tx.orderFulfillment.update({ where: { id: order.fulfillment!.id }, data: { afterSaleOwnerEmployeeId: employee.id } });
-      if (input.caseId) {
-        await tx.customerServiceCase.updateMany({
-          where: { id: input.caseId, orderId, issueType: CustomerServiceIssueType.AFTER_SALE },
-          data: {
-            assignedEmployeeId: employee.id,
-            ...(status ? { status } : {}),
-            ...(input.afterSaleReason !== undefined ? { afterSaleReason: input.afterSaleReason.trim() || null } : {}),
-            ...(input.customerRequest !== undefined ? { customerRequest: input.customerRequest.trim() || null } : {}),
-            ...(input.requiresReturn !== undefined ? { requiresReturn: input.requiresReturn } : {}),
-            ...(input.requiresRefund !== undefined ? { requiresRefund: input.requiresRefund } : {}),
-            ...(input.affectsAffiliateCommission !== undefined ? { affectsAffiliateCommission: input.affectsAffiliateCommission } : {}),
-            ...(status ? { resolvedAt: status === CustomerServiceCaseStatus.RESOLVED || status === CustomerServiceCaseStatus.CLOSED ? new Date() : null } : {})
-          }
-        });
+      // Share the order lock with case mutations, returns and commission transitions.
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
+      const order = await tx.order.findUnique({ where: { id: orderId }, include: { fulfillment: true } });
+      if (!order) throw new NotFoundException("Order was not found.");
+      const fulfillment = order.fulfillment;
+      if (!fulfillment) throw new BadRequestException("After-sale ownership requires an order fulfillment record.");
+      const existingCase = input.caseId ? await tx.customerServiceCase.findFirst({
+        where: { id: input.caseId, orderId, issueType: CustomerServiceIssueType.AFTER_SALE },
+        include: { afterSaleReturn: { select: { id: true } } }
+      }) : null;
+      if (input.caseId && !existingCase) throw new NotFoundException("After-sale case was not found for this order.");
+      if (existingCase?.afterSaleReturn && [input.status, input.requiresReturn, input.requiresRefund, input.affectsAffiliateCommission].some((value) => value !== undefined)) {
+        throw new BadRequestException("Use the return workflow to change this managed after-sale case status or return/refund flags.");
       }
+      if (fulfillment.afterSaleOwnerEmployeeId === employee.id && !input.caseId) return;
+      await tx.orderFulfillment.update({ where: { id: fulfillment.id }, data: { afterSaleOwnerEmployeeId: employee.id } });
+      const updatedCase = existingCase ? await tx.customerServiceCase.update({
+        where: { id: existingCase.id },
+        data: {
+          assignedEmployeeId: employee.id,
+          ...(status ? { status } : {}),
+          ...(input.afterSaleReason !== undefined ? { afterSaleReason: input.afterSaleReason.trim() || null } : {}),
+          ...(input.customerRequest !== undefined ? { customerRequest: input.customerRequest.trim() || null } : {}),
+          ...(input.requiresReturn !== undefined ? { requiresReturn: input.requiresReturn } : {}),
+          ...(input.requiresRefund !== undefined ? { requiresRefund: input.requiresRefund } : {}),
+          ...(input.affectsAffiliateCommission !== undefined ? { affectsAffiliateCommission: input.affectsAffiliateCommission } : {}),
+          ...(status ? { resolvedAt: status === CustomerServiceCaseStatus.RESOLVED || status === CustomerServiceCaseStatus.CLOSED ? new Date() : null } : {})
+        }
+      }) : null;
+      const action = input.caseId ? "UPDATE_AFTER_SALE_CASE" : "ASSIGN_AFTER_SALE_OWNER";
       await this.createEvent(tx, {
-        idempotencyKey: `after-sale:${order.fulfillment!.id}:${input.caseId ?? "order"}:${employee.id}:${status ?? "unchanged"}:${input.requiresReturn ?? "unchanged"}:${input.requiresRefund ?? "unchanged"}:${input.affectsAffiliateCommission ?? "unchanged"}:${input.afterSaleReason?.trim() ?? ""}:${input.customerRequest?.trim() ?? ""}`,
-        fulfillmentId: order.fulfillment!.id,
+        idempotencyKey: `after-sale:${fulfillment.id}:${input.caseId ?? "order"}:${employee.id}:${status ?? "unchanged"}:${input.requiresReturn ?? "unchanged"}:${input.requiresRefund ?? "unchanged"}:${input.affectsAffiliateCommission ?? "unchanged"}:${input.afterSaleReason?.trim() ?? ""}:${input.customerRequest?.trim() ?? ""}`,
+        fulfillmentId: fulfillment.id,
         orderId,
         ...actor,
         relatedEmployeeId: employee.id,
-        action: input.caseId ? "UPDATE_AFTER_SALE_CASE" : "ASSIGN_AFTER_SALE_OWNER",
-        oldStatus: order.fulfillment!.status,
-        newStatus: order.fulfillment!.status,
+        action,
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
         note: input.note
       });
+      // Keep each actual case change even when its fulfillment timeline key was seen before.
+      await tx.auditLog.create({ data: {
+        actorType: ActorType.EMPLOYEE, actorId: actor.actorEmployeeId,
+        actorAdminUserId: actor.actorAdminUserId, sourceApp: SourceApp.OPERATIONS,
+        module: "customer-service", entityType: input.caseId ? "CustomerServiceCase" : "OrderFulfillment",
+        entityId: input.caseId ?? fulfillment.id, action,
+        beforeJson: JSON.parse(JSON.stringify({ orderId, ownerEmployeeId: fulfillment.afterSaleOwnerEmployeeId, serviceCase: existingCase })),
+        afterJson: JSON.parse(JSON.stringify({ orderId, ownerEmployeeId: employee.id, serviceCase: updatedCase })),
+        reason: input.note?.trim() || input.afterSaleReason?.trim() || "After-sale ownership or case updated."
+      } });
     });
     return this.orderDetail(orderId, input.adminUserId);
   }

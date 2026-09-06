@@ -45,6 +45,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ORDER_STATUS_TABS, type OrderStatusTab } from "./order-center-routes";
+import { AfterSalesPanel } from "./after-sales-panel";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -136,6 +137,7 @@ type OrderRow = {
     requiresReturn: boolean;
     requiresRefund: boolean;
     affectsAffiliateCommission: boolean;
+    afterSaleReturn?: { id: string } | null;
     assignedEmployee?: FulfillmentEmployee | null;
   }>;
 };
@@ -393,7 +395,10 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
       </PageHeader>
       {error ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>无法打开订单</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
       {order ? (
-        <OrderCard order={order} session={session} busy={busy} showTimeline onDialog={setDialog} onDirect={directAction} />
+        <>
+          <OrderCard order={order} session={session} busy={busy} showTimeline onDialog={setDialog} onDirect={directAction} />
+          <AfterSalesPanel key={order.id} order={order} session={session} onOrderChanged={load} />
+        </>
       ) : (
         <Empty className="min-h-64 border"><EmptyHeader><EmptyTitle>{busy ? "正在读取" : "订单不存在"}</EmptyTitle></EmptyHeader></Empty>
       )}
@@ -535,9 +540,9 @@ function OrderCard(props: {
           {order.items.map((item, index) => {
             const scan = fulfillment?.items.find((candidate) => candidate.orderItemId === item.id);
             return (
-              <div key={item.id} className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[176px_1fr_auto] sm:items-center">
-                <div className="flex aspect-[4/5] w-full max-w-44 items-center justify-center overflow-hidden rounded-md border bg-white sm:w-44">
-                  <OrderItemImage src={operationsImageUrl(item.displayImageUrl ?? item.snapshot?.imageUrl)} alt={item.snapshot?.title ?? "商品图片"} />
+              <div key={item.id} className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[112px_1fr_auto] sm:items-center">
+                <div className="flex h-32 w-28 items-center justify-center overflow-hidden rounded-md border bg-white">
+                  <OrderItemImage src={item.displayImageUrl ?? item.snapshot?.imageUrl} alt={item.snapshot?.title ?? "商品图片"} />
                 </div>
                 <div className="min-w-0">
                   <p className="font-medium">{index + 1}. {item.snapshot?.title ?? "未命名商品"}</p>
@@ -583,12 +588,6 @@ function OrderItemImage({ src, alt }: { src?: string | null; alt: string }) {
     );
   }
   return <img src={src} alt={alt} className="size-full object-contain" onError={() => setFailed(true)} />;
-}
-
-export function operationsImageUrl(src?: string | null) {
-  if (!src) return null;
-  if (/^(https?:|data:|blob:)/.test(src) || src.startsWith(API_PROXY_URL)) return src;
-  return `${API_PROXY_URL}${src.startsWith("/") ? "" : "/"}${src}`;
 }
 
 function OrderActions({ order, session, busy, onDialog, onDirect }: {
@@ -677,7 +676,16 @@ function OrderActionDialog(props: {
     if (state.kind === "assign-rider") { path = "assign-rider"; body = { ...body, riderType, employeeId: riderType === "INTERNAL" ? employeeId : undefined, name, phone, company, vehicle, estimatedDeliveryAt: estimatedDeliveryAt ? new Date(estimatedDeliveryAt).toISOString() : undefined }; }
     if (state.kind === "confirm-pickup") { path = "confirm-pickup"; body = { ...body, verificationMethod, verificationValue }; }
     if (state.kind === "exception") { path = "exception"; body.reason = exceptionReason; }
-    if (state.kind === "assign-after-sale") { path = "assign-after-sale"; body = { ...body, employeeId, caseId: state.order.customerServiceCases.find((item) => item.issueType === "AFTER_SALE")?.id, status: afterSaleStatus, afterSaleReason, customerRequest, requiresReturn: requiresReturn === "true", requiresRefund: requiresRefund === "true", affectsAffiliateCommission: affectsAffiliateCommission === "true" }; }
+    if (state.kind === "assign-after-sale") {
+      path = "assign-after-sale";
+      const afterSale = state.order.customerServiceCases.find((item) => item.issueType === "AFTER_SALE");
+      body = { ...body, employeeId, caseId: afterSale?.id };
+      if (!afterSale?.afterSaleReturn) Object.assign(body, {
+        status: afterSaleStatus, afterSaleReason, customerRequest,
+        requiresReturn: requiresReturn === "true", requiresRefund: requiresRefund === "true",
+        affectsAffiliateCommission: affectsAffiliateCommission === "true"
+      });
+    }
     if (state.kind === "cancel") { path = "cancel"; }
     try {
       await request(`/operations/orders/${orderId}/${path}`, {
@@ -693,6 +701,7 @@ function OrderActionDialog(props: {
 
   const linkedEmployeeId = session?.adminUser?.linkedEmployee?.id ?? "";
   const selectableEmployees = hasPermission(session, "orders.assign-picker") ? employees : employees.filter((item) => item.id === linkedEmployeeId);
+  const managedAfterSale = Boolean(state?.order.customerServiceCases.find((item) => item.issueType === "AFTER_SALE")?.afterSaleReturn);
   return (
     <Dialog open={Boolean(state)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
@@ -727,7 +736,8 @@ function OrderActionDialog(props: {
             ) : null}
             {state.kind === "confirm-pickup" ? <><SelectFilter label="核对方式" value={verificationMethod} onChange={setVerificationMethod} options={[["ORDER_NUMBER", "订单号"], ["PHONE", "手机号"], ["PICKUP_CODE", "自提码"]]} /><TextFilter label="核对值" value={verificationValue} onChange={setVerificationValue} /></> : null}
             {state.kind === "exception" ? <SelectFilter label="异常类型" value={exceptionReason} onChange={setExceptionReason} options={EXCEPTION_OPTIONS} /> : null}
-            {state.kind === "assign-after-sale" ? <><TextFilter label="售后原因" value={afterSaleReason} onChange={setAfterSaleReason} /><TextFilter label="顾客要求" value={customerRequest} onChange={setCustomerRequest} /><SelectFilter label="当前售后状态" value={afterSaleStatus} onChange={setAfterSaleStatus} options={[["OPEN", "待处理"], ["IN_PROGRESS", "处理中"], ["RESOLVED", "已解决"], ["CLOSED", "已关闭"]]} /><SelectFilter label="是否需要退货" value={requiresReturn} onChange={setRequiresReturn} options={[["false", "不需要"], ["true", "需要"]]} /><SelectFilter label="是否需要退款" value={requiresRefund} onChange={setRequiresRefund} options={[["false", "不需要"], ["true", "需要"]]} /><SelectFilter label="是否影响 Affiliate 佣金" value={affectsAffiliateCommission} onChange={setAffectsAffiliateCommission} options={[["false", "否"], ["true", "是"]]} /></> : null}
+            {state.kind === "assign-after-sale" && !managedAfterSale ? <><TextFilter label="售后原因" value={afterSaleReason} onChange={setAfterSaleReason} /><TextFilter label="顾客要求" value={customerRequest} onChange={setCustomerRequest} /><SelectFilter label="当前售后状态" value={afterSaleStatus} onChange={setAfterSaleStatus} options={[["OPEN", "待处理"], ["IN_PROGRESS", "处理中"], ["RESOLVED", "已解决"], ["CLOSED", "已关闭"]]} /><SelectFilter label="是否需要退货" value={requiresReturn} onChange={setRequiresReturn} options={[["false", "不需要"], ["true", "需要"]]} /><SelectFilter label="是否需要退款" value={requiresRefund} onChange={setRequiresRefund} options={[["false", "不需要"], ["true", "需要"]]} /><SelectFilter label="是否影响 Affiliate 佣金" value={affectsAffiliateCommission} onChange={setAffectsAffiliateCommission} options={[["false", "否"], ["true", "是"]]} /></> : null}
+            {state.kind === "assign-after-sale" && managedAfterSale ? <p className="text-muted-foreground text-sm">此处仅分配售后负责人。审批、验收、退款和入库请在订单详情的“退货与退款”区域处理。</p> : null}
             {state.kind === "cancel" ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>确认取消这张订单？</AlertTitle><AlertDescription>取消会写入状态事件；已经完成或退款的订单不能在此取消。</AlertDescription></Alert> : null}
             {state.kind !== "scan" ? <Field><FieldLabel>备注（可选）</FieldLabel><Textarea value={note} onChange={(event) => setNote(event.target.value)} /></Field> : null}
           </FieldGroup>

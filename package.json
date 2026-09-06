@@ -26,7 +26,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:api": "npm run typecheck -w @online-saler/database && npm run typecheck -w @online-saler/shared-types && npm run typecheck -w @online-saler/business-rules && npm run typecheck -w @online-saler/api",
     "start:api": "npm run start -w @online-saler/api",
-    "ci": "npm run check:repo && npm run db:generate && npm run build && npm run test"
+    "ci": "npm run check:repo && npm run db:generate && npm run build && npm run test",
+    "test:integration": "TSX_TSCONFIG_PATH=apps/api/tsconfig.json node --import tsx --test --test-concurrency=1 tests/integration/*.test.ts"
   },
   "workspaces": [
     "packages/*",

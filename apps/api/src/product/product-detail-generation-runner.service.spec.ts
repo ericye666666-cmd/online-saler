@@ -71,7 +71,7 @@ test("generates an AI display image first and selects it without changing the de
   }]);
   assert.deepEqual(selections, [{
     input: { productId: "product-1", imageId: "ai-1" },
-    options: { recordDetailSourceChange: false, humanConfirmed: false }
+    options: { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true }
   }]);
 });
 
@@ -101,4 +101,16 @@ test("reuses an existing AI display image and makes it the default main image", 
 
   assert.equal(selected.imageId, "ai-existing");
   assert.equal(startCalled, false);
+});
+
+test("detail regeneration can retain an unselected candidate without replacing a published main image", async () => {
+  const candidate = { imageId: "ai-candidate", selectedAsMain: false };
+  const runner = new ProductDetailGenerationRunnerService({} as never, {} as never, {
+    getComparison: async () => ({ aiDisplayMain: candidate }),
+    selectMainImage: async (_input: unknown, options: { preservePublishedSelection: boolean }) => {
+      assert.equal(options.preservePublishedSelection, true);
+      return { aiDisplayMain: candidate, selectedMainImageId: "ai-live" };
+    }
+  } as never, {} as never);
+  assert.equal((await runner.ensureAiDisplayMain("live-product")).imageId, "ai-candidate");
 });
