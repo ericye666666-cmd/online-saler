@@ -101,8 +101,8 @@ const navigationGroups: Array<{
     ],
     cards: [
       { label: "Sneakers", image: "/products/920260718006.webp", selection: { category: "Shoes", shoeType: "Sneakers" } },
-      { label: "EU 39", image: "/products/920260718006.webp", selection: { category: "Shoes" } },
-      { label: "90% condition", image: "/products/920260718006.webp", selection: { category: "Shoes" } },
+      { label: "Boots", image: "/products/920260718006.webp", selection: { category: "Shoes", shoeType: "Boots" } },
+      { label: "Sandals", image: "/products/920260718006.webp", selection: { category: "Shoes", shoeType: "Sandals" } },
       { label: "All shoes", image: "/products/920260718006.webp", selection: { category: "Shoes" } },
     ],
   },
