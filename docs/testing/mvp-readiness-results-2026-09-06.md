@@ -1,9 +1,8 @@
 # MVP readiness validation results — 2026-09-06
 
-**The initial PR revision passed full repository CI and PostgreSQL 16 integration,
-including all seven native concurrency checks. Follow-up fulfillment/UI changes
-require the next candidate run. Browser access is blocked in this session;
-deployment and field acceptance remain pending.** Local simulated providers do not establish actual
+**The final code revision passed full repository CI and PostgreSQL 16 integration,
+including all seven native concurrency checks. Browser access is blocked in this
+session; deployment and field acceptance remain pending.** Local simulated providers do not establish actual
 payment, refund, commission receipt or OpenAI cost/quality.
 
 ## Candidate and evidence scope
@@ -13,17 +12,20 @@ payment, refund, commission receipt or OpenAI cost/quality.
 | Review PR | [PR #181](https://github.com/ericye666666-cmd/online-saler/pull/181) |
 | Initial PR commit | `8fb74b0c` |
 | Initial Actions run | [Run 34049645924](https://github.com/ericye666666-cmd/online-saler/actions/runs/34049645924), Passed: Repository check and Database integration |
-| Final candidate revision | Pending — record the final PR head and its own checks |
-| Full repository CI | Initial `8fb74b0c`: Passed; follow-up candidate pending |
-| Native PostgreSQL 16 integration/concurrency job | Initial `8fb74b0c`: 24 runner tests passed, zero failures/skips (23 business scenarios plus one parent wrapper); follow-up candidate pending |
+| Verified code revision | `0a184c80d276e953915efeb3e7051e38a55c3ce2`; subsequent changes only record these results |
+| Final code Actions run | [Run 34050257693](https://github.com/ericye666666-cmd/online-saler/actions/runs/34050257693): Repository check and Database integration both Passed |
+| Full repository CI | Passed on verified code revision (`npm run ci`) |
+| Native PostgreSQL 16 integration/concurrency job | Passed on verified code revision: 24 runner tests, zero failures/skips (23 business scenarios plus one parent wrapper) |
 | Browser interaction verification | Blocked: Cloud Browser rejected both `http://terminal.local:4187` and `http://localhost:4187` with `net::ERR_BLOCKED_BY_CLIENT`; no browser pass claimed |
 | Deployment / production database / field acceptance | Pending |
 
 The targeted results below were produced while implementing and reviewing the
 working tree. They are not a claim that every result belongs to the initial PR
 commit, or that the initial Actions run validates changes added later. Replace
-pending entries only with evidence for the actual final candidate. Recent
-fulfillment fixes and UI compatibility changes need their updated test records.
+pending entries only with evidence for the actual final candidate. The final code run includes the fulfillment integrity and UI compatibility changes.
+The API suite passes all 221 tests with zero failures or skips. A separate local
+full-workspace run hit `ENOTEMPTY` while cleaning an existing Operations `.next`
+cache; the clean GitHub runner built and tested the same code successfully.
 
 ## Passed targeted checks
 
@@ -78,7 +80,7 @@ PGlite in this run uses a single database connection. Passing sequential SQL
 tests establishes persistent behavior and rollback checks in that environment;
 it **does not establish concurrent native PostgreSQL correctness**.
 
-## Seven native concurrency checks passed on initial PR revision
+## Seven native concurrency checks passed on the verified code revision
 
 | Suite | Skipped locally; executed successfully in native PostgreSQL CI |
 |---|---|
@@ -90,9 +92,9 @@ it **does not establish concurrent native PostgreSQL correctness**.
 | Commission | Simultaneous payment recording writes one paid status and one audit |
 | Commission | Return committed under the shared order lock blocks commission payment recording |
 
-The initial native run executed every case above with the PGlite skip condition
+Both the initial and final code native runs executed every case above with the PGlite skip condition
 disabled. Its TAP summary is `tests 24 / pass 24 / fail 0 / skipped 0`; one test is
-the commission parent wrapper, leaving 23 business scenarios. Later candidates
+the commission parent wrapper, leaving 23 business scenarios. Future code changes
 must preserve this result. The local skips are not counted as local passes.
 
 ## Migration and final validation gates
