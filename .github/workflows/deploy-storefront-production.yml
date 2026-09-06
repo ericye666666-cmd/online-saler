@@ -132,8 +132,39 @@ jobs:
 
           echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
 
+          # Reuse the build cache for a separate checker image. The public
+          # standalone runner remains unchanged and does not ship Prisma CLI.
+          PREFLIGHT_IMAGE_URI="${{ vars.GCP_REGION_PRODUCTION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID_PRODUCTION }}/${{ vars.GCP_ARTIFACT_REPOSITORY_PRODUCTION }}/storefront-preflight:${GITHUB_SHA}"
+          docker build \
+            --file "${GITHUB_WORKSPACE}/Dockerfile.storefront" \
+            --target preflight \
+            --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_PRODUCTION }}" \
+            --tag "${PREFLIGHT_IMAGE_URI}" \
+            "${GITHUB_WORKSPACE}"
+          echo "PREFLIGHT_IMAGE_URI=${PREFLIGHT_IMAGE_URI}" >> "${GITHUB_ENV}"
+
       - name: Push Docker image
-        run: docker push "${IMAGE_URI}"
+        run: |
+          docker push "${IMAGE_URI}"
+          docker push "${PREFLIGHT_IMAGE_URI}"
+
+      - name: Set up Node.js for production preflight
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify current production target and database schema before deployment
+        env:
+          PREFLIGHT_PROJECT_ID: ${{ vars.GCP_PROJECT_ID_PRODUCTION }}
+          PREFLIGHT_REGION: ${{ vars.GCP_REGION_PRODUCTION }}
+          PREFLIGHT_API_URL: ${{ vars.API_URL_PRODUCTION }}
+          PREFLIGHT_PUBLIC_URL: ${{ vars.STOREFRONT_PUBLIC_URL_PRODUCTION }}
+          PREFLIGHT_CALLBACK_URL: ${{ vars.MPESA_CALLBACK_URL_PRODUCTION }}
+          PREFLIGHT_CLOUD_SQL_INSTANCE: ${{ vars.GCP_CLOUD_SQL_INSTANCE_PRODUCTION }}
+          PREFLIGHT_RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_STOREFRONT_SERVICE_ACCOUNT_PRODUCTION }}
+          PREFLIGHT_RUN_ID: ${{ github.run_id }}
+          PREFLIGHT_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: node scripts/production-storefront-preflight.mjs
 
       - name: Deploy Cloud Run service
         id: deploy
@@ -189,8 +220,9 @@ jobs:
             --retry 24 \
             --retry-all-errors \
             --retry-delay 5 \
-            "${SERVICE_URL}" \
-            | grep -q "Direct Loop"
+            --output "${RUNNER_TEMP}/production-home.html" \
+            "${SERVICE_URL}"
+          grep -q "Direct Loop" "${RUNNER_TEMP}/production-home.html"
 
           curl \
             --fail \
@@ -199,8 +231,9 @@ jobs:
             --retry 24 \
             --retry-all-errors \
             --retry-delay 5 \
-            "${SERVICE_URL}/checkout" \
-            | grep -Eq "Review your order|Sign in before checkout"
+            --output "${RUNNER_TEMP}/production-checkout.html" \
+            "${SERVICE_URL}/checkout"
+          grep -Eq "Review your order|Sign in before checkout" "${RUNNER_TEMP}/production-checkout.html"
 
           CALLBACK_STATUS="$(curl \
             --show-error \
