@@ -76,6 +76,7 @@ export class ProductApplicationService {
     return this.products.saveStateChange({
       id: product.id,
       data: saveData,
+      review: command.review,
       audit: {
         actor: command.actor,
         module: "Product",

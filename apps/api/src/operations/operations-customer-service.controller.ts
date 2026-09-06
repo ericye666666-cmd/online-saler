@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from "@nestjs/common";
 import { CustomerServiceCaseStatus, CustomerServiceIssueType } from "@online-saler/database";
+import { OperationsAccessService } from "./operations-access.service";
 import { OperationsCustomerServiceService, type CustomerServiceQueueKey } from "./operations-customer-service.service";
 
 type CreateCaseBody = {
@@ -31,55 +32,62 @@ type UpdateCaseBody = {
 
 @Controller("operations/customer-service")
 export class OperationsCustomerServiceController {
-  constructor(private readonly customerService: OperationsCustomerServiceService) {}
+  constructor(
+    private readonly customerService: OperationsCustomerServiceService,
+    private readonly access: OperationsAccessService
+  ) {}
 
   @Get("summary")
-  summary(@Query("adminUserId") adminUserId?: string) {
-    return this.customerService.summary(adminUserId);
+  async summary(@Headers("authorization") authorization?: string) {
+    return this.customerService.summary(await this.access.requireAccessToken(authorization));
   }
 
   @Get("customers")
-  customers(@Query("search") search?: string, @Query("adminUserId") adminUserId?: string) {
-    return this.customerService.searchCustomers({ search, adminUserId });
+  async customers(@Headers("authorization") authorization: string | undefined, @Query("search") search?: string) {
+    return this.customerService.searchCustomers({ search, adminUserId: await this.access.requireAccessToken(authorization) });
   }
 
   @Get("orders")
-  orders(
+  async orders(
+    @Headers("authorization") authorization: string | undefined,
     @Query("queue") queue?: CustomerServiceQueueKey,
-    @Query("search") search?: string,
-    @Query("adminUserId") adminUserId?: string
+    @Query("search") search?: string
   ) {
-    return this.customerService.searchOrders({ queue, search, adminUserId });
+    return this.customerService.searchOrders({ queue, search, adminUserId: await this.access.requireAccessToken(authorization) });
   }
 
   @Get("cases")
-  cases(
+  async cases(
+    @Headers("authorization") authorization: string | undefined,
     @Query("queue") queue?: CustomerServiceQueueKey,
     @Query("issueType") issueType?: CustomerServiceIssueType,
     @Query("status") status?: CustomerServiceCaseStatus,
-    @Query("search") search?: string,
-    @Query("adminUserId") adminUserId?: string
+    @Query("search") search?: string
   ) {
-    return this.customerService.listCases({ queue, issueType, status, search, adminUserId });
+    return this.customerService.listCases({ queue, issueType, status, search, adminUserId: await this.access.requireAccessToken(authorization) });
   }
 
   @Get("notes")
-  notes(@Query("search") search?: string, @Query("adminUserId") adminUserId?: string) {
-    return this.customerService.listNotes({ search, adminUserId });
+  async notes(@Headers("authorization") authorization: string | undefined, @Query("search") search?: string) {
+    return this.customerService.listNotes({ search, adminUserId: await this.access.requireAccessToken(authorization) });
   }
 
   @Post("cases")
-  createCase(@Body() body: CreateCaseBody) {
-    return this.customerService.createCase(body);
+  async createCase(@Headers("authorization") authorization: string | undefined, @Body() body: CreateCaseBody) {
+    return this.customerService.createCase(await this.authorizedInput(authorization, body));
   }
 
   @Patch("cases/:caseId")
-  updateCase(@Param("caseId") caseId: string, @Body() body: UpdateCaseBody) {
-    return this.customerService.updateCase(caseId, body);
+  async updateCase(@Headers("authorization") authorization: string | undefined, @Param("caseId") caseId: string, @Body() body: UpdateCaseBody) {
+    return this.customerService.updateCase(caseId, await this.authorizedInput(authorization, body));
   }
 
   @Post("notes")
-  createNote(@Body() body: CreateNoteBody) {
-    return this.customerService.createNote(body);
+  async createNote(@Headers("authorization") authorization: string | undefined, @Body() body: CreateNoteBody) {
+    return this.customerService.createNote(await this.authorizedInput(authorization, body));
+  }
+
+  private async authorizedInput<T extends { adminUserId?: string }>(authorization: string | undefined, input: T): Promise<T> {
+    return { ...input, adminUserId: await this.access.requireAccessToken(authorization) };
   }
 }

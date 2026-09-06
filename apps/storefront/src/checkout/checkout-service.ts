@@ -6,6 +6,8 @@ import {
   OrderStatus,
   PaymentStatus,
   ProductStatus,
+  Prisma,
+  releaseUnpaidOrderReservation,
   prisma,
   releaseExpiredReservations as releaseExpiredReservationsFromDatabase
 } from "@online-saler/database";
@@ -57,8 +59,19 @@ export async function startCheckout(input: StartCheckoutInput) {
 
   await releaseExpiredReservations();
 
-  return prisma.$transaction(async (tx) => {
+  return retryCheckoutTransaction(() => prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${input.customerId} FOR UPDATE`;
     const now = new Date();
+    const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { phone: true } });
+    // Customer.phone is the existing draft's phone source. Until a dedicated
+    // immutable draft phone exists, do not silently redirect active payments or
+    // move reservations to a different phone's five-item allowance.
+    if (customer?.phone && customer.phone !== phone) {
+      const activeDrafts = await tx.checkoutDraft.count({
+        where: { customerId: input.customerId, status: CheckoutDraftStatus.ACTIVE, expiresAt: { gt: now } }
+      });
+      if (activeDrafts) throw new CheckoutConflictError("Finish or release your active payment reservations before changing the M-Pesa phone number.");
+    }
     const products = await tx.product.findMany({
       where: {
         OR: [
@@ -86,17 +99,6 @@ export async function startCheckout(input: StartCheckoutInput) {
       throw new CheckoutValidationError("A one-of-one item cannot appear twice in the same order.");
     }
 
-    const invalidProducts = uniqueProducts.filter((product) => (
-      product.status !== ProductStatus.PUBLISHED ||
-      !product.priceKsh ||
-      product.priceKsh <= 0 ||
-      !product.inventoryItem ||
-      product.inventoryItem.status !== InventoryItemStatus.AVAILABLE
-    ));
-    if (invalidProducts.length) {
-      throw new CheckoutConflictError("One or more cart items changed before payment. Refresh the cart and try again.");
-    }
-
     const productIds = uniqueProducts.map((product) => product.id);
     const existingDrafts = await tx.checkoutDraft.findMany({
       where: {
@@ -110,7 +112,11 @@ export async function startCheckout(input: StartCheckoutInput) {
     });
     const existing = existingDrafts.find((draft) => {
       const existingProductIds = draft.convertedOrder?.items.map((item) => item.productId) ?? [];
-      return sameProductSet(existingProductIds, productIds);
+      return sameProductSet(existingProductIds, productIds)
+        && draft.fulfillmentMethod === input.fulfillmentMethod
+        && draft.deliveryAddress === deliveryAddress
+        && draft.deliveryNote === deliveryNote
+        && (draft.convertedOrder?.status === OrderStatus.PENDING_PAYMENT || draft.convertedOrder?.status === OrderStatus.PAYMENT_PROCESSING);
     });
 
     if (existing?.convertedOrder) {
@@ -127,6 +133,17 @@ export async function startCheckout(input: StartCheckoutInput) {
         currency: existing.currency,
         items: existing.convertedOrder.items.map((item) => ({ productId: item.productId }))
       };
+    }
+
+    const invalidProducts = uniqueProducts.filter((product) => (
+      product.status !== ProductStatus.PUBLISHED ||
+      !product.priceKsh ||
+      product.priceKsh <= 0 ||
+      !product.inventoryItem ||
+      product.inventoryItem.status !== InventoryItemStatus.AVAILABLE
+    ));
+    if (invalidProducts.length) {
+      throw new CheckoutConflictError("One or more cart items changed before payment. Refresh the cart and try again.");
     }
 
     const activeReservedItems = await tx.orderItem.count({
@@ -146,7 +163,7 @@ export async function startCheckout(input: StartCheckoutInput) {
       throw new CheckoutConflictError("This phone number already has five active payment reservations.");
     }
 
-    for (const product of uniqueProducts) {
+    for (const product of [...uniqueProducts].sort((left, right) => left.id.localeCompare(right.id))) {
       const locked = await tx.inventoryItem.updateMany({
         where: { id: product.inventoryItem!.id, status: InventoryItemStatus.AVAILABLE },
         data: { status: InventoryItemStatus.RESERVED }
@@ -263,7 +280,18 @@ export async function startCheckout(input: StartCheckoutInput) {
         unitPriceKsh: product.priceKsh!
       }))
     };
-  }, { isolationLevel: "Serializable" });
+  }, { isolationLevel: "Serializable" }));
+}
+
+async function retryCheckoutTransaction<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2034") throw error;
+      if (attempt >= 2) throw new CheckoutConflictError("These items changed during checkout. Please try again.");
+    }
+  }
 }
 
 function normalizeProductIds(productIds: string[]): string[] {
@@ -344,38 +372,22 @@ export async function releaseCustomerCheckoutReservations(customerId: string, pr
   for (const draft of drafts) {
     const order = draft.convertedOrder;
     if (!order) continue;
-    if (order.payments.some((payment) => payment.status === PaymentStatus.SUCCESS)) continue;
-
-    await prisma.$transaction(async (tx) => {
-      const abandoned = await tx.checkoutDraft.updateMany({
-        where: { id: draft.id, customerId, status: CheckoutDraftStatus.ACTIVE },
-        data: { status: CheckoutDraftStatus.ABANDONED }
-      });
-      if (abandoned.count !== 1) return;
-
-      const cancelled = await tx.order.updateMany({
-        where: { id: order.id, status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] } },
-        data: { status: OrderStatus.CANCELLED }
-      });
-      cancelledOrders += cancelled.count;
-
-      await tx.payment.updateMany({
-        where: { orderId: order.id, status: PaymentStatus.PENDING },
-        data: {
-          status: PaymentStatus.CANCELLED,
-          providerResultDescription: "Customer released unpaid payment reservation.",
-          completedAt: new Date()
-        }
-      });
-
-      for (const item of order.items) {
-        const released = await tx.inventoryItem.updateMany({
-          where: { productId: item.productId, status: InventoryItemStatus.RESERVED },
-          data: { status: InventoryItemStatus.AVAILABLE }
+    const released = await prisma.$transaction(async (tx) => {
+      const result = await releaseUnpaidOrderReservation(tx, order.id, CheckoutDraftStatus.ABANDONED, OrderStatus.CANCELLED);
+      if (result.changed) {
+        await tx.payment.updateMany({
+          where: { orderId: order.id, status: PaymentStatus.PENDING },
+          data: {
+            status: PaymentStatus.CANCELLED,
+            providerResultDescription: "Customer released unpaid payment reservation.",
+            completedAt: new Date()
+          }
         });
-        releasedItems += released.count;
       }
+      return result;
     });
+    if (released.changed) cancelledOrders += 1;
+    releasedItems += released.releasedItems;
   }
 
   return { cancelledOrders, releasedItems };

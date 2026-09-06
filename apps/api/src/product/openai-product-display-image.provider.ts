@@ -3,8 +3,8 @@ import { BackgroundRemovalProviderError, type BackgroundRemovalInput } from "./b
 import type { ProductImageTransformResult } from "./product-image-transformer.service";
 
 const OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits";
-const DEFAULT_MODEL = "gpt-image-2";
-const DEFAULT_QUALITY = "medium";
+const DEFAULT_MODEL = "gpt-image-1-mini";
+const DEFAULT_QUALITY = "low";
 const DEFAULT_TIMEOUT_MS = 180_000;
 
 export const PRODUCT_DISPLAY_PROMPT_VERSION = "product-display-v1";
@@ -115,7 +115,7 @@ export class OpenAIProductDisplayImageProvider {
 
   private quality(): "low" | "medium" | "high" | "auto" {
     const configured = process.env.OPENAI_IMAGE_EDIT_QUALITY?.trim().toLowerCase();
-    return configured === "low" || configured === "high" || configured === "auto"
+    return configured === "low" || configured === "medium" || configured === "high" || configured === "auto"
       ? configured
       : DEFAULT_QUALITY;
   }

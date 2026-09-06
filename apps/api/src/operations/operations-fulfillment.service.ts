@@ -1,5 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  ActorType,
+  SourceApp,
   CustomerServiceCaseStatus,
   CustomerServiceIssueType,
   DeliveryRiderType,
@@ -14,6 +16,8 @@ import {
   PaymentStatus,
   PickupVerificationMethod,
   Prisma,
+  lockReservationOrder,
+  lockOrderReservationInventory,
   prisma
 } from "@online-saler/database";
 import { OperationsAccessService } from "./operations-access.service";
@@ -64,7 +68,7 @@ const ORDER_INCLUDE = {
     }
   },
   customerServiceCases: {
-    include: { assignedEmployee: true, createdByAdminUser: true },
+    include: { assignedEmployee: true, createdByAdminUser: true, afterSaleReturn: { select: { id: true } } },
     orderBy: { updatedAt: "desc" }
   }
 } as const;
@@ -313,6 +317,18 @@ export class OperationsFulfillmentService {
     if (fulfillmentItem.status === FulfillmentItemStatus.VERIFIED) return this.orderDetail(orderId, input.adminUserId);
 
     await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const current = await tx.order.findUnique({ where: { id: orderId }, include: ORDER_INCLUDE });
+      if (!current) throw new NotFoundException("Order was not found.");
+      if ((current.status !== OrderStatus.PAID && current.status !== OrderStatus.FULFILLING) || current.fulfillment?.status !== FulfillmentStatus.PICKING) {
+        throw new ConflictException("Picking task changed. Refresh before scanning another item.");
+      }
+      if (current.fulfillment.assignedPickerEmployeeId && current.fulfillment.assignedPickerEmployeeId !== actor.actorEmployeeId) {
+        throw new ForbiddenException("This picking task is assigned to another employee.");
+      }
+      const currentItem = current.fulfillment.items.find((item) => item.orderItemId === orderItemId);
+      if (!currentItem) throw new NotFoundException("Order item was not found in this picking task.");
+      if (currentItem.status === FulfillmentItemStatus.VERIFIED) return;
       await tx.fulfillmentItem.update({
         where: { orderItemId },
         data: {
@@ -340,6 +356,7 @@ export class OperationsFulfillmentService {
         where: { fulfillmentId: fulfillment.id, status: FulfillmentItemStatus.PENDING }
       });
       if (remaining === 0) {
+        await this.assertOwnedInventory(tx, orderId, current.items.length, InventoryItemStatus.PAID);
         const pickedInventory = await tx.inventoryItem.findMany({
           where: { productId: { in: order.items.map((item) => item.productId) } },
           select: { locationId: true }
@@ -348,10 +365,11 @@ export class OperationsFulfillmentService {
           where: { id: fulfillment.id },
           data: { status: FulfillmentStatus.READY_TO_PACK, pickedAt: new Date() }
         });
-        await tx.inventoryItem.updateMany({
-          where: { productId: { in: order.items.map((item) => item.productId) } },
+        const changed = await tx.inventoryItem.updateMany({
+          where: { productId: { in: current.items.map((item) => item.productId) }, status: InventoryItemStatus.PAID },
           data: { status: InventoryItemStatus.PICKED }
         });
+        if (changed.count !== current.items.length) throw new ConflictException("Inventory changed before picking completed.");
         await refreshWarehouseLocationStatuses(
           tx,
           pickedInventory.map((item) => item.locationId ?? "")
@@ -420,6 +438,15 @@ export class OperationsFulfillmentService {
     if (!packagingMethod) throw new BadRequestException("Packaging method must be Bag, Box, or Other.");
     if (!Number.isInteger(packageCount) || packageCount < 1) throw new BadRequestException("Package count must be at least one.");
     await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const current = await tx.order.findUnique({ where: { id: orderId }, include: ORDER_INCLUDE });
+      if (!current) throw new NotFoundException("Order was not found.");
+      if ((current.status !== OrderStatus.PAID && current.status !== OrderStatus.FULFILLING) ||
+        current.fulfillment?.status !== FulfillmentStatus.READY_TO_PACK ||
+        current.fulfillment.updatedAt.getTime() !== fulfillment.updatedAt.getTime()) {
+        throw new ConflictException("Order or packing task changed. Refresh before completing packing.");
+      }
+      await this.assertOwnedInventory(tx, orderId, current.items.length, InventoryItemStatus.PICKED);
       await tx.orderFulfillment.update({
         where: { id: fulfillment.id },
         data: {
@@ -432,10 +459,11 @@ export class OperationsFulfillmentService {
           packingNote: input.note?.trim() || null
         }
       });
-      await tx.inventoryItem.updateMany({
-        where: { productId: { in: order.items.map((item) => item.productId) } },
+      const changed = await tx.inventoryItem.updateMany({
+        where: { productId: { in: current.items.map((item) => item.productId) }, status: InventoryItemStatus.PICKED },
         data: { status: InventoryItemStatus.PACKED }
       });
+      if (changed.count !== current.items.length) throw new ConflictException("Inventory changed before packing completed.");
       await this.createEvent(tx, {
         idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.PACKED}`,
         fulfillmentId: fulfillment.id,
@@ -622,12 +650,14 @@ export class OperationsFulfillmentService {
 
   async cancel(orderId: string, input: AdminInput) {
     const actor = await this.adminForPermission(input.adminUserId, "orders.cancel");
-    const order = await this.requireOrder(orderId);
-    if (order.status === OrderStatus.CANCELLED) return this.orderDetail(orderId, input.adminUserId);
-    if (order.status === OrderStatus.COMPLETED || order.status === OrderStatus.REFUNDED) {
-      throw new BadRequestException("Completed or refunded orders cannot be cancelled here.");
-    }
     await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const order = await tx.order.findUnique({ where: { id: orderId }, include: { fulfillment: true } });
+      if (!order) throw new NotFoundException("Order was not found.");
+      if (order.status === OrderStatus.CANCELLED) return;
+      if (order.status === OrderStatus.COMPLETED || order.status === OrderStatus.REFUNDED || order.fulfillment?.status === FulfillmentStatus.COMPLETED) {
+        throw new BadRequestException("Completed or refunded orders cannot be cancelled here.");
+      }
       await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CANCELLED } });
       if (order.fulfillment) {
         await tx.orderFulfillment.update({
@@ -657,38 +687,59 @@ export class OperationsFulfillmentService {
   async assignAfterSale(orderId: string, input: AfterSaleInput) {
     const actor = await this.adminForPermission(input.adminUserId, "orders.after-sale");
     const employee = await this.requireEmployee(input.employeeId);
-    const order = await this.requireOrder(orderId);
-    if (!order.fulfillment) throw new BadRequestException("After-sale ownership requires an order fulfillment record.");
-    if (order.fulfillment.afterSaleOwnerEmployeeId === employee.id && !input.caseId) return this.orderDetail(orderId, input.adminUserId);
     const status = input.status && Object.values(CustomerServiceCaseStatus).includes(input.status) ? input.status : undefined;
     await prisma.$transaction(async (tx) => {
-      await tx.orderFulfillment.update({ where: { id: order.fulfillment!.id }, data: { afterSaleOwnerEmployeeId: employee.id } });
-      if (input.caseId) {
-        await tx.customerServiceCase.updateMany({
-          where: { id: input.caseId, orderId, issueType: CustomerServiceIssueType.AFTER_SALE },
-          data: {
-            assignedEmployeeId: employee.id,
-            ...(status ? { status } : {}),
-            ...(input.afterSaleReason !== undefined ? { afterSaleReason: input.afterSaleReason.trim() || null } : {}),
-            ...(input.customerRequest !== undefined ? { customerRequest: input.customerRequest.trim() || null } : {}),
-            ...(input.requiresReturn !== undefined ? { requiresReturn: input.requiresReturn } : {}),
-            ...(input.requiresRefund !== undefined ? { requiresRefund: input.requiresRefund } : {}),
-            ...(input.affectsAffiliateCommission !== undefined ? { affectsAffiliateCommission: input.affectsAffiliateCommission } : {}),
-            ...(status ? { resolvedAt: status === CustomerServiceCaseStatus.RESOLVED || status === CustomerServiceCaseStatus.CLOSED ? new Date() : null } : {})
-          }
-        });
+      // Share the order lock with case mutations, returns and commission transitions.
+      await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
+      const order = await tx.order.findUnique({ where: { id: orderId }, include: { fulfillment: true } });
+      if (!order) throw new NotFoundException("Order was not found.");
+      const fulfillment = order.fulfillment;
+      if (!fulfillment) throw new BadRequestException("After-sale ownership requires an order fulfillment record.");
+      const existingCase = input.caseId ? await tx.customerServiceCase.findFirst({
+        where: { id: input.caseId, orderId, issueType: CustomerServiceIssueType.AFTER_SALE },
+        include: { afterSaleReturn: { select: { id: true } } }
+      }) : null;
+      if (input.caseId && !existingCase) throw new NotFoundException("After-sale case was not found for this order.");
+      if (existingCase?.afterSaleReturn && [input.status, input.requiresReturn, input.requiresRefund, input.affectsAffiliateCommission].some((value) => value !== undefined)) {
+        throw new BadRequestException("Use the return workflow to change this managed after-sale case status or return/refund flags.");
       }
+      if (fulfillment.afterSaleOwnerEmployeeId === employee.id && !input.caseId) return;
+      await tx.orderFulfillment.update({ where: { id: fulfillment.id }, data: { afterSaleOwnerEmployeeId: employee.id } });
+      const updatedCase = existingCase ? await tx.customerServiceCase.update({
+        where: { id: existingCase.id },
+        data: {
+          assignedEmployeeId: employee.id,
+          ...(status ? { status } : {}),
+          ...(input.afterSaleReason !== undefined ? { afterSaleReason: input.afterSaleReason.trim() || null } : {}),
+          ...(input.customerRequest !== undefined ? { customerRequest: input.customerRequest.trim() || null } : {}),
+          ...(input.requiresReturn !== undefined ? { requiresReturn: input.requiresReturn } : {}),
+          ...(input.requiresRefund !== undefined ? { requiresRefund: input.requiresRefund } : {}),
+          ...(input.affectsAffiliateCommission !== undefined ? { affectsAffiliateCommission: input.affectsAffiliateCommission } : {}),
+          ...(status ? { resolvedAt: status === CustomerServiceCaseStatus.RESOLVED || status === CustomerServiceCaseStatus.CLOSED ? new Date() : null } : {})
+        }
+      }) : null;
+      const action = input.caseId ? "UPDATE_AFTER_SALE_CASE" : "ASSIGN_AFTER_SALE_OWNER";
       await this.createEvent(tx, {
-        idempotencyKey: `after-sale:${order.fulfillment!.id}:${input.caseId ?? "order"}:${employee.id}:${status ?? "unchanged"}:${input.requiresReturn ?? "unchanged"}:${input.requiresRefund ?? "unchanged"}:${input.affectsAffiliateCommission ?? "unchanged"}:${input.afterSaleReason?.trim() ?? ""}:${input.customerRequest?.trim() ?? ""}`,
-        fulfillmentId: order.fulfillment!.id,
+        idempotencyKey: `after-sale:${fulfillment.id}:${input.caseId ?? "order"}:${employee.id}:${status ?? "unchanged"}:${input.requiresReturn ?? "unchanged"}:${input.requiresRefund ?? "unchanged"}:${input.affectsAffiliateCommission ?? "unchanged"}:${input.afterSaleReason?.trim() ?? ""}:${input.customerRequest?.trim() ?? ""}`,
+        fulfillmentId: fulfillment.id,
         orderId,
         ...actor,
         relatedEmployeeId: employee.id,
-        action: input.caseId ? "UPDATE_AFTER_SALE_CASE" : "ASSIGN_AFTER_SALE_OWNER",
-        oldStatus: order.fulfillment!.status,
-        newStatus: order.fulfillment!.status,
+        action,
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
         note: input.note
       });
+      // Keep each actual case change even when its fulfillment timeline key was seen before.
+      await tx.auditLog.create({ data: {
+        actorType: ActorType.EMPLOYEE, actorId: actor.actorEmployeeId,
+        actorAdminUserId: actor.actorAdminUserId, sourceApp: SourceApp.OPERATIONS,
+        module: "customer-service", entityType: input.caseId ? "CustomerServiceCase" : "OrderFulfillment",
+        entityId: input.caseId ?? fulfillment.id, action,
+        beforeJson: JSON.parse(JSON.stringify({ orderId, ownerEmployeeId: fulfillment.afterSaleOwnerEmployeeId, serviceCase: existingCase })),
+        afterJson: JSON.parse(JSON.stringify({ orderId, ownerEmployeeId: employee.id, serviceCase: updatedCase })),
+        reason: input.note?.trim() || input.afterSaleReason?.trim() || "After-sale ownership or case updated."
+      } });
     });
     return this.orderDetail(orderId, input.adminUserId);
   }
@@ -728,13 +779,24 @@ export class OperationsFulfillmentService {
     note: string | undefined,
     fulfillmentData: Prisma.OrderFulfillmentUncheckedUpdateInput
   ) {
-    const fulfillment = order.fulfillment!;
     await prisma.$transaction(async (tx) => {
-      await tx.order.update({ where: { id: order.id }, data: { status: OrderStatus.COMPLETED } });
-      await tx.inventoryItem.updateMany({
-        where: { productId: { in: order.items.map((item) => item.productId) } },
+      await lockReservationOrder(tx, order.id);
+      const current = await tx.order.findUnique({ where: { id: order.id }, include: ORDER_INCLUDE });
+      if (!current) throw new NotFoundException("Order was not found.");
+      // A delayed completion retry must not touch a refunded/relisted garment or reset the return window.
+      if (current.status === OrderStatus.COMPLETED || current.status === OrderStatus.REFUNDED) return;
+      if (current.status !== OrderStatus.PAID && current.status !== OrderStatus.FULFILLING) throw new ConflictException("Order state changed before handover. Refresh before continuing.");
+      this.assertTransition(current, FulfillmentStatus.COMPLETED);
+      const fulfillment = current.fulfillment!;
+      const successfulPayments = await tx.payment.findMany({ where: { orderId: current.id, status: PaymentStatus.SUCCESS }, select: { amountKsh: true } });
+      if (successfulPayments.reduce((sum, payment) => sum + payment.amountKsh, 0) < current.totalKsh) throw new BadRequestException("Verified successful payment must cover the order before handover.");
+      await this.assertOwnedInventory(tx, current.id, current.items.length, InventoryItemStatus.PACKED);
+      const changed = await tx.inventoryItem.updateMany({
+        where: { productId: { in: current.items.map((item) => item.productId) }, status: InventoryItemStatus.PACKED },
         data: { status: InventoryItemStatus.DELIVERED }
       });
+      if (changed.count !== current.items.length) throw new ConflictException("Inventory changed before handover. Refresh and check the actual parcel.");
+      await tx.order.update({ where: { id: current.id }, data: { status: OrderStatus.COMPLETED } });
       await tx.orderFulfillment.update({
         where: { id: fulfillment.id },
         data: { ...fulfillmentData, status: FulfillmentStatus.COMPLETED, completedAt: new Date() }
@@ -742,7 +804,7 @@ export class OperationsFulfillmentService {
       await this.createEvent(tx, {
         idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.COMPLETED}`,
         fulfillmentId: fulfillment.id,
-        orderId: order.id,
+        orderId: current.id,
         ...actor,
         action,
         oldStatus: fulfillment.status,
@@ -750,6 +812,18 @@ export class OperationsFulfillmentService {
         note
       });
     });
+  }
+
+  private async assertOwnedInventory(tx: Prisma.TransactionClient, orderId: string, itemCount: number, expected: InventoryItemStatus) {
+    const inventory = await lockOrderReservationInventory(tx, orderId);
+    if (!itemCount || inventory.length !== itemCount || inventory.some((item) => !item.owned || item.status !== expected)) {
+      throw new ConflictException("Inventory is no longer owned by this order in the expected fulfillment state.");
+    }
+    const otherPaidOrder = await tx.orderItem.findFirst({ where: {
+      productId: { in: inventory.map((item) => item.productId) }, orderId: { not: orderId },
+      order: { status: { in: [OrderStatus.PAID, OrderStatus.FULFILLING] } }
+    }, select: { id: true } });
+    if (otherPaidOrder) throw new ConflictException("A different paid order claims this inventory. Review ownership before continuing.");
   }
 
   private orderWhere(input: OrderCenterListInput): Prisma.OrderWhereInput {

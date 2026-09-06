@@ -5,6 +5,7 @@ import {
   ImageProcessingStatus as DatabaseImageProcessingStatus,
   Prisma,
   ProductImageType,
+  ProductStatus,
   ProductImageVariant as DatabaseProductImageVariant,
   prisma
 } from "@online-saler/database";
@@ -240,12 +241,16 @@ export class ProductImageProcessingService {
     await this.storage.upload(objectName, "image/png", input.body);
 
     const result = await prisma.$transaction(async (tx) => {
+      const product = await this.lockProductForImageChange(tx, input.productId);
       const staleSelection = await tx.productMainImageSelection.findUnique({
         where: { productId: input.productId },
         select: { variant: true }
       });
-      if (staleSelection && staleSelection.variant !== DatabaseProductImageVariant.ORIGINAL) {
+      const clearSelection = product.status !== ProductStatus.PUBLISHED && staleSelection &&
+        staleSelection.variant !== DatabaseProductImageVariant.ORIGINAL;
+      if (clearSelection) {
         await tx.productMainImageSelection.delete({ where: { productId: input.productId } });
+        await this.details.recordSourceChange(input.productId, "MAIN_IMAGE_CHANGED", tx);
       }
       const asset = await tx.productImageVariantAsset.create({
         data: {
@@ -278,23 +283,15 @@ export class ProductImageProcessingService {
           completedAt: new Date()
         }
       });
-      return { job, selectionCleared: Boolean(staleSelection && staleSelection.variant !== DatabaseProductImageVariant.ORIGINAL) };
+      return { job };
     });
-
-    if (result.selectionCleared) {
-      await this.details.recordSourceChange(input.productId, "MAIN_IMAGE_CHANGED");
-    }
     return this.toJobRecord(result.job);
   }
 
   async selectMainImage(input: {
     productId: string;
     imageId: string;
-  }, options: { recordDetailSourceChange?: boolean; humanConfirmed?: boolean } = {}): Promise<ProductImageComparisonResponse> {
-    const currentSelection = await prisma.productMainImageSelection.findUnique({
-      where: { productId: input.productId },
-      select: { selectedImageId: true }
-    });
+  }, options: { recordDetailSourceChange?: boolean; humanConfirmed?: boolean; preservePublishedSelection?: boolean } = {}): Promise<ProductImageComparisonResponse> {
     const original = await prisma.productImage.findFirst({
       where: {
         id: input.imageId,
@@ -328,26 +325,43 @@ export class ProductImageProcessingService {
     }
 
     const confirmedAt = options.humanConfirmed === false ? null : new Date();
-    await prisma.productMainImageSelection.upsert({
-      where: { productId: input.productId },
-      create: {
-        productId: input.productId,
-        selectedImageId: input.imageId,
-        variant: variant as DatabaseProductImageVariant,
-        confirmedAt
-      },
-      update: {
-        selectedImageId: input.imageId,
-        variant: variant as DatabaseProductImageVariant,
-        selectedAt: new Date(),
-        confirmedAt
+    await prisma.$transaction(async (tx) => {
+      const product = await this.lockProductForImageChange(tx, input.productId);
+      const currentSelection = await tx.productMainImageSelection.findUnique({ where: { productId: input.productId } });
+      if (product.status === ProductStatus.PUBLISHED) {
+        const confirmedDisplay = currentSelection?.variant === DatabaseProductImageVariant.AI_DISPLAY_MAIN && currentSelection.confirmedAt;
+        if (confirmedDisplay && (options.preservePublishedSelection ||
+          (currentSelection.selectedImageId === input.imageId && options.humanConfirmed !== false))) return;
+        throw new BadRequestException("Unpublish the product before changing or clearing its confirmed main image.");
+      }
+      await tx.productMainImageSelection.upsert({
+        where: { productId: input.productId },
+        create: {
+          productId: input.productId,
+          selectedImageId: input.imageId,
+          variant: variant as DatabaseProductImageVariant,
+          confirmedAt
+        },
+        update: {
+          selectedImageId: input.imageId,
+          variant: variant as DatabaseProductImageVariant,
+          selectedAt: new Date(),
+          confirmedAt
+        }
+      });
+      if (currentSelection?.selectedImageId !== input.imageId && options.recordDetailSourceChange !== false) {
+        await this.details.recordSourceChange(input.productId, "MAIN_IMAGE_CHANGED", tx);
       }
     });
-    if (currentSelection?.selectedImageId !== input.imageId && options.recordDetailSourceChange !== false) {
-      await this.details.recordSourceChange(input.productId, "MAIN_IMAGE_CHANGED");
-    }
 
     return this.getComparison(input.productId);
+  }
+
+  private async lockProductForImageChange(tx: Prisma.TransactionClient, productId: string) {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`);
+    const product = await tx.product.findUnique({ where: { id: productId }, select: { status: true } });
+    if (!product) throw new BadRequestException("Product not found");
+    return product;
   }
 
   private async requireFrontImageAncestry(productId: string, imageId: string): Promise<void> {

@@ -19,7 +19,7 @@ import { normalizeOpenAIVisionOutput } from "./openai-vision-normalizer";
 type ResponsesApiPayload = Record<string, any>;
 
 const RESPONSES_API_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL = "gpt-5.6-sol";
+const DEFAULT_MODEL = "gpt-4o-mini";
 export const HOODED_GARMENT_MEASUREMENT_RULES = [
   "For hoodies and hooded jackets, the hood, collar and drawstrings are never part of shoulderWidthCm or lengthCm. Find the seam where the hood joins the body, place both shoulder endpoints below the hood, and start body length at the shoulder high point beside that neck seam.",
 ] as const;
@@ -164,7 +164,7 @@ export class OpenAIVisionProvider implements AIProvider {
             ]
           }
         ],
-        ...openAIVisionResponseSettings()
+        ...openAIVisionResponseSettings(this.model())
       })
     });
 
@@ -202,11 +202,14 @@ export class OpenAIVisionProvider implements AIProvider {
   }
 }
 
-export function openAIVisionResponseSettings() {
+export function openAIVisionResponseSettings(model = DEFAULT_MODEL) {
+  // Keep the prior deployment's output budget if it explicitly retains this
+  // model. GPT-4o Mini does not accept reasoning or verbosity controls.
+  const legacyReasoningModel = /^gpt-5\.6-sol(?:-|$)/.test(model);
   return {
-    reasoning: { effort: "none" },
+    ...(legacyReasoningModel ? { reasoning: { effort: "none" } } : {}),
     text: {
-      verbosity: "low",
+      ...(legacyReasoningModel ? { verbosity: "low" } : {}),
       format: { type: "json_object" }
     },
     max_output_tokens: 5000

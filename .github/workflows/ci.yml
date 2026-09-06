@@ -33,3 +33,50 @@ jobs:
 
       - name: Run repository checks
         run: npm run ci
+
+  database-integration:
+    name: Database integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only-postgres
+          POSTGRES_DB: mvp_readiness_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mvp_readiness_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:test-only-postgres@127.0.0.1:5432/mvp_readiness_test
+      MVP_INTEGRATION_DATABASE_URL: postgresql://postgres:test-only-postgres@127.0.0.1:5432/mvp_readiness_test
+      MPESA_ENVIRONMENT: sandbox
+      MPESA_ENV: sandbox
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify new migration against the released schema in an empty disposable database
+        run: |
+          npm run db:generate
+          node scripts/prepare-integration-db.mjs
+      - name: Build backend packages
+        run: |
+          npm run build -w @online-saler/database
+          npm run build -w @online-saler/shared-types
+          npm run build -w @online-saler/business-rules
+          npm run build -w @online-saler/api
+      - name: Verify real database transitions and concurrency with mocked providers
+        run: npm run test:integration

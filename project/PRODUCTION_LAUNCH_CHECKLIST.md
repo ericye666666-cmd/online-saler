@@ -14,7 +14,8 @@ Create these secrets in the production Google Cloud project. Do not store these 
 | `PRODUCTION_INTERNAL_CRON_SECRET` | `INTERNAL_CRON_SECRET` | Internal reservation cleanup secret. |
 | `PRODUCTION_MPESA_CONSUMER_KEY` | `MPESA_CONSUMER_KEY` | Safaricom production app key. |
 | `PRODUCTION_MPESA_CONSUMER_SECRET` | `MPESA_CONSUMER_SECRET` | Safaricom production app secret. |
-| `PRODUCTION_MPESA_SHORTCODE` | `MPESA_SHORTCODE` | Production Till shortcode. |
+| `PRODUCTION_MPESA_SHORTCODE` | `MPESA_SHORTCODE` | Production H.O./Business Shortcode used to generate the STK password. |
+| `PRODUCTION_MPESA_TILL_NUMBER` | `MPESA_TILL_NUMBER` | Production Store/Till Number used as `PartyB` for Buy Goods. |
 | `PRODUCTION_MPESA_PASSKEY` | `MPESA_PASSKEY` | Production STK Push passkey. |
 | `PRODUCTION_MPESA_TEST_PHONE_WHITELIST` | `MPESA_TEST_PHONE_WHITELIST` | Comma-separated Kenya phone numbers allowed during 1 KSh test mode. |
 
@@ -44,6 +45,8 @@ Production Cloud Run must use:
 ```text
 MPESA_ENV=production
 MPESA_TRANSACTION_TYPE=CustomerBuyGoodsOnline
+MPESA_SHORTCODE=<H.O./Business Shortcode>
+MPESA_TILL_NUMBER=<Store/Till Number>
 MPESA_CALLBACK_URL=<production callback URL>
 MPESA_PRODUCTION_LAUNCH_MODE=one_ksh
 MPESA_TEST_AMOUNT_KSH=1
@@ -55,6 +58,7 @@ Do not switch `MPESA_PRODUCTION_LAUNCH_MODE` to `live` until the 1 KSh Till test
 The production Storefront deployment workflow now blocks deployment when:
 
 - Any required Google Secret Manager secret is missing or has no latest version.
+- The production H.O./Business Shortcode and Store/Till Number are non-numeric or identical.
 - `MPESA_CALLBACK_URL_PRODUCTION` is missing.
 - `MPESA_CALLBACK_URL_PRODUCTION` is not an HTTPS `/api/payments/mpesa/callback` URL.
 - `mpesa_launch_mode=one_ksh` is selected but `PRODUCTION_MPESA_TEST_PHONE_WHITELIST` is empty.
@@ -92,7 +96,7 @@ The production Storefront deployment workflow configures this scheduler automati
 
 Use this only with `MPESA_PRODUCTION_LAUNCH_MODE=one_ksh`.
 
-1. Confirm the production Till shortcode and passkey with Safaricom.
+1. Confirm the production H.O./Business Shortcode, Store/Till Number, and passkey with Safaricom.
 2. Add only the test phone numbers to `PRODUCTION_MPESA_TEST_PHONE_WHITELIST`.
 3. Deploy production Storefront with the manual workflow input `mpesa_launch_mode=one_ksh`.
 4. Confirm Google OAuth callback is registered:

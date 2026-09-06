@@ -7,7 +7,8 @@ test("blocks an automatically selected AI display main image until a human confi
   assert.equal(requiresAiMainImageConfirmation({ variant: "AI_DISPLAY_MAIN", confirmedAt: new Date() }), false);
 });
 
-test("does not add a confirmation gate to non-generated main images", () => {
-  assert.equal(requiresAiMainImageConfirmation({ variant: "OPTIMIZED_MAIN", confirmedAt: null }), false);
-  assert.equal(requiresAiMainImageConfirmation(null), false);
+test("requires an AI display image instead of accepting a missing or non-generated selection", () => {
+  assert.equal(requiresAiMainImageConfirmation({ variant: "OPTIMIZED_MAIN", confirmedAt: null }), true);
+  assert.equal(requiresAiMainImageConfirmation({ variant: "ORIGINAL", confirmedAt: new Date() }), true);
+  assert.equal(requiresAiMainImageConfirmation(null), true);
 });

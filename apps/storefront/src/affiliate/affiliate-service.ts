@@ -9,7 +9,7 @@ import {
   type AffiliateClick,
   type Commission
 } from "@online-saler/database";
-import { createAttributionExpiry } from "@online-saler/business-rules";
+import { createAttributionExpiry, resolveDefaultCommissionRate } from "@online-saler/business-rules";
 
 export const AFFILIATE_ATTRIBUTION_COOKIE = "direct_loop_affiliate";
 export const AFFILIATE_DEFAULT_RATE_SETTING_KEY = "affiliate.defaultCommissionRateBps";
@@ -326,15 +326,7 @@ export function calculateCommissionKsh(orderSubtotalKsh: number, rateBps: number
 
 async function getDefaultCommissionRateBps(tx: Prisma.TransactionClient): Promise<number> {
   const setting = await tx.systemSetting.findUnique({ where: { key: AFFILIATE_DEFAULT_RATE_SETTING_KEY } });
-  const value = setting?.valueJson;
-  if (typeof value === "number" && Number.isFinite(value)) return clampRate(value);
-  if (typeof value === "string" && value.trim()) return clampRate(Number(value));
-  return 1000;
-}
-
-function clampRate(value: number): number {
-  if (!Number.isFinite(value)) return 1000;
-  return Math.max(0, Math.min(5000, Math.round(value)));
+  return resolveDefaultCommissionRate(setting?.valueJson).valueBps;
 }
 
 function hashIp(value: string): string {

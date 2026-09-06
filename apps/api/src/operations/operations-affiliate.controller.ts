@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from "@nestjs/common";
 import { AffiliateLinkType, AffiliateStatus } from "@online-saler/database";
+import { OperationsAccessService } from "./operations-access.service";
 import { OperationsAffiliateService, type CommissionQueueKey } from "./operations-affiliate.service";
 
 type AffiliateBody = {
@@ -39,85 +40,88 @@ type CommissionActionBody = {
 
 @Controller("operations/affiliate")
 export class OperationsAffiliateController {
-  constructor(private readonly affiliate: OperationsAffiliateService) {}
+  constructor(private readonly affiliate: OperationsAffiliateService, private readonly access: OperationsAccessService) {}
 
   @Get("summary")
-  summary(@Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.summary(adminUserId);
+  async summary(@Headers("authorization") authorization?: string) {
+    return this.affiliate.summary(await this.access.requireAccessToken(authorization));
   }
 
   @Get("affiliates")
-  affiliates(@Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.listAffiliates(adminUserId);
+  async affiliates(@Headers("authorization") authorization?: string) {
+    return this.affiliate.listAffiliates(await this.access.requireAccessToken(authorization));
   }
 
   @Post("affiliates")
-  createAffiliate(@Body() body: AffiliateBody) {
-    return this.affiliate.createAffiliate(body);
+  async createAffiliate(@Headers("authorization") authorization: string | undefined, @Body() body: AffiliateBody) {
+    return this.affiliate.createAffiliate(await this.authorizedInput(authorization, body));
   }
 
   @Get("customers/search")
-  searchCustomers(@Query("q") query?: string, @Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.searchCustomers(adminUserId, query);
+  async searchCustomers(@Query("q") query?: string, @Headers("authorization") authorization?: string) {
+    return this.affiliate.searchCustomers(await this.access.requireAccessToken(authorization), query);
   }
 
   @Post("customers/:customerId/enable-affiliate")
-  enableCustomerAffiliate(@Param("customerId") customerId: string, @Body() body: AffiliateBody) {
-    return this.affiliate.enableCustomerAffiliate(customerId, body);
+  async enableCustomerAffiliate(@Param("customerId") customerId: string, @Headers("authorization") authorization: string | undefined, @Body() body: AffiliateBody) {
+    return this.affiliate.enableCustomerAffiliate(customerId, await this.authorizedInput(authorization, body));
   }
 
   @Patch("affiliates/:affiliateId")
-  updateAffiliate(@Param("affiliateId") affiliateId: string, @Body() body: AffiliateUpdateBody) {
-    return this.affiliate.updateAffiliate(affiliateId, body);
+  async updateAffiliate(@Param("affiliateId") affiliateId: string, @Headers("authorization") authorization: string | undefined, @Body() body: AffiliateUpdateBody) {
+    return this.affiliate.updateAffiliate(affiliateId, await this.authorizedInput(authorization, body));
   }
 
   @Get("links")
-  links(@Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.listLinks(adminUserId);
+  async links(@Headers("authorization") authorization?: string) {
+    return this.affiliate.listLinks(await this.access.requireAccessToken(authorization));
   }
 
   @Post("links")
-  createLink(@Body() body: LinkBody) {
-    return this.affiliate.createLink(body);
+  async createLink(@Headers("authorization") authorization: string | undefined, @Body() body: LinkBody) {
+    return this.affiliate.createLink(await this.authorizedInput(authorization, body));
   }
 
   @Get("clicks")
-  clicks(@Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.listClicks(adminUserId);
+  async clicks(@Headers("authorization") authorization?: string) {
+    return this.affiliate.listClicks(await this.access.requireAccessToken(authorization));
   }
 
   @Get("attributed-orders")
-  attributedOrders(@Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.listAttributedOrders(adminUserId);
+  async attributedOrders(@Headers("authorization") authorization?: string) {
+    return this.affiliate.listAttributedOrders(await this.access.requireAccessToken(authorization));
   }
 
   @Get("commissions")
-  commissions(@Query("queue") queue?: CommissionQueueKey, @Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.listCommissions(queue, adminUserId);
+  async commissions(@Query("queue") queue?: CommissionQueueKey, @Headers("authorization") authorization?: string) {
+    return this.affiliate.listCommissions(queue, await this.access.requireAccessToken(authorization));
   }
 
   @Post("commissions/:commissionId/confirm")
-  confirmCommission(@Param("commissionId") commissionId: string, @Body() body: CommissionActionBody) {
-    return this.affiliate.confirmCommission(commissionId, body);
+  async confirmCommission(@Param("commissionId") commissionId: string, @Headers("authorization") authorization: string | undefined, @Body() body: CommissionActionBody) {
+    return this.affiliate.confirmCommission(commissionId, await this.authorizedInput(authorization, body));
   }
 
   @Post("commissions/:commissionId/reject")
-  rejectCommission(@Param("commissionId") commissionId: string, @Body() body: CommissionActionBody) {
-    return this.affiliate.rejectCommission(commissionId, body);
+  async rejectCommission(@Param("commissionId") commissionId: string, @Headers("authorization") authorization: string | undefined, @Body() body: CommissionActionBody) {
+    return this.affiliate.rejectCommission(commissionId, await this.authorizedInput(authorization, body));
   }
 
   @Post("commissions/:commissionId/paid")
-  markCommissionPaid(@Param("commissionId") commissionId: string, @Body() body: CommissionActionBody) {
-    return this.affiliate.markCommissionPaid(commissionId, body);
+  async markCommissionPaid(@Param("commissionId") commissionId: string, @Headers("authorization") authorization: string | undefined, @Body() body: CommissionActionBody) {
+    return this.affiliate.markCommissionPaid(commissionId, await this.authorizedInput(authorization, body));
   }
 
   @Get("payout-export")
-  payoutExport(@Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.payoutExport(adminUserId);
+  async payoutExport(@Headers("authorization") authorization?: string) {
+    return this.affiliate.payoutExport(await this.access.requireAccessToken(authorization));
   }
 
   @Get("commission-setting")
-  commissionSetting(@Query("adminUserId") adminUserId?: string) {
-    return this.affiliate.commissionSetting(adminUserId);
+  async commissionSetting(@Headers("authorization") authorization?: string) {
+    return this.affiliate.commissionSetting(await this.access.requireAccessToken(authorization));
+  }
+  private async authorizedInput<T extends { adminUserId?: string }>(authorization: string | undefined, input: T): Promise<T> {
+    return { ...input, adminUserId: await this.access.requireAccessToken(authorization) };
   }
 }

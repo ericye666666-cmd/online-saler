@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { RefreshCwIcon, SearchIcon } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
@@ -96,6 +97,7 @@ type CaseRow = {
   description?: string | null;
   issueType: string;
   status: string;
+  afterSaleReturn?: { id: string } | null;
   tags?: string[] | null;
   createdAt: string;
   updatedAt: string;
@@ -194,6 +196,12 @@ const issueMeta: Record<CustomerServiceView, { title: string; description: strin
 export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceView }) {
   const { session, hasPermission } = useOperationsSession();
   const adminUserId = session?.adminUser?.id ?? "";
+  const accessToken = session?.accessToken ?? "";
+  const request = useCallback(<T,>(path: string, options?: RequestOptions) => {
+    const headers = new Headers(options?.headers);
+    headers.set("Authorization", `Bearer ${accessToken}`);
+    return apiRequest<T>(path, { ...options, headers });
+  }, [accessToken]);
   const canCreate = hasPermission("action.customer-service.create");
   const canEdit = hasPermission("action.customer-service.edit");
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -210,7 +218,7 @@ export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceVi
   const meta = issueMeta[view];
 
   const load = useCallback(async () => {
-    if (!adminUserId) return;
+    if (!accessToken) return;
     setBusy(true);
     setError("");
     try {
@@ -242,7 +250,7 @@ export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceVi
       setOrders(nextOrders);
       setCases(nextCases);
     }
-  }, [adminUserId, meta.queue, search, view]);
+  }, [accessToken, adminUserId, meta.queue, request, search, view]);
 
   useEffect(() => {
     setCaseForm((current) => ({ ...current, issueType: meta.issueType ?? current.issueType }));
@@ -473,7 +481,7 @@ function CasesPanel({ cases, canEdit, onStatus }: { cases: CaseRow[]; canEdit: b
             </div>
           </TableCell>
           <TableCell>
-            {canEdit ? (
+            {serviceCase.afterSaleReturn && serviceCase.order ? <Button size="sm" variant="outline" asChild><Link href={`/orders/${serviceCase.order.id}`}>打开退货与退款</Link></Button> : canEdit ? (
               <div className="flex flex-wrap gap-2">
                 {serviceCase.status === "OPEN" ? <Button size="sm" variant="outline" onClick={() => onStatus(serviceCase.id, "IN_PROGRESS")}>处理中</Button> : null}
                 {serviceCase.status !== "RESOLVED" && serviceCase.status !== "CLOSED" ? <Button size="sm" onClick={() => onStatus(serviceCase.id, "RESOLVED")}>解决</Button> : null}
@@ -660,14 +668,16 @@ function StatusMessage({ children, tone }: { children: ReactNode; tone?: "danger
   );
 }
 
-async function request<T>(path: string, options?: RequestOptions): Promise<T> {
+async function apiRequest<T>(path: string, options?: RequestOptions): Promise<T> {
   const url = new URL(`${API_PROXY_URL}${path}`, window.location.origin);
   for (const [key, value] of Object.entries(options?.query ?? {})) {
     if (value) url.searchParams.set(key, value);
   }
+  const headers = new Headers(options?.headers);
+  headers.set("Content-Type", "application/json");
   const response = await fetch(url.toString(), {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
+    headers
   });
   const text = await response.text();
   let body: unknown = {};

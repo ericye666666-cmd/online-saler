@@ -25,7 +25,8 @@ import {
 import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
 import { buildProductBatchImagePreviews } from "./product-batch-image-preview";
 import { canGenerateOrReuseBarcode } from "./product-storage-reservation";
-import { requiresAiMainImageConfirmation } from "./product-review-main-image";
+import { loadConfirmedDisplayImage } from "../product/product-publication-evidence";
+import { productApprovalBlocker, productContentBlocker } from "../product/product-publication-readiness";
 import { WAREHOUSE_OCCUPYING_STATUSES } from "./warehouse-capacity";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
@@ -409,11 +410,12 @@ export class OperationsProductBatchService {
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must be ready for storage.`);
     }
-    if (products.some((product) => !product.inventoryItem?.locationId)) {
+    const pending = products.filter((product) => product.status !== ProductStatus.PUBLISHED);
+    if (pending.some((product) => !product.inventoryItem?.locationId)) {
       throw new BadRequestException(`All ${batch.targetCount} products must have assigned shelf locations.`);
     }
     const stocked = [];
-    for (const product of products) {
+    for (const product of pending) {
       stocked.push(await this.productControl.confirmPlaced(product.id, input));
     }
     await prisma.auditLog.create({
@@ -426,7 +428,7 @@ export class OperationsProductBatchService {
         entityType: "ProductBatch",
         entityId: batch.id,
         action: "WAREHOUSE_BATCH_STOCKED",
-        afterJson: { productIds: products.map((product) => product.id), status: "AVAILABLE" },
+        afterJson: { productIds: pending.map((product) => product.id), status: "AVAILABLE" },
         reason: "All assigned products were confirmed stored in one batch action."
       }
     });
@@ -439,15 +441,16 @@ export class OperationsProductBatchService {
     const batch = await this.requireBatch(batchId);
     const products = await prisma.product.findMany({ where: { batchId }, orderBy: { batchItemNumber: "asc" } });
     if (products.length !== batch.targetCount || products.some((product) =>
-      product.status !== ProductStatus.APPROVED && product.status !== ProductStatus.READY_FOR_STORAGE
+      product.status !== ProductStatus.APPROVED && product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must be approved before preparing storage.`);
     }
     const prepared = [];
-    for (const product of products) {
+    const pending = products.filter((product) => product.status !== ProductStatus.PUBLISHED);
+    for (const product of pending) {
       prepared.push(await this.productControl.prepareForStorage(product.id, input));
     }
-    const reserved = await this.productControl.assignBatchLocations(products.map((product) => product.id), input);
+    const reserved = await this.productControl.assignBatchLocations(pending.map((product) => product.id), input);
     return { batchId, prepared, reserved };
   }
 
@@ -460,11 +463,14 @@ export class OperationsProductBatchService {
       orderBy: { batchItemNumber: "asc" }
     });
     if (products.length !== batch.targetCount || products.some((product) =>
-      (product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED) ||
-      product.inventoryItem?.status !== "AVAILABLE" ||
-      !product.inventoryItem.locationId
+      product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must complete storage before publishing.`);
+    }
+    // Validate the whole unfinished batch before publishing its first item.
+    // Completed items may already be reserved or sold and must never be stocked in again.
+    for (const product of products) {
+      if (product.status !== ProductStatus.PUBLISHED) await this.productControl.assertPublishable(product);
     }
     const published = [];
     for (const product of products) published.push(await this.productControl.publish(product.id, input));
@@ -488,26 +494,53 @@ export class OperationsProductBatchService {
     if (products.length !== batch.targetCount) {
       throw new BadRequestException(`Batch must contain exactly ${batch.targetCount} products.`);
     }
-    if (products.some((product) => !product.barcode || !product.labelPrintedAt || !product.inventoryItem?.locationId)) {
+    const pending = products.filter((product) => product.status !== ProductStatus.PUBLISHED);
+    if (pending.length === 0) {
+      await this.completeBatchIfDone(batch.id);
+      return this.batchDetail(batch.id, input.adminUserId);
+    }
+    const completableStatuses: ProductStatus[] = [ProductStatus.BARCODE_ASSIGNED, ProductStatus.REVIEW_PENDING,
+      ProductStatus.APPROVED, ProductStatus.READY_FOR_STORAGE];
+    if (pending.some((product) => !completableStatuses.includes(product.status))) {
+      throw new BadRequestException("Every unfinished product must be ready for review or storage before completing the batch.");
+    }
+    if (pending.some((product) => !product.barcode || !product.labelPrintedAt || !product.inventoryItem?.locationId)) {
       throw new BadRequestException("Generate and print every barcode, then place every item at its reserved shelf location.");
     }
+    for (const product of pending) {
+      const blocker = productContentBlocker(product);
+      if (blocker) throw new BadRequestException(`${product.productCode}: ${blocker}`);
+      if (product.inventoryItem?.barcode !== product.barcode ||
+        !["PENDING_STOCK_IN", "AVAILABLE"].includes(product.inventoryItem?.status ?? "")) {
+        throw new BadRequestException(`Product ${product.productCode} is not eligible for stock-in.`);
+      }
+      if (product.status === ProductStatus.APPROVED || product.status === ProductStatus.READY_FOR_STORAGE) {
+        const mainImage = await loadConfirmedDisplayImage(prisma, product.id);
+        const approvalBlocker = productApprovalBlocker(product, mainImage);
+        if (approvalBlocker) throw new BadRequestException(`${product.productCode}: ${approvalBlocker}`);
+      }
+    }
 
-    const reviewable = products.filter((product) =>
+    const reviewable = pending.filter((product) =>
       product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING
     );
+    const reviewImages = [];
     for (const product of reviewable) {
       const comparison = await this.imageProcessing.getComparison(product.id);
       const aiDisplayImageId = comparison.aiDisplayMain?.imageId;
       if (!aiDisplayImageId) {
         throw new BadRequestException(`Product ${product.productCode} is missing its AI display image.`);
       }
+      reviewImages.push({ productId: product.id, imageId: aiDisplayImageId });
+    }
+    for (const selection of reviewImages) {
       await this.imageProcessing.selectMainImage(
-        { productId: product.id, imageId: aiDisplayImageId },
+        selection,
         { recordDetailSourceChange: false, humanConfirmed: true }
       );
     }
 
-    await this.details.approveBatch(batch.id, employeeId);
+    if (reviewable.length > 0) await this.details.approveBatch(batch.id, employeeId);
     for (const product of reviewable) {
       await this.reviewProduct(product.id, {
         ...input,
@@ -534,15 +567,15 @@ export class OperationsProductBatchService {
 
     let product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new NotFoundException("Product not found.");
+    if (product.status !== ProductStatus.BARCODE_ASSIGNED && product.status !== ProductStatus.REVIEW_PENDING) {
+      throw new BadRequestException("Only products waiting for review can receive a review decision.");
+    }
     if ((product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING) && !product.labelPrintedAt) {
       throw new BadRequestException("Print the label before reviewing the product.");
     }
     if (result === ReviewResult.APPROVED) {
-      const mainSelection = await prisma.productMainImageSelection.findUnique({
-        where: { productId },
-        select: { variant: true, confirmedAt: true }
-      });
-      if (requiresAiMainImageConfirmation(mainSelection)) {
+      const mainSelection = await loadConfirmedDisplayImage(prisma, productId);
+      if (!product.barcode || !mainSelection) {
         throw new BadRequestException("Confirm the AI display main image against the original before approving the product.");
       }
     }
@@ -552,30 +585,24 @@ export class OperationsProductBatchService {
       product = await this.products.transitionProduct({ productId, toStatus: ProductStatus.REVIEW_PENDING, actor });
     }
 
-    await prisma.productReview.create({
-      data: {
-        productId,
-        reviewerEmployeeId: employeeId,
-        result,
-        reason: input.reason?.trim() || null
-      }
-    });
-
+    const review = { result, reviewerEmployeeId: employeeId, reason: input.reason?.trim() || undefined };
     if (result === ReviewResult.APPROVED) {
-      await this.products.transitionProduct({ productId, toStatus: ProductStatus.APPROVED, actor });
+      await this.products.transitionProduct({ productId, toStatus: ProductStatus.APPROVED, actor, review });
     } else if (result === ReviewResult.REWORK_REQUIRED) {
       await this.products.transitionProduct({
         productId,
         toStatus: ProductStatus.REWORK_REQUIRED,
         reason: input.reason,
-        actor
+        actor,
+        review
       });
     } else {
       await this.products.transitionProduct({
         productId,
         toStatus: ProductStatus.ARCHIVED,
         reason: input.reason,
-        actor
+        actor,
+        review
       });
     }
 

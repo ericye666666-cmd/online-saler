@@ -1,5 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  ActorType,
+  SourceApp,
+  type CustomerServiceCase,
   CustomerServiceCaseStatus,
   CustomerServiceIssueType,
   FulfillmentMethod,
@@ -145,6 +148,7 @@ export class OperationsCustomerServiceService {
     return prisma.customerServiceCase.findMany({
       where: serviceCaseWhere(input),
       include: {
+        afterSaleReturn: { select: { id: true } },
         customer: true,
         order: {
           include: {
@@ -198,25 +202,38 @@ export class OperationsCustomerServiceService {
     const customerId = clean(input.customerId);
     const orderId = clean(input.orderId);
 
-    if (customerId) await assertCustomerExists(customerId);
-    if (orderId) await assertOrderExists(orderId);
-
-    return prisma.customerServiceCase.create({
-      data: {
-        customerId: customerId ?? null,
-        orderId: orderId ?? null,
-        issueType,
-        title,
-        description: clean(input.description) ?? null,
-        tags: parseTags(input.tags),
-        createdByAdminUserId: session.adminUser?.id ?? null
-      },
-      include: {
-        customer: true,
-        order: true,
-        createdByAdminUser: true,
-        notes: true
+    return prisma.$transaction(async (tx) => {
+      // Shared with commission confirmation/payment and the structured return workflow.
+      if (orderId) {
+        await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`;
+        const order = await tx.order.findUnique({ where: { id: orderId }, select: { id: true } });
+        if (!order) throw new NotFoundException("Order was not found.");
       }
+      if (customerId && !await tx.customer.findUnique({ where: { id: customerId }, select: { id: true } })) {
+        throw new NotFoundException("Customer was not found.");
+      }
+      const created = await tx.customerServiceCase.create({
+        data: {
+          customerId: customerId ?? null,
+          orderId: orderId ?? null,
+          issueType,
+          title,
+          description: clean(input.description) ?? null,
+          tags: parseTags(input.tags),
+          createdByAdminUserId: session.adminUser?.id ?? null
+        },
+        include: { customer: true, order: true, createdByAdminUser: true, notes: true }
+      });
+      await tx.auditLog.create({ data: {
+        actorType: ActorType.EMPLOYEE,
+        actorId: session.adminUser?.linkedEmployeeId ?? null,
+        actorAdminUserId: session.adminUser?.id ?? null,
+        sourceApp: SourceApp.OPERATIONS,
+        module: "customer-service", entityType: "CustomerServiceCase", entityId: created.id,
+        action: "CUSTOMER_SERVICE_CASE_CREATE", beforeJson: {}, afterJson: caseAuditState(created),
+        reason: clean(input.description) ?? title
+      } });
+      return created;
     });
   }
 
@@ -254,9 +271,7 @@ export class OperationsCustomerServiceService {
   }
 
   async updateCase(caseId: string, input: UpdateCaseInput) {
-    await this.access.requirePermission(input.adminUserId, CUSTOMER_SERVICE_EDIT);
-    const existing = await prisma.customerServiceCase.findUnique({ where: { id: caseId } });
-    if (!existing) throw new NotFoundException("Customer service case was not found.");
+    const session = await this.access.requirePermission(input.adminUserId, CUSTOMER_SERVICE_EDIT);
     const status = validCaseStatus(input.status);
     const data: Prisma.CustomerServiceCaseUpdateInput = {
       ...(input.title !== undefined ? { title: input.title.trim() } : {}),
@@ -267,17 +282,40 @@ export class OperationsCustomerServiceService {
       data.status = status;
       data.resolvedAt = status === CustomerServiceCaseStatus.RESOLVED || status === CustomerServiceCaseStatus.CLOSED ? new Date() : null;
     }
-    return prisma.customerServiceCase.update({
-      where: { id: caseId },
-      data,
-      include: {
-        customer: true,
-        order: true,
-        createdByAdminUser: true,
-        notes: { include: { authorAdminUser: true }, orderBy: { createdAt: "desc" } }
+    return prisma.$transaction(async (tx) => {
+      const identity = await tx.customerServiceCase.findUnique({ where: { id: caseId }, select: { orderId: true } });
+      if (!identity) throw new NotFoundException("Customer service case was not found.");
+      if (identity.orderId) {
+        await tx.$queryRaw`SELECT "id" FROM "Order" WHERE "id" = ${identity.orderId} FOR UPDATE`;
       }
+      // Standalone cases also need a stable before-state for their audit record.
+      await tx.$queryRaw`SELECT "id" FROM "CustomerServiceCase" WHERE "id" = ${caseId} FOR UPDATE`;
+      const existing = await tx.customerServiceCase.findUnique({ where: { id: caseId }, include: { afterSaleReturn: { select: { id: true } } } });
+      if (!existing) throw new NotFoundException("Customer service case was not found.");
+      if (existing.orderId !== identity.orderId) throw new ConflictException("Case order changed. Refresh before continuing.");
+      if (existing.afterSaleReturn && input.status !== undefined) {
+        throw new BadRequestException("Use the return workflow to change this managed after-sale case status.");
+      }
+      const updated = await tx.customerServiceCase.update({
+        where: { id: caseId }, data,
+        include: {
+          customer: true, order: true, createdByAdminUser: true,
+          notes: { include: { authorAdminUser: true }, orderBy: { createdAt: "desc" } }
+        }
+      });
+      await tx.auditLog.create({ data: {
+        actorType: ActorType.EMPLOYEE,
+        actorId: session.adminUser?.linkedEmployeeId ?? null,
+        actorAdminUserId: session.adminUser?.id ?? null,
+        sourceApp: SourceApp.OPERATIONS,
+        module: "customer-service", entityType: "CustomerServiceCase", entityId: caseId,
+        action: "CUSTOMER_SERVICE_CASE_UPDATE", beforeJson: caseAuditState(existing), afterJson: caseAuditState(updated),
+        reason: clean(input.description) ?? "Customer service case updated."
+      } });
+      return updated;
     });
   }
+
 }
 
 function serviceOrderWhere(input: SearchInput): Prisma.OrderWhereInput {
@@ -381,4 +419,16 @@ async function assertOrderExists(orderId: string) {
 async function assertCaseExists(caseId: string) {
   const serviceCase = await prisma.customerServiceCase.findUnique({ where: { id: caseId }, select: { id: true } });
   if (!serviceCase) throw new NotFoundException("Customer service case was not found.");
+}
+
+function caseAuditState(record: CustomerServiceCase): Prisma.InputJsonObject {
+  return {
+    orderId: record.orderId, customerId: record.customerId, issueType: record.issueType,
+    status: record.status, title: record.title, description: record.description,
+    tags: record.tags, assignedEmployeeId: record.assignedEmployeeId,
+    afterSaleReason: record.afterSaleReason, customerRequest: record.customerRequest,
+    requiresReturn: record.requiresReturn, requiresRefund: record.requiresRefund,
+    affectsAffiliateCommission: record.affectsAffiliateCommission,
+    resolvedAt: record.resolvedAt?.toISOString() ?? null
+  };
 }
