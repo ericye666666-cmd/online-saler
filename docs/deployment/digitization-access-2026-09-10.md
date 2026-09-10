@@ -18,7 +18,8 @@ No schema migration, inventory correction, price change, payment/Till configurat
 
 ## Validation evidence
 
-- Frontend rollout PR: https://github.com/ericye666666-cmd/online-saler/pull/186 (signed transport and cross-account task protection).
+- Frontend rollout PR: https://github.com/ericye666666-cmd/online-saler/pull/186 (signed transport and cross-account task protection), merged as `0915ea305a9244952b2c80f3354ad600b2e659d3` after independent code review and successful Repository check and Database integration jobs in https://github.com/ericye666666-cmd/online-saler/actions/runs/34458481044.
+- Backend rollout PR: https://github.com/ericye666666-cmd/online-saler/pull/187, now based on `develop` for its own native database CI. Its merge remains conditional on successful Operations deployment and its own CI/review.
 - Full local `npm run ci` passed on 2026-09-10 (repository checks, generated Prisma client, all workspace builds/tests).
 - API HTTP tests cover 74 protected routes across 13 controllers, missing/invalid/expired credentials, inactive accounts, removed permissions, forged IDs, valid employee actors and public images.
 - Login regression checks prove existing edited permissions remain and failed/inactive login performs no provisioning writes.
@@ -39,7 +40,7 @@ No schema migration, inventory correction, price change, payment/Till configurat
 
 Cloud Browser returned server-error pages during the 2026-09-10 audit. Current Cloud Run revision/logs and actual database targets are not accessible from this workspace, so the underlying cause has not been determined. A later direct HTTP check did not obtain a complete service response. These limitations do not establish a database failure or justify changing cloud settings blindly.
 
-The GitHub connection can read project and Actions evidence. No GCP connection or workflow-dispatch capability is available in this session. Initial source push was rejected by automatic approval review; subsequent read-only checks verified that the connected account and repository owner are both `ericye666666-cmd`, with repository admin/push permissions. After those ownership checks, retrying native Git reached its authentication step but the CLI had no credentials. The already-connected GitHub app successfully published the exact reviewed frontend tree as PR #186. Native PostgreSQL CI and live deployment results remain to be recorded.
+The GitHub connection can read project and Actions evidence. No GCP connection or workflow-dispatch capability is available in this session. Initial source push was rejected by automatic approval review; subsequent read-only checks verified that the connected account and repository owner are both `ericye666666-cmd`, with repository admin/push permissions. After those ownership checks, retrying native Git reached its authentication step but the CLI had no credentials. The already-connected GitHub app successfully published the exact reviewed frontend and backend trees as PRs #186 and #187. The frontend has passed native PostgreSQL CI and merged; its Operations deployment is running at https://github.com/ericye666666-cmd/online-saler/actions/runs/34459051970. Backend native CI and live deployment results remain to be recorded.
 
 ## First physical batch after service recovery
 
