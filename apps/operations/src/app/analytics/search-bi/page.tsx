@@ -1,5 +1,8 @@
 import { MetabaseDashboardPage } from "../metabase-dashboard-page";
 
+// Dashboard URLs are supplied by Cloud Run at runtime, after the image is built.
+export const dynamic = "force-dynamic";
+
 export default function SearchBiPage() {
   return (
     <MetabaseDashboardPage
