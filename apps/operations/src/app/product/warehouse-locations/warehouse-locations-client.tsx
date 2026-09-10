@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BoxesIcon,
@@ -315,7 +317,7 @@ function errorMessage(value: unknown, fallback: string) {
 async function api<T>(path: string, query?: Record<string, string>, init?: RequestInit): Promise<T> {
   const url = new URL(`${API_PROXY_URL}${path}`, window.location.origin);
   Object.entries(query ?? {}).forEach(([key, value]) => { if (value) url.searchParams.set(key, value); });
-  const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
+  const response = await operationsFetch(url, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
   const text = await response.text();
   let body: unknown = {};
   try { body = text ? JSON.parse(text) : {}; } catch { body = { message: text }; }

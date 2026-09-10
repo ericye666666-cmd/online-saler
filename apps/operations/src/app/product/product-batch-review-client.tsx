@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ProductImageComparisonResponse, ProductImageVariantRecord } from "@online-saler/shared-types";
@@ -60,7 +62,7 @@ type ProductBatch = { id: string; batchCode: string; targetCount: number; stage:
 type ImageTab = { key: string; label: string; url: string; transparent?: boolean; selected?: boolean };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_PROXY_URL}${path}`, {
+  const response = await operationsFetch(`${API_PROXY_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });

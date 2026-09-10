@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -152,7 +154,7 @@ type TaxonomyOption = { code: string; displayName: string; parentCode?: string |
 type ProductTaxonomy = { groups: Record<"CATEGORY" | "SUBCATEGORY" | "COLOR" | "MATERIAL" | "TAG" | "SIZE" | "CONDITION" | "DEFECT", TaxonomyOption[]> };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_PROXY_URL}${path}`, {
+  const response = await operationsFetch(`${API_PROXY_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });
@@ -231,7 +233,7 @@ async function uploadManualCutout(
   image: Blob,
   adminUserId: string
 ) {
-  const response = await fetch(
+  const response = await operationsFetch(
     `${API_PROXY_URL}/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(sourceImageId)}/manual-cutout`,
     {
       method: "POST",

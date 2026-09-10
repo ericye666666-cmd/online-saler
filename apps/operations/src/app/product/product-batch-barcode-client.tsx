@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ProductImageComparisonResponse } from "@online-saler/shared-types";
@@ -68,7 +70,7 @@ type ProductBatch = {
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_PROXY_URL}${path}`, {
+  const response = await operationsFetch(`${API_PROXY_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });

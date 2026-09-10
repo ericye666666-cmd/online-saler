@@ -1,5 +1,23 @@
 # Change Requests
 
+## CR-005 — Digitization employee authentication and safe initialization — 2026-09-10
+
+Status: Approved for implementation. Eric authorized fixing the audit findings on 2026-09-10 ("开始一个一个修复吧").
+
+- Problem: Product, image processing, warehouse and analytics employee endpoints trust a caller-supplied administrator identifier. Login and deployment baseline initialization overwrite configured roles/account states, and the deployment seed overwrites the configured affiliate commission rate.
+- API contract: Employee-only endpoints require the existing signed `Authorization: Bearer` Operations session. The server derives the administrator identity from the validated token and does not trust `adminUserId`, `requesterAdminUserId` or `x-admin-user-id`. Existing non-identity request fields and response schemas remain. Public storefront reads and provider callbacks retain their existing boundaries.
+- Proxy boundary: Operations proxy validates decoded path segments and prevents paths or redirects from forwarding employee credentials outside its configured API origin.
+- Operations: Update all employee JSON, upload and polling clients to send the existing session token only to the Operations API proxy. Expired sessions require normal sign-in. Preserve the ten-item apparel/shoe workflow, label printing and shelf allocation.
+- Audit actor: Employee write actions derive the active linked Employee from the signed-in administrator. Caller-supplied employee IDs must not impersonate the actor. New staff accounts create their linked employee in the same account creation; existing unlinked accounts fail with an actionable message rather than using the staging employee. Read-only employee filters retain their meaning.
+- Authorization: Existing role and permission checks remain; this closes identity verification and does not grant additional permissions or change employee responsibilities.
+- Initialization: Login must not provision or reactivate accounts or rewrite roles. Explicit deployment initialization may create missing baseline records but must preserve existing account/employee status, passwords, role membership, edited role permissions, commission settings and affiliate records.
+- Database: No schema migration, data reset, quantity change or destructive repair. Use disposable local/CI databases for tests.
+- Finance: Preserve actual commission rates and historical amounts. No changes to prices, payment mode, Till, refunds, payouts or money movement.
+- Validation: Negative credential/forged-identity tests before service effects; valid employee authorization; browser transport including uploads and expired sessions; repeated baseline initialization preserves configured records; repository CI before merge.
+- Rollout: Deploy the backward-compatible Operations transport first, then the API enforcement after the Operations deployment succeeds. Existing caller-ID fields may remain in client payloads for rollout compatibility but the new API ignores them as identity. Old clients must sign in/refresh. Do not restore caller-ID trust to recover obsolete clients. Keep credential values out of commits and release notes. Existing manual production preflight remains required.
+- Approval: Implementation is authorized by this session. No new commercial rule or expanded user access is introduced. Release remains subject to verified CI, review and available deployment controls.
+
+
 Use this file when a change affects shared business rules, data contracts, APIs, or state machines.
 
 | ID | Status | Summary | Impacted modules | Decision |

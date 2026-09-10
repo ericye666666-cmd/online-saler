@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PlusIcon, RefreshCwIcon, SaveIcon, SettingsIcon } from "lucide-react";
@@ -24,7 +26,7 @@ const GROUP_LABELS: Record<Group, string> = {
 };
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_PROXY_URL}${path}`, {
+  const response = await operationsFetch(`${API_PROXY_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });

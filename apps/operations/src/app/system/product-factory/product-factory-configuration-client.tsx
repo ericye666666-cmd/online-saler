@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2Icon, CircleAlertIcon, PrinterIcon, RefreshCwIcon } from "lucide-react";
@@ -23,7 +25,7 @@ export function ProductFactoryConfigurationClient() {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api-proxy/operations/product-factory-admin/configuration?${new URLSearchParams({ adminUserId })}`);
+      const response = await operationsFetch(`/api-proxy/operations/product-factory-admin/configuration?${new URLSearchParams({ adminUserId })}`);
       const body = await response.json() as Response & { message?: string };
       if (!response.ok) throw new Error(body.message ?? "无法读取服务器配置。");
       let printer: Check = { key: "PRINT_AGENT", label: "Deli 打印代理", status: "MISSING", secret: false, guidance: "启动员工电脑上的 Deli 打印代理，并确认 8719 端口可访问。", value: null };

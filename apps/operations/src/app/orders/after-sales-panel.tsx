@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AlertTriangleIcon, CheckCircle2Icon, RefreshCwIcon, RotateCcwIcon } from "lucide-react";
 import { hasPermission, type OperationsSession } from "@/components/admin/operations-access";
@@ -67,7 +69,7 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 async function afterSalesRequest<T>(orderId: string, token: string, suffix = "", body?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`/api-proxy/operations/orders/${encodeURIComponent(orderId)}/after-sales${suffix}`, {
+  const response = await operationsFetch(`/api-proxy/operations/orders/${encodeURIComponent(orderId)}/after-sales${suffix}`, {
     method: body ? "POST" : "GET",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: body ? JSON.stringify(body) : undefined,

@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
@@ -197,7 +199,7 @@ const PAGE_META: Record<Scope, { title: string; description: string }> = {
 async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   const url = new URL(`${API_PROXY_URL}${path}`, window.location.origin);
   for (const [key, value] of Object.entries(options?.query ?? {})) if (value) url.searchParams.set(key, value);
-  const response = await fetch(url.toString(), {
+  const response = await operationsFetch(url.toString(), {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });

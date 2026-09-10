@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { RefreshCwIcon, SearchIcon } from "lucide-react";
@@ -675,7 +677,7 @@ async function apiRequest<T>(path: string, options?: RequestOptions): Promise<T>
   }
   const headers = new Headers(options?.headers);
   headers.set("Content-Type", "application/json");
-  const response = await fetch(url.toString(), {
+  const response = await operationsFetch(url.toString(), {
     ...options,
     headers
   });
