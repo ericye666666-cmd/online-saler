@@ -93,8 +93,10 @@ assert.equal(canAccessPath("/warehouse/inventory", modules, managerSession), tru
 
 const accessProvider = readFileSync(new URL("../components/admin/operations-access-provider.tsx", import.meta.url), "utf8");
 const accessClient = readFileSync(new URL("./system/access-client.ts", import.meta.url), "utf8");
-assert.match(accessProvider, /operations\.access\.accessToken/);
+const accessTransport = readFileSync(new URL("../lib/operations-api.ts", import.meta.url), "utf8");
+assert.match(accessTransport, /operations\.access\.accessToken/);
 assert.match(accessProvider, /Authorization: `Bearer \$\{accessToken\}`/);
-assert.match(accessClient, /Authorization: `Bearer \$\{accessToken\}`/);
+assert.match(accessClient, /operationsFetch\(/);
+assert.match(accessProvider, /addEventListener\(OPERATIONS_SESSION_EXPIRED_EVENT, sessionExpired\)/);
 
 console.log("Operations access tests passed");

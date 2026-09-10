@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   BoxesIcon,
@@ -77,7 +79,7 @@ const statusFilters = [
 ];
 
 async function request(path: string, options?: RequestInit): Promise<unknown> {
-  const response = await fetch(`${API_PROXY_URL}${path}`, {
+  const response = await operationsFetch(`${API_PROXY_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });

@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
@@ -100,7 +102,7 @@ type ProcessingState = {
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_PROXY_URL}${path}`, {
+  const response = await operationsFetch(`${API_PROXY_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });
@@ -147,7 +149,7 @@ async function uploadOriginalImage(
   selection: PendingImageUpload,
   ids: ReturnType<typeof useOperationIds>
 ): Promise<ProductImage> {
-  const response = await fetch(`${API_PROXY_URL}/products/${productId}/images/upload`, {
+  const response = await operationsFetch(`${API_PROXY_URL}/products/${productId}/images/upload`, {
     method: "POST",
     headers: {
       "Content-Type": selection.file.type,

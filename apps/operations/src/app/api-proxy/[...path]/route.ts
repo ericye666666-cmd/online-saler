@@ -1,3 +1,5 @@
+import { operationsProxyTarget } from "../../../lib/operations-proxy";
+
 export const dynamic = "force-dynamic";
 
 type RouteContext = {
@@ -27,13 +29,6 @@ const RESPONSE_HEADERS_TO_DROP = new Set([
   "transfer-encoding"
 ]);
 
-function targetUrl(request: Request, path: string[]): string {
-  const base = new URL(API_URL.endsWith("/") ? API_URL : `${API_URL}/`);
-  const target = new URL(path.join("/"), base);
-  target.search = new URL(request.url).search;
-  return target.toString();
-}
-
 function requestHeaders(request: Request): Headers {
   const headers = new Headers(request.headers);
   for (const name of REQUEST_HEADERS_TO_DROP) headers.delete(name);
@@ -48,6 +43,8 @@ function responseHeaders(headers: Headers): Headers {
 
 async function proxy(request: Request, context: RouteContext): Promise<Response> {
   const { path = [] } = await context.params;
+  const target = operationsProxyTarget(API_URL, request.url, path);
+  if (!target) return Response.json({ message: "Invalid API proxy path." }, { status: 400 });
   const init: RequestInit = {
     method: request.method,
     headers: requestHeaders(request),
@@ -58,7 +55,7 @@ async function proxy(request: Request, context: RouteContext): Promise<Response>
     init.body = await request.arrayBuffer();
   }
 
-  const response = await fetch(targetUrl(request, path), init);
+  const response = await fetch(target, init);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

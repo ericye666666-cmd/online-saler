@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
@@ -121,7 +123,7 @@ type ProductBatch = {
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_PROXY_URL}${path}`, {
+  const response = await operationsFetch(`${API_PROXY_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
   });
@@ -140,7 +142,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 async function uploadProductImage(productId: string, employeeId: string, adminUserId: string, file: File): Promise<JsonRecord> {
-  const response = await fetch(`${API_PROXY_URL}/products/${productId}/images/upload`, {
+  const response = await operationsFetch(`${API_PROXY_URL}/products/${productId}/images/upload`, {
     method: "POST",
     headers: {
       "Content-Type": file.type,

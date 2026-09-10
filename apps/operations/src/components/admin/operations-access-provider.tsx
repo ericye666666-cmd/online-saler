@@ -3,10 +3,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { OperationsSession } from "./operations-access";
+import {
+  LEGACY_SESSION_ADMIN_USER_KEY,
+  OPERATIONS_SESSION_CHANGED_EVENT,
+  OPERATIONS_SESSION_EXPIRED_EVENT,
+  SESSION_ACCESS_TOKEN_KEY,
+  applyToCurrentOperationsSession,
+  operationsTokenSubject
+} from "@/lib/operations-api";
 
 const API_PROXY_URL = "/api-proxy";
-const SESSION_ACCESS_TOKEN_KEY = "operations.access.accessToken";
-const LEGACY_SESSION_ADMIN_USER_KEY = "operations.access.adminUserId";
 const DEFAULT_ADMIN_LOGIN = "superadmin";
 
 type OperationsAccessContextValue = {
@@ -60,18 +66,22 @@ export function OperationsAccessProvider({ children }: { children: ReactNode }) 
       const next = await request("/operations/access/session", {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
-      if (!next.adminUser || !next.accessToken) {
-        localStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
-        setSession(null);
-      } else {
-        localStorage.setItem(SESSION_ACCESS_TOKEN_KEY, next.accessToken);
-        setSession(next);
-      }
+      applyToCurrentOperationsSession(accessToken, () => {
+        if (!next.adminUser || !next.accessToken) {
+          localStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
+          setSession(null);
+        } else {
+          localStorage.setItem(SESSION_ACCESS_TOKEN_KEY, next.accessToken);
+          setSession(next);
+        }
+      });
     } catch (caught) {
-      localStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
-      localStorage.removeItem(LEGACY_SESSION_ADMIN_USER_KEY);
-      setSession(null);
-      setError(caught instanceof Error ? caught.message : "Could not restore the employee session.");
+      applyToCurrentOperationsSession(accessToken, () => {
+        localStorage.removeItem(SESSION_ACCESS_TOKEN_KEY);
+        localStorage.removeItem(LEGACY_SESSION_ADMIN_USER_KEY);
+        setSession(null);
+        setError(caught instanceof Error ? caught.message : "Could not restore the employee session.");
+      });
     } finally {
       setLoading(false);
     }
@@ -106,8 +116,35 @@ export function OperationsAccessProvider({ children }: { children: ReactNode }) 
   }, []);
 
   useEffect(() => {
+    const sessionExpired = () => {
+      setSession(null);
+      setLoading(false);
+      setError("Your employee session has expired. Please sign in again.");
+    };
+    const sessionChanged = () => {
+      setSession(null);
+      setLoading(false);
+      setError("The employee account has changed. Reload the page and sign in before continuing.");
+    };
+    window.addEventListener(OPERATIONS_SESSION_EXPIRED_EVENT, sessionExpired);
+    window.addEventListener(OPERATIONS_SESSION_CHANGED_EVENT, sessionChanged);
     void refresh();
+    return () => {
+      window.removeEventListener(OPERATIONS_SESSION_EXPIRED_EVENT, sessionExpired);
+      window.removeEventListener(OPERATIONS_SESSION_CHANGED_EVENT, sessionChanged);
+    };
   }, [refresh]);
+
+  useEffect(() => {
+    const adminUserId = session?.adminUser?.id;
+    if (!adminUserId) return;
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key !== SESSION_ACCESS_TOKEN_KEY || operationsTokenSubject(event.newValue) === adminUserId) return;
+      window.dispatchEvent(new Event(event.newValue ? OPERATIONS_SESSION_CHANGED_EVENT : OPERATIONS_SESSION_EXPIRED_EVENT));
+    };
+    window.addEventListener("storage", storageChanged);
+    return () => window.removeEventListener("storage", storageChanged);
+  }, [session?.adminUser?.id]);
 
   const value = useMemo<OperationsAccessContextValue>(
     () => ({

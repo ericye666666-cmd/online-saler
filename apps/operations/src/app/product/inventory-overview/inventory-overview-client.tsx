@@ -1,5 +1,7 @@
 "use client";
 
+import { operationsFetch } from "@/lib/operations-api";
+
 import { useCallback, useEffect, useState } from "react";
 import { BoxesIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 
@@ -159,7 +161,7 @@ function formatDate(value: string) {
 async function api<T>(path: string, query: Record<string, string>): Promise<T> {
   const url = new URL(`${API_PROXY_URL}${path}`, window.location.origin);
   Object.entries(query).forEach(([key, value]) => { if (value) url.searchParams.set(key, value); });
-  const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  const response = await operationsFetch(url, { headers: { "Content-Type": "application/json" } });
   const text = await response.text();
   let body: unknown = {};
   try { body = text ? JSON.parse(text) : {}; } catch { body = { message: text }; }
