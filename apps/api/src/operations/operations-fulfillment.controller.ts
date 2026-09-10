@@ -1,3 +1,4 @@
+import { OperationsRequestIdentity } from "./operations-request-identity";
 import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from "@nestjs/common";
 import { InventoryItemStatus, WarehouseLocationStatus } from "@online-saler/database";
 import {
@@ -122,11 +123,11 @@ export class OperationsFulfillmentController {
 
 @Controller("operations/warehouse-locations")
 export class OperationsWarehouseLocationsController {
-  constructor(private readonly warehouse: OperationsWarehouseService) {}
+  constructor(private readonly warehouse: OperationsWarehouseService, private readonly identity: OperationsRequestIdentity) {}
 
   @Get()
-  list(
-    @Query("adminUserId") adminUserId?: string,
+  async list(
+    @Headers("authorization") authorization?: string,
     @Query("search") search?: string,
     @Query("status") status?: WarehouseLocationStatus,
     @Query("minCapacity") minCapacity?: string,
@@ -135,7 +136,7 @@ export class OperationsWarehouseLocationsController {
     @Query("onlyFull") onlyFull?: string
   ) {
     return this.warehouse.listLocations({
-      adminUserId,
+      adminUserId: await this.identity.adminId(authorization),
       search,
       status,
       minCapacity: optionalNumber(minCapacity),
@@ -146,43 +147,43 @@ export class OperationsWarehouseLocationsController {
   }
 
   @Get("summary")
-  summary(@Query("adminUserId") adminUserId?: string) {
-    return this.warehouse.locationSummary(adminUserId);
+  async summary(@Headers("authorization") authorization?: string) {
+    return this.warehouse.locationSummary(await this.identity.adminId(authorization));
   }
 
   @Post()
-  create(@Body() body: { adminUserId?: string; locationCode?: string; capacity?: number; status?: WarehouseLocationStatus; note?: string }) {
-    return this.warehouse.createLocation(body);
+  async create(@Headers("authorization") authorization: string | undefined, @Body() body: { adminUserId?: string; locationCode?: string; capacity?: number; status?: WarehouseLocationStatus; note?: string }) {
+    return this.warehouse.createLocation(await this.identity.adminInput(authorization, body));
   }
 
   @Post("bulk")
-  bulk(@Body() body: { adminUserId?: string; prefix?: string; start?: string | number; end?: string | number; capacity?: number; status?: WarehouseLocationStatus; note?: string }) {
-    return this.warehouse.bulkCreateLocations(body);
+  async bulk(@Headers("authorization") authorization: string | undefined, @Body() body: { adminUserId?: string; prefix?: string; start?: string | number; end?: string | number; capacity?: number; status?: WarehouseLocationStatus; note?: string }) {
+    return this.warehouse.bulkCreateLocations(await this.identity.adminInput(authorization, body));
   }
 
   @Patch(":locationId/status")
-  status(@Param("locationId") locationId: string, @Body() body: { adminUserId?: string; status?: WarehouseLocationStatus; note?: string }) {
-    return this.warehouse.setLocationStatus(locationId, body);
+  async status(@Headers("authorization") authorization: string | undefined, @Param("locationId") locationId: string, @Body() body: { adminUserId?: string; status?: WarehouseLocationStatus; note?: string }) {
+    return this.warehouse.setLocationStatus(locationId, await this.identity.adminInput(authorization, body));
   }
 
   @Patch(":locationId/capacity")
-  capacity(@Param("locationId") locationId: string, @Body() body: { adminUserId?: string; capacity?: number; note?: string }) {
-    return this.warehouse.updateCapacity(locationId, body);
+  async capacity(@Headers("authorization") authorization: string | undefined, @Param("locationId") locationId: string, @Body() body: { adminUserId?: string; capacity?: number; note?: string }) {
+    return this.warehouse.updateCapacity(locationId, await this.identity.adminInput(authorization, body));
   }
 
   @Post("move-item")
-  moveItem(@Body() body: { adminUserId?: string; inventoryItemId?: string; locationId?: string; note?: string }) {
-    return this.warehouse.moveInventoryItem(body);
+  async moveItem(@Headers("authorization") authorization: string | undefined, @Body() body: { adminUserId?: string; inventoryItemId?: string; locationId?: string; note?: string }) {
+    return this.warehouse.moveInventoryItem(await this.identity.adminInput(authorization, body));
   }
 }
 
 @Controller("operations/inventory-overview")
 export class OperationsInventoryOverviewController {
-  constructor(private readonly warehouse: OperationsWarehouseService) {}
+  constructor(private readonly warehouse: OperationsWarehouseService, private readonly identity: OperationsRequestIdentity) {}
 
   @Get()
-  overview(
-    @Query("adminUserId") adminUserId?: string,
+  async overview(
+    @Headers("authorization") authorization?: string,
     @Query("category") category?: string,
     @Query("gender") gender?: string,
     @Query("size") size?: string,
@@ -191,7 +192,7 @@ export class OperationsInventoryOverviewController {
     @Query("inventoryStatus") inventoryStatus?: InventoryItemStatus
   ) {
     return this.warehouse.inventoryOverview({
-      adminUserId,
+      adminUserId: await this.identity.adminId(authorization),
       category,
       gender,
       size,

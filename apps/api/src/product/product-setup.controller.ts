@@ -11,7 +11,7 @@ import {
   Res
 } from "@nestjs/common";
 import { ProductImageType, ProductStatus, prisma } from "@online-saler/database";
-import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
+import { OperationsRequestIdentity } from "../operations/operations-request-identity";
 import { ProductApplicationService } from "./product-application.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
 import { ProductImageTransformerService } from "./product-image-transformer.service";
@@ -40,19 +40,20 @@ export class ProductSetupController {
     private readonly products: ProductApplicationService,
     private readonly imageStorage: ProductImageStorageService,
     private readonly imageTransformer: ProductImageTransformerService,
-    private readonly details: ProductDetailGenerationService
+    private readonly details: ProductDetailGenerationService,
+    private readonly identity: OperationsRequestIdentity
   ) {}
 
   @Post()
-  async create(@Body() body: CreateProductBody) {
-    await requireAdminPermission(body.adminUserId, "action.product.create");
+  async create(@Headers("authorization") authorization: string | undefined, @Body() body: CreateProductBody) {
+    const actor = await this.identity.employeePermission(authorization, "action.product.create");
     if (!body.productCode?.trim()) {
       throw new BadRequestException("productCode is required");
     }
 
     return this.products.createProductShell({
       productCode: body.productCode.trim(),
-      createdByEmployeeId: body.employeeId
+      createdByEmployeeId: actor.employeeId
     });
   }
 
@@ -62,11 +63,10 @@ export class ProductSetupController {
     @Headers("content-type") contentType: string | undefined,
     @Headers("x-image-type") imageType: ProductImageType | undefined,
     @Headers("x-image-rotation") imageRotation: string | undefined,
-    @Headers("x-employee-id") employeeId: string | undefined,
-    @Headers(ADMIN_USER_HEADER) adminUserId: string | undefined,
+    @Headers("authorization") authorization: string | undefined,
     @Req() request: AsyncIterable<Buffer>
   ) {
-    await requireAdminPermission(adminUserId, "action.product.edit");
+    const actor = await this.identity.employeePermission(authorization, "action.product.edit");
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new BadRequestException("Product not found");
     if (!imageType || !Object.values(ProductImageType).includes(imageType)) {
@@ -106,7 +106,7 @@ export class ProductSetupController {
         type: imageType,
         originalUrl: `gs://${this.imageStorage.bucket}/${objectName}`,
         publicUrl: `/products/${id}/images/${imageId}/content`,
-        uploadedByEmployeeId: employeeId?.trim() || undefined
+        uploadedByEmployeeId: actor.employeeId
       }
     });
 
@@ -132,8 +132,8 @@ export class ProductSetupController {
   }
 
   @Post(":id/images")
-  async addImage(@Param("id") id: string, @Body() body: AddImageBody) {
-    await requireAdminPermission(body.adminUserId, "action.product.edit");
+  async addImage(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: AddImageBody) {
+    const actor = await this.identity.employeePermission(authorization, "action.product.edit");
     if (!body.originalUrl?.trim() || !body.type) {
       throw new BadRequestException("type and originalUrl are required");
     }
@@ -146,7 +146,7 @@ export class ProductSetupController {
         productId: id,
         type: body.type,
         originalUrl: body.originalUrl.trim(),
-        uploadedByEmployeeId: body.employeeId
+        uploadedByEmployeeId: actor.employeeId
       }
     });
 
@@ -159,8 +159,8 @@ export class ProductSetupController {
   }
 
   @Get(":id")
-  async get(@Param("id") id: string, @Headers(ADMIN_USER_HEADER) adminUserId?: string) {
-    await requireAdminPermission(adminUserId, "page.product.digitalization");
+  async get(@Param("id") id: string, @Headers("authorization") authorization?: string) {
+    await this.identity.permission(authorization, "page.product.digitalization");
     return this.products.getOperationsProductDetail({ id });
   }
 }

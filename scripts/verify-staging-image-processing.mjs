@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 import { inflateSync } from "node:zlib";
 
-const EMPLOYEE_ID = "00000000-0000-4000-8000-000000000001";
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const JPEG_SIGNATURE = Buffer.from([255, 216, 255]);
 const DEFAULT_STOREFRONT_MINIMUM_QUALITY_SCORE = 0.75;
@@ -159,31 +158,69 @@ async function requestBytes(url, options = {}) {
   return body;
 }
 
+export function readStagingLoginSession(response) {
+  const accessToken = response?.accessToken;
+  const employeeId = response?.adminUser?.linkedEmployeeId;
+  // Reject missing tokens and header/workflow-command injection without echoing credentials.
+  if (typeof accessToken !== "string" || !/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/.test(accessToken)) {
+    throw new Error("Staging login must return a valid access token.");
+  }
+  if (typeof employeeId !== "string" || !/^[a-f0-9-]{36}$/i.test(employeeId)) {
+    throw new Error("Staging login must return a linked employee ID.");
+  }
+  return { accessToken, employeeId };
+}
+
+export async function authenticateStagingSmoke(environment = process.env, fetchImpl = fetch) {
+  const serviceUrl = environment.SERVICE_URL?.replace(/\/$/, "");
+  if (!serviceUrl) throw new Error("SERVICE_URL is required");
+  const password = environment.STAGING_ADMIN_PASSWORD;
+  if (!password) throw new Error("STAGING_ADMIN_PASSWORD is required");
+  const response = await fetchImpl(`${serviceUrl}/operations/access/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ login: environment.STAGING_ADMIN_LOGIN ?? "superadmin", password })
+  });
+  // Authentication failures never print response bodies or the submitted password.
+  if (!response.ok) throw new Error(`Staging staff login failed: HTTP ${response.status}`);
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error("Staging staff login returned invalid JSON.");
+  }
+  return readStagingLoginSession(body);
+}
+
+export async function exportStagingSmokeSession(environment = process.env, fetchImpl = fetch, log = console.log) {
+  if (!environment.GITHUB_ENV) throw new Error("GITHUB_ENV is required");
+  const session = await authenticateStagingSmoke(environment, fetchImpl);
+  log(`::add-mask::${session.accessToken}`);
+  await appendFile(environment.GITHUB_ENV,
+    `STAGING_SMOKE_ACCESS_TOKEN=${session.accessToken}\nSTAGING_SMOKE_EMPLOYEE_ID=${session.employeeId}\n`);
+}
+
 export async function runStagingImageProcessingE2E(environment = process.env) {
   const serviceUrl = environment.SERVICE_URL?.replace(/\/$/, "");
   assert.ok(serviceUrl, "SERVICE_URL is required");
-  const login = environment.STAGING_ADMIN_LOGIN ?? "superadmin";
-  const password = environment.STAGING_ADMIN_PASSWORD;
-  assert.ok(password, "STAGING_ADMIN_PASSWORD is required");
   const fixtureRoot = environment.IMAGE_PROCESSING_FIXTURE_ROOT ?? resolve(
     dirname(fileURLToPath(import.meta.url)),
     "../tests/fixtures/image-processing"
   );
 
-  const loginResponse = await requestJson(`${serviceUrl}/operations/access/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ login, password })
-  });
-  const adminUserId = loginResponse?.adminUser?.id;
-  assert.ok(adminUserId, "staging login must return adminUser.id");
-  const adminHeaders = { "X-Admin-User-Id": adminUserId };
+  const session = environment.STAGING_SMOKE_ACCESS_TOKEN !== undefined
+    ? readStagingLoginSession({
+      accessToken: environment.STAGING_SMOKE_ACCESS_TOKEN,
+      adminUser: { linkedEmployeeId: environment.STAGING_SMOKE_EMPLOYEE_ID }
+    })
+    : await authenticateStagingSmoke(environment);
+  if (environment.GITHUB_ACTIONS === "true") console.log(`::add-mask::${session.accessToken}`);
+  const adminHeaders = { Authorization: `Bearer ${session.accessToken}` };
   const runKey = `${environment.GITHUB_RUN_ID ?? Date.now()}-${environment.GITHUB_RUN_ATTEMPT ?? "local"}`;
 
   const results = [];
   results.push(await verifyCutoutPath({
     serviceUrl,
-    adminUserId,
     adminHeaders,
     runKey,
     fixturePath: resolve(fixtureRoot, "mundu-black-shirt-standard.jpg"),
@@ -193,7 +230,6 @@ export async function runStagingImageProcessingE2E(environment = process.env) {
   }));
   results.push(await verifyCutoutPath({
     serviceUrl,
-    adminUserId,
     adminHeaders,
     runKey,
     fixturePath: resolve(fixtureRoot, "mundu-black-shirt-close.jpg"),
@@ -201,7 +237,7 @@ export async function runStagingImageProcessingE2E(environment = process.env) {
     expectFallback: true,
     productCode: `E2E-FALLBACK-${runKey}`
   }));
-  const retry = await verifyRetry({ serviceUrl, adminUserId, adminHeaders, runKey });
+  const retry = await verifyRetry({ serviceUrl, adminHeaders, runKey });
 
   const summary = { status: "ok", cutouts: results, retry };
   console.log(JSON.stringify(summary, null, 2));
@@ -431,8 +467,8 @@ async function verifyRetry(input) {
 async function createProduct(input, productCode) {
   return requestJson(`${input.serviceUrl}/products`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ productCode, employeeId: EMPLOYEE_ID, adminUserId: input.adminUserId })
+    headers: { ...input.adminHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify({ productCode })
   });
 }
 
@@ -442,8 +478,7 @@ async function uploadFront(input, productId, bytes, contentType) {
     headers: {
       ...input.adminHeaders,
       "Content-Type": contentType,
-      "X-Image-Type": "FRONT",
-      "X-Employee-Id": EMPLOYEE_ID
+      "X-Image-Type": "FRONT"
     },
     body: new Uint8Array(bytes)
   });
@@ -456,5 +491,6 @@ async function assertOriginalUnchanged(serviceUrl, productId, imageId, expected)
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 if (isMain) {
-  await runStagingImageProcessingE2E();
+  if (process.argv[2] === "--authenticate") await exportStagingSmokeSession();
+  else await runStagingImageProcessingE2E();
 }

@@ -1,8 +1,6 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
-import {
-  OperationsWorkspaceService,
-  STAGING_TEST_EMPLOYEE_ID
-} from "./operations-workspace.service";
+import { Body, Controller, Get, Headers, Post, Query } from "@nestjs/common";
+import { OperationsWorkspaceService } from "./operations-workspace.service";
+import { OperationsRequestIdentity } from "./operations-request-identity";
 
 interface WorkspaceBody {
   employeeId?: string;
@@ -11,24 +9,25 @@ interface WorkspaceBody {
 
 @Controller("operations/workspace")
 export class OperationsWorkspaceController {
-  constructor(private readonly workspace: OperationsWorkspaceService) {}
+  constructor(private readonly workspace: OperationsWorkspaceService, private readonly identity: OperationsRequestIdentity) {}
 
   @Get("summary")
-  summary(@Query("employeeId") employeeId?: string, @Query("adminUserId") adminUserId?: string) {
-    return this.workspace.summary(employeeId, adminUserId);
+  async summary(@Headers("authorization") authorization?: string, @Query("employeeId") employeeId?: string) {
+    return this.workspace.summary(employeeId, await this.identity.adminId(authorization));
   }
 
   @Get("active")
-  active(
+  async active(
     @Query("employeeId") employeeId: string | undefined,
-    @Query("adminUserId") adminUserId: string | undefined,
+    @Headers("authorization") authorization: string | undefined,
     @Query("productId") productId?: string
   ) {
-    return this.workspace.active(employeeId, adminUserId, productId);
+    return this.workspace.active(employeeId, await this.identity.adminId(authorization), productId);
   }
 
   @Post("start")
-  start(@Body() body: WorkspaceBody) {
-    return this.workspace.start(body.employeeId ?? STAGING_TEST_EMPLOYEE_ID, body.adminUserId);
+  async start(@Headers("authorization") authorization: string | undefined, @Body() body: WorkspaceBody) {
+    const actor = await this.identity.employeeInput(authorization, body);
+    return this.workspace.start(actor.employeeId, actor.adminUserId);
   }
 }

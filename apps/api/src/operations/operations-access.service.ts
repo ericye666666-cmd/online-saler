@@ -1,7 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import {
   AdminUserStatus,
-  PermissionScope,
   prisma,
   type AdminUser,
   type Employee,
@@ -9,9 +9,6 @@ import {
   type Role
 } from "@online-saler/database";
 import {
-  OPERATIONS_PERMISSIONS,
-  OPERATIONS_ROLE_BLUEPRINTS,
-  STAGING_SUPER_ADMIN,
   bearerOperationsAccessToken,
   hashPassword,
   issueOperationsAccessToken,
@@ -59,97 +56,7 @@ type UpsertRoleInput = {
 
 @Injectable()
 export class OperationsAccessService {
-  async bootstrap() {
-    for (const permission of OPERATIONS_PERMISSIONS) {
-      await prisma.permission.upsert({
-        where: { code: permission.code },
-        update: {
-          module: permission.module,
-          scope: permission.scope as PermissionScope,
-          page: permission.page,
-          action: permission.action,
-          description: permission.description
-        },
-        create: {
-          code: permission.code,
-          module: permission.module,
-          scope: permission.scope as PermissionScope,
-          page: permission.page,
-          action: permission.action,
-          description: permission.description
-        }
-      });
-    }
-
-    for (const role of OPERATIONS_ROLE_BLUEPRINTS) {
-      const savedRole = await prisma.role.upsert({
-        where: { code: role.code },
-        update: {
-          name: role.name,
-          description: role.description
-        },
-        create: {
-          code: role.code,
-          name: role.name,
-          description: role.description
-        }
-      });
-
-      await this.replaceRolePermissions(savedRole.id, role.permissions);
-    }
-
-    const linkedEmployee = await prisma.employee.upsert({
-      where: { employeeCode: STAGING_SUPER_ADMIN.linkedEmployee.employeeCode },
-      update: {
-        name: STAGING_SUPER_ADMIN.linkedEmployee.name,
-        status: STAGING_SUPER_ADMIN.linkedEmployee.status
-      },
-      create: STAGING_SUPER_ADMIN.linkedEmployee
-    });
-
-    const adminUser = await prisma.adminUser.upsert({
-      where: { loginAccount: STAGING_SUPER_ADMIN.loginAccount },
-      update: {
-        name: STAGING_SUPER_ADMIN.name,
-        email: STAGING_SUPER_ADMIN.email,
-        phone: STAGING_SUPER_ADMIN.phone,
-        status: STAGING_SUPER_ADMIN.status,
-        linkedEmployeeId: linkedEmployee.id
-      },
-      create: {
-        id: STAGING_SUPER_ADMIN.id,
-        name: STAGING_SUPER_ADMIN.name,
-        email: STAGING_SUPER_ADMIN.email,
-        loginAccount: STAGING_SUPER_ADMIN.loginAccount,
-        phone: STAGING_SUPER_ADMIN.phone,
-        passwordHash: hashPassword(process.env.OPERATIONS_SUPER_ADMIN_PASSWORD || STAGING_SUPER_ADMIN.defaultPassword),
-        status: STAGING_SUPER_ADMIN.status,
-        linkedEmployeeId: linkedEmployee.id
-      }
-    });
-
-    const superRole = await prisma.role.findUnique({ where: { code: STAGING_SUPER_ADMIN.roleCode } });
-    if (superRole) {
-      await prisma.userRole.upsert({
-        where: {
-          adminUserId_roleId: {
-            adminUserId: adminUser.id,
-            roleId: superRole.id
-          }
-        },
-        update: {},
-        create: {
-          adminUserId: adminUser.id,
-          roleId: superRole.id
-        }
-      });
-    }
-
-    return { adminUserId: adminUser.id, loginAccount: adminUser.loginAccount, roleCode: STAGING_SUPER_ADMIN.roleCode };
-  }
-
   async login(input: { login?: string; password?: string }) {
-    await this.bootstrap();
     const login = normalizeLogin(input.login ?? "");
     if (!login || !input.password) {
       throw new BadRequestException("Login and password are required.");
@@ -244,7 +151,10 @@ export class OperationsAccessService {
         email,
         phone,
         passwordHash: input.initialPassword ? hashPassword(input.initialPassword) : null,
-        status: AdminUserStatus.ACTIVE
+        status: AdminUserStatus.ACTIVE,
+        linkedEmployee: {
+          create: { employeeCode: `OPS-${randomUUID()}`, name, status: "ACTIVE" }
+        }
       },
       include: this.accessInclude()
     });

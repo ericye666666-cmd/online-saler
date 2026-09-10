@@ -1,5 +1,5 @@
-import { Body, Controller, Param, Post } from "@nestjs/common";
-import { requireAdminPermission } from "../operations/operations-access-check";
+import { Body, Controller, Headers, Param, Post } from "@nestjs/common";
+import { OperationsRequestIdentity } from "../operations/operations-request-identity";
 import {
   ProductCalibrationService,
   type CalibrateProductInput
@@ -7,11 +7,11 @@ import {
 
 @Controller("products")
 export class ProductCalibrationController {
-  constructor(private readonly service: ProductCalibrationService) {}
+  constructor(private readonly service: ProductCalibrationService, private readonly identity: OperationsRequestIdentity) {}
 
   @Post(":id/calibrate")
-  async calibrate(@Param("id") id: string, @Body() body: CalibrateProductInput & { adminUserId?: string }) {
-    await requireAdminPermission(body.adminUserId, "action.product.edit");
-    return this.service.calibrate(id, body);
+  async calibrate(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: CalibrateProductInput & { adminUserId?: string }) {
+    const actor = await this.identity.employeePermission(authorization, "action.product.edit");
+    return this.service.calibrate(id, { ...body, ...actor });
   }
 }

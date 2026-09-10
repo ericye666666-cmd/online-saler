@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { OperationsRequestIdentity } from "./operations-request-identity";
+import { Body, Controller, Get, Headers, Param, Patch, Post } from "@nestjs/common";
 import type { ProductTaxonomyGroup } from "../product/product-taxonomy";
 import { OperationsProductFactoryAdminService } from "./operations-product-factory-admin.service";
 
@@ -7,19 +8,19 @@ type TaxonomyPatchBody = { adminUserId?: string; displayName?: string; parentCod
 
 @Controller("operations/product-factory-admin")
 export class OperationsProductFactoryAdminController {
-  constructor(private readonly service: OperationsProductFactoryAdminService) {}
+  constructor(private readonly service: OperationsProductFactoryAdminService, private readonly identity: OperationsRequestIdentity) {}
 
   @Get("taxonomy")
-  taxonomy(@Query("adminUserId") adminUserId?: string) { return this.service.taxonomy(adminUserId); }
+  async taxonomy(@Headers("authorization") authorization?: string) { return this.service.taxonomy(await this.identity.adminId(authorization)); }
 
   @Post("taxonomy/options")
-  createOption(@Body() body: TaxonomyCreateBody) { return this.service.createOption(body); }
+  async createOption(@Headers("authorization") authorization: string | undefined, @Body() body: TaxonomyCreateBody) { return this.service.createOption(await this.identity.adminInput(authorization, body)); }
 
   @Patch("taxonomy/:group/:code")
-  updateOption(@Param("group") group: ProductTaxonomyGroup, @Param("code") code: string, @Body() body: TaxonomyPatchBody) {
-    return this.service.updateOption(group, code, body);
+  async updateOption(@Headers("authorization") authorization: string | undefined, @Param("group") group: ProductTaxonomyGroup, @Param("code") code: string, @Body() body: TaxonomyPatchBody) {
+    return this.service.updateOption(group, code, await this.identity.adminInput(authorization, body));
   }
 
   @Get("configuration")
-  configuration(@Query("adminUserId") adminUserId?: string) { return this.service.configuration(adminUserId); }
+  async configuration(@Headers("authorization") authorization?: string) { return this.service.configuration(await this.identity.adminId(authorization)); }
 }

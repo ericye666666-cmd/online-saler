@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { OperationsAccessModule } from "../operations/operations-access.module";
 import { ProductModule } from "../product/product.module";
 import { AIJobController } from "./ai-job.controller";
 import { AIJobService } from "./ai-job.service";
@@ -9,7 +10,7 @@ import { LightweightMeasurementBoardProvider } from "./lightweight-measurement-b
 import { OpenAIVisionProvider } from "./openai-vision.provider";
 
 @Module({
-  imports: [ProductModule],
+  imports: [OperationsAccessModule, ProductModule],
   controllers: [AIJobController],
   providers: [
     AIJobService,
