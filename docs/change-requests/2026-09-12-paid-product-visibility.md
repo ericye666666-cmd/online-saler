@@ -24,3 +24,9 @@ staff confirmation and must not be simulated as completed.
 Rollout: API and Operations deployment, then the existing manually confirmed
 production storefront workflow. Rollback redeploys prior images; paid orders are
 preserved. User approval is already provided in this conversation.
+
+Deployment login checks now accept the GitHub Actions secret
+`OPERATIONS_SMOKE_PASSWORD` for the existing superadmin account, retaining the
+legacy bootstrap fallback for installations that have not changed it. If the
+owner reset that password, set this secret before rerunning API deployment.
+Never put the password in source, output, or PR text.

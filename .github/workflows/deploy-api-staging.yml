@@ -322,7 +322,7 @@ jobs:
         env:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
           STAGING_ADMIN_LOGIN: superadmin
-          STAGING_ADMIN_PASSWORD: ChangeMe43!
+          STAGING_ADMIN_PASSWORD: ${{ secrets.OPERATIONS_SMOKE_PASSWORD || 'ChangeMe43!' }}
         run: node scripts/verify-staging-image-processing.mjs --authenticate
 
       - name: Verify product creation
