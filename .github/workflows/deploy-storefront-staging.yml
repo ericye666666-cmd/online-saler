@@ -1,22 +1,6 @@
-name: Deploy Live Storefront
+name: Deploy Secondary Storefront (Manual Only)
 
 on:
-  push:
-    branches:
-      - develop
-    paths:
-      - "apps/storefront/**"
-      - "packages/business-rules/**"
-      - "packages/database/**"
-      - "packages/shared-types/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.base.json"
-      - "Dockerfile.storefront"
-      - ".dockerignore"
-      - "scripts/gcloud/configure-staging-scheduler.sh"
-      - ".github/workflows/deploy-storefront-staging.yml"
-      - "scripts/verify-storefront.mjs"
   workflow_dispatch:
 
 permissions:
