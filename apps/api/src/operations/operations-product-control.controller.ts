@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { OperationsRequestIdentity } from "./operations-request-identity";
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from "@nestjs/common";
 import { ProductStatus } from "@online-saler/database";
 import { OperationsProductControlService } from "./operations-product-control.service";
 
@@ -21,55 +22,55 @@ type UnpublishBody = EmployeeBody & {
 
 @Controller("operations/product-control")
 export class OperationsProductControlController {
-  constructor(private readonly productControl: OperationsProductControlService) {}
+  constructor(private readonly productControl: OperationsProductControlService, private readonly identity: OperationsRequestIdentity) {}
 
   @Get("summary")
-  summary(@Query("adminUserId") adminUserId?: string) {
-    return this.productControl.summary(adminUserId);
+  async summary(@Headers("authorization") authorization?: string) {
+    return this.productControl.summary(await this.identity.adminId(authorization));
   }
 
   @Get("products")
-  products(@Query("status") status?: ProductStatus, @Query("adminUserId") adminUserId?: string) {
-    return this.productControl.list(status, adminUserId);
+  async products(@Query("status") status?: ProductStatus, @Headers("authorization") authorization?: string) {
+    return this.productControl.list(status, await this.identity.adminId(authorization));
   }
 
   @Get("locations")
-  locations(@Query("adminUserId") adminUserId?: string) {
-    return this.productControl.locations(adminUserId);
+  async locations(@Headers("authorization") authorization?: string) {
+    return this.productControl.locations(await this.identity.adminId(authorization));
   }
 
   @Patch("products/:id/price")
-  setPrice(@Param("id") id: string, @Body() body: PriceBody) {
-    return this.productControl.setPrice(id, body);
+  async setPrice(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: PriceBody) {
+    return this.productControl.setPrice(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post("products/:id/prepare-storage")
-  prepareStorage(@Param("id") id: string, @Body() body: EmployeeBody) {
-    return this.productControl.prepareForStorage(id, body);
+  async prepareStorage(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: EmployeeBody) {
+    return this.productControl.prepareForStorage(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post("products/:id/location-hint")
-  locationHint(@Param("id") id: string, @Body() body: EmployeeBody) {
-    return this.productControl.assignRandomLocation(id, body);
+  async locationHint(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: EmployeeBody) {
+    return this.productControl.assignRandomLocation(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post("products/:id/confirm-placed")
-  confirmPlaced(@Param("id") id: string, @Body() body: EmployeeBody) {
-    return this.productControl.confirmPlaced(id, body);
+  async confirmPlaced(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: EmployeeBody) {
+    return this.productControl.confirmPlaced(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post("products/:id/publish")
-  publish(@Param("id") id: string, @Body() body: EmployeeBody) {
-    return this.productControl.publish(id, body);
+  async publish(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: EmployeeBody) {
+    return this.productControl.publish(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post("products/:id/unpublish")
-  unpublish(@Param("id") id: string, @Body() body: UnpublishBody) {
-    return this.productControl.unpublish(id, body);
+  async unpublish(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: UnpublishBody) {
+    return this.productControl.unpublish(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post("labels/printed")
-  markPrinted(@Body() body: PrintedBody) {
-    return this.productControl.markLabelsPrinted(body);
+  async markPrinted(@Headers("authorization") authorization: string | undefined, @Body() body: PrintedBody) {
+    return this.productControl.markLabelsPrinted(await this.identity.employeeInput(authorization, body));
   }
 }

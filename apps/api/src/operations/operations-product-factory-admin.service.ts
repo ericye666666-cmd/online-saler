@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { ActorType, Prisma, SourceApp, prisma } from "@online-saler/database";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ActorType, EmployeeStatus, Prisma, SourceApp, prisma } from "@online-saler/database";
 import {
   PRODUCT_TAXONOMY_GROUPS,
   PRODUCT_TAXONOMY_SETTING_KEY,
@@ -31,7 +31,7 @@ export class OperationsProductFactoryAdminService {
   }
 
   async createOption(input: { adminUserId?: string; group?: ProductTaxonomyGroup; code?: string; displayName?: string; parentCode?: string; sortOrder?: number }) {
-    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    const actor = await this.actorFor(input.adminUserId);
     const group = requireGroup(input.group);
     const code = normalizeTaxonomyCode(input.code ?? "");
     const displayName = input.displayName?.trim();
@@ -46,12 +46,12 @@ export class OperationsProductFactoryAdminService {
       active: true
     };
     document.groups[group].push(next);
-    await this.save(document, input.adminUserId, "PRODUCT_TAXONOMY_OPTION_CREATED", null, next);
+    await this.save(document, actor, "PRODUCT_TAXONOMY_OPTION_CREATED", null, next);
     return this.taxonomy(input.adminUserId);
   }
 
   async updateOption(groupInput: ProductTaxonomyGroup, codeInput: string, input: { adminUserId?: string; displayName?: string; parentCode?: string | null; sortOrder?: number; active?: boolean }) {
-    await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    const actor = await this.actorFor(input.adminUserId);
     const group = requireGroup(groupInput);
     const code = normalizeTaxonomyCode(codeInput);
     const document = await loadProductTaxonomy();
@@ -69,7 +69,7 @@ export class OperationsProductFactoryAdminService {
     }
     if (input.active !== undefined) option.active = input.active;
     if (group === "SUBCATEGORY" && input.parentCode !== undefined) option.parentCode = input.parentCode ? normalizeTaxonomyCode(input.parentCode) : null;
-    await this.save(document, input.adminUserId, "PRODUCT_TAXONOMY_OPTION_UPDATED", before, option);
+    await this.save(document, actor, "PRODUCT_TAXONOMY_OPTION_UPDATED", before, option);
     return this.taxonomy(input.adminUserId);
   }
 
@@ -79,7 +79,19 @@ export class OperationsProductFactoryAdminService {
     return { checks, configured: checks.filter((item) => item.status === "CONFIGURED").length, total: checks.length };
   }
 
-  private async save(document: ProductTaxonomyDocument, adminUserId: string | undefined, action: string, before: unknown, after: unknown) {
+  private async actorFor(adminUserId: string | undefined) {
+    const session = await this.access.requirePermission(adminUserId, PRODUCT_EDIT_ACTION);
+    const employeeId = session.adminUser?.linkedEmployeeId;
+    const employee = employeeId
+      ? await prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, status: true } })
+      : null;
+    if (!employee || employee.status !== EmployeeStatus.ACTIVE) {
+      throw new ForbiddenException("Ask an administrator to link this account to an active employee before changing product configuration.");
+    }
+    return { adminUserId: session.adminUser!.id, employeeId: employee.id };
+  }
+
+  private async save(document: ProductTaxonomyDocument, actor: { adminUserId: string; employeeId: string }, action: string, before: unknown, after: unknown) {
     await prisma.$transaction([
       prisma.systemSetting.upsert({
         where: { key: PRODUCT_TAXONOMY_SETTING_KEY },
@@ -89,7 +101,8 @@ export class OperationsProductFactoryAdminService {
       prisma.auditLog.create({
         data: {
           actorType: ActorType.EMPLOYEE,
-          actorId: adminUserId ?? "unknown",
+          actorId: actor.employeeId,
+          actorAdminUserId: actor.adminUserId,
           sourceApp: SourceApp.OPERATIONS,
           module: "PRODUCT_FACTORY",
           entityType: "SystemSetting",

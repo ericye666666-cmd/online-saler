@@ -318,15 +318,16 @@ jobs:
             --retry-delay 5 \
             "${SERVICE_URL}/health"
 
+      - name: Authenticate deployment smoke checks
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+          STAGING_ADMIN_LOGIN: superadmin
+          STAGING_ADMIN_PASSWORD: ChangeMe43!
+        run: node scripts/verify-staging-image-processing.mjs --authenticate
+
       - name: Verify product creation
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
-            "${SERVICE_URL}/operations/access/login")"
-          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
           PRODUCT_CODE="DEPLOY-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           RESPONSE="$(curl \
@@ -337,27 +338,23 @@ jobs:
             --retry-delay 3 \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\"}" \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
             "${SERVICE_URL}/products")"
 
           echo "${RESPONSE}"
           echo "${RESPONSE}" | grep -q '"status":"DRAFT"'
-          echo "${RESPONSE}" | grep -q '"createdByEmployeeId":"00000000-0000-4000-8000-000000000001"'
+          echo "${RESPONSE}" | grep -Fq "\"createdByEmployeeId\":\"${STAGING_SMOKE_EMPLOYEE_ID}\""
 
       - name: Verify real image upload and retrieval
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
-            "${SERVICE_URL}/operations/access/login")"
-          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
           PRODUCT_CODE="UPLOAD-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           PRODUCT_RESPONSE="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\"}" \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
             "${SERVICE_URL}/products")"
           PRODUCT_ID="$(printf '%s' "${PRODUCT_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
 
@@ -367,9 +364,8 @@ jobs:
             --request POST \
             --header "Content-Type: image/png" \
             --header "X-Image-Type: FRONT" \
-            --header "X-Employee-Id: 00000000-0000-4000-8000-000000000001" \
-            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
             --data-binary @/tmp/product-test.png \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
             "${SERVICE_URL}/products/${PRODUCT_ID}/images/upload")"
 
           echo "${IMAGE_RESPONSE}"
@@ -384,8 +380,6 @@ jobs:
       - name: Verify image cutout auto routing
         env:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
-          STAGING_ADMIN_LOGIN: superadmin
-          STAGING_ADMIN_PASSWORD: ChangeMe43!
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -394,39 +388,30 @@ jobs:
       - name: Verify Operations workspace API
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
-            "${SERVICE_URL}/operations/access/login")"
-          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
 
           SUMMARY="$(curl --fail-with-body --silent --show-error \
-            "${SERVICE_URL}/operations/workspace/summary?employeeId=00000000-0000-4000-8000-000000000001&adminUserId=${ADMIN_USER_ID}")"
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
+            "${SERVICE_URL}/operations/workspace/summary")"
           echo "${SUMMARY}"
           echo "${SUMMARY}" | grep -q '"completedToday"'
 
           START="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
+            --data "{}" \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
             "${SERVICE_URL}/operations/workspace/start")"
           echo "${START}"
           echo "${START}" | grep -q '"product"'
-          echo "${START}" | grep -q '"employeeId":"00000000-0000-4000-8000-000000000001"'
+          echo "${START}" | grep -Fq "\"employeeId\":\"${STAGING_SMOKE_EMPLOYEE_ID}\""
 
       - name: Verify product control API
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
-            "${SERVICE_URL}/operations/access/login")"
-          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
 
           CONTROL_SUMMARY="$(curl --fail-with-body --silent --show-error \
-            "${SERVICE_URL}/operations/product-control/summary?adminUserId=${ADMIN_USER_ID}")"
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
+            "${SERVICE_URL}/operations/product-control/summary")"
           echo "${CONTROL_SUMMARY}"
           echo "${CONTROL_SUMMARY}" | grep -q '"readyForPrice"'
           echo "${CONTROL_SUMMARY}" | grep -q '"readyToPublish"'
@@ -434,7 +419,8 @@ jobs:
           echo "${CONTROL_SUMMARY}" | grep -q '"published"'
 
           CONTROL_PRODUCTS="$(curl --fail-with-body --silent --show-error \
-            "${SERVICE_URL}/operations/product-control/products?adminUserId=${ADMIN_USER_ID}")"
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
+            "${SERVICE_URL}/operations/product-control/products")"
           echo "${CONTROL_PRODUCTS}" | grep -q '^\['
 
       - name: Verify public storefront products API
@@ -454,17 +440,12 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.run_live_openai_smoke
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
-          ADMIN_RESPONSE="$(curl --fail-with-body --show-error --silent \
-            --request POST \
-            --header "Content-Type: application/json" \
-            --data '{"login":"superadmin","password":"ChangeMe43!"}' \
-            "${SERVICE_URL}/operations/access/login")"
-          ADMIN_USER_ID="$(printf '%s' "${ADMIN_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).adminUser.id))')"
           PRODUCT_CODE="OPENAI-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           PRODUCT_RESPONSE="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productCode\":\"${PRODUCT_CODE}\",\"employeeId\":\"00000000-0000-4000-8000-000000000001\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
+            --data "{\"productCode\":\"${PRODUCT_CODE}\"}" \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
             "${SERVICE_URL}/products")"
           PRODUCT_ID="$(printf '%s' "${PRODUCT_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
 
@@ -499,21 +480,26 @@ jobs:
             --request POST \
             --header "Content-Type: image/png" \
             --header "X-Image-Type: FRONT" \
-            --header "X-Employee-Id: 00000000-0000-4000-8000-000000000001" \
-            --header "X-Admin-User-Id: ${ADMIN_USER_ID}" \
             --data-binary @/tmp/openai-test.png \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
             "${SERVICE_URL}/products/${PRODUCT_ID}/images/upload")"
           IMAGE_ID="$(printf '%s' "${IMAGE_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).id))')"
 
           AI_RESPONSE="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/json" \
-            --data "{\"productId\":\"${PRODUCT_ID}\",\"imageIds\":[\"${IMAGE_ID}\"],\"promptVersion\":\"product-v1\",\"adminUserId\":\"${ADMIN_USER_ID}\"}" \
+            --data "{\"productId\":\"${PRODUCT_ID}\",\"imageIds\":[\"${IMAGE_ID}\"],\"promptVersion\":\"product-v1\"}" \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
             "${SERVICE_URL}/ai-jobs")"
 
           echo "${AI_RESPONSE}"
           echo "${AI_RESPONSE}" | grep -q '"status":"SUCCEEDED"'
           echo "${AI_RESPONSE}" | grep -q '"provider":"openai"'
+          AI_JOB_ID="$(printf '%s' "${AI_RESPONSE}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).extractionId))')"
+          AI_STATUS="$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
+            "${SERVICE_URL}/ai-jobs/${AI_JOB_ID}")"
+          echo "${AI_STATUS}" | grep -q '"status":"SUCCEEDED"'
 
       - name: Configure staging smoke-test cleanup job
         run: |

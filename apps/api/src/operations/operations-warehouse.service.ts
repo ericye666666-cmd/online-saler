@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import {
   ActorType,
   ConditionGrade,
+  EmployeeStatus,
   InventoryItemStatus,
   InventoryMovementType,
   Prisma,
@@ -33,7 +34,7 @@ type LocationListInput = {
 
 type LocationActor = {
   adminUserId: string;
-  employeeId: string | null;
+  employeeId: string;
   actorType: ActorType;
 };
 
@@ -426,10 +427,17 @@ export class OperationsWarehouseService {
 
   private async actorFor(adminUserId: string | undefined, permission: string): Promise<LocationActor> {
     const session = await this.access.requirePermission(adminUserId, permission);
+    const employeeId = session.adminUser?.linkedEmployeeId;
+    const employee = employeeId
+      ? await prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, status: true } })
+      : null;
+    if (!employee || employee.status !== EmployeeStatus.ACTIVE) {
+      throw new ForbiddenException("Ask an administrator to link this account to an active employee before recording warehouse work.");
+    }
     return {
       adminUserId: session.adminUser!.id,
-      employeeId: session.adminUser?.linkedEmployee?.id ?? null,
-      actorType: session.adminUser?.linkedEmployee?.id ? ActorType.EMPLOYEE : ActorType.SYSTEM
+      employeeId: employee.id,
+      actorType: ActorType.EMPLOYEE
     };
   }
 }

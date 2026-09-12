@@ -1,7 +1,6 @@
 import { pbkdf2Sync, randomBytes } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const modules = ["product", "orders", "affiliate", "customer-service", "analytics", "system"];
 const actions = ["view", "create", "edit", "approve", "publish", "delete", "export", "manage-users", "manage-roles"];
@@ -86,6 +85,14 @@ const permissions = [
     description: "Open product review, pricing, warehouse placement, and publish controls."
   },
   {
+    code: "page.product.details",
+    module: "product",
+    scope: "PAGE",
+    page: "product-details",
+    action: "view",
+    description: "Open generated product detail review and approval controls."
+  },
+  {
     code: "page.system.accounts",
     module: "system",
     scope: "PAGE",
@@ -159,6 +166,7 @@ const roles = [
       ...readAllModules,
       "page.product.digitalization",
       "page.product.control",
+      "page.product.details",
       "page.orders.workbench",
       "page.orders.all",
       "page.orders.after-sale",
@@ -235,7 +243,7 @@ const roles = [
     code: "FINANCE",
     name: "Finance",
     description: "Payment, payout, commission, and export access.",
-    permissions: ["module.orders", "module.affiliate", "module.analytics", "action.orders.view", "action.orders.export", "action.affiliate.view", "action.affiliate.approve", "action.affiliate.export", "action.analytics.view", "action.analytics.export", "analytics.warehouse.view"]
+    permissions: ["module.orders", "module.affiliate", "module.analytics", "action.orders.view", "orders.view", "action.orders.export", "action.affiliate.view", "action.affiliate.approve", "action.affiliate.export", "action.analytics.view", "action.analytics.export", "analytics.warehouse.view"]
   },
   {
     code: "DATA_ANALYST",
@@ -268,7 +276,7 @@ function hashPassword(password, salt = randomBytes(16).toString("hex")) {
   return `pbkdf2_sha256$120000$${salt}$${digest}`;
 }
 
-try {
+export async function seedStagingBaseline(prisma) {
   for (const permission of permissions) {
     await prisma.permission.upsert({
       where: { code: permission.code },
@@ -284,50 +292,31 @@ try {
   }
 
   for (const role of roles) {
-    const savedRole = await prisma.role.upsert({
+    // The baseline defines defaults only for a new role. An existing role may
+    // have deliberately restricted permissions, including an empty set.
+    await prisma.role.upsert({
       where: { code: role.code },
-      update: {
-        name: role.name,
-        description: role.description
-      },
+      update: {},
       create: {
         code: role.code,
         name: role.name,
-        description: role.description
+        description: role.description,
+        permissions: {
+          create: role.permissions.map((code) => ({ permission: { connect: { code } } }))
+        }
       }
     });
-
-    await prisma.rolePermission.deleteMany({ where: { roleId: savedRole.id } });
-    for (const permissionCode of role.permissions) {
-      const permission = await prisma.permission.findUnique({ where: { code: permissionCode } });
-      if (!permission) continue;
-      await prisma.rolePermission.create({
-        data: {
-          roleId: savedRole.id,
-          permissionId: permission.id
-        }
-      });
-    }
   }
 
   const employee = await prisma.employee.upsert({
     where: { employeeCode: linkedEmployee.employeeCode },
-    update: {
-      name: linkedEmployee.name,
-      status: linkedEmployee.status
-    },
+    update: {},
     create: linkedEmployee
   });
 
   const adminUser = await prisma.adminUser.upsert({
     where: { loginAccount: superAdmin.loginAccount },
-    update: {
-      name: superAdmin.name,
-      email: superAdmin.email,
-      phone: superAdmin.phone,
-      status: superAdmin.status,
-      linkedEmployeeId: employee.id
-    },
+    update: {},
     create: {
       id: superAdmin.id,
       name: superAdmin.name,
@@ -336,30 +325,14 @@ try {
       phone: superAdmin.phone,
       passwordHash: hashPassword(superAdmin.password),
       status: superAdmin.status,
-      linkedEmployeeId: employee.id
+      linkedEmployeeId: employee.id,
+      roles: { create: { role: { connect: { code: superAdmin.roleCode } } } }
     }
   });
 
-  const role = await prisma.role.findUnique({ where: { code: superAdmin.roleCode } });
-  if (role) {
-    await prisma.userRole.upsert({
-      where: {
-        adminUserId_roleId: {
-          adminUserId: adminUser.id,
-          roleId: role.id
-        }
-      },
-      update: {},
-      create: {
-        adminUserId: adminUser.id,
-        roleId: role.id
-      }
-    });
-  }
-
   await prisma.systemSetting.upsert({
     where: { key: "affiliate.defaultCommissionRateBps" },
-    update: { valueJson: 1000, scope: "GLOBAL" },
+    update: {},
     create: {
       key: "affiliate.defaultCommissionRateBps",
       valueJson: 1000,
@@ -369,15 +342,7 @@ try {
 
   const affiliate = await prisma.affiliate.upsert({
     where: { affiliateCode: "DL-AFF-001" },
-    update: {
-      slug: "staging-affiliate",
-      displayName: "Staging Affiliate",
-      phone: "+254700000046",
-      email: "affiliate@online-saler.local",
-      status: "ACTIVE",
-      commissionRateBps: 1000,
-      disabledAt: null
-    },
+    update: {},
     create: {
       affiliateCode: "DL-AFF-001",
       slug: "staging-affiliate",
@@ -391,14 +356,7 @@ try {
 
   await prisma.affiliateLink.upsert({
     where: { linkCode: "DL-AFF-001-STORE-WA" },
-    update: {
-      affiliateId: affiliate.id,
-      type: "STORE",
-      landingPath: "/",
-      source: "whatsapp",
-      placement: "direct-message",
-      campaign: "staging"
-    },
+    update: {},
     create: {
       affiliateId: affiliate.id,
       linkCode: "DL-AFF-001-STORE-WA",
@@ -410,7 +368,16 @@ try {
     }
   });
 
-  console.log(`Staging admin access baseline ready: ${adminUser.loginAccount}`);
-} finally {
-  await prisma.$disconnect();
+  return { adminUserId: adminUser.id, loginAccount: adminUser.loginAccount };
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const { PrismaClient } = await import("@prisma/client");
+  const prisma = new PrismaClient();
+  try {
+    const result = await seedStagingBaseline(prisma);
+    console.log(`Staging admin access baseline ready: ${result.loginAccount}`);
+  } finally {
+    await prisma.$disconnect();
+  }
 }

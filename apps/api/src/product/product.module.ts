@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { OperationsAccessModule } from "../operations/operations-access.module";
 import { LightweightBackgroundRemovalProvider } from "./lightweight-background-removal.provider";
 import { LightweightGarmentBalanceProvider } from "./lightweight-garment-balance.provider";
 import { OpenAIProductDisplayImageProvider } from "./openai-product-display-image.provider";
@@ -27,6 +28,7 @@ import { SelectedBackgroundRemovalProvider } from "./selected-background-removal
 import { ProductStateMachine } from "./product-state-machine";
 
 @Module({
+  imports: [OperationsAccessModule],
   controllers: [
     ProductSetupController,
     ProductCalibrationController,

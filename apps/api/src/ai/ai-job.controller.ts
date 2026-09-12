@@ -1,21 +1,22 @@
 import { Body, Controller, Get, Headers, Param, Post } from "@nestjs/common";
 import type { AIExtractionRequest } from "@online-saler/shared-types";
-import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
+import { OperationsRequestIdentity } from "../operations/operations-request-identity";
 import { AIJobService } from "./ai-job.service";
 
 @Controller("ai-jobs")
 export class AIJobController {
-  constructor(private readonly service: AIJobService) {}
+  constructor(private readonly service: AIJobService, private readonly identity: OperationsRequestIdentity) {}
 
   @Post()
-  async submit(@Body() body: AIExtractionRequest & { adminUserId?: string }) {
-    await requireAdminPermission(body.adminUserId, "action.product.edit");
-    return this.service.submit(body);
+  async submit(@Headers("authorization") authorization: string | undefined, @Body() body: AIExtractionRequest & { adminUserId?: string }) {
+    const session = await this.identity.permission(authorization, "action.product.edit");
+    const input = { ...body, adminUserId: session.adminUser!.id };
+    return this.service.submit(input);
   }
 
   @Get(":id")
-  async get(@Param("id") id: string, @Headers(ADMIN_USER_HEADER) adminUserId?: string) {
-    await requireAdminPermission(adminUserId, "page.product.digitalization");
+  async get(@Param("id") id: string, @Headers("authorization") authorization?: string) {
+    await this.identity.permission(authorization, "page.product.digitalization");
     return this.service.get(id);
   }
 }

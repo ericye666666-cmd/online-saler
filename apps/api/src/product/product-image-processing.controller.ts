@@ -18,7 +18,7 @@ import {
   type SelectProductMainImageRequest,
   type StartImageProcessingRequest
 } from "@online-saler/shared-types";
-import { ADMIN_USER_HEADER, requireAdminPermission } from "../operations/operations-access-check";
+import { OperationsRequestIdentity } from "../operations/operations-request-identity";
 import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
 import { ProductImageProcessingService } from "./product-image-processing.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
@@ -28,7 +28,8 @@ export class ProductImageProcessingController {
   constructor(
     private readonly imageProcessing: ProductImageProcessingService,
     private readonly jobRunner: ProductImageJobRunnerService,
-    private readonly storage: ProductImageStorageService
+    private readonly storage: ProductImageStorageService,
+    private readonly identity: OperationsRequestIdentity
   ) {}
 
   @Post("products/:productId/images/:imageId/processing-jobs")
@@ -36,9 +37,9 @@ export class ProductImageProcessingController {
     @Param("productId") productId: string,
     @Param("imageId") imageId: string,
     @Body() body: StartImageProcessingRequest,
-    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+    @Headers("authorization") authorization?: string
   ) {
-    await requireAdminPermission(adminUserId, "action.product.edit");
+    await this.identity.permission(authorization, "action.product.edit");
     if (!body?.operation || !isImageProcessingOperation(body.operation)) {
       throw new BadRequestException("A supported operation is required");
     }
@@ -54,9 +55,9 @@ export class ProductImageProcessingController {
   async run(
     @Param("jobId") jobId: string,
     @Body() body: RunImageProcessingRequest | undefined,
-    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+    @Headers("authorization") authorization?: string
   ) {
-    await requireAdminPermission(adminUserId, "action.product.edit");
+    await this.identity.permission(authorization, "action.product.edit");
     if (
       body?.backgroundRemovalMode &&
       !isBackgroundRemovalMode(body.backgroundRemovalMode)
@@ -69,9 +70,9 @@ export class ProductImageProcessingController {
   @Get("products/:productId/image-comparison")
   async comparison(
     @Param("productId") productId: string,
-    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+    @Headers("authorization") authorization?: string
   ) {
-    await requireAdminPermission(adminUserId, "page.product.digitalization");
+    await this.identity.permission(authorization, "page.product.digitalization");
     return this.imageProcessing.getComparison(productId);
   }
 
@@ -99,9 +100,9 @@ export class ProductImageProcessingController {
   async selectMainImage(
     @Param("productId") productId: string,
     @Body() body: SelectProductMainImageRequest,
-    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+    @Headers("authorization") authorization?: string
   ) {
-    await requireAdminPermission(adminUserId, "action.product.edit");
+    await this.identity.permission(authorization, "action.product.edit");
     if (!body?.imageId?.trim()) throw new BadRequestException("imageId is required");
     return this.imageProcessing.selectMainImage(
       { productId, imageId: body.imageId.trim() },
@@ -115,9 +116,9 @@ export class ProductImageProcessingController {
     @Param("imageId") imageId: string,
     @Req() request: any,
     @Headers("content-type") contentType?: string,
-    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+    @Headers("authorization") authorization?: string
   ) {
-    await requireAdminPermission(adminUserId, "action.product.edit");
+    await this.identity.permission(authorization, "action.product.edit");
     if (contentType?.split(";", 1)[0]?.trim().toLowerCase() !== "image/png") {
       throw new BadRequestException("Manual cutout must be uploaded as image/png");
     }
@@ -130,9 +131,9 @@ export class ProductImageProcessingController {
     @Param("productId") productId: string,
     @Param("imageId") imageId: string,
     @Body() body: { points?: unknown },
-    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+    @Headers("authorization") authorization?: string
   ) {
-    await requireAdminPermission(adminUserId, "action.product.edit");
+    await this.identity.permission(authorization, "action.product.edit");
     return this.imageProcessing.saveGuidedCutout({
       productId,
       sourceImageId: imageId,
@@ -144,9 +145,9 @@ export class ProductImageProcessingController {
   async retry(
     @Param("jobId") jobId: string,
     @Body() body: RetryImageProcessingRequest,
-    @Headers(ADMIN_USER_HEADER) adminUserId?: string
+    @Headers("authorization") authorization?: string
   ) {
-    await requireAdminPermission(adminUserId, "action.product.edit");
+    await this.identity.permission(authorization, "action.product.edit");
     return this.imageProcessing.retry({ jobId, reason: body?.reason });
   }
 }

@@ -1,14 +1,15 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { OperationsRequestIdentity } from "./operations-request-identity";
+import { Controller, Get, Headers, Query } from "@nestjs/common";
 import { FulfillmentMethod } from "@online-saler/database";
 import { OperationsAnalyticsService, type AnalyticsFilters } from "./operations-analytics.service";
 
 @Controller("operations/analytics")
 export class OperationsAnalyticsController {
-  constructor(private readonly analytics: OperationsAnalyticsService) {}
+  constructor(private readonly analytics: OperationsAnalyticsService, private readonly identity: OperationsRequestIdentity) {}
 
   @Get("dashboard")
-  dashboard(
-    @Query("adminUserId") adminUserId?: string,
+  async dashboard(
+    @Headers("authorization") authorization?: string,
     @Query("dateFrom") dateFrom?: string,
     @Query("dateTo") dateTo?: string,
     @Query("category") category?: string,
@@ -17,7 +18,7 @@ export class OperationsAnalyticsController {
     @Query("fulfillmentMethod") fulfillmentMethod?: FulfillmentMethod
   ) {
     return this.analytics.dashboard(cleanFilters({
-      adminUserId,
+      adminUserId: await this.identity.adminId(authorization),
       dateFrom,
       dateTo,
       category,
