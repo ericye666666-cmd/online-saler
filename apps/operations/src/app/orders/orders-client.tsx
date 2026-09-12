@@ -589,7 +589,7 @@ function OrderItemImage({ src, alt }: { src?: string | null; alt: string }) {
       </div>
     );
   }
-  return <img src={src} alt={alt} className="size-full object-contain" onError={() => setFailed(true)} />;
+  return <img src={src.startsWith("/") && !src.startsWith("/api-proxy/") ? `/api-proxy${src}` : src} alt={alt} loading="lazy" decoding="async" className="size-full object-contain" onError={() => setFailed(true)} />;
 }
 
 function OrderActions({ order, session, busy, onDialog, onDirect }: {

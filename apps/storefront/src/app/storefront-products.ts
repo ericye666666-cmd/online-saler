@@ -36,6 +36,7 @@ export type PublicProductDetail = {
 };
 
 export type PublicProduct = {
+  availability?: "AVAILABLE" | "RESERVED" | "SOLD";
   id: string;
   productCode: string;
   barcode: string | null;

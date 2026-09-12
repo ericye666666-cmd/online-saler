@@ -937,7 +937,7 @@ export class OperationsFulfillmentService {
             images: {
               orderBy: { sortOrder: "asc" },
               take: 1,
-              select: { publicUrl: true, originalUrl: true }
+              select: { id: true, publicUrl: true }
             }
           }
         }
@@ -966,7 +966,7 @@ export class OperationsFulfillmentService {
         const currentImage = inventoryItem?.product.images[0];
         return {
           ...item,
-          displayImageUrl: currentImage?.publicUrl || currentImage?.originalUrl || item.snapshot?.imageUrl || null,
+          displayImageUrl: item.snapshot?.imageUrl || currentImage?.publicUrl || (currentImage ? `/products/${item.productId}/images/${currentImage.id}/content` : null),
           inventoryItem: inventoryItem ? {
             id: inventoryItem.id,
             barcode: inventoryItem.barcode,

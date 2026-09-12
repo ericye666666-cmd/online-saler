@@ -106,7 +106,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
               <h2>{t("order.fulfillment")}</h2>
               <dl>
                 <div><dt>{t("order.method")}</dt><dd>{order.fulfillmentMethod === "PICKUP" ? t("checkout.pickup") : t("checkout.delivery")}</dd></div>
-                <div><dt>{t("order.deliveryFee")}</dt><dd>{moneyKsh(order.deliveryFeeKsh)}</dd></div>
+                <div><dt>{t("order.deliveryFee")}</dt><dd>{order.deliveryFeeKsh === 0 ? t("order.free") : moneyKsh(order.deliveryFeeKsh)}</dd></div>
                 <div><dt>{t("order.address")}</dt><dd>{order.deliveryAddress ?? t("checkout.pickup")}</dd></div>
                 <div><dt>{t("order.note")}</dt><dd>{order.deliveryNote ?? "—"}</dd></div>
               </dl>

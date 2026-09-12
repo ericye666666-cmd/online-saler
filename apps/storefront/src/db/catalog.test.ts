@@ -91,3 +91,10 @@ test("shoe measurements never include garment values; apparel behavior remains i
   assert.equal(apparel.detail?.measurements[0]?.type, "CHEST_WIDTH");
   assert.equal(apparel.detail?.assets.some((asset) => asset.type === "MEASUREMENT_GUIDE"), true);
 });
+
+
+test("catalog preserves unavailable status so purchase controls stay disabled", () => {
+  assert.equal(toCatalogProduct({ ...shoe, availability: "SOLD" }).status, "Sold");
+  assert.equal(toCatalogProduct({ ...shoe, availability: "RESERVED" }).status, "Reserved");
+  assert.equal(toCatalogProduct({ ...shoe, availability: "AVAILABLE" }).status, "Available");
+});

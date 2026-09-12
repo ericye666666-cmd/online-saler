@@ -87,7 +87,7 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
     material: display(product.material || (!isShoe && (product.detail.fabricWeight || product.fabricWeight)) || "Not specified"),
     color,
     store: "Kikuyu",
-    status: "Available",
+    status: product.availability === "SOLD" ? "Sold" : product.availability === "RESERVED" ? "Reserved" : "Available",
     condition: condition as Product["condition"],
     image,
     ogImage: image,
