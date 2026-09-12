@@ -122,7 +122,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           <span>{product.title}</span>
         </nav>
 
-        <aside className="productAvailabilityNotice">{t(isShoe ? "product.pairAvailabilityNotice" : "product.availabilityNotice")}</aside>
+        <aside className="productAvailabilityNotice">{t(product.status === "Sold" ? "product.sold" : product.status === "Reserved" ? "product.reserved" : isShoe ? "product.pairAvailabilityNotice" : "product.availabilityNotice")}</aside>
 
         <section className="productDetailGrid">
           <ProductGallery items={gallery} productTitle={product.title} />
@@ -133,7 +133,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             <ProductSaveButton productTitle={product.title} />
             <div className="commercePriceRow">
               <strong>{formatPrice(product.price)}</strong>
-              <span>{t(isShoe ? "product.onlyOnePair" : "product.onlyOne")}</span>
+              <span>{t(product.status === "Sold" ? "product.sold" : product.status === "Reserved" ? "product.reserved" : isShoe ? "product.onlyOnePair" : "product.onlyOne")}</span>
             </div>
 
             <dl className="quickFacts" aria-label="Item summary">

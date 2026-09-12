@@ -82,7 +82,7 @@ export class StorefrontProductsController {
 
     const product = await prisma.product.findFirst({
       where: {
-        ...basePublicWhere(),
+        ...publicDetailWhere(),
         OR: [{ id }, { productCode: id }, { barcode: id }]
       },
       include: productInclude()
@@ -98,6 +98,7 @@ export class StorefrontProductsController {
 
 function productInclude() {
   return {
+    inventoryItem: { select: { status: true } },
     images: {
       orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }]
     },
@@ -140,6 +141,18 @@ function basePublicWhere(): Prisma.ProductWhereInput {
         status: InventoryItemStatus.AVAILABLE
       }
     }
+  };
+}
+
+// Detail stays visible after purchase; list/filter visibility remains available-only.
+export function publicDetailWhere(): Prisma.ProductWhereInput {
+  return {
+    ...basePublicWhere(),
+    inventoryItem: { is: { status: { in: [
+      InventoryItemStatus.AVAILABLE, InventoryItemStatus.RESERVED,
+      InventoryItemStatus.PAID, InventoryItemStatus.PICKED,
+      InventoryItemStatus.PACKED, InventoryItemStatus.DELIVERED
+    ] } } }
   };
 }
 
@@ -205,6 +218,7 @@ function unique(values: Array<string | null>): string[] {
 }
 
 type ProductWithPublicRelations = Awaited<ReturnType<typeof prisma.product.findMany>>[number] & {
+  inventoryItem?: { status: InventoryItemStatus } | null;
   images: Array<{
     id: string;
     type: string;
@@ -293,7 +307,9 @@ export function publicProduct(product: ProductWithPublicRelations) {
     fabricWeight: isShoe ? null : product.fabricWeight,
     priceKsh: product.priceKsh,
     publishedAt: product.publishedAt,
-    onlyOneAvailable: true,
+    availability: product.inventoryItem?.status === InventoryItemStatus.RESERVED ? "RESERVED" as const
+      : product.inventoryItem && product.inventoryItem.status !== InventoryItemStatus.AVAILABLE ? "SOLD" as const : "AVAILABLE" as const,
+    onlyOneAvailable: !product.inventoryItem || product.inventoryItem.status === InventoryItemStatus.AVAILABLE,
     images,
     measurements: product.measurements
       .filter((measurement) => !isShoe || (measurement.measurementType === "INSOLE_LENGTH"

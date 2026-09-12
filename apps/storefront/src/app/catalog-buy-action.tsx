@@ -52,7 +52,7 @@ export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
           {available ? (saving === "buy" ? t("product.openingCheckout") : t("product.buyNow")) : t("common.unavailable")}
         </button>
       </div>
-      <p>{t("product.notReserved")}</p>
+      {available ? <p>{t("product.notReserved")}</p> : null}
       {message ? <p className="catalogBuyMessage" role="status">{message}</p> : null}
     </div>
   );

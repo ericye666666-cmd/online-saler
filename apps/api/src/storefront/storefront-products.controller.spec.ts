@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ProductDetailStatus } from "@online-saler/database";
-import { publicDetail, publicProduct } from "./storefront-products.controller";
+import { publicDetail, publicProduct, publicDetailWhere } from "./storefront-products.controller";
 
 test("public product remains available when no approved detail exists", () => {
   const product = publicProduct({
@@ -145,4 +145,21 @@ test("shoe API exposes only human measured insole lengths", () => {
     ],
   })).measurements;
   assert.deepEqual(measurements, [{ type: "INSOLE_LENGTH", valueCm: "27.5" }]);
+});
+
+
+test("paid and reserved detail preserves public display but never claims available stock", () => {
+  for (const [status, availability] of [
+    ["AVAILABLE", "AVAILABLE"], ["RESERVED", "RESERVED"],
+    ["PAID", "SOLD"], ["PICKED", "SOLD"], ["PACKED", "SOLD"], ["DELIVERED", "SOLD"]
+  ]) {
+    const result = publicProduct(shoeProduct({ inventoryItem: { status } }) as never);
+    assert.equal(result.availability, availability);
+    assert.equal(result.onlyOneAvailable, status === "AVAILABLE");
+    assert.equal("inventoryItem" in result, false);
+  }
+  const where = publicDetailWhere();
+  assert.equal(where.status, "PUBLISHED", "draft, withdrawn and archived goods stay private");
+  const statuses = (where.inventoryItem as { is: { status: { in: string[] } } }).is.status.in;
+  assert.deepEqual(statuses, ["AVAILABLE", "RESERVED", "PAID", "PICKED", "PACKED", "DELIVERED"]);
 });
