@@ -12,3 +12,6 @@ export function resolveDefaultCommissionRate(value: unknown): {
   }
   return { valueBps: Math.max(0, Math.min(5000, Math.round(parsed))), source: "SYSTEM_SETTING" };
 }
+
+/** Eric-approved initial policy: applies only when creating a new commission. */
+export const LAUNCH_AFFILIATE_COMMISSION_RATE_BPS = 1000;

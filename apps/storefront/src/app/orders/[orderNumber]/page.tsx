@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { parseDeliveryAddress, deliveryMapUrl } from "@online-saler/business-rules";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "../../components/site-header";
 import { currentCustomerSession } from "../../../auth/customer-auth";
@@ -45,6 +46,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
   const order = await getCustomerOrderByNumber(orderNumber, session.customerId);
   if (!order) notFound();
 
+  const delivery = parseDeliveryAddress(order.deliveryAddress ?? "");
   const latestPayment = order.payments[0] ?? null;
   const statusInput = {
     orderStatus: order.status,
@@ -107,7 +109,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
               <dl>
                 <div><dt>{t("order.method")}</dt><dd>{order.fulfillmentMethod === "PICKUP" ? t("checkout.pickup") : t("checkout.delivery")}</dd></div>
                 <div><dt>{t("order.deliveryFee")}</dt><dd>{order.deliveryFeeKsh === 0 ? t("order.free") : moneyKsh(order.deliveryFeeKsh)}</dd></div>
-                <div><dt>{t("order.address")}</dt><dd>{order.deliveryAddress ?? t("checkout.pickup")}</dd></div>
+                <div><dt>{t("order.address")}</dt><dd>{delivery.address || t("checkout.pickup")} {delivery.point ? <a href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">Google Maps ↗</a> : null}</dd></div>
                 <div><dt>{t("order.note")}</dt><dd>{order.deliveryNote ?? "—"}</dd></div>
               </dl>
             </article>
@@ -127,6 +129,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
           </div>
 
           <div className="orderStatusActions">
+            <a className="reserve-button secondary" href={`https://wa.me/254742001507?text=${encodeURIComponent(`Hello Direct Loop, I need after-sales help with order ${order.orderNumber}.`)}`}>{t("payment.contactSupport")}</a>
             <Link className="reserve-link" href="/">{t("cart.continueShopping")}</Link>
             {!["PAID", "FULFILLING", "COMPLETED"].includes(order.status) ? <Link className="reserve-button secondary" href="/checkout">Back to checkout</Link> : null}
           </div>

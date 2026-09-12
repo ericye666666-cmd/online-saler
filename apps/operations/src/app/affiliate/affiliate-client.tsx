@@ -644,7 +644,7 @@ function AffiliatesView({
               <Field>
                 <FieldLabel>佣金 bps</FieldLabel>
                 <div className="flex gap-2">
-                  <Input placeholder="留空使用系统默认比例" value={form.commissionRateBps} onChange={(event) => onFormChange({ ...form, commissionRateBps: event.target.value })} />
+                  <Input aria-label="当前推广佣金比例" value="10%（当前统一比例）" disabled />
                   <Button disabled={busy || !form.displayName.trim()} onClick={onCreate}>创建</Button>
                 </div>
               </Field>
@@ -678,7 +678,7 @@ function AffiliatesView({
                   </TableCell>
                   <TableCell className="font-mono text-xs">{affiliate.affiliateCode}</TableCell>
                   <TableCell><StatusBadge status={affiliate.status} /></TableCell>
-                  <TableCell>{rateLabel(affiliate.commissionRateBps)}</TableCell>
+                  <TableCell>{"10%"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     点击 {affiliate._count.clicks} / 订单 {affiliate._count.orders} / 佣金 {affiliate._count.commissions}
                   </TableCell>

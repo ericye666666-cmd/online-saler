@@ -10,7 +10,7 @@ import {
   type Commission,
   prisma
 } from "@online-saler/database";
-import { resolveDefaultCommissionRate } from "@online-saler/business-rules";
+import { LAUNCH_AFFILIATE_COMMISSION_RATE_BPS } from "@online-saler/business-rules";
 import { randomBytes } from "node:crypto";
 import { OperationsAccessService } from "./operations-access.service";
 import { commissionEligibility } from "./operations-commission-policy";
@@ -457,10 +457,10 @@ export class OperationsAffiliateService {
 
   async commissionSetting(adminUserId?: string) {
     await this.access.requirePermission(adminUserId, AFFILIATE_VIEW);
-    const setting = await prisma.systemSetting.findUnique({ where: { key: DEFAULT_COMMISSION_SETTING_KEY } });
     return {
       key: DEFAULT_COMMISSION_SETTING_KEY,
-      ...resolveDefaultCommissionRate(setting?.valueJson)
+      valueBps: LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
+      source: "LAUNCH_POLICY"
     };
   }
 
