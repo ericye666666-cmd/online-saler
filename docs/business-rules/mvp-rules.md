@@ -21,10 +21,13 @@ These rules define the first 1,000-item Kikuyu MVP.
 ## Fulfillment
 
 - Kikuyu warehouse pickup is free.
-- Delivery inside the designated Kikuyu zone is 50 KSh.
-- If delivery fails due to customer contact, address, or refusal, a second delivery costs another 50 KSh.
+- Delivery is free (0 KSh) under the 2026-09-12 launch policy. The existing Kikuyu service area is unchanged.
+- Redelivery is arranged manually without an automatic delivery charge.
 
 ## Returns
+
+2026-09-12: after-sales is handled by customer service manually. The following
+existing criteria remain reference for staff; do not add automated decisions or refunds.
 
 Returns are accepted only when:
 
@@ -39,6 +42,7 @@ Return requests must be submitted within 24 hours after delivery.
 ## Affiliate
 
 - Affiliate distribution is single-level in the MVP.
+- New commissions use 10% of the paid item subtotal, excluding delivery; historical commission snapshots are preserved.
 - Attribution uses the last valid referral source.
 - Attribution expires after 7 days.
 - Commission is estimated after payment.

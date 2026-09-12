@@ -1331,3 +1331,12 @@
     white-space: normal;
   }
 }
+
+.deliveryLocationActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.deliveryLocationActions button, .deliveryPlacePreview button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 14px; border: 1px solid #dedbd6; border-radius: 10px; background: #fff; color: #28241f; cursor: pointer; }
+.deliveryLocationActions button:disabled { opacity: .55; cursor: wait; }
+.deliveryLocationMap { overflow: hidden; border: 1px solid #dedbd6; border-radius: 12px; }
+.deliveryLocationMap .deliveryMapHint { padding: 0 12px; }
+.deliveryPlaceSearch { margin: 0; padding: 12px; border: 0; min-width: 0; }
+.deliveryPlaceSearch gmp-place-autocomplete { width: 100%; }
+.deliveryPlacePreview a { text-decoration: underline; text-underline-offset: 3px; }

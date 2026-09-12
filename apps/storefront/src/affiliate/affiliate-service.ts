@@ -9,7 +9,7 @@ import {
   type AffiliateClick,
   type Commission
 } from "@online-saler/database";
-import { createAttributionExpiry, resolveDefaultCommissionRate } from "@online-saler/business-rules";
+import { createAttributionExpiry, LAUNCH_AFFILIATE_COMMISSION_RATE_BPS } from "@online-saler/business-rules";
 
 export const AFFILIATE_ATTRIBUTION_COOKIE = "direct_loop_affiliate";
 export const AFFILIATE_DEFAULT_RATE_SETTING_KEY = "affiliate.defaultCommissionRateBps";
@@ -269,7 +269,7 @@ export async function createPendingCommissionForPaidOrder(
   if (!order?.affiliateId || !order.affiliate || order.status !== OrderStatus.PAID) return null;
   if (order.commission) return order.commission;
 
-  const rateBps = order.affiliate.commissionRateBps ?? await getDefaultCommissionRateBps(tx);
+  const rateBps = LAUNCH_AFFILIATE_COMMISSION_RATE_BPS;
   const commissionAmountKsh = calculateCommissionKsh(order.itemSubtotalKsh, rateBps);
 
   return tx.commission.create({
@@ -324,10 +324,6 @@ export function calculateCommissionKsh(orderSubtotalKsh: number, rateBps: number
   return Math.round((orderSubtotalKsh * rateBps) / 10000);
 }
 
-async function getDefaultCommissionRateBps(tx: Prisma.TransactionClient): Promise<number> {
-  const setting = await tx.systemSetting.findUnique({ where: { key: AFFILIATE_DEFAULT_RATE_SETTING_KEY } });
-  return resolveDefaultCommissionRate(setting?.valueJson).valueBps;
-}
 
 function hashIp(value: string): string {
   return createHash("sha256").update(value).digest("hex");

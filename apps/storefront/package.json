@@ -17,6 +17,7 @@
     "@remotion/bundler": "4.0.505",
     "@remotion/player": "4.0.505",
     "@remotion/renderer": "4.0.505",
+    "@vis.gl/react-google-maps": "1.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jszip": "^3.10.1",

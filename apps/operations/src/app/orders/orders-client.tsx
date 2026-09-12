@@ -3,6 +3,7 @@
 import { operationsFetch } from "@/lib/operations-api";
 
 import Link from "next/link";
+import { parseDeliveryAddress, deliveryMapUrl } from "@online-saler/business-rules";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangleIcon,
@@ -93,6 +94,8 @@ type OrderRow = {
   pickupCode?: string | null;
   totalKsh: number;
   deliveryFeeKsh: number;
+  deliveryAddress?: string | null;
+  deliveryNote?: string | null;
   createdAt: string;
   customer: { displayName?: string | null; email: string; phone?: string | null };
   affiliate?: { affiliateCode: string; displayName: string } | null;
@@ -504,6 +507,7 @@ function OrderCard(props: {
   onDirect: (order: OrderRow, action: string, body?: Record<string, unknown>) => Promise<void>;
 }) {
   const { order, session, busy, showTimeline, onDialog, onDirect } = props;
+  const delivery = parseDeliveryAddress(order.deliveryAddress ?? "");
   const payment = order.payments[0];
   const fulfillment = order.fulfillment;
   const afterSales = order.customerServiceCases.filter((item) => item.issueType === "AFTER_SALE");
@@ -537,6 +541,12 @@ function OrderCard(props: {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" ? <div className="rounded-lg border p-3 text-sm space-y-2">
+          <p className="font-medium">配送地址</p>
+          <p className="whitespace-pre-wrap break-words">{delivery.address || "未填写"}</p>
+          {delivery.point ? <a className="underline" href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">打开 Google Maps 配送位置 ↗</a> : null}
+          {order.deliveryNote ? <p className="whitespace-pre-wrap">配送备注：{order.deliveryNote}</p> : null}
+        </div> : null}
         <Separator />
         <div className="flex flex-col gap-3">
           {order.items.map((item, index) => {

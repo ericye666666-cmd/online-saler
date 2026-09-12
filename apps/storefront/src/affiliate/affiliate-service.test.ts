@@ -9,6 +9,24 @@ import {
   parseAffiliateCookie,
   encodeAffiliateCookie
 } from "./affiliate-service";
+import { createPendingCommissionForPaidOrder } from "./affiliate-service";
+
+async function verifyLaunchCommission() {
+  let existing: { rateBps: number; commissionAmountKsh: number } | null = null;
+  let creates = 0;
+  const tx = {
+    order: { findUnique: async () => ({ id: "paid", status: "PAID", affiliateId: "seller", affiliate: { commissionRateBps: 3000 }, itemSubtotalKsh: 300, totalKsh: 350, commission: existing }) },
+    systemSetting: { findUnique: async () => ({ valueJson: 2500 }) },
+    commission: { create: async ({ data }: { data: { rateBps: number; commissionAmountKsh: number } }) => { creates++; return data; } }
+  } as unknown as Parameters<typeof createPendingCommissionForPaidOrder>[0];
+  const commission = await createPendingCommissionForPaidOrder(tx, "paid");
+  assert.equal(commission?.rateBps, 1000, "legacy 30% override must not override the launch rate");
+  assert.equal(commission?.commissionAmountKsh, 30, "only item subtotal is commissionable");
+  existing = { rateBps: 3000, commissionAmountKsh: 90 };
+  assert.equal(await createPendingCommissionForPaidOrder(tx, "paid"), existing, "payment retries preserve historical commissions");
+  assert.equal(creates, 1);
+}
+verifyLaunchCommission().catch((error) => { console.error(error); process.exitCode = 1; });
 
 assert.equal(normalizeAffiliateCode(" dl-aff 001 "), "DL-AFF001");
 assert.equal(normalizeAffiliateCode("dl_aff-001"), "DL_AFF-001");

@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
+
+const DeliveryAddressPicker = dynamic(() => import("./delivery-address-picker"), { ssr: false });
 import {
   AlertCircle,
   ArrowRight,
@@ -8,7 +11,6 @@ import {
   Clock3,
   CreditCard,
   MessageCircle,
-  Navigation,
   PackageCheck,
   ReceiptText,
   RefreshCw,
@@ -20,7 +22,6 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { KIKUYU_DELIVERY_FEE_KSH } from "@online-saler/business-rules";
 import {
   deliveryRequiresAddress,
-  googleMapsConfigured,
   type FulfillmentChoice
 } from "../cart-checkout-ui";
 import {
@@ -72,38 +73,9 @@ type CheckoutDraft = {
   deliveryNote: string;
 };
 
-const GOOGLE_MAPS_SCRIPT_ID = "direct-loop-google-maps-places";
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const CHECKOUT_DRAFT_STORAGE_KEY = "online-saler-checkout-draft-v1";
 
-type GoogleMapsWindow = Window & {
-  google?: {
-    maps?: {
-      places?: {
-        Autocomplete: new (
-          input: HTMLInputElement,
-          options: Record<string, unknown>
-        ) => {
-          addListener: (eventName: string, handler: () => void) => { remove?: () => void };
-          getPlace: () => {
-            formatted_address?: string;
-            name?: string;
-            place_id?: string;
-            geometry?: {
-              location?: {
-                lat: () => number;
-                lng: () => number;
-              };
-            };
-          };
-        };
-      };
-    };
-  };
-  __directLoopGoogleMapsPromise?: Promise<void>;
-};
-
-export function CheckoutPageClient() {
+export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string }) {
   const [snapshot, setSnapshot] = useState<CartSnapshot | null>(null);
   const [validation, setValidation] = useState<CartValidationResponse | null>(null);
   const [state, setState] = useState<CheckoutState>("loading");
@@ -326,7 +298,7 @@ export function CheckoutPageClient() {
   const deliveryFee = reservation?.deliveryFeeKsh ?? (fulfillment === "KIKUYU_LOCAL_DELIVERY" ? KIKUYU_DELIVERY_FEE_KSH : 0);
   const total = reservation?.totalKsh ?? itemTotal + deliveryFee;
   const itemTotalLabel = hasCheckoutableItems ? moneyKsh(itemTotal) : "Not available";
-  const deliveryFeeLabel = requiresAddress ? moneyKsh(deliveryFee) : "Free";
+  const deliveryFeeLabel = deliveryFee === 0 ? "Free" : moneyKsh(deliveryFee);
   const totalLabel = hasCheckoutableItems ? moneyKsh(total) : "Not ready";
   const minutes = Math.floor(secondsRemaining / 60).toString().padStart(2, "0");
   const seconds = (secondsRemaining % 60).toString().padStart(2, "0");
@@ -427,14 +399,15 @@ export function CheckoutPageClient() {
                     />
                     <Truck size={20} />
                     <div>
-                      <span>{moneyKsh(KIKUYU_DELIVERY_FEE_KSH)}</span>
+                      <span>Free</span>
                       <strong>Kikuyu local delivery</strong>
                     </div>
                   </label>
                 </div>
 
                 {requiresAddress ? (
-                  <GoogleAddressField
+                  <DeliveryAddressPicker
+                    apiKey={mapsApiKey}
                     value={deliveryAddress}
                     onChange={setDeliveryAddress}
                     disabled={submitting}
@@ -698,127 +671,4 @@ function readCheckoutDraft(): CheckoutDraft | null {
 
 function writeCheckoutDraft(draft: CheckoutDraft) {
   window.localStorage.setItem(CHECKOUT_DRAFT_STORAGE_KEY, JSON.stringify(draft));
-}
-
-function GoogleAddressField({
-  value,
-  onChange,
-  disabled
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-}) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [mapsState, setMapsState] = useState<"manual" | "loading" | "ready">(
-    googleMapsConfigured(GOOGLE_MAPS_API_KEY) ? "loading" : "manual"
-  );
-  const [placeDetails, setPlaceDetails] = useState<{ name: string; address: string; placeId?: string } | null>(null);
-
-  useEffect(() => {
-    const apiKey = GOOGLE_MAPS_API_KEY;
-    if (!apiKey || !inputRef.current) {
-      setMapsState("manual");
-      return;
-    }
-
-    let listener: { remove?: () => void } | null = null;
-    let disposed = false;
-    setMapsState("loading");
-
-    loadGoogleMaps(apiKey)
-      .then(() => {
-        if (disposed || !inputRef.current) return;
-        const mapsWindow = window as GoogleMapsWindow;
-        const Autocomplete = mapsWindow.google?.maps?.places?.Autocomplete;
-        if (!Autocomplete) {
-          setMapsState("manual");
-          return;
-        }
-        const autocomplete = new Autocomplete(inputRef.current, {
-          componentRestrictions: { country: "ke" },
-          fields: ["formatted_address", "geometry", "name", "place_id"]
-        });
-        listener = autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace();
-          const nextAddress = place.formatted_address ?? place.name ?? inputRef.current?.value ?? "";
-          onChange(nextAddress);
-          setPlaceDetails({
-            name: place.name ?? "Selected delivery place",
-            address: nextAddress,
-            placeId: place.place_id
-          });
-        });
-        setMapsState("ready");
-      })
-      .catch(() => setMapsState("manual"));
-
-    return () => {
-      disposed = true;
-      listener?.remove?.();
-    };
-  }, [onChange]);
-
-  return (
-    <div className="deliveryAddressBox">
-      <label className="checkoutField">
-        <span>Delivery landmark or address</span>
-        <input
-          ref={inputRef}
-          autoComplete="street-address"
-          disabled={disabled}
-          name="deliveryAddress"
-          placeholder="Estate, road, shop, gate, or nearby landmark in Kikuyu"
-          required
-          value={value}
-          onChange={(event) => {
-            onChange(event.target.value);
-            setPlaceDetails(null);
-          }}
-        />
-      </label>
-      <div className={`deliveryMapStatus ${mapsState === "ready" ? "ready" : ""}`}>
-        <Navigation size={16} />
-        <span>
-          {mapsState === "ready"
-            ? "Google address suggestions are ready. Choose one or keep typing your landmark."
-            : mapsState === "loading"
-              ? "Loading Google address suggestions..."
-              : "You can type a landmark manually. Customer service will confirm it after payment."}
-        </span>
-      </div>
-      {placeDetails ? (
-        <div className="deliveryPlacePreview">
-          <strong>{placeDetails.name}</strong>
-          <span>{placeDetails.address}</span>
-        </div>
-      ) : null}
-      <p className="deliveryMapHint">No exact pin is required now. Delivery is limited to Kikuyu local area and arranged by customer service after payment.</p>
-    </div>
-  );
-}
-
-function loadGoogleMaps(apiKey: string): Promise<void> {
-  const mapsWindow = window as GoogleMapsWindow;
-  if (mapsWindow.google?.maps?.places) return Promise.resolve();
-  if (mapsWindow.__directLoopGoogleMapsPromise) return mapsWindow.__directLoopGoogleMapsPromise;
-
-  mapsWindow.__directLoopGoogleMapsPromise = new Promise<void>((resolve, reject) => {
-    const existing = document.getElementById(GOOGLE_MAPS_SCRIPT_ID) as HTMLScriptElement | null;
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Google Maps failed to load")), { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = GOOGLE_MAPS_SCRIPT_ID;
-    script.async = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&loading=async`;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Google Maps failed to load"));
-    document.head.appendChild(script);
-  });
-
-  return mapsWindow.__directLoopGoogleMapsPromise;
 }
