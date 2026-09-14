@@ -4,23 +4,22 @@ import { BackgroundRemovalProviderError, type BackgroundRemovalInput } from "./b
 import type { ProductImageTransformResult } from "./product-image-transformer.service";
 
 const OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits";
-const DEFAULT_MODEL = "gpt-image-1-mini";
-const DEFAULT_QUALITY = "low";
+const DEFAULT_MODEL = "gpt-image-2.5-sunburst";
+const DEFAULT_QUALITY = "high";
 const DEFAULT_TIMEOUT_MS = 180_000;
 
-export const PRODUCT_DISPLAY_PROMPT_VERSION = "product-display-v2-original";
+export const PRODUCT_DISPLAY_PROMPT_VERSION = "product-display-v3-preserve-original";
 export const PRODUCT_DISPLAY_IMAGE_PROMPT = [
-  "Create one clean catalog display image by carefully rearranging only the exact second-hand garment in the supplied original photograph.",
-  "Preserve the garment's identity and all factual details exactly: color, material texture, print, logo, embroidery, seams, pockets, buttons, zippers, drawstrings, labels, wear, stains, holes and other defects.",
-  "Do not add, remove, replace, redraw or invent any garment detail. Do not repair or hide defects.",
-  "Use the uploaded original photo directly. Replace its surroundings with white while preserving the garment; do not recreate missing or hidden details.",
-  "Lay the garment out naturally and evenly on a pure white square background.",
-  "For tops and outerwear: level the shoulders, place both sleeves in a natural relaxed and approximately symmetric downward position, align the cuffs, center and open any hood naturally, and level the hem.",
-  "For trousers and shorts: level the waistband, straighten both legs naturally, keep the legs parallel without changing their cut, and align the hems.",
-  "For dresses and skirts: level the shoulders or waistband and spread the body and hem naturally without changing the cut or proportions.",
-  "Reduce only large accidental bunching and deep storage wrinkles. Keep normal fabric drape, construction folds and texture.",
-  "Keep the full garment visible with balanced white margins. No person, mannequin, hanger, props, text, border or decorative shadow.",
-  "Return a realistic front-facing ecommerce catalog image of this exact garment, not a redesigned or replacement garment."
+  "Edit this exact uploaded photograph into a faithful white-background product photograph. This is an evidence-preserving edit of a real second-hand garment, not an illustration, redesign, or a similar garment.",
+  "Use the supplied original photograph directly. Preserve the original garment image as closely as possible: the same pose, asymmetric silhouette, sleeve positions, collar or waistband opening, hem, folds, drape, seams, buttons, labels, material texture and color.",
+  "Crucially preserve every existing print, logo, embroidery, symbol, number and letter, including small lettering and non-Latin text, in its original position, scale, orientation and shape on the garment.",
+  "Do not redraw, simplify, substitute, repeat, relocate or invent prints or lettering. Do not replace unreadable text with guessed words or decorative marks.",
+  "Do not flatten, straighten, symmetrize, unfold, iron, widen, shorten or rearrange the garment. Do not change the viewing angle, sleeve placement, collar opening, proportions or fabric drape.",
+  "Preserve all visible wear, stains, holes, fading and other defects. Do not repair, clean away, hide or beautify them.",
+  "Replace only the surrounding background and its cast shadows with pure white. Keep the garment's own shading and texture. Preserve visible inner fabric and neck or size labels.",
+  "If a hanger, clip, mannequin or other support intersects the garment or is visible inside its opening, retain it rather than fabricating the hidden garment. Never reconstruct unseen fabric or prints.",
+  "Keep the full garment and its existing silhouette visible without cropping. If a square canvas needs extra space, add white margins; never stretch or rearrange the garment to fill the canvas.",
+  "Return one conservative edited photograph, prioritizing fidelity over prettification. No added text, captions, borders or comparison panels."
 ].join("\n");
 
 export const SHOE_DISPLAY_PROMPT_VERSION = "shoe-display-v1";
