@@ -73,9 +73,11 @@ type CheckoutDraft = {
   deliveryNote: string;
 };
 
-const CHECKOUT_DRAFT_STORAGE_KEY = "online-saler-checkout-draft-v1";
+function checkoutDraftStorageKey(customerId: string): string {
+  return `online-saler-checkout-draft-v2:${encodeURIComponent(customerId)}`;
+}
 
-export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string }) {
+export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey?: string; customerId: string }) {
   const [snapshot, setSnapshot] = useState<CartSnapshot | null>(null);
   const [validation, setValidation] = useState<CartValidationResponse | null>(null);
   const [state, setState] = useState<CheckoutState>("loading");
@@ -83,6 +85,7 @@ export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string })
   const [phone, setPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
+  const [draftCustomerId, setDraftCustomerId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [reservation, setReservation] = useState<Reservation | null>(null);
@@ -95,20 +98,19 @@ export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string })
   const reservedCartIdsRef = useRef<string[]>([]);
 
   useEffect(() => {
-    const draft = readCheckoutDraft();
-    if (draft) {
-      setPhone(draft.phone);
-      setFulfillment(draft.fulfillment);
-      setDeliveryAddress(draft.deliveryAddress);
-      setDeliveryNote(draft.deliveryNote);
-    }
+    const draft = readCheckoutDraft(customerId);
+    setPhone(draft?.phone ?? "");
+    setFulfillment(draft?.fulfillment ?? "PICKUP");
+    setDeliveryAddress(draft?.deliveryAddress ?? "");
+    setDeliveryNote(draft?.deliveryNote ?? "");
+    setDraftCustomerId(customerId);
     void loadAndValidate();
-  }, []);
+  }, [customerId]);
 
   useEffect(() => {
-    if (reservation) return;
-    writeCheckoutDraft({ phone, fulfillment, deliveryAddress, deliveryNote });
-  }, [deliveryAddress, deliveryNote, fulfillment, phone, reservation]);
+    if (reservation || draftCustomerId !== customerId) return;
+    writeCheckoutDraft(customerId, { phone, fulfillment, deliveryAddress, deliveryNote });
+  }, [customerId, draftCustomerId, deliveryAddress, deliveryNote, fulfillment, phone, reservation]);
 
   useEffect(() => {
     function handleFocus() {
@@ -156,15 +158,15 @@ export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string })
   }, [now, reservation]);
 
   async function loadAndValidate(showLoading = true): Promise<CartValidationResponse | null> {
-    const nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
-    setSnapshot(nextSnapshot);
-    if (!nextSnapshot?.items.length) {
-      setValidation(null);
-      setState("empty");
-      return null;
-    }
-    if (showLoading) setState("loading");
     try {
+      const nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
+      setSnapshot(nextSnapshot);
+      if (!nextSnapshot?.items.length) {
+        setValidation(null);
+        setState("empty");
+        return null;
+      }
+      if (showLoading) setState("loading");
       const nextValidation = await validateCart(cartProductIds(nextSnapshot));
       setValidation(nextValidation);
       setState("ready");
@@ -178,8 +180,18 @@ export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string })
   async function submitCheckout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting || reservation) return;
-    setSubmitting(true);
     setError("");
+    if (deliveryRequiresAddress(fulfillment)) {
+      if (!deliveryAddress.trim()) {
+        setError("Add a delivery address before continuing to payment.");
+        return;
+      }
+      if (deliveryAddress.length > 1500) {
+        setError("Your delivery address is too long. Edit it before continuing to payment.");
+        return;
+      }
+    }
+    setSubmitting(true);
     try {
       const freshValidation = await loadAndValidate(false);
       const payableItems = freshValidation?.items.filter((item) => item.canCheckout && item.productId) ?? [];
@@ -254,17 +266,21 @@ export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string })
     setPayment(nextPayment);
     if (paymentSucceeded(nextPayment.orderStatus, nextPayment.paymentStatus ?? nextPayment.status)) {
       removePurchasedCartItems(reservedCartIdsRef.current.length ? reservedCartIdsRef.current : reservedCartIds);
-      window.localStorage.removeItem(CHECKOUT_DRAFT_STORAGE_KEY);
+      clearCheckoutDraft(customerId);
     }
   }
 
   function removePurchasedCartItems(productIds: string[]) {
-    let nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
-    for (const productId of productIds) {
-      nextSnapshot = removeCartItem(nextSnapshot, productId);
+    try {
+      let nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
+      for (const productId of productIds) {
+        nextSnapshot = removeCartItem(nextSnapshot, productId);
+      }
+      if (!nextSnapshot?.items.length) window.localStorage.removeItem(CART_STORAGE_KEY);
+      else window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
+    } catch {
+      // Browser storage must not turn a confirmed payment into a checkout error.
     }
-    if (!nextSnapshot?.items.length) window.localStorage.removeItem(CART_STORAGE_KEY);
-    else window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
     notifyCartUpdated();
   }
 
@@ -408,6 +424,7 @@ export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string })
                 {requiresAddress ? (
                   <DeliveryAddressPicker
                     apiKey={mapsApiKey}
+                    customerId={customerId}
                     value={deliveryAddress}
                     onChange={setDeliveryAddress}
                     disabled={submitting}
@@ -415,10 +432,10 @@ export function CheckoutPageClient({ mapsApiKey = "" }: { mapsApiKey?: string })
                 ) : null}
 
                 <label className="checkoutField">
-                  <span>{fulfillment === "PICKUP" ? "Pickup note for customer service" : "Delivery note for customer service"}</span>
+                  <span>{fulfillment === "PICKUP" ? "Pickup note for customer service" : "Order note (optional)"}</span>
                   <textarea
                     name="deliveryNote"
-                    placeholder="Preferred time, nearby shop, gate colour, WhatsApp note, or anything the team should know"
+                    placeholder="Preferred time or anything else the team should know"
                     value={deliveryNote}
                     onChange={(event) => setDeliveryNote(event.target.value)}
                   />
@@ -654,21 +671,37 @@ function CheckoutEmpty({ title, body, action }: { title: string; body: string; a
   );
 }
 
-function readCheckoutDraft(): CheckoutDraft | null {
+function readCheckoutDraft(customerId: string): CheckoutDraft | null {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(CHECKOUT_DRAFT_STORAGE_KEY) ?? "null") as CheckoutDraft | null;
-    if (!parsed) return null;
+    const raw = window.localStorage.getItem(checkoutDraftStorageKey(customerId));
+    if (!raw || raw.length > 20_000) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const fields = parsed as Record<string, unknown>;
+    const text = (value: unknown, maximum: number) => typeof value === "string" && value.length <= maximum ? value : "";
     return {
-      phone: parsed.phone ?? "",
-      fulfillment: parsed.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "KIKUYU_LOCAL_DELIVERY" : "PICKUP",
-      deliveryAddress: parsed.deliveryAddress ?? "",
-      deliveryNote: parsed.deliveryNote ?? ""
+      phone: text(fields.phone, 40),
+      fulfillment: fields.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "KIKUYU_LOCAL_DELIVERY" : "PICKUP",
+      deliveryAddress: text(fields.deliveryAddress, 1500),
+      deliveryNote: text(fields.deliveryNote, 10_000)
     };
   } catch {
     return null;
   }
 }
 
-function writeCheckoutDraft(draft: CheckoutDraft) {
-  window.localStorage.setItem(CHECKOUT_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+function writeCheckoutDraft(customerId: string, draft: CheckoutDraft) {
+  try {
+    window.localStorage.setItem(checkoutDraftStorageKey(customerId), JSON.stringify(draft));
+  } catch {
+    // The current checkout stays usable if browser storage is blocked or full.
+  }
+}
+
+function clearCheckoutDraft(customerId: string) {
+  try {
+    window.localStorage.removeItem(checkoutDraftStorageKey(customerId));
+  } catch {
+    // Clearing an optional local draft is separate from payment confirmation.
+  }
 }

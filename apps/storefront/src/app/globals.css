@@ -1294,6 +1294,7 @@ select:focus-visible {
 
 .productGallery {
   display: grid;
+  min-width: 0;
   grid-template-areas: "thumbnails main";
   grid-template-columns: 104px minmax(0, 1fr);
   gap: 18px;
@@ -1353,10 +1354,35 @@ select:focus-visible {
 
 .mainProductImage {
   grid-area: main;
-  overflow: hidden;
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y pinch-zoom;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
+}
+
+.mainProductImage::-webkit-scrollbar {
+  display: none;
+}
+
+.mainProductImage:focus-visible,
+.thumbnailRail button:focus-visible,
+.productGalleryProgress button:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -3px;
+}
+
+.productGallerySlide {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .mainProductImage img {
@@ -1365,6 +1391,7 @@ select:focus-visible {
   height: auto;
   aspect-ratio: 4 / 5;
   object-fit: contain;
+  user-select: none;
 }
 
 .productPurchasePanel {
@@ -4691,15 +4718,28 @@ select:focus-visible {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
     gap: 8px;
-    padding: 16px 18px 20px;
+    padding: 0 18px;
   }
 
-  .productGalleryProgress span {
+  .productGalleryProgress button {
+    display: flex;
+    min-width: 0;
+    min-height: 44px;
+    align-items: center;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .productGalleryProgress button > span {
+    display: block;
+    width: 100%;
     height: 3px;
     background: #e1e1e1;
   }
 
-  .productGalleryProgress span.active {
+  .productGalleryProgress button.active > span {
     background: #171717;
   }
 
