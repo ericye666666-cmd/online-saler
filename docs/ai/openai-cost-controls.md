@@ -1,17 +1,16 @@
-# OpenAI cost controls — 2026-09-06
+# OpenAI cost controls — 2026-09-14
 
 Status: code and mocked request tests prepared. Production configuration,
 account-level model access, actual image quality, and billed costs are not
-verified by these tests. This updates PR #180 against the current code instead
-of importing its older branch wholesale.
+verified by these tests. The September 14 fidelity update follows an employee-reported print/shape mismatch and a user-approved conversational sample. That sample does not prove the API uses the same model or reproduces the same result.
 
 ## Configuration
 
 | Purpose | Default | Runtime override |
 | --- | --- | --- |
-| Clothing recognition and measurements | `gpt-4o-mini` | `OPENAI_VISION_MODEL` |
+| Clothing information recognition (sizes entered manually) | `gpt-4o-mini` | `OPENAI_VISION_MODEL` |
 | Copy from employee-confirmed facts | `gpt-4o-mini` | `OPENAI_DETAIL_MODEL` |
-| Required catalog display image | `gpt-image-1-mini`, `low`, 1024 square | `OPENAI_IMAGE_EDIT_MODEL`, `OPENAI_IMAGE_EDIT_QUALITY` |
+| Required catalog display image | `gpt-image-2.5-sunburst`, `high`, 1024 square | `OPENAI_IMAGE_EDIT_MODEL`, `OPENAI_IMAGE_EDIT_QUALITY` |
 
 The staging workflow sets all three models explicitly. Elsewhere, an existing
 runtime override continues to take precedence over the code default. For
@@ -21,17 +20,22 @@ vision model. Set the detail model explicitly to keep its cost independent.
 Recognition retains the full JSON field budget and employee calibration rules.
 Mini requests omit reasoning and verbosity parameters. An explicitly retained
 `gpt-5.6-sol` recognition model keeps its previous no-reasoning settings.
-Display generation remains enabled, preserves its garment-fidelity prompt, and
+Display generation remains enabled, preserves the original pose, folds, print placement and visible defects, and
 accepts explicit `low`, `medium`, `high`, or `auto` quality overrides. Generated
 images still need the normal comparison and human review before publication.
 
 OpenAI documents image input, Responses API and structured output support for
 [GPT-4o Mini](https://developers.openai.com/api/docs/models/gpt-4o-mini).
 The [image generation guide](https://developers.openai.com/api/docs/guides/image-generation)
-documents the image edits endpoint and GPT Image models; the
-[GPT Image 1 Mini model page](https://developers.openai.com/api/docs/models/gpt-image-1-mini)
-lists its low-quality 1024-square output price as USD 0.005. Image-edit requests
-also incur text and image input charges, so this is not the total per-product cost.
+documents GPT Image 2.5 Sunburst, the multipart image edits endpoint, high quality
+and 1024-square PNG output. The provider sends the original bytes directly, with
+no intermediate cutout or rearrangement instructions. It retains supports that
+intersect the garment to avoid fabricating hidden details.
+
+High-quality image editing costs more than the former mini/low configuration.
+Actual billing includes both input and output tokens. Do not reuse the old mini
+price estimate for this configuration. There is no automatic lower-quality fallback
+on model-access errors; the employee sees the failure and can report it.
 
 ## Avoiding routine deployment charges
 

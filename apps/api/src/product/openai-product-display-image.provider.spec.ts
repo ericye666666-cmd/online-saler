@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("OpenAIProductDisplayImageProvider", () => {
-  it("keeps mandatory display image generation enabled with lower-cost defaults", async () => {
+  it("uses the fidelity-focused model and high quality by default", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     delete process.env.OPENAI_IMAGE_EDIT_MODEL;
     delete process.env.OPENAI_IMAGE_EDIT_QUALITY;
@@ -39,14 +39,15 @@ describe("OpenAIProductDisplayImageProvider", () => {
       body: Buffer.from("source"), contentType: "image/png", filename: "source.png"
     });
 
-    assert.equal(submittedForm?.get("model"), "gpt-image-1-mini");
-    assert.equal(submittedForm?.get("quality"), "low");
+    assert.equal(submittedForm?.get("model"), "gpt-image-2.5-sunburst");
+    assert.equal(submittedForm?.get("quality"), "high");
     assert.equal(submittedForm?.get("size"), "1024x1024");
+    assert.equal(submittedForm?.has("input_fidelity"), false, "Do not send unsupported legacy fidelity parameters to GPT Image 2.5.");
     assert.equal(result.body.toString(), "generated-png");
-    assert.equal(result.processorVersion, `gpt-image-1-mini:${PRODUCT_DISPLAY_PROMPT_VERSION}:low`);
+    assert.equal(result.processorVersion, `gpt-image-2.5-sunburst:${PRODUCT_DISPLAY_PROMPT_VERSION}:high`);
   });
 
-  it("honors an explicit medium quality override when low is the default", async () => {
+  it("honors an explicit model and quality override", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENAI_IMAGE_EDIT_MODEL = "gpt-image-2";
     process.env.OPENAI_IMAGE_EDIT_QUALITY = "medium";
@@ -78,7 +79,7 @@ describe("OpenAIProductDisplayImageProvider", () => {
     );
   });
 
-  it("sends a high-fidelity catalog arrangement prompt and returns the edited PNG", async () => {
+  it("sends an original-preserving edit prompt and returns the edited PNG", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENAI_IMAGE_EDIT_MODEL = "gpt-image-test";
     process.env.OPENAI_IMAGE_EDIT_QUALITY = "high";
@@ -106,6 +107,11 @@ describe("OpenAIProductDisplayImageProvider", () => {
     assert.equal(submittedForm.get("size"), "1024x1024");
     assert.equal(submittedForm.get("prompt"), PRODUCT_DISPLAY_IMAGE_PROMPT);
     assert.ok(submittedForm.get("image[]") instanceof Blob);
+    assert.equal(await (submittedForm.get("image[]") as Blob).text(), "white-background-source", "The uploaded source must reach the provider unchanged.");
+    assert.match(String(submittedForm.get("prompt")), /Do not flatten, straighten, symmetrize/);
+    assert.match(String(submittedForm.get("prompt")), /retain it rather than fabricating the hidden garment/);
+    assert.match(String(submittedForm.get("prompt")), /including small lettering and non-Latin text/);
+    assert.doesNotMatch(String(submittedForm.get("prompt")), /level the shoulders|straighten both legs|Reduce only large/);
     assert.equal(result.body.toString(), "generated-png");
     assert.equal(result.contentType, "image/png");
     assert.equal(result.provider, "openai-image-edit");
@@ -130,6 +136,20 @@ describe("OpenAIProductDisplayImageProvider", () => {
     assert.match(String(submittedForm?.get("prompt")), /mirror or duplicate one shoe/);
     assert.equal(await (submittedForm?.get("image[]") as Blob).text(), "original-pair");
     assert.match(result.processorVersion, new RegExp(SHOE_DISPLAY_PROMPT_VERSION));
+  });
+
+  it("does not silently downgrade or retry when the configured image model is unavailable", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    delete process.env.OPENAI_IMAGE_EDIT_MODEL;
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response(JSON.stringify({ error: { message: "Model access unavailable" } }), { status: 403 });
+    }) as typeof fetch;
+    await assert.rejects(new OpenAIProductDisplayImageProvider().generate({
+      body: Buffer.from("original"), contentType: "image/jpeg", filename: "original.jpg"
+    }), /Model access unavailable/);
+    assert.equal(calls, 1);
   });
 
   it("rejects a successful response without image bytes", async () => {
