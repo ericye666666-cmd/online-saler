@@ -2,14 +2,19 @@
 """Shared ERP / Online Saler Deli 720 print adapter. See SOURCE.md."""
 import base64
 import binascii
+import errno
 import json
 import platform
 import re
+import socket
+import sys
+from urllib.error import URLError
+from urllib.request import ProxyHandler, build_opener
 from urllib.parse import urlparse
 import erp_agent as erp
 import legacy_product_labels as legacy
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 DEFAULT_PRINTER_NAME = "Deli DL-720C"
 ONLINE_ORIGIN = re.compile(r"^https://online-saler-operations-staging-(?:3fkoh3sliq-bq\.a|865804815203\.africa-south1)\.run\.app$|^http://(?:localhost|127\.0\.0\.1):3001$")
 _original_cors = erp._build_cors_headers
@@ -98,5 +103,60 @@ erp._normalize_print_label_request = normalize_label_payload
 erp._build_tspl_label = build_tspl_label
 erp.PrintAgentHandler = PrintAgentHandler
 
+class LocalPrintServer(erp.ThreadingHTTPServer):
+    # Windows SO_REUSEADDR can let a second helper steal an active listener.
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def existing_agent_is_current():
+    try:
+        # Local checks must not travel through a workstation's HTTP proxy.
+        opener = build_opener(ProxyHandler({}))
+        with opener.open(f"http://{erp.HOST}:{erp.PORT}/health", timeout=2) as response:
+            health = json.load(response)
+        return (health.get("status") == "ok" and health.get("version") == APP_VERSION
+                and health.get("mode") == "local-api"
+                and {"erp-labels", "online_saler_raster_v1"}.issubset(health.get("capabilities", [])))
+    except (URLError, OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def run_local_api_server():
+    try:
+        server = LocalPrintServer((erp.HOST, erp.PORT), PrintAgentHandler)
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE or getattr(exc, "winerror", None) == 10048:
+            if existing_agent_is_current():
+                print("Direct Loop print agent is already running. Return to Operations and click Detect.")
+                return 0
+            print(f"Port {erp.PORT} is already in use. Close the old ERP / Direct Loop helper window, then start this helper again.")
+            print("No running process was stopped.")
+            return 1
+        print(f"Could not start the print helper on {erp.HOST}:{erp.PORT}: {exc}")
+        return 1
+    print(f"Direct Loop ERP / Online Saler Print Agent v{APP_VERSION}", flush=True)
+    print(f"Running on http://{erp.HOST}:{erp.PORT}. Keep this window open and click Detect in Operations.", flush=True)
+    print("Press Ctrl+C to stop.", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
+def main():
+    # Double-clicking the standalone EXE must start the browser bridge.
+    if sys.argv[1:] in ([], ["local-api"]):
+        return run_local_api_server()
+    return erp.main()
+
+
 if __name__ == "__main__":
-    erp.main()
+    sys.exit(main())

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { buildLabelPrintPayload, DEFAULT_PRINT_AGENT_URL, DEFAULT_PRINTER_NAME, printerList, selectDeliPrinter, type LocalPrinter } from "../local-label-print";
+import { buildLabelPrintPayload, DEFAULT_PRINT_AGENT_URL, DEFAULT_PRINTER_NAME, PRINT_AGENT_DOWNLOAD_URL, printerList, selectDeliPrinter, type LocalPrinter } from "../local-label-print";
 import type { JsonRecord } from "../operations-workspace-flow";
 import { renderProductLabel } from "./product-label-raster";
 
@@ -92,8 +92,9 @@ export function ProductLabelPrinter({ products, initialIndex, onClose, onConfirm
     <div className="flex flex-wrap items-center gap-3 rounded border bg-muted/30 p-3 text-sm">
       <strong>{printer}</strong><span>{ready ? "已连接" : "未检测 / 未就绪"}</span><span className="text-xs text-muted-foreground">{DEFAULT_PRINT_AGENT_URL}</span>
       <Button size="sm" variant="outline" disabled={!!busy} onClick={() => void detect()}>{busy === "detect" ? "检测中…" : "检测"}</Button>
-      <Button size="sm" variant="outline" asChild><a href="/downloads/direct-loop-print-agent.zip" download>下载打印助手</a></Button>
+      <Button size="sm" variant="outline" asChild><a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">下载 Windows 打印代理</a></Button>
     </div>
+    <p className="text-sm text-muted-foreground">下载后解压，双击 DirectLoopPrintAgent.exe 启动，再点击“检测”。内置运行环境，与 ERP 共用一个代理。</p>
     <div className="grid gap-5 lg:grid-cols-2">
       <section className="rounded border p-4"><h3 className="mb-4 font-semibold">标签预览</h3>
         <div className="flex min-h-72 items-center justify-center bg-muted/40 p-4">{preview ? <img src={preview} width={480} height={320} className="h-auto w-full border bg-white" alt="60×40 mm 实际打印内容：商品名、尺码、货架位和条码" /> : <p>无法生成标签，请检查商品条码。</p>}</div>

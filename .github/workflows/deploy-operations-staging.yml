@@ -6,6 +6,9 @@ on:
       - develop
     paths:
       - "apps/operations/**"
+      - "ops/local_print_agent/**"
+      - "scripts/package-print-agent.mjs"
+      - ".github/workflows/build-print-agent-windows.yml"
       - "packages/business-rules/**"
       - "packages/shared-types/**"
       - "package.json"
@@ -25,13 +28,23 @@ env:
   SERVICE_NAME: online-saler-operations-staging
 
 jobs:
+  windows-print-agent:
+    uses: ./.github/workflows/build-print-agent-windows.yml
+
   deploy:
     name: Build and deploy Operations
+    needs: windows-print-agent
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download verified Windows print agent
+        uses: actions/download-artifact@v4
+        with:
+          name: direct-loop-print-agent-windows
+          path: apps/operations/public/downloads
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -171,3 +184,16 @@ jobs:
             echo "Operations CSS still contains unresolved Tailwind @apply directives." >&2
             exit 1
           fi
+
+      - name: Verify published Windows print-agent download
+        env:
+          OPERATIONS_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          curl --fail --show-error --silent --retry 5 \
+            "${OPERATIONS_URL}/downloads/direct-loop-print-agent.zip" \
+            --output "${RUNNER_TEMP}/published-print-agent.zip"
+          curl --fail --show-error --silent --retry 5 \
+            "${OPERATIONS_URL}/downloads/direct-loop-print-agent.json" \
+            --output "${RUNNER_TEMP}/published-print-agent.json"
+          cmp apps/operations/public/downloads/direct-loop-print-agent.zip "${RUNNER_TEMP}/published-print-agent.zip"
+          cmp apps/operations/public/downloads/direct-loop-print-agent.json "${RUNNER_TEMP}/published-print-agent.json"

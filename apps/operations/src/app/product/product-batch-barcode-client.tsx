@@ -24,7 +24,7 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { DEFAULT_LABEL_SIZE } from "../local-label-print";
+import { DEFAULT_LABEL_SIZE, PRINT_AGENT_DOWNLOAD_URL } from "../local-label-print";
 import { ProductLabelPrinter } from "./product-label-printer";
 import { productStatusLabel } from "./product-factory-display";
 
@@ -362,9 +362,12 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
           <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 5 步：打印、归位并发布</h1>
           <p className="mt-1 text-sm text-muted-foreground">展示图已逐件确认。现在打印标签，按货架位归位后确认发布。</p>
         </div>
-        {publishedCount < batch.targetCount ? (
-          <Button variant="outline" asChild><Link href={`/product/display-review?batchId=${encodeURIComponent(batch.id)}`}><AlertTriangleIcon data-icon="inline-start" />返回展示图审核</Link></Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild><a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">下载 Windows 打印代理</a></Button>
+          {publishedCount < batch.targetCount ? (
+            <Button variant="outline" asChild><Link href={`/product/display-review?batchId=${encodeURIComponent(batch.id)}`}><AlertTriangleIcon data-icon="inline-start" />返回展示图审核</Link></Button>
+          ) : null}
+        </div>
       </header>
 
       <div className="grid grid-cols-3 gap-2">
