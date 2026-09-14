@@ -27,7 +27,7 @@ import {
   isSelectableMainVariant,
   targetVariantForOperation
 } from "./product-image-processing.rules";
-import { findDerivedImageForSource } from "./product-image-comparison";
+import { findDerivedImageForSource, findDisplayImageForSource } from "./product-image-comparison";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
 import { ProductImageStorageService } from "./product-image-storage.service";
 import { hasCurrentShoeDisplaySource } from "./product-publication-evidence";
@@ -434,7 +434,7 @@ export class ProductImageProcessingService {
   async getComparison(productId: string): Promise<ProductImageComparisonResponse> {
     const product = await prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, category: true, subcategory: true }
+      select: { id: true, category: true, subcategory: true, status: true }
     });
     if (!product) throw new BadRequestException("Product not found");
 
@@ -475,6 +475,8 @@ export class ProductImageProcessingService {
     const frontTransparent = mapAsset("CUTOUT_TRANSPARENT", frontOriginal?.id ?? null);
     const frontWhite = mapAsset("CUTOUT_WHITE", frontTransparent?.imageId ?? null);
     const backTransparent = mapAsset("CUTOUT_TRANSPARENT", backOriginal?.id ?? null);
+    const display = findDisplayImageForSource(assets, frontOriginal?.id ?? null, selection?.selectedImageId ?? null,
+      product.status === ProductStatus.PUBLISHED && Boolean(selection?.confirmedAt));
 
     return {
       productId,
@@ -483,7 +485,7 @@ export class ProductImageProcessingService {
       cutoutWhite: frontWhite,
       optimizedMain: mapAsset("OPTIMIZED_MAIN", frontWhite?.imageId ?? null),
       optimizedBalancedMain: mapAsset("OPTIMIZED_BALANCED_MAIN", frontTransparent?.imageId ?? null),
-      aiDisplayMain: mapAsset("AI_DISPLAY_MAIN", frontOriginal?.id ?? null),
+      aiDisplayMain: display ? this.toAssetRecord(display, selection?.selectedImageId ?? null) : null,
       backOriginal: backOriginal ? this.toOriginalRecord(backOriginal, selection?.selectedImageId ?? null) : null,
       backCutoutTransparent: backTransparent,
       backCutoutWhite: mapAsset("CUTOUT_WHITE", backTransparent?.imageId ?? null),
