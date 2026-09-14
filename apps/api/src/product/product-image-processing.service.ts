@@ -25,7 +25,6 @@ import {
   canRetryImageProcessing,
   evaluateCutoutImageQuality,
   isSelectableMainVariant,
-  sourceVariantForOperation,
   targetVariantForOperation
 } from "./product-image-processing.rules";
 import { findDerivedImageForSource } from "./product-image-comparison";
@@ -123,7 +122,7 @@ export class ProductImageProcessingService {
       sourceImageId: input.sourceImageId,
       variant: "ORIGINAL"
     });
-    await this.rejectShoeCutout(input.productId);
+    await this.rejectRetiredCutout(input.productId);
     this.storage.validate("image/png", input.body.length);
 
     const analyzed = await analyzeManualCutout(input.body);
@@ -149,7 +148,7 @@ export class ProductImageProcessingService {
     sourceImageId: string;
     points: unknown;
   }): Promise<ImageProcessingJobRecord> {
-    await this.rejectShoeCutout(input.productId);
+    await this.rejectRetiredCutout(input.productId);
     const points = validateGuidedCutoutPoints(input.points);
     const source = await prisma.productImage.findFirst({
       where: {
@@ -484,7 +483,7 @@ export class ProductImageProcessingService {
       cutoutWhite: frontWhite,
       optimizedMain: mapAsset("OPTIMIZED_MAIN", frontWhite?.imageId ?? null),
       optimizedBalancedMain: mapAsset("OPTIMIZED_BALANCED_MAIN", frontTransparent?.imageId ?? null),
-      aiDisplayMain: mapAsset("AI_DISPLAY_MAIN", isShoeProduct(product.category, product.subcategory) ? frontOriginal?.id ?? null : frontWhite?.imageId ?? null),
+      aiDisplayMain: mapAsset("AI_DISPLAY_MAIN", frontOriginal?.id ?? null),
       backOriginal: backOriginal ? this.toOriginalRecord(backOriginal, selection?.selectedImageId ?? null) : null,
       backCutoutTransparent: backTransparent,
       backCutoutWhite: mapAsset("CUTOUT_WHITE", backTransparent?.imageId ?? null),
@@ -494,27 +493,23 @@ export class ProductImageProcessingService {
     };
   }
 
-  private async rejectShoeCutout(productId: string) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, select: { category: true, subcategory: true } });
-    if (isShoeProduct(product?.category, product?.subcategory)) {
-      throw new BadRequestException("Shoes use the original pair photo directly for AI display; garment cutout and balancing are unavailable.");
-    }
+  private async rejectRetiredCutout(_productId: string) {
+    throw new BadRequestException("Cutout processing is retired. Refresh the page, recognize original photos, then generate a white display image after manual confirmation.");
   }
 
   private async requireOperationSource(productId: string, sourceImageId: string, operation: ImageProcessingOperation) {
-    const product = await prisma.product.findUnique({ where: { id: productId }, select: { category: true, subcategory: true } });
-    if (!product) throw new BadRequestException("Product not found");
-    if (isShoeProduct(product.category, product.subcategory)) {
-      if (operation !== "GENERATE_AI_DISPLAY_MAIN_IMAGE") {
-        throw new BadRequestException("Shoes use the original pair photo directly for AI display; garment cutout and balancing are unavailable.");
-      }
-      const source = await prisma.productImage.findFirst({
-        where: { id: sourceImageId, productId, type: ProductImageType.FRONT }, select: { id: true }
-      });
-      if (!source) throw new BadRequestException("An original FRONT pair photo is required for shoe display generation");
-      return;
+    if (operation !== "GENERATE_AI_DISPLAY_MAIN_IMAGE") {
+      throw new BadRequestException("Cutout processing is retired. Use the original photo for white display generation after manual confirmation.");
     }
-    await this.requireSourceImage({ productId, sourceImageId, variant: sourceVariantForOperation(operation) });
+    const product = await prisma.product.findUnique({ where: { id: productId }, select: { status: true } });
+    if (!product) throw new BadRequestException("Product not found");
+    if (!["CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED", "UNPUBLISHED", "ARCHIVED"].includes(product.status)) {
+      throw new BadRequestException("Confirm product information and enter the size before generating a white display image.");
+    }
+    const source = await prisma.productImage.findFirst({
+      where: { id: sourceImageId, productId, type: ProductImageType.FRONT }, select: { id: true }
+    });
+    if (!source) throw new BadRequestException("An original FRONT photo is required for display generation");
   }
 
   private async requireSourceImage(input: {

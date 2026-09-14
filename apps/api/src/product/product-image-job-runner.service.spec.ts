@@ -88,7 +88,8 @@ describe("ProductImageJobRunnerService", () => {
 });
 
 
-it("shoe display reads exact original bytes and never sends the pair through garment processing", async () => {
+for (const category of ["SHOES", "TSHIRTS", "PANTS"]) {
+it(`${category} display reads exact original bytes without background removal or composition`, async () => {
   const imageFind = prisma.productImage.findFirst;
   const assetFind = prisma.productImageVariantAsset.findFirst;
   let displayInput: Record<string, unknown> | undefined;
@@ -105,12 +106,50 @@ it("shoe display reads exact original bytes and never sends the pair through gar
       loadSource: (job: Record<string, unknown>, category: string) => Promise<any>;
       process: (operation: string, source: any, mode: undefined, category: string) => Promise<any>;
     };
-    const source = await privateRunner.loadSource({ id: "job", productId: "shoe", sourceImageId: "pair", operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" }, "SHOES");
-    await privateRunner.process("GENERATE_AI_DISPLAY_MAIN_IMAGE", source, undefined, "SHOES");
+    const source = await privateRunner.loadSource({ id: "job", productId: "shoe", sourceImageId: "pair", operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" }, category);
+    await privateRunner.process("GENERATE_AI_DISPLAY_MAIN_IMAGE", source, undefined, category);
     assert.equal((displayInput?.body as Buffer).toString(), "both-shoes-original");
-    assert.equal(displayInput?.category, "SHOES");
+    assert.equal(displayInput?.category, category);
   } finally {
     prisma.productImage.findFirst = imageFind;
     prisma.productImageVariantAsset.findFirst = assetFind;
+  }
+});
+
+}
+
+it("rejects queued legacy cutout jobs and unconfirmed display jobs before loading image bytes", async () => {
+  const saved = {
+    claim: prisma.productImageProcessingJob.updateMany,
+    find: prisma.productImageProcessingJob.findUnique,
+    update: prisma.productImageProcessingJob.update,
+    product: prisma.product.findUnique
+  };
+  let operation = "REMOVE_BACKGROUND";
+  let status = "CALIBRATED";
+  let downloads = 0;
+  const job = () => ({ id: "legacy-job", productId: "p", sourceImageId: "front", operation, targetVariant: "AI_DISPLAY_MAIN", status: "RUNNING", retryCount: 0, createdAt: new Date(), updatedAt: new Date(), qualityIssues: [] });
+  try {
+    prisma.productImageProcessingJob.updateMany = (async () => ({ count: 1 })) as never;
+    prisma.productImageProcessingJob.findUnique = (async () => job()) as never;
+    prisma.productImageProcessingJob.update = (async ({ data }: { data: Record<string, unknown> }) => ({ ...job(), ...data })) as never;
+    prisma.product.findUnique = (async () => ({ category: "TSHIRTS", status })) as never;
+    const runner = new ProductImageJobRunnerService({ download: async () => { downloads++; throw new Error("must not load images"); } } as never, {} as never, {} as never, {} as never, {} as never);
+    for (operation of ["REMOVE_BACKGROUND", "COMPOSE_WHITE_BACKGROUND", "OPTIMIZE_MAIN_IMAGE", "OPTIMIZE_BALANCED_MAIN_IMAGE"]) {
+      const result = await runner.run("legacy-job");
+      assert.equal(result.status, "FAILED");
+      assert.match(result.errorMessage ?? "", /Cutout processing is retired/);
+    }
+    operation = "GENERATE_AI_DISPLAY_MAIN_IMAGE";
+    status = "CALIBRATION_PENDING";
+    const result = await runner.run("legacy-job");
+    assert.equal(result.status, "FAILED");
+    assert.match(result.errorMessage ?? "", /Manual product confirmation/);
+    assert.equal(downloads, 0);
+  } finally {
+    prisma.productImageProcessingJob.updateMany = saved.claim;
+    prisma.productImageProcessingJob.findUnique = saved.find;
+    prisma.productImageProcessingJob.update = saved.update;
+    prisma.product.findUnique = saved.product;
   }
 });

@@ -20,9 +20,6 @@ import {
   PRODUCT_STRETCH_LEVELS,
   PRODUCT_SUBCATEGORIES_BY_CATEGORY,
   PRODUCT_TAG_OPTIONS,
-  type BackgroundRemovalMode,
-  type ImageProcessingJobRecord,
-  type ImageProcessingOperation,
   type ProductImageComparisonResponse,
   type ProductImageVariantRecord
 } from "@online-saler/shared-types";
@@ -63,10 +60,8 @@ import {
   type WorkspaceForm
 } from "../operations-workspace-flow";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
-import { cutoutQualityWarning } from "./image-processing-quality";
-import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
 import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
-import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
+import { productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
 const CALIBRATION_COMPLETE_STATUSES = new Set([
@@ -192,68 +187,6 @@ async function loadComparison(productId: string, adminUserId: string) {
   });
 }
 
-async function runImageOperation(
-  productId: string,
-  sourceImageId: string,
-  operation: ImageProcessingOperation,
-  adminUserId: string,
-  backgroundRemovalMode?: BackgroundRemovalMode
-) {
-  const job = await request<ImageProcessingJobRecord>(
-    `/products/${productId}/images/${sourceImageId}/processing-jobs`,
-    {
-      method: "POST",
-      headers: { "X-Admin-User-Id": adminUserId },
-      body: JSON.stringify({ operation })
-    }
-  );
-  const completed = await request<ImageProcessingJobRecord>(`/image-processing-jobs/${job.id}/run`, {
-    method: "POST",
-    headers: { "X-Admin-User-Id": adminUserId },
-    body: JSON.stringify(backgroundRemovalMode ? { backgroundRemovalMode } : {})
-  });
-  if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
-    throw new Error(completed.errorMessage || `${operation} 处理失败`);
-  }
-  return completed;
-}
-
-async function uploadManualCutout(
-  productId: string,
-  sourceImageId: string,
-  image: Blob,
-  adminUserId: string
-) {
-  const response = await operationsFetch(
-    `${API_PROXY_URL}/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(sourceImageId)}/manual-cutout`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "image/png", "X-Admin-User-Id": adminUserId },
-      body: image
-    }
-  );
-  const body = await response.json().catch(() => ({})) as { message?: unknown } & Partial<ImageProcessingJobRecord>;
-  if (!response.ok) throw new Error(typeof body.message === "string" ? body.message : "无法保存修正版抠图。");
-  if (body.status !== "SUCCEEDED" || !body.outputImageId) throw new Error("修正版抠图没有正确保存。");
-  return body as ImageProcessingJobRecord;
-}
-
-async function runGuidedCutout(
-  productId: string,
-  sourceImageId: string,
-  points: GuidedCutoutPoint[],
-  adminUserId: string
-) {
-  return request<ImageProcessingJobRecord>(
-    `/products/${productId}/images/${sourceImageId}/guided-cutout`,
-    {
-      method: "POST",
-      headers: { "X-Admin-User-Id": adminUserId },
-      body: JSON.stringify({ points })
-    }
-  );
-}
-
 export function ProductBatchCalibrationPage({
   batchId,
   initialProductId
@@ -269,11 +202,10 @@ export function ProductBatchCalibrationPage({
   const [form, setForm] = useState<WorkspaceForm>(() => formFromProductAndAi(null, null));
   const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
   const [taxonomy, setTaxonomy] = useState<ProductTaxonomy | null>(null);
-  const [activeImage, setActiveImage] = useState("white");
+  const [activeImage, setActiveImage] = useState("original-FRONT");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [manualEditorOpen, setManualEditorOpen] = useState(false);
   const [formProductId, setFormProductId] = useState("");
 
   const load = useCallback(async () => {
@@ -328,7 +260,7 @@ export function ProductBatchCalibrationPage({
     void loadComparison(product.id, ids.adminUserId)
       .then((value) => {
         setComparison(value);
-        setActiveImage(isShoeCategory(nextForm.category) ? "original-FRONT" : value.cutoutWhite ? "white" : "back-white");
+        setActiveImage("original-FRONT");
       })
       .catch((caught) => setError(errorMessage(caught, "无法读取图片版本。")));
   }, [ids.adminUserId, latestExtraction, product]);
@@ -344,12 +276,8 @@ export function ProductBatchCalibrationPage({
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  const latestRemovalJob = comparison?.jobs.find((job) =>
-    job.operation === "REMOVE_BACKGROUND" && job.sourceImageId === comparison.original?.imageId
-  ) ?? null;
-  const cutoutWarning = !shoes && latestRemovalJob ? cutoutQualityWarning(latestRemovalJob) : null;
   const imageTabs = useMemo(
-    () => buildImageTabs(comparison, shoes ? product : null),
+    () => buildImageTabs(comparison, product),
     [comparison, product, shoes]
   );
   const currentImage = imageTabs.find((item) => item.key === activeImage) ?? imageTabs[0] ?? null;
@@ -390,8 +318,7 @@ export function ProductBatchCalibrationPage({
       return normalizeWorkspaceForm(next, current.category);
     });
     if (key === "category") {
-      setManualEditorOpen(false);
-      setActiveImage(isShoeCategory(value) ? "original-FRONT" : "white");
+      setActiveImage("original-FRONT");
     }
     setNotice("");
   }
@@ -414,11 +341,6 @@ export function ProductBatchCalibrationPage({
 
   async function saveAndNext() {
     if (!product || readOnly) return;
-    if (cutoutWarning) {
-      setError("抠图尚未通过质量检查。请手工修边或标记重拍后再继续。");
-      imagePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
     if (reasons.length) {
       setError(reasons.join(" "));
       focusValidationIssue(validationIssues[0], imagePanelRef.current);
@@ -449,7 +371,7 @@ export function ProductBatchCalibrationPage({
         setNotice("已确认，进入下一件。");
       } else {
         setBusy("finalize");
-        setNotice(`本批 ${updated.targetCount} 件已确认，正在批量生成 AI 陈列主图、销售详情与 Barcode。`);
+        setNotice(`本批 ${updated.targetCount} 件已确认，正在批量生成白底展示图、销售详情与 Barcode。`);
         const [detailResult, barcodeResult] = await Promise.allSettled([
           request(`/operations/product-batches/${batchId}/detail-generation/run`, {
             method: "POST",
@@ -473,93 +395,6 @@ export function ProductBatchCalibrationPage({
       }
     } catch (caught) {
       setError(errorMessage(caught, "无法保存校准。"));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function processImages(mode: BackgroundRemovalMode) {
-    if (!product) return;
-    const sourceId = comparison?.original?.imageId || newestImage(product, "FRONT")?.id;
-    if (!sourceId) {
-      setError("请先上传正面原图。");
-      return;
-    }
-    setBusy(mode);
-    setError("");
-    try {
-      const cutout = await runImageOperation(product.id, sourceId, "REMOVE_BACKGROUND", ids.adminUserId, mode);
-      const warning = cutoutQualityWarning(cutout);
-      if (warning) {
-        setComparison(await loadComparison(product.id, ids.adminUserId));
-        setActiveImage("white");
-        throw new Error(warning);
-      }
-      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-      const updated = await loadComparison(product.id, ids.adminUserId);
-      setComparison(updated);
-      setActiveImage("white");
-      const modeLabel = mode === "auto"
-        ? "自动抠图链路"
-        : mode === "rembg_birefnet"
-          ? "BiRefNet"
-          : "lightweight OpenCV";
-      setNotice(`已使用${modeLabel}重新处理。请确认抠图边缘和白底结果；商城主图将在详情生成阶段选择。`);
-    } catch (caught) {
-      setError(errorMessage(caught, "图片处理失败。"));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function saveManualCorrection(image: Blob) {
-    if (!product || !comparison?.original?.imageId) return;
-    setBusy("manual-cutout");
-    setError("");
-    setNotice("");
-    try {
-      const cutout = await uploadManualCutout(
-        product.id,
-        comparison.original.imageId,
-        image,
-        ids.adminUserId
-      );
-      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-      const updated = await loadComparison(product.id, ids.adminUserId);
-      setComparison(updated);
-      setActiveImage("white");
-      setManualEditorOpen(false);
-      setNotice("修正版已保存，并重新生成白底正面图。请检查边缘和商品细节。");
-    } catch (caught) {
-      throw new Error(errorMessage(caught, "无法保存修正版抠图。"));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function saveGuidedCorrection(points: GuidedCutoutPoint[]) {
-    if (!product || !comparison?.original?.imageId) return;
-    setBusy("guided-cutout");
-    setError("");
-    setNotice("");
-    try {
-      const cutout = await runGuidedCutout(
-        product.id,
-        comparison.original.imageId,
-        points,
-        ids.adminUserId
-      );
-      if (cutout.status !== "SUCCEEDED" || !cutout.outputImageId) {
-        throw new Error(cutout.errorMessage || "按轮廓自动抠图失败。");
-      }
-      await runImageOperation(product.id, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", ids.adminUserId);
-      const updated = await loadComparison(product.id, ids.adminUserId);
-      setComparison(updated);
-      setActiveImage("white");
-      setManualEditorOpen(false);
-      setNotice("已按员工点选轮廓重新抠图，并生成白底正面图。请检查边缘和商品细节。");
-    } catch (caught) {
-      throw new Error(errorMessage(caught, "按轮廓自动抠图失败，请调整轮廓后重试。"));
     } finally {
       setBusy("");
     }
@@ -652,24 +487,10 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">{shoes ? "核对整双、侧面、鞋底和尺码标原图。整批确认后生成 AI 陈列图，再逐双对照原图审核。" : "原图永久保留；这里只快速核对抠图、商品事实与异常。整批确认后系统才按默认风格批量生成 AI 陈列图，员工不需要选择风格。"}</p>
+              <p className="text-xs text-muted-foreground">{shoes ? "核对整双、侧面、鞋底和尺码标原图。整批确认后生成白底展示图，再逐双对照原图审核。" : "对照原图核对商品信息并手填尺码；整批确认后，系统直接使用原图生成白底展示图。"}</p>
             </div>
-            {shoes ? <Badge variant="secondary">保留成双原图</Badge> : cutoutWarning ? <Badge variant="destructive">需要图片异常处理</Badge> : <Badge variant="secondary">自动图片处理通过</Badge>}
+            <Badge variant="secondary">对照原图校准商品信息</Badge>
           </div>
-
-          {cutoutWarning ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-              <p className="font-semibold">抠图未通过，已禁止继续使用这张处理图</p>
-              <p className="mt-1 text-xs">{cutoutWarning}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => void processImages("auto")} disabled={Boolean(busy) || readOnly}>
-                  {busy === "auto" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}自动重试抠图
-                </Button>
-                <Button size="sm" onClick={() => setManualEditorOpen(true)} disabled={Boolean(busy) || !comparison?.original?.publicUrl}><ScissorsIcon data-icon="inline-start" />点选轮廓重新抠图</Button>
-                <Button size="sm" variant="outline" onClick={() => void markRetake()} disabled={Boolean(busy) || readOnly}><RotateCcwIcon data-icon="inline-start" />无法修复，标记重拍</Button>
-              </div>
-            </div>
-          ) : null}
 
           <Tabs value={activeImage} onValueChange={setActiveImage}>
             <TabsList className="h-auto w-full justify-start overflow-x-auto">
@@ -687,29 +508,9 @@ export function ProductBatchCalibrationPage({
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />全屏</Button>
             {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
-            {!shoes && !readOnly && !cutoutWarning && comparison?.original?.publicUrl ? (
-              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void processImages("auto")}>
-                {busy === "auto" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}重新自动抠图
-              </Button>
-            ) : null}
-            {!shoes && !readOnly && comparison?.original?.publicUrl ? (
-              <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => setManualEditorOpen(true)}>
-                <ScissorsIcon data-icon="inline-start" />抠图不对，手动修正
-              </Button>
-            ) : null}
           </div>
 
-          {!shoes ? latestRemovalJob ? <ProcessingSummary job={latestRemovalJob} warning={cutoutWarning} /> : <StatusMessage tone="neutral">还没有图片处理记录。</StatusMessage> : null}
-          <details className="rounded-md border px-3 py-2 text-sm">
-            <summary className="cursor-pointer font-medium">处理历史（{comparison?.jobs.length ?? 0}）</summary>
-            <div className="mt-2 space-y-2">
-              {comparison?.jobs.map((job) => (
-                <div key={job.id} className="grid gap-1 border-t pt-2 text-xs text-muted-foreground sm:grid-cols-3">
-                  <span>{operationLabel(job.operation)}</span><span>{statusLabel(job.status)}</span><span>{providerLabel(job.provider)}</span>
-                </div>
-              ))}
-            </div>
-          </details>
+
         </section>
 
         <section className="min-w-0 space-y-5" aria-label="商品信息校准">
@@ -803,17 +604,15 @@ export function ProductBatchCalibrationPage({
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 backdrop-blur lg:sticky lg:inset-auto lg:px-0">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           {!readOnly ? (
-            <p className={cn("text-xs", cutoutWarning || validationIssues.length ? "font-medium text-destructive" : "text-emerald-700")}>
-              {cutoutWarning
-                ? "还差：修正抠图或标记重拍"
-                : validationIssues.length
+            <p className={cn("text-xs", validationIssues.length ? "font-medium text-destructive" : "text-emerald-700")}>
+              {validationIssues.length
                 ? `还差：${[...new Set(validationIssues.map((issue) => issue.label))].join("、")}`
                 : finalPendingItem ? "最后一件确认后，系统将自动生成详情与 Barcode。" : "必填信息已完整，可以确认并进入下一件。"}
             </p>
           ) : <span />}
           <div className="grid grid-cols-3 gap-2 lg:flex">
             <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />保存草稿</Button>
-            <Button disabled={Boolean(busy) || readOnly || Boolean(cutoutWarning)} onClick={() => void saveAndNext()}>
+            <Button disabled={Boolean(busy) || readOnly} onClick={() => void saveAndNext()}>
               {busy === "save" || busy === "finalize" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
               {readOnly ? "本件已确认" : finalPendingItem ? "确认本件并自动生成" : "确认并下一件"}
             </Button>
@@ -821,33 +620,6 @@ export function ProductBatchCalibrationPage({
           </div>
         </div>
       </div>
-      <ManualCutoutEditor
-        open={manualEditorOpen}
-        originalUrl={comparison?.original?.publicUrl ? `${API_PROXY_URL}${comparison.original.publicUrl}` : ""}
-        cutoutUrl={comparison?.cutoutTransparent?.publicUrl
-          ? `${API_PROXY_URL}${comparison.cutoutTransparent.publicUrl}`
-          : comparison?.original?.publicUrl
-            ? `${API_PROXY_URL}${comparison.original.publicUrl}`
-            : ""}
-        saving={busy === "manual-cutout" || busy === "guided-cutout"}
-        onOpenChange={setManualEditorOpen}
-        onGuidedCutout={saveGuidedCorrection}
-        onSave={saveManualCorrection}
-      />
-    </div>
-  );
-}
-
-function ProcessingSummary({ job, warning }: { job: ImageProcessingJobRecord; warning: string | null }) {
-  return (
-    <div className={cn("rounded-md border p-3 text-xs", warning ? "border-destructive/40 bg-destructive/5" : "bg-muted/30")}>
-      <div className="flex flex-wrap gap-x-4 gap-y-2">
-        <span>处理引擎：<strong>{providerLabel(job.provider)}</strong></span>
-        <span>质量分：<strong>{job.qualityScore == null ? "-" : Math.round(job.qualityScore * 100)}</strong></span>
-        {job.fallbackFrom ? <span>自动回退：<strong>{providerLabel(job.fallbackFrom)} → {providerLabel(job.provider)}</strong></span> : null}
-        {job.fallbackReason ? <span>回退原因：<strong>{job.fallbackReason}</strong></span> : null}
-      </div>
-      {job.qualityIssues.length ? <div className="mt-2 flex flex-wrap gap-1">{job.qualityIssues.map((issue) => <Badge key={issue} variant="secondary">{imageIssueLabel(issue)}</Badge>)}</div> : null}
     </div>
   );
 }
@@ -950,22 +722,15 @@ function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; childre
   return <div className={cn("rounded-md border px-4 py-3 text-sm", tone === "danger" ? "border-destructive/40 bg-destructive/5 text-destructive" : "bg-muted/40 text-muted-foreground")}>{children}</div>;
 }
 
-function buildImageTabs(comparison: ProductImageComparisonResponse | null, shoeProduct: ProductRecord | null): ImageTab[] {
-  if (shoeProduct) {
-    const labels: Record<string, string> = { FRONT: "整双原图", BACK: "侧面原图", DETAIL: "鞋底原图", LABEL: "尺码标原图", DEFECT: "瑕疵原图" };
-    const originals = Object.entries(labels).flatMap(([type, label]) => {
-      const source = shoeProduct.images?.find((item) => item.type === type && (!item.variant || item.variant === "ORIGINAL"));
-      if (!source?.publicUrl) return [];
-      return [{ key: `original-${type}`, label, url: source.publicUrl.startsWith("/") ? `${API_PROXY_URL}${source.publicUrl}` : source.publicUrl, imageId: source.id, selectable: false, selected: false }];
-    });
-    const aiDisplay = comparison?.aiDisplayMain;
-    return aiDisplay ? [...originals, variantTab("ai-display", "AI 陈列图", aiDisplay, false)] : originals;
-  }
-  const tabs: ImageTab[] = [
-    variantTab("white", "白底正面", comparison?.cutoutWhite ?? null, false),
-    variantTab("back-white", "背面白底", comparison?.backCutoutWhite ?? null, false)
-  ].filter((tab) => tab.key === "white" || Boolean(tab.url));
-  return tabs;
+function buildImageTabs(comparison: ProductImageComparisonResponse | null, product: ProductRecord | null): ImageTab[] {
+  const labels: Record<string, string> = isShoeCategory(stringValue(product?.category))
+    ? { FRONT: "整双原图", BACK: "侧面原图", DETAIL: "鞋底原图", LABEL: "尺码标原图", DEFECT: "瑕疵原图" }
+    : { FRONT: "正面原图", BACK: "背面原图", LABEL: "标签原图", DETAIL: "细节原图", DEFECT: "瑕疵原图" };
+  return Object.entries(labels).flatMap(([type, label]) => {
+    const source = product?.images?.find((item) => item.type === type && (!item.variant || item.variant === "ORIGINAL"));
+    if (!source?.publicUrl) return [];
+    return [{ key: `original-${type}`, label, url: source.publicUrl.startsWith("/") ? `${API_PROXY_URL}${source.publicUrl}` : source.publicUrl, imageId: source.id, selectable: false, selected: false }];
+  });
 }
 
 function variantTab(key: string, label: string, asset: ProductImageVariantRecord | null, selectable: boolean, transparent = false): ImageTab {
@@ -1072,24 +837,6 @@ function focusValidationIssue(
   const wrapper = document.querySelector<HTMLElement>(`[data-field-key="${issue.field}"]`);
   wrapper?.scrollIntoView({ behavior: "smooth", block: "center" });
   window.setTimeout(() => wrapper?.querySelector<HTMLElement>("input, select, textarea, [role=checkbox]")?.focus(), 250);
-}
-
-function providerLabel(provider: string | null) {
-  if (!provider) return "-";
-  if (provider === "manual-guided-grabcut") return "员工轮廓引导抠图";
-  if (provider === "manual-cutout-editor") return "员工手工修边";
-  if (provider === "openai-image-edit") return "OpenAI 图片编辑";
-  if (provider.includes("rembg") || provider.includes("birefnet")) return "rembg + BiRefNet";
-  if (provider.includes("lightweight") || provider.includes("opencv")) return "lightweight OpenCV";
-  return provider;
-}
-
-function operationLabel(value: string) {
-  return ({ REMOVE_BACKGROUND: "去除背景", COMPOSE_WHITE_BACKGROUND: "生成白底图", OPTIMIZE_MAIN_IMAGE: "优化主图", OPTIMIZE_BALANCED_MAIN_IMAGE: "优化主图 2（均整版）", GENERATE_AI_DISPLAY_MAIN_IMAGE: "生成 AI 陈列图" } as Record<string, string>)[value] ?? value;
-}
-
-function statusLabel(value: string) {
-  return ({ PENDING: "等待", RUNNING: "处理中", SUCCEEDED: "成功", FAILED: "失败" } as Record<string, string>)[value] ?? value;
 }
 
 const ENUM_LABELS: Record<string, string> = {

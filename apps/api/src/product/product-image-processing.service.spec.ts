@@ -189,10 +189,10 @@ describe("published product main-image protection", () => {
   });
 
   it("saving a corrected cutout for a published product cannot delete the live main selection", async () => {
-    await service.saveManualCutout({
+    await assert.rejects(service.saveManualCutout({
       productId: "product-1", sourceImageId: "front-1", body: await pngWithMask(100, 100, 20, 15, 80, 85)
-    });
-    assert.deepEqual(writes, ["candidate-asset"]);
+    }), /Cutout processing is retired/);
+    assert.deepEqual(writes, []);
     assert.equal(selection.selectedImageId, "ai-live");
     assert.equal(selection.confirmedAt, now);
   });
@@ -222,19 +222,27 @@ describe("published product main-image protection", () => {
 });
 
 
-describe("shoe image source validation", () => {
+describe("original image source validation", () => {
   const productFind = prisma.product.findUnique;
   const imageFind = prisma.productImage.findFirst;
   afterEach(() => { prisma.product.findUnique = productFind; prisma.productImage.findFirst = imageFind; });
-  it("accepts only original FRONT for shoe display and rejects garment cutout operations", async () => {
-    prisma.product.findUnique = (async () => ({ category: "SHOES" })) as never;
+  for (const category of ["SHOES", "TSHIRTS", "PANTS"]) {
+  it(`${category} accepts original FRONT only after confirmation and rejects retired cutout operations`, async () => {
+    let status = "CALIBRATED";
+    prisma.product.findUnique = (async () => ({ category, status })) as never;
     prisma.productImage.findFirst = (async ({ where }: { where: { id: string; type: string } }) =>
       where.id === "pair-original" && where.type === "FRONT" ? { id: where.id } : null) as never;
     const service = new ProductImageProcessingService({} as never, {} as never, {} as never);
     const validate = (service as unknown as { requireOperationSource: (productId: string, imageId: string, operation: string) => Promise<void> }).requireOperationSource.bind(service);
     await validate("shoe", "pair-original", "GENERATE_AI_DISPLAY_MAIN_IMAGE");
-    await assert.rejects(validate("shoe", "old-cutout", "GENERATE_AI_DISPLAY_MAIN_IMAGE"), /original FRONT pair photo/);
-    await assert.rejects(validate("shoe", "pair-original", "REMOVE_BACKGROUND"), /garment cutout and balancing/);
-    await assert.rejects(validate("shoe", "pair-original", "OPTIMIZE_BALANCED_MAIN_IMAGE"), /garment cutout and balancing/);
+    await assert.rejects(validate("shoe", "old-cutout", "GENERATE_AI_DISPLAY_MAIN_IMAGE"), /original FRONT photo/);
+    await assert.rejects(validate("shoe", "pair-original", "REMOVE_BACKGROUND"), /Cutout processing is retired/);
+    await assert.rejects(validate("shoe", "pair-original", "OPTIMIZE_BALANCED_MAIN_IMAGE"), /Cutout processing is retired/);
+    await assert.rejects(validate("shoe", "pair-original", "COMPOSE_WHITE_BACKGROUND"), /Cutout processing is retired/);
+    status = "UNPUBLISHED";
+    await validate("shoe", "pair-original", "GENERATE_AI_DISPLAY_MAIN_IMAGE");
+    status = "CALIBRATION_PENDING";
+    await assert.rejects(validate("shoe", "pair-original", "GENERATE_AI_DISPLAY_MAIN_IMAGE"), /Confirm product information/);
   });
+  }
 });

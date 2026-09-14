@@ -22,9 +22,6 @@ import {
 import {
   PRODUCT_AI_PROMPT_VERSION,
   isShoeProduct,
-  type BackgroundRemovalMode,
-  type ImageProcessingJobRecord,
-  type ImageProcessingOperation,
   type ProductImageComparisonResponse
 } from "@online-saler/shared-types";
 
@@ -34,10 +31,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { productStatusLabel } from "./product-factory-display";
-import { lightweightCutoutWarning, persistedFrontCutoutWarning } from "./image-processing-quality";
 import {
   PRODUCT_AI_BATCH_CONCURRENCY,
-  PRODUCT_IMAGE_BATCH_CONCURRENCY,
   PRODUCT_UPLOAD_BATCH_CONCURRENCY,
   runWithConcurrency
 } from "./product-batch-processing-concurrency";
@@ -97,7 +92,6 @@ type ProductBatch = {
 
 type ProcessingState = {
   status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
-  comparison: ProductImageComparisonResponse | null;
   message: string;
 };
 
@@ -166,120 +160,10 @@ async function uploadOriginalImage(
   return body;
 }
 
-async function getImageComparison(productId: string, adminUserId: string) {
-  return request<ProductImageComparisonResponse>(`/products/${productId}/image-comparison`, {
-    headers: { "X-Admin-User-Id": adminUserId }
-  });
-}
-
-async function runImageOperation(
-  productId: string,
-  sourceImageId: string,
-  operation: ImageProcessingOperation,
-  adminUserId: string,
-  backgroundRemovalMode?: BackgroundRemovalMode
-) {
-  const job = await request<ImageProcessingJobRecord>(
-    `/products/${productId}/images/${sourceImageId}/processing-jobs`,
-    {
-      method: "POST",
-      headers: { "X-Admin-User-Id": adminUserId },
-      body: JSON.stringify({ operation })
-    }
-  );
-  const completed = await request<ImageProcessingJobRecord>(`/image-processing-jobs/${job.id}/run`, {
-    method: "POST",
-    headers: { "X-Admin-User-Id": adminUserId },
-    body: JSON.stringify(backgroundRemovalMode ? { backgroundRemovalMode } : {})
-  });
-  if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
-    throw new Error(completed.errorMessage || `${operation} 处理失败`);
-  }
-  return completed;
-}
-
-async function runProductImagePipeline(
-  product: ProductRecord,
-  adminUserId: string,
-  mode: BackgroundRemovalMode
-) {
-  const comparison = await getImageComparison(product.id, adminUserId);
-  const frontOriginalId = comparison.original?.imageId ?? newestImageOfType(product, "FRONT")?.id;
-  if (!frontOriginalId) throw new Error("缺少正面原图");
-  if (isShoeProduct(product.category, product.subcategory)) {
-    if (missingCaptureImageTypes(product).length) throw new Error("请先补齐整双、侧面、鞋底和尺码标签原图。");
-    return comparison;
-  }
-
-  const processFront = async () => {
-    let transparentId = comparison.cutoutTransparent?.sourceImageId === frontOriginalId
-      ? comparison.cutoutTransparent.imageId
-      : "";
-    if (transparentId && mode === "auto") {
-      const persistedWarning = persistedFrontCutoutWarning(comparison);
-      if (persistedWarning) throw new Error(persistedWarning);
-    }
-    if (!transparentId || mode !== "auto") {
-      const cutout = await runImageOperation(
-        product.id,
-        frontOriginalId,
-        "REMOVE_BACKGROUND",
-        adminUserId,
-        mode
-      );
-      const cutoutWarning = lightweightCutoutWarning(cutout);
-      if (cutoutWarning) throw new Error(cutoutWarning);
-      transparentId = cutout.outputImageId!;
-    }
-
-    const composeWhiteBackground = async () => {
-      let whiteId = comparison.cutoutWhite?.sourceImageId === transparentId
-        ? comparison.cutoutWhite.imageId
-        : "";
-      if (!whiteId || mode !== "auto") {
-        whiteId = (await runImageOperation(
-          product.id,
-          transparentId,
-          "COMPOSE_WHITE_BACKGROUND",
-          adminUserId
-        )).outputImageId!;
-      }
-    };
-    await composeWhiteBackground();
-  };
-
-  const processBack = async () => {
-    const backOriginalId = comparison.backOriginal?.imageId ?? newestImageOfType(product, "BACK")?.id;
-    if (!backOriginalId) return;
-    let transparentId = comparison.backCutoutTransparent?.sourceImageId === backOriginalId
-      ? comparison.backCutoutTransparent.imageId
-      : "";
-    if (!transparentId || mode !== "auto") {
-      const cutout = await runImageOperation(
-        product.id,
-        backOriginalId,
-        "REMOVE_BACKGROUND",
-        adminUserId,
-        mode
-      );
-      const cutoutWarning = lightweightCutoutWarning(cutout);
-      if (cutoutWarning) throw new Error(`背面图：${cutoutWarning}`);
-      transparentId = cutout.outputImageId!;
-    }
-    const whiteId = comparison.backCutoutWhite?.sourceImageId === transparentId
-      ? comparison.backCutoutWhite.imageId
-      : "";
-    if (!whiteId || mode !== "auto") {
-      await runImageOperation(product.id, transparentId, "COMPOSE_WHITE_BACKGROUND", adminUserId);
-    }
-  };
-
-  await Promise.all([processFront(), processBack()]);
-  return getImageComparison(product.id, adminUserId);
-}
-
 async function runProductAi(product: ProductRecord, ids: ReturnType<typeof useOperationIds>) {
   if (hasSucceededAi(product)) return;
+  const missing = missingCaptureImageTypes(product);
+  if (missing.length) throw new Error("请先补齐商品原图，再识别商品信息。");
   const imageIds = [...(product.images ?? [])]
     .sort((left, right) => (IMAGE_TYPE_ORDER.get(left.type) ?? 99) - (IMAGE_TYPE_ORDER.get(right.type) ?? 99))
     .map((image) => image.id);
@@ -536,7 +420,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       </section>
 
       <p className="text-xs text-muted-foreground">
-        支持 JPEG、PNG、WEBP，单张不超过 10 MB。保存前请用图片下方按钮调整方向，预览方向就是实际上传和 AI 识别方向。iPhone 请使用“兼容性最佳”格式；HEIC 需先转换。原图会永久保留，不会被抠图或优化结果覆盖。
+        支持 JPEG、PNG、WEBP，单张不超过 10 MB。保存前请用图片下方按钮调整方向，预览方向就是实际上传和 AI 识别方向。iPhone 请使用“兼容性最佳”格式；HEIC 需先转换。原图会永久保留，用于商品识别和确认后的白底展示图生成。
       </p>
 
       <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-background/95 py-3 backdrop-blur sm:flex-row sm:justify-between">
@@ -566,130 +450,48 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
   const [batch, setBatch] = useState<ProductBatch | null>(null);
   const [states, setStates] = useState<Record<string, ProcessingState>>({});
   const [busy, setBusy] = useState(false);
-  const [batchPhase, setBatchPhase] = useState<"" | "images" | "ai">("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
     const loaded = await loadBatch(batchId, ids.adminUserId);
     setBatch(loaded);
-    const hydrated = await Promise.all(loaded.products.map(async (product) => {
-      const comparison = await getImageComparison(product.id, ids.adminUserId);
-      return [product.id, stateFromProduct(product, comparison)] as const;
-    }));
-    setStates(Object.fromEntries(hydrated));
+    setStates(Object.fromEntries(loaded.products.map((product) => [product.id, stateFromProduct(product)])));
   }, [batchId, ids.adminUserId]);
 
   useEffect(() => {
     void load().catch((caught) => setError(errorMessage(caught, "无法读取处理进度。")));
   }, [load]);
 
-  async function processOne(product: ProductRecord, mode: BackgroundRemovalMode) {
-    setStates((current) => ({
-      ...current,
-      [product.id]: { ...current[product.id], status: "RUNNING", message: mode === "rembg_birefnet" ? "正在强制使用 BiRefNet" : "正在运行自动处理" }
-    }));
+  async function processOne(product: ProductRecord) {
+    setStates((current) => ({ ...current, [product.id]: { status: "RUNNING", message: "正在使用原图识别商品信息" } }));
     try {
-      const [comparison] = await Promise.all([
-        runProductImagePipeline(product, ids.adminUserId, mode),
-        runProductAi(product, ids)
-      ]);
-      setStates((current) => ({
-        ...current,
-        [product.id]: { status: "SUCCEEDED", comparison, message: isShoeProduct(product.category, product.subcategory) ? "鞋类原图识别完成，待核对鞋码和鞋况" : "抠图与商品识别已完成，待人工快速确认" }
-      }));
-      return true;
+      await runProductAi(product, ids);
+      setStates((current) => ({ ...current, [product.id]: { status: "SUCCEEDED", message: "商品识别完成，待人工校准、填写尺码" } }));
     } catch (caught) {
-      setStates((current) => ({
-        ...current,
-        [product.id]: {
-          ...current[product.id],
-          status: "FAILED",
-          message: errorMessage(caught, "处理失败")
-        }
-      }));
-      return false;
+      setStates((current) => ({ ...current, [product.id]: { status: "FAILED", message: errorMessage(caught, "商品识别失败") } }));
     }
   }
 
   async function processAll() {
-    if (!batch) return;
+    if (!batch || busy) return;
     setBusy(true);
     setError("");
     try {
       const pending = batch.products.filter((product) => states[product.id]?.status !== "SUCCEEDED");
-      const imageResults = new Map<string, ProductImageComparisonResponse>();
-
-      setBatchPhase("images");
-      setStates((current) => {
-        const next = { ...current };
-        for (const product of pending) {
-          next[product.id] = {
-            ...current[product.id],
-            status: "RUNNING",
-            message: isShoeProduct(product.category, product.subcategory) ? "正在核对整双、侧面、鞋底和标签原图" : `本批 ${pending.length} 件正在同时抠图并生成白底图`
-          };
-        }
-        return next;
-      });
-      await runWithConcurrency(pending, PRODUCT_IMAGE_BATCH_CONCURRENCY, async (product) => {
-        try {
-          const comparison = await runProductImagePipeline(product, ids.adminUserId, "auto");
-          imageResults.set(product.id, comparison);
-          setStates((current) => ({
-            ...current,
-            [product.id]: { status: "RUNNING", comparison, message: isShoeProduct(product.category, product.subcategory) ? "鞋类原图已就绪，等待商品识别" : "抠图与白底图已生成，等待商品识别" }
-          }));
-        } catch (caught) {
-          setStates((current) => ({
-            ...current,
-            [product.id]: {
-              ...current[product.id],
-              status: "FAILED",
-              message: errorMessage(caught, "抠图或白底图生成失败")
-            }
-          }));
-        }
-      });
-
-      setBatchPhase("ai");
-      const readyForAi = pending.filter((product) => imageResults.has(product.id));
-      await runWithConcurrency(readyForAi, PRODUCT_AI_BATCH_CONCURRENCY, async (product) => {
-        const comparison = imageResults.get(product.id) ?? null;
-        setStates((current) => ({
-          ...current,
-            [product.id]: { status: "RUNNING", comparison, message: "图片已就绪，正在运行商品识别" }
-        }));
-        try {
-          await runProductAi(product, ids);
-          setStates((current) => ({
-            ...current,
-              [product.id]: { status: "SUCCEEDED", comparison, message: "自动处理已完成，待人工快速确认" }
-          }));
-        } catch (caught) {
-          setStates((current) => ({
-            ...current,
-            [product.id]: {
-              status: "FAILED",
-              comparison,
-              message: errorMessage(caught, "AI 识别失败")
-            }
-          }));
-        }
-      });
+      await runWithConcurrency(pending, PRODUCT_AI_BATCH_CONCURRENCY, processOne);
+      await load();
+    } catch (caught) {
+      setError(errorMessage(caught, "无法刷新识别结果。"));
     } finally {
-      setBatchPhase("");
       setBusy(false);
     }
-    await load().catch((caught) => setError(errorMessage(caught, "无法刷新批次。")));
   }
 
-  async function forceBiRefNet(product: ProductRecord) {
+  async function retryRecognition(product: ProductRecord) {
+    if (busy) return;
     setBusy(true);
-    setError("");
-    await processOne(product, "rembg_birefnet");
-    setBusy(false);
-    await load().catch((caught) => setError(errorMessage(caught, "无法刷新批次。")));
+    try { await processOne(product); } finally { setBusy(false); }
   }
 
   if (!batch) {
@@ -703,7 +505,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <FlowHeader
-        title={`${batch.batchCode} · 第 2 步：AI 自动处理`}
+        title={`${batch.batchCode} · 第 2 步：识别商品信息`}
         description={`已完成 ${completed}/${batch.targetCount}${failed ? ` · 失败 ${failed}` : ""}`}
         batchId={batch.id}
       />
@@ -714,20 +516,16 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>整批自动处理 {batch.targetCount} {shoesBatch ? "双鞋" : "件商品"}</CardTitle>
-              <CardDescription>{shoesBatch ? "系统使用整双、侧面、鞋底和标签原图识别鞋款与原标鞋码。员工核对配对、鞋码和鞋况后，自动生成 AI 陈列图，再对照实物审核。" : "系统先自动抠图、生成正反面白底并识别商品。员工快速确认整批结果后，系统才按 Direct Loop 默认风格批量生成 AI 陈列图；员工不需要选择风格。"}</CardDescription>
+              <CardTitle>整批识别 {batch.targetCount} {shoesBatch ? "双鞋" : "件商品"}</CardTitle>
+              <CardDescription>系统直接使用上传原图识别分类、外观、名称和品牌。人工校准并填写尺码后，再直接由原图生成白底展示图。</CardDescription>
             </div>
             {completed < batch.targetCount ? (
               <Button disabled={busy} onClick={() => void processAll()}>
                 {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                {batchPhase === "images"
-                  ? shoesBatch ? "正在核对鞋类原图" : "正在批量抠图并生成白底图"
-                  : batchPhase === "ai"
-                    ? "正在批量 AI 识别"
-                    : failed ? "重试未完成商品" : `一键处理本批 ${batch.targetCount} 件`}
+                {busy ? "正在批量识别商品信息" : failed ? "重试未完成商品" : `识别本批 ${batch.targetCount} 件`}
               </Button>
             ) : (
-              <Button asChild><Link href={`/product/calibration?batchId=${encodeURIComponent(batch.id)}`}>检查异常并确认<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+              <Button asChild><Link href={`/product/calibration?batchId=${encodeURIComponent(batch.id)}`}>人工校准、填写尺码<ArrowRightIcon data-icon="inline-end" /></Link></Button>
             )}
           </div>
         </CardHeader>
@@ -737,9 +535,9 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
               key={product.id}
               batchId={batch.id}
               product={product}
-              state={states[product.id] ?? { status: "PENDING", comparison: null, message: "等待处理" }}
+              state={states[product.id] ?? { status: "PENDING", message: "等待处理" }}
               disabled={busy}
-              onRetry={() => void forceBiRefNet(product)}
+              onRetry={() => void retryRecognition(product)}
             />
           ))}
         </CardContent>
@@ -861,11 +659,6 @@ function ProcessingRow(props: {
   disabled: boolean;
   onRetry: () => void;
 }) {
-  const removeJob = props.state.comparison?.jobs.find((job) =>
-    job.operation === "REMOVE_BACKGROUND" &&
-    job.status === "SUCCEEDED" &&
-    job.sourceImageId === props.state.comparison?.original?.imageId
-  );
   return (
     <div className="grid gap-3 rounded-md border p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] md:items-center">
       <div className="min-w-0">
@@ -877,24 +670,10 @@ function ProcessingRow(props: {
           <ProcessingIcon status={props.state.status} />
           <span>{props.state.message}</span>
         </div>
-        {removeJob ? (
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <span>引擎：{providerLabel(removeJob.provider)}</span>
-            <span>质量：{removeJob.qualityScore == null ? "-" : Math.round(removeJob.qualityScore * 100)}</span>
-            {removeJob.fallbackFrom ? <span>已从 {providerLabel(removeJob.fallbackFrom)} 回退</span> : null}
-            {removeJob.qualityIssues.length ? <span className="text-amber-700">{removeJob.qualityIssues.join("、")}</span> : null}
-          </div>
-        ) : null}
       </div>
-      {props.state.status === "FAILED" && removeJob?.provider === "lightweight-opencv" ? (
+      {props.state.status === "FAILED" ? (
         <Button size="sm" variant="outline" disabled={props.disabled} onClick={props.onRetry}>
-          <RotateCcwIcon data-icon="inline-start" />强制 BiRefNet
-        </Button>
-      ) : props.state.status === "FAILED" ? (
-        <Button size="sm" variant="outline" asChild>
-          <Link href={`/product/calibration?batchId=${encodeURIComponent(props.batchId)}&productId=${encodeURIComponent(props.product.id)}`}>
-            处理异常<ArrowRightIcon data-icon="inline-end" />
-          </Link>
+          <RotateCcwIcon data-icon="inline-start" />重试商品识别
         </Button>
       ) : <span />}
     </div>
@@ -961,38 +740,14 @@ function hasSucceededAi(product: ProductRecord) {
     Array.isArray(extraction.inputImageIds) && extraction.inputImageIds.includes(latestFrontId);
 }
 
-function stateFromProduct(product: ProductRecord, comparison: ProductImageComparisonResponse): ProcessingState {
-  if (isShoeProduct(product.category, product.subcategory)) {
-    const missing = missingCaptureImageTypes(product);
-    if (missing.length) return { status: "FAILED", comparison, message: `请补充${missing.map((type) => SHOE_IMAGE_LABELS[type]).join("、")}` };
-    if (hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status)) {
-      return { status: "SUCCEEDED", comparison, message: "鞋类原图识别完成，待核对配对、鞋码和鞋况" };
-    }
-    const extraction = product.aiExtractions?.[0];
-    return extraction?.status === "FAILED"
-      ? { status: "FAILED", comparison, message: extraction.errorMessage || "鞋类识别失败" }
-      : { status: "PENDING", comparison, message: "等待鞋类原图识别" };
+function stateFromProduct(product: ProductRecord): ProcessingState {
+  if (missingCaptureImageTypes(product).length) return { status: "FAILED", message: "请补齐商品原图" };
+  if (hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status)) {
+    return { status: "SUCCEEDED", message: "商品识别完成，待人工校准、填写尺码" };
   }
-  const persistedWarning = persistedFrontCutoutWarning(comparison);
-  if (persistedWarning) return { status: "FAILED", comparison, message: persistedWarning };
-  const frontReady = Boolean(comparison.cutoutWhite);
-  const backReady = !comparison.backOriginal || Boolean(comparison.backCutoutWhite);
-  const imageReady = frontReady && backReady;
-  const aiReady = hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status);
-  if (imageReady && aiReady) return { status: "SUCCEEDED", comparison, message: "自动处理已完成，待人工快速确认" };
-  const failed = comparison.jobs.find((job) => job.status === "FAILED");
-  if (failed) return { status: "FAILED", comparison, message: failed.errorMessage || "图片处理失败" };
-  if (product.aiExtractions?.[0]?.status === "FAILED") {
-    return { status: "FAILED", comparison, message: product.aiExtractions[0].errorMessage || "AI 识别失败" };
-  }
-  return { status: "PENDING", comparison, message: imageReady ? "等待 AI 识别" : "等待抠图与白底图" };
-}
-
-function providerLabel(provider: string | null) {
-  if (!provider) return "-";
-  if (provider.includes("rembg") || provider.includes("birefnet")) return "rembg + BiRefNet";
-  if (provider.includes("lightweight") || provider.includes("opencv")) return "lightweight OpenCV";
-  return provider;
+  const extraction = product.aiExtractions?.[0];
+  if (extraction?.status === "FAILED") return { status: "FAILED", message: extraction.errorMessage || "商品识别失败" };
+  return { status: "PENDING", message: "等待原图识别商品信息" };
 }
 
 function errorMessage(value: unknown, fallback: string) {

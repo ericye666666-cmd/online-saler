@@ -24,7 +24,7 @@ describe("Product image processing rules", () => {
     assert.equal(sourceVariantForOperation("OPTIMIZE_BALANCED_MAIN_IMAGE"), "CUTOUT_TRANSPARENT");
     assert.equal(targetVariantForOperation("OPTIMIZE_BALANCED_MAIN_IMAGE"), "OPTIMIZED_BALANCED_MAIN");
 
-    assert.equal(sourceVariantForOperation("GENERATE_AI_DISPLAY_MAIN_IMAGE"), "CUTOUT_WHITE");
+    assert.equal(sourceVariantForOperation("GENERATE_AI_DISPLAY_MAIN_IMAGE"), "ORIGINAL");
     assert.equal(targetVariantForOperation("GENERATE_AI_DISPLAY_MAIN_IMAGE"), "AI_DISPLAY_MAIN");
   });
 

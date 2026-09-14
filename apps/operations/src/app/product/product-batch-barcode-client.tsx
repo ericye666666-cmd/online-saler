@@ -186,10 +186,10 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
         headers: { "X-Admin-User-Id": ids.adminUserId },
         body: JSON.stringify({})
       });
-      setNotice("正在补生成 AI 陈列图与销售详情，完成后本页会自动更新。");
+      setNotice("正在补生成 白底展示图与销售详情，完成后本页会自动更新。");
       await load();
     } catch (caught) {
-      setError(errorMessage(caught, "无法生成 AI 陈列图与销售详情。"));
+      setError(errorMessage(caught, "无法生成 白底展示图与销售详情。"));
     } finally {
       setBusy("");
     }
@@ -255,7 +255,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
 
   async function confirmPlacedAndPublish() {
     if (!batch) return;
-    if (!window.confirm(`Have all items been placed in their assigned shelf locations?\n\n请同时确认本批 ${batch.targetCount} 件 AI 陈列图无异常；继续后将直接入仓并发布。`)) return;
+    if (!window.confirm(`Have all items been placed in their assigned shelf locations?\n\n请同时确认本批 ${batch.targetCount} 件 白底展示图无异常；继续后将直接入仓并发布。`)) return;
     setBusy("publish");
     setError("");
     setNotice("");
@@ -293,7 +293,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
         <div>
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-3" />返回批次</Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：打印、归位并发布</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Barcode、AI 陈列图和货架位已集中在一个页面；正常商品不再进入第二轮详情审批。</p>
+          <p className="mt-1 text-sm text-muted-foreground">Barcode、白底展示图和货架位已集中在一个页面；正常商品不再进入第二轮详情审批。</p>
         </div>
         {publishedCount < batch.targetCount ? (
           <Button variant="outline" asChild><Link href={`/product/review?batchId=${encodeURIComponent(batch.id)}`}><AlertTriangleIcon data-icon="inline-start" />发现异常，进入单件处理</Link></Button>
@@ -348,7 +348,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
                     </div>
                     <div className="mt-3 flex flex-col gap-2">
                       {group.products.map((product) => {
-                        const imageUrl = comparisonUrl(comparisons[product.id]?.cutoutWhite?.publicUrl);
+                        const imageUrl = comparisonUrl(comparisons[product.id]?.original?.publicUrl);
                         return <div key={product.id} className="flex items-center gap-3 rounded-md bg-muted/40 p-2">{imageUrl ? <img src={imageUrl} alt={product.title ?? product.productCode} className="size-12 rounded object-contain" /> : <div className="size-12 rounded bg-background" />}<div className="min-w-0"><p className="truncate text-sm font-medium">{product.title ?? product.productCode}</p><p className="truncate font-mono text-xs text-muted-foreground">{product.barcode}</p></div></div>;
                       })}
                     </div>
@@ -375,7 +375,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
           {!allAiDisplaysReady ? (
             <StatusMessage tone="neutral">
               <span className="flex flex-wrap items-center justify-between gap-3">
-                <span className="flex items-center gap-2"><LoaderCircleIcon className="size-4 animate-spin" />AI 陈列图与详情仍在生成，完成后本页自动更新。</span>
+                <span className="flex items-center gap-2"><LoaderCircleIcon className="size-4 animate-spin" />白底展示图与详情仍在生成，完成后本页自动更新。</span>
                 <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void rerunDetails()}><RefreshCwIcon data-icon="inline-start" />补生成</Button>
               </span>
             </StatusMessage>
@@ -386,7 +386,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="font-semibold">最后一次批量确认</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">只需确认标签已贴、衣服已按货架号放好、AI 陈列图无明显异常；详情无需再次逐件审批。</p>
+                  <p className="mt-1 text-sm text-muted-foreground">只需确认标签已贴、衣服已按货架号放好、白底展示图无明显异常；详情无需再次逐件审批。</p>
                 </div>
                 <Button disabled={Boolean(busy) || !readyToPublish} onClick={() => void confirmPlacedAndPublish()}>
                   {busy === "publish" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <PackageCheckIcon data-icon="inline-start" />}
@@ -413,14 +413,14 @@ function LabelPreview(props: {
   onPrint: () => void;
 }) {
   const locationCode = props.product.inventoryItem?.location?.locationCode || "待分配";
-  const whiteUrl = comparisonUrl(props.comparison?.cutoutWhite?.publicUrl);
+  const whiteUrl = comparisonUrl(props.comparison?.original?.publicUrl);
   const aiUrl = comparisonUrl(props.comparison?.aiDisplayMain?.publicUrl);
   return (
     <article className={cn("overflow-hidden rounded-md border bg-white text-black", props.product.labelPrintedAt && "border-emerald-500")}>
       <div className="grid grid-cols-[112px_1fr] gap-3 p-3">
         <div className="grid grid-rows-2 gap-1 print:hidden">
-          <ProductThumb src={whiteUrl} alt={`${props.product.productCode} 白底正面`} label="白底" />
-          <ProductThumb src={aiUrl} alt={`${props.product.productCode} AI 陈列图`} label="AI 陈列" />
+          <ProductThumb src={whiteUrl} alt={`${props.product.productCode} 正面原图`} label="原图" />
+          <ProductThumb src={aiUrl} alt={`${props.product.productCode} 白底展示图`} label="展示图" />
         </div>
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-2 text-xs">
@@ -473,7 +473,7 @@ function pendingLabels(input: { allLocationsReady: boolean; allPrinted: boolean;
   const pending = [];
   if (!input.allLocationsReady) pending.push("货架位分配");
   if (!input.allPrinted) pending.push("标签打印");
-  if (!input.allAiDisplaysReady) pending.push("AI 陈列图生成");
+  if (!input.allAiDisplaysReady) pending.push("白底展示图生成");
   return pending;
 }
 

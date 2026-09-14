@@ -8,7 +8,7 @@ export default async function CalibrationPage({ searchParams }: { searchParams: 
     <ProductQueuePage
       queue="calibration"
       title="图片与信息校准"
-      description="同页核对原图、抠图、商城主图与 AI 商品数据，确认尺寸、成色、瑕疵和价格。"
+      description="对照原图校准 AI 商品信息，手填尺码、成色、瑕疵和价格；确认后直接由原图生成白底展示图。"
     />
   );
 }

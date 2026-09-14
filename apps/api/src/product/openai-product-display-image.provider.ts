@@ -8,11 +8,12 @@ const DEFAULT_MODEL = "gpt-image-1-mini";
 const DEFAULT_QUALITY = "low";
 const DEFAULT_TIMEOUT_MS = 180_000;
 
-export const PRODUCT_DISPLAY_PROMPT_VERSION = "product-display-v1";
+export const PRODUCT_DISPLAY_PROMPT_VERSION = "product-display-v2-original";
 export const PRODUCT_DISPLAY_IMAGE_PROMPT = [
-  "Create one clean catalog display image by carefully rearranging only the exact second-hand garment in the supplied image.",
+  "Create one clean catalog display image by carefully rearranging only the exact second-hand garment in the supplied original photograph.",
   "Preserve the garment's identity and all factual details exactly: color, material texture, print, logo, embroidery, seams, pockets, buttons, zippers, drawstrings, labels, wear, stains, holes and other defects.",
   "Do not add, remove, replace, redraw or invent any garment detail. Do not repair or hide defects.",
+  "Use the uploaded original photo directly. Replace its surroundings with white while preserving the garment; do not recreate missing or hidden details.",
   "Lay the garment out naturally and evenly on a pure white square background.",
   "For tops and outerwear: level the shoulders, place both sleeves in a natural relaxed and approximately symmetric downward position, align the cuffs, center and open any hood naturally, and level the hem.",
   "For trousers and shorts: level the waistband, straighten both legs naturally, keep the legs parallel without changing their cut, and align the hems.",
