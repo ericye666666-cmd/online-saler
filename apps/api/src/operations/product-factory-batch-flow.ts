@@ -73,9 +73,9 @@ export type ProductFactoryBatchFlow = {
 
 const STAGE_LABELS: Record<ProductFactoryBatchStage, string> = {
   UPLOAD: "上传图片",
-  AI_IMAGE: "AI 与图片处理",
+  AI_IMAGE: "商品信息识别",
   CALIBRATION: "人工校准",
-  BARCODE: "生成 Barcode",
+  BARCODE: "白底展示图审核",
   LABEL_APPLY: "打印并贴码",
   REVIEW: "商品审核",
   STORAGE: "货架入库",
@@ -86,9 +86,9 @@ const STAGE_LABELS: Record<ProductFactoryBatchStage, string> = {
 
 const ACTION_LABELS: Record<ProductFactoryBatchNextAction, string> = {
   CONTINUE_UPLOAD: "继续上传",
-  START_AI_IMAGE: "开始 AI 与图片处理",
+  START_AI_IMAGE: "开始 商品信息识别",
   CONTINUE_CALIBRATION: "继续人工校准",
-  GENERATE_BARCODES: "生成本批 Barcode",
+  GENERATE_BARCODES: "审核本批白底展示图",
   PRINT_AND_APPLY_LABELS: "打印并贴码",
   CONTINUE_REVIEW: "继续审核",
   COMPLETE_STORAGE: "确认全部入库",

@@ -377,6 +377,12 @@ export class OperationsProductBatchService {
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must be calibrated before generating barcodes.`);
     }
+    // Image approval is a separate employee action, never inferred from printing.
+    for (const product of products) {
+      if (product.status === ProductStatus.PUBLISHED) continue;
+      const image = await loadConfirmedDisplayImage(prisma, product.id);
+      if (!image) throw new BadRequestException(`Product ${product.productCode}: Confirm the AI display image before generating barcodes.`);
+    }
     const generated = [];
     const generatedAt = new Date();
     for (const product of products) {
@@ -530,20 +536,10 @@ export class OperationsProductBatchService {
     const reviewable = pending.filter((product) =>
       product.status === ProductStatus.BARCODE_ASSIGNED || product.status === ProductStatus.REVIEW_PENDING
     );
-    const reviewImages = [];
+    // Validate all pending items before any approvals or inventory mutations.
     for (const product of reviewable) {
-      const comparison = await this.imageProcessing.getComparison(product.id);
-      const aiDisplayImageId = comparison.aiDisplayMain?.imageId;
-      if (!aiDisplayImageId) {
-        throw new BadRequestException(`Product ${product.productCode} is missing its AI display image.`);
-      }
-      reviewImages.push({ productId: product.id, imageId: aiDisplayImageId });
-    }
-    for (const selection of reviewImages) {
-      await this.imageProcessing.selectMainImage(
-        selection,
-        { recordDetailSourceChange: false, humanConfirmed: true }
-      );
+      const image = await loadConfirmedDisplayImage(prisma, product.id);
+      if (!image) throw new BadRequestException(`Product ${product.productCode}: Confirm the AI display image on the image review page first.`);
     }
 
     if (reviewable.length > 0) await this.details.approveBatch(batch.id, employeeId);
@@ -759,7 +755,7 @@ export class OperationsProductBatchService {
       detailProfiles: {
         orderBy: { sourceDataVersion: "desc" },
         take: 1,
-        select: { status: true, sourceDataVersion: true }
+        select: { id: true, status: true, sourceDataVersion: true }
       },
       inventoryItem: {
         include: {

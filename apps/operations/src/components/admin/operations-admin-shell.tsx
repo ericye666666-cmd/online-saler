@@ -103,6 +103,7 @@ export const operationsModules: ModuleNav[] = [
         routePrefixes: [
           "/product/calibration",
           "/product/barcode",
+          "/product/display-review",
           "/product/review",
           "/product/waiting-upload",
           "/product/waiting-ai",

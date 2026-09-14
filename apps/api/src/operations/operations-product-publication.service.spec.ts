@@ -181,7 +181,7 @@ test("partial batch retry resumes unfinished items without restocking already so
 test("batch completion does not auto-confirm earlier items if a later AI image is missing", async () => {
   records = [product("first", ProductStatus.REVIEW_PENDING), product("second", ProductStatus.REVIEW_PENDING)];
   missingAssets.add("second");
-  await assert.rejects(batches.completeAndPublishBatch("batch-1", actor), /missing its AI display image/);
+  await assert.rejects(batches.completeAndPublishBatch("batch-1", actor), /Confirm the AI display image/);
   assert.deepEqual(mainConfirmations, []);
   assert.equal(detailApprovals, 0);
   assert.equal(transitions.length, 0);
@@ -225,4 +225,40 @@ test("stock-in requires a conditional update and aborts when inventory changes d
   })) as never;
   await assert.rejects(control.confirmPlaced("product-1", actor), /Inventory changed/);
   assert.equal(movements, 0);
+});
+
+for (const status of [ProductStatus.BARCODE_ASSIGNED, ProductStatus.REVIEW_PENDING]) {
+  test(`batch completion never auto-confirms an unreviewed image in ${status}`, async () => {
+    records = [product("first", status), product("second", status)];
+    imageSelections.set("second", { variant: "AI_DISPLAY_MAIN", selectedImageId: "new-image", confirmedAt: null });
+    await assert.rejects(batches.completeAndPublishBatch("batch-1", actor), /Confirm the AI display image/);
+    assert.deepEqual(mainConfirmations, []);
+    assert.equal(detailApprovals, 0);
+    assert.equal(transitions.length, 0);
+  });
+}
+
+test("barcode generation checks all image approvals before reserving any labels or shelves", async () => {
+  records = [product("first", ProductStatus.CALIBRATED), product("second", ProductStatus.CALIBRATED)];
+  imageSelections.set("second", { variant: "AI_DISPLAY_MAIN", selectedImageId: "regenerated", confirmedAt: null });
+  await assert.rejects(batches.generateBatchBarcodes("batch-1", actor), /Confirm the AI display image before generating barcodes/);
+  assert.equal(transitions.length, 0);
+});
+
+test("confirmed images unlock barcode generation without another image confirmation", async () => {
+  records = [product("first", ProductStatus.CALIBRATED), product("second", ProductStatus.CALIBRATED)];
+  const generated: string[] = [];
+  const reserved: string[][] = [];
+  const service = new OperationsProductBatchService(
+    { requirePermission: async () => ({}) } as never,
+    {} as never,
+    { generate: async (id: string) => { generated.push(id); return records.find((item) => item.id === id); } } as never,
+    {} as never,
+    { assignBatchLocations: async (ids: string[]) => { reserved.push(ids); return []; } } as never,
+    {} as never, {} as never
+  );
+  await service.generateBatchBarcodes("batch-1", actor);
+  assert.deepEqual(generated, ["first", "second"]);
+  assert.deepEqual(reserved, [["first", "second"]]);
+  assert.deepEqual(mainConfirmations, []);
 });
