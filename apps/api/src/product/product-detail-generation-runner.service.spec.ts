@@ -37,7 +37,8 @@ test("generates an AI display image first and selects it without changing the de
   const selections: unknown[] = [];
   const imageProcessing = {
     getComparison: async () => ({
-      cutoutWhite: { imageId: "white-1" },
+      original: { imageId: "front-1" },
+      cutoutWhite: null,
       aiDisplayMain: null
     }),
     start: async (input: unknown) => {
@@ -66,7 +67,7 @@ test("generates an AI display image first and selects it without changing the de
   assert.equal(selected.imageId, "ai-1");
   assert.deepEqual(starts, [{
     productId: "product-1",
-    sourceImageId: "white-1",
+    sourceImageId: "front-1",
     operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"
   }]);
   assert.deepEqual(selections, [{
@@ -79,7 +80,8 @@ test("reuses an existing AI display image and makes it the default main image", 
   let startCalled = false;
   const imageProcessing = {
     getComparison: async () => ({
-      cutoutWhite: { imageId: "white-1" },
+      original: { imageId: "front-1" },
+      cutoutWhite: null,
       aiDisplayMain: { imageId: "ai-existing", selectedAsMain: false }
     }),
     start: async () => {

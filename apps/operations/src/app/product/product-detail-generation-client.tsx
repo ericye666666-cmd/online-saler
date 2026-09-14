@@ -206,7 +206,7 @@ async function generateAiDisplayImage(
     { method: "POST", body: JSON.stringify({}) }
   );
   if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
-    throw new Error(completed.errorMessage || "AI 陈列图生成失败。");
+    throw new Error(completed.errorMessage || "白底展示图生成失败。");
   }
   return completed;
 }
@@ -381,7 +381,7 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
               </div>
 
               <div className="border-b px-4 py-3">
-                <p className="text-sm font-medium">第一步先批量生成 AI 陈列图并设为默认商城主图，再生成文案、尺码和其他销售详情。</p>
+                <p className="text-sm font-medium">人工校准、填写尺码后，直接使用原图批量生成白底展示图；销售详情使用已确认的信息和人工尺码。</p>
                 <p className="mt-1 text-xs text-muted-foreground">员工仍需在详情审核中对照原图确认 Logo、图案、结构、磨损和瑕疵；Model View 占位页不会恢复。</p>
               </div>
 
@@ -506,7 +506,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
 
   async function chooseStorefrontMain(choice: DetailMainImageChoice) {
     if (!profile || !choice.selectable || !choice.image) return;
-    if (choice.generated && !window.confirm("请对照原图确认 AI 陈列图没有改变 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损或瑕疵。确认一致后继续。")) return;
+    if (choice.generated && !window.confirm("请对照原图确认 白底展示图没有改变 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损或瑕疵。确认一致后继续。")) return;
     setBusy(`main-${choice.image.imageId}`);
     setError("");
     setNotice("");
@@ -526,22 +526,22 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
   }
 
   async function generateDisplayImage() {
-    if (!profile || !comparison?.cutoutWhite?.imageId) {
-      setError("请先完成白底图，再生成 AI 陈列图。");
+    if (!profile || !comparison?.original?.imageId) {
+      setError("请先上传正面原图，再生成白底展示图。");
       return;
     }
     setBusy("ai-display");
     setError("");
     setNotice("");
     try {
-      const completed = await generateAiDisplayImage(profile.product.id, comparison.cutoutWhite.imageId, ids.adminUserId);
+      const completed = await generateAiDisplayImage(profile.product.id, comparison.original.imageId, ids.adminUserId);
       await request(`/product-detail-profiles/${encodeURIComponent(profile.id)}/main-image`, ids.adminUserId, {
         method: "POST",
         body: JSON.stringify({ imageId: completed.outputImageId, humanConfirmed: false })
       });
       await load();
       setActiveMainImage("ai-display");
-      setNotice("AI 陈列图已重新生成并设为默认商城主图，请对照原图人工确认。");
+      setNotice("白底展示图已重新生成并设为默认商城主图，请对照原图人工确认。");
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -602,11 +602,11 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="font-semibold">商城主图</h2>
-                <p className="mt-1 text-xs text-muted-foreground">批量详情生成会先创建 AI 陈列图并默认选为主图；在这里对照原图检查，也可以改选白底图、优化图或均整图。</p>
+                <p className="mt-1 text-xs text-muted-foreground">人工确认商品信息后，直接使用原图生成白底展示图并作为主图候选；请在这里对照原图审核。</p>
               </div>
-              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.cutoutWhite?.imageId} onClick={() => void generateDisplayImage()}>
+              <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.imageId} onClick={() => void generateDisplayImage()}>
                 {busy === "ai-display" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                {comparison?.aiDisplayMain ? "重新生成 AI 陈列图" : "生成 AI 陈列图"}
+                {comparison?.aiDisplayMain ? "重新生成 白底展示图" : "生成 白底展示图"}
               </Button>
             </div>
 
@@ -639,7 +639,7 @@ export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className={cn("text-xs", hasSelectedMainImage ? "text-emerald-700" : "font-medium text-amber-700")}>
                 {aiConfirmationRequired
-                  ? "AI 陈列图已默认设为主图；批准前请点击“人工确认 AI 主图”完成核对。"
+                  ? "白底展示图已默认设为主图；批准前请点击“人工确认 AI 主图”完成核对。"
                   : hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "尚未选择商城主图；商品发布时仍会执行正式主图与准备度规则。"}
               </p>
               {currentMainImage?.selectable && currentMainImage.image ? (
@@ -888,9 +888,9 @@ function SafeImage({ src, alt }: { src: string; alt: string }) {
 
 function detailMainImageChoices(comparison: ProductImageComparisonResponse | null): DetailMainImageChoice[] {
   return [
-    { key: "white", label: "白底正面", image: comparison?.cutoutWhite ?? null, selectable: true, generated: false },
-    { key: "back-white", label: "白底背面", image: comparison?.backCutoutWhite ?? null, selectable: false, generated: false },
-    { key: "ai-display", label: "AI 陈列图", image: comparison?.aiDisplayMain ?? null, selectable: true, generated: true }
+    { key: "white", label: "正面原图", image: comparison?.original ?? null, selectable: false, generated: false },
+    { key: "back-white", label: "背面原图", image: comparison?.backOriginal ?? null, selectable: false, generated: false },
+    { key: "ai-display", label: "白底展示图", image: comparison?.aiDisplayMain ?? null, selectable: true, generated: true }
   ];
 }
 

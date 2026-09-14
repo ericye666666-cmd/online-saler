@@ -38,14 +38,13 @@ assert.equal(
   false,
   "AI measurements must not recommend or overwrite staff-entered size."
 );
-assert.ok(
-  calibrationSource.includes("抠图不对，手动修正"),
-  "Staff must be able to override a visually wrong cutout even when automatic scoring passes."
-);
-assert.ok(
-  calibrationSource.includes("重新自动抠图"),
-  "A legacy result that passed older scoring must be rerunnable through the current automatic pipeline."
-);
+const centerSource = readFileSync(join(process.cwd(), "src/app/product/product-center-client.tsx"), "utf8");
+for (const source of [calibrationSource, executionSource, centerSource]) {
+  assert.equal(source.includes('"REMOVE_BACKGROUND"'), false, "Intake must never request cutout processing.");
+  assert.equal(source.includes('"COMPOSE_WHITE_BACKGROUND"'), false, "Intake must never compose an intermediate white image.");
+  assert.equal(source.includes("<ManualCutoutEditor"), false, "No cutout editor in intake.");
+}
+assert.ok(detailSource.includes("comparison.original.imageId"), "Display generation must use the original photo.");
 assert.equal(
   calibrationSource.includes("设为商城主图"),
   false,
@@ -61,7 +60,7 @@ assert.equal(
   "Batch preprocessing must wait for the quick human pass before generating AI display images."
 );
 assert.ok(
-  calibrationSource.includes("正在批量生成 AI 陈列主图、销售详情与 Barcode"),
+  calibrationSource.includes("正在批量生成白底展示图、销售详情与 Barcode"),
   "The last quick confirmation must start batch AI display generation without style selection."
 );
 assert.ok(
@@ -90,3 +89,6 @@ assert.ok(
   detailSource.includes("商品发布仍由价格、库存、状态和商品控制规则共同决定"),
   "Detail approval must preserve the product publication gates."
 );
+
+assert.equal(centerSource.includes("!comparison?.selectedMainImageId"), false,
+  "Manual confirmation must not require the display image that is generated after confirmation.");

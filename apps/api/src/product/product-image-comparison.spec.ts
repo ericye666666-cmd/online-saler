@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { findDerivedImageForSource } from "./product-image-comparison";
+import { findDerivedImageForSource, findDisplayImageForSource } from "./product-image-comparison";
 
 const assets = [
   { id: "back-white", sourceImageId: "back-transparent", variant: "CUTOUT_WHITE" },
@@ -35,4 +35,13 @@ describe("product image comparison chains", () => {
       "back-white"
     );
   });
+});
+
+it("new displays use original sources while existing confirmed published displays remain visible", () => {
+  const legacy = { id: "live", sourceImageId: "old-white", variant: "AI_DISPLAY_MAIN" };
+  const direct = { id: "new", sourceImageId: "front", variant: "AI_DISPLAY_MAIN" };
+  assert.equal(findDisplayImageForSource([legacy], "front", "live", true)?.id, "live");
+  assert.equal(findDisplayImageForSource([legacy], "front", "live", false), null);
+  assert.equal(findDisplayImageForSource([direct, legacy], "front", "live", true)?.id, "new");
+  assert.equal(findDisplayImageForSource([direct, legacy], "replaced-front", "live", false), null);
 });

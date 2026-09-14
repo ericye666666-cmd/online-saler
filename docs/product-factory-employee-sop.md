@@ -22,9 +22,10 @@ online garments must stay separate from store stock.
 
 ## 2. AI processing · AI 自动处理
 
-1. Start the batch processing action. The system prepares the images and reads
+1. Start the batch processing action. The system reads the uploaded original photos directly to identify
    category/subcategory, visible color, pattern, sleeve and fit features, tags,
-   product names and readable brands. AI does not estimate sizes or centimeters.
+   product names and readable brands. No cutout or intermediate white image is created.
+   AI does not estimate sizes or centimeters.
 2. Wait for the results. Open **待处理异常** for any failed item and retry the
    failed work. Keep completed items and their photos in the same batch.
 3. Continue to confirmation when the results are ready. If repeated processing
@@ -32,13 +33,14 @@ online garments must stay separate from store stock.
 
 ## 3. Confirm, label, store and publish · 异常确认并发布
 
-1. **Check each garment.** Compare the original, prepared image and actual
+1. **Check each garment.** Compare the original photo and actual
    garment. Correct the title, category, audience, color, condition, defects and price.
    Enter the size manually from the actual garment; no automatic sizing or conversion is applied.
    Centimeter measurements are optional and must be measured by hand if supplied.
    AI suggestions need your confirmation; do not guess an unreadable brand or size.
 2. **Save each item.** Once all ten are confirmed, the system prepares sales
-   details and AI display images, generates the formal barcodes and assigns
+   details and white-background display images directly from the original photos,
+   generates the formal barcodes and assigns
    shelf locations. Continue to **打印、归位并发布**.
 3. **Check every AI display image against its original and the garment.** An AI
    display image is required for every item. It must keep the real garment's

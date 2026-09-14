@@ -296,7 +296,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
                 <article key={item.id} className="overflow-hidden rounded-md border">
                   <div className="grid grid-cols-2 gap-px bg-border">
                     <div className="aspect-[4/5] bg-white"><SafeProductImage src={comparisonImageUrl(itemComparison?.original)} alt={`${item.productCode} 原图`} /></div>
-                    <div className="aspect-[4/5] bg-white"><SafeProductImage src={comparisonImageUrl(itemComparison?.aiDisplayMain)} alt={`${item.productCode} AI 陈列图`} /></div>
+                    <div className="aspect-[4/5] bg-white"><SafeProductImage src={comparisonImageUrl(itemComparison?.aiDisplayMain)} alt={`${item.productCode} 白底展示图`} /></div>
                   </div>
                   <div className="flex items-center justify-between gap-2 border-t px-2 py-2 text-xs">
                     <span>第 {item.batchItemNumber ?? "-"} 件</span>
@@ -329,7 +329,7 @@ export function ProductBatchReviewPage({ batchId }: { batchId: string }) {
               <SafeProductImage src={currentImage?.url ?? ""} alt={`${product.productCode} ${currentImage?.label ?? "图片"}`} />
             </div>
             {currentImage?.key === "ai-display" ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">AI 陈列图是生成式候选图。审核时必须与原图核对 Logo、口袋、纽扣、拉链、抽绳、纹理、磨损和瑕疵。</div>
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">白底展示图是生成式候选图。审核时必须与原图核对 Logo、口袋、纽扣、拉链、抽绳、纹理、磨损和瑕疵。</div>
             ) : null}
           </div>
 
@@ -463,9 +463,9 @@ function isReviewable(status: string) { return status === "BARCODE_ASSIGNED" || 
 
 function buildImageTabs(product: ProductRecord, comparison: ProductImageComparisonResponse | null): ImageTab[] {
   const tabs = [
-    variantTab("white", "白底正面", comparison?.cutoutWhite ?? null),
-    variantTab("back-white", "白底背面", comparison?.backCutoutWhite ?? null),
-    variantTab("ai-display", "AI 陈列图", comparison?.aiDisplayMain ?? null)
+    variantTab("white", "正面原图", comparison?.original ?? null),
+    variantTab("back-white", "背面原图", comparison?.backOriginal ?? null),
+    variantTab("ai-display", "白底展示图", comparison?.aiDisplayMain ?? null)
   ].filter((tab) => tab.url);
   for (const [type, label] of [["LABEL", "标签"], ["DEFECT", "瑕疵"], ["DETAIL", "细节"]] as const) {
     const image = product.images?.find((candidate) => candidate.type === type);

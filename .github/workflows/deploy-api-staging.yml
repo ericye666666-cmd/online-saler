@@ -34,10 +34,6 @@ permissions:
 
 env:
   IMAGE_NAME: api
-  LIGHTWEIGHT_IMAGE_NAME: image-processor-lightweight
-  REMBG_IMAGE_NAME: image-processor-rembg
-  LIGHTWEIGHT_SERVICE_NAME: online-saler-lightweight-cutout-staging
-  REMBG_SERVICE_NAME: online-saler-rembg-birefnet-staging
   MIGRATION_JOB_NAME: online-saler-db-migrate-staging
   SMOKE_CLEANUP_JOB_NAME: online-saler-deploy-smoke-cleanup-staging
   LEGACY_TEST_BATCH_CODES: BATCH-1785507292547;BATCH-1785580900516
@@ -102,100 +98,6 @@ jobs:
           gcloud auth configure-docker \
             "${{ vars.GCP_REGION }}-docker.pkg.dev" \
             --quiet
-
-      - name: Build lightweight cutout image
-        run: |
-          LIGHTWEIGHT_IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${LIGHTWEIGHT_IMAGE_NAME}:${GITHUB_SHA}"
-
-          docker build \
-            --file apps/image-processor-lightweight/Dockerfile \
-            --tag "${LIGHTWEIGHT_IMAGE_URI}" \
-            apps/image-processor-lightweight
-
-          echo "LIGHTWEIGHT_IMAGE_URI=${LIGHTWEIGHT_IMAGE_URI}" >> "${GITHUB_ENV}"
-
-      - name: Push lightweight cutout image
-        run: docker push "${LIGHTWEIGHT_IMAGE_URI}"
-
-      - name: Deploy lightweight cutout service
-        id: deploy_lightweight_cutout
-        uses: google-github-actions/deploy-cloudrun@v3
-        with:
-          service: ${{ env.LIGHTWEIGHT_SERVICE_NAME }}
-          region: ${{ vars.GCP_REGION }}
-          image: ${{ env.LIGHTWEIGHT_IMAGE_URI }}
-          flags: >-
-            --allow-unauthenticated
-            --port=8080
-            --memory=1Gi
-            --cpu=1
-            --min-instances=0
-            --max-instances=4
-            --concurrency=1
-            --timeout=300s
-            --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
-
-      - name: Verify lightweight cutout service
-        run: |
-          LIGHTWEIGHT_CUTOUT_SERVICE_URL="${{ steps.deploy_lightweight_cutout.outputs.url }}"
-          echo "LIGHTWEIGHT_CUTOUT_SERVICE_URL=${LIGHTWEIGHT_CUTOUT_SERVICE_URL}" >> "${GITHUB_ENV}"
-
-          curl \
-            --fail \
-            --show-error \
-            --silent \
-            --retry 10 \
-            --retry-delay 5 \
-            "${LIGHTWEIGHT_CUTOUT_SERVICE_URL}/health"
-
-      - name: Build rembg BiRefNet image
-        run: |
-          REMBG_IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}/${REMBG_IMAGE_NAME}:${GITHUB_SHA}"
-
-          docker build \
-            --file apps/image-processor-rembg/Dockerfile \
-            --tag "${REMBG_IMAGE_URI}" \
-            apps/image-processor-rembg
-
-          echo "REMBG_IMAGE_URI=${REMBG_IMAGE_URI}" >> "${GITHUB_ENV}"
-
-      - name: Push rembg BiRefNet image
-        run: docker push "${REMBG_IMAGE_URI}"
-
-      - name: Deploy rembg BiRefNet service
-        id: deploy_rembg_birefnet
-        uses: google-github-actions/deploy-cloudrun@v3
-        with:
-          service: ${{ env.REMBG_SERVICE_NAME }}
-          region: ${{ vars.GCP_REGION }}
-          image: ${{ env.REMBG_IMAGE_URI }}
-          flags: >-
-            --allow-unauthenticated
-            --port=8080
-            --memory=16Gi
-            --cpu=4
-            --min-instances=0
-            --max-instances=2
-            --concurrency=1
-            --timeout=600s
-            --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
-          env_vars: |
-            REMBG_MODEL=birefnet-general
-            MAX_IMAGE_BYTES=20971520
-
-      - name: Verify rembg BiRefNet service
-        run: |
-          REMBG_BIREFNET_SERVICE_URL="${{ steps.deploy_rembg_birefnet.outputs.url }}"
-          echo "REMBG_BIREFNET_SERVICE_URL=${REMBG_BIREFNET_SERVICE_URL}" >> "${GITHUB_ENV}"
-
-          curl \
-            --fail \
-            --show-error \
-            --silent \
-            --retry 24 \
-            --retry-all-errors \
-            --retry-delay 5 \
-            "${REMBG_BIREFNET_SERVICE_URL}/health"
 
       - name: Build Docker image
         run: |
@@ -288,12 +190,6 @@ jobs:
             NODE_ENV=staging
             STAGING_PILOT_BATCH_ENABLED=true
             PRODUCT_IMAGE_BUCKET=${{ env.PRODUCT_IMAGE_BUCKET }}
-            BACKGROUND_REMOVAL_PROVIDER=auto
-            LIGHTWEIGHT_CUTOUT_SERVICE_URL=${{ steps.deploy_lightweight_cutout.outputs.url }}
-            LIGHTWEIGHT_CUTOUT_MAX_CONCURRENCY=2
-            LIGHTWEIGHT_CUTOUT_RETRY_BASE_DELAY_MS=300
-            REMBG_BIREFNET_SERVICE_URL=${{ steps.deploy_rembg_birefnet.outputs.url }}
-            BACKGROUND_REMOVAL_MIN_QUALITY_SCORE=0.75
             AI_PROVIDER_MODE=openai
             OPENAI_VISION_MODEL=${{ env.OPENAI_VISION_MODEL }}
             OPENAI_DETAIL_MODEL=${{ env.OPENAI_DETAIL_MODEL }}
@@ -377,13 +273,14 @@ jobs:
             --output /tmp/product-test-downloaded.png
           cmp /tmp/product-test.png /tmp/product-test-downloaded.png
 
-      - name: Verify image cutout auto routing
-        env:
-          SERVICE_URL: ${{ steps.deploy.outputs.url }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          node scripts/verify-staging-image-processing.mjs
+          RETIRED_STATUS="$(curl --silent --show-error --output /tmp/retired-image-operation.json --write-out '%{http_code}' \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "Authorization: Bearer ${STAGING_SMOKE_ACCESS_TOKEN}" \
+            --data '{"operation":"REMOVE_BACKGROUND"}' \
+            "${SERVICE_URL}/products/${PRODUCT_ID}/images/${IMAGE_ID}/processing-jobs")"
+          test "${RETIRED_STATUS}" = "400"
+          node -e 'const r=JSON.parse(require("node:fs").readFileSync("/tmp/retired-image-operation.json","utf8"));if(!String(r.message).includes("Cutout processing is retired"))throw Error("Unexpected retired-operation response")'
 
       - name: Verify Operations workspace API
         run: |

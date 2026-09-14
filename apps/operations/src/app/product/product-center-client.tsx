@@ -39,7 +39,6 @@ import {
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
-import { lightweightCutoutWarning } from "./image-processing-quality";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -160,12 +159,6 @@ async function uploadProductImage(productId: string, employeeId: string, adminUs
     body = { message: text || `Upload failed: ${response.status}` };
   }
   if (!response.ok) throw new Error(String(body.message ?? `Upload failed: ${response.status}`));
-  const imageId = stringValue(body.id);
-  if (imageId) {
-    const cutout = await runImageOperation(productId, imageId, "REMOVE_BACKGROUND", adminUserId, "auto");
-    const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", adminUserId);
-    await selectProductMainImage(productId, white.outputImageId!, adminUserId);
-  }
   return body;
 }
 
@@ -809,31 +802,10 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     });
   }
 
-  async function processImages(mode: BackgroundRemovalMode) {
-    const sourceId = comparison?.original?.imageId ?? stringValue(latestImage?.id);
-    if (!sourceId) {
-      setError("请先上传正面原图。");
-      return;
-    }
-    setImageBusy(mode);
-    setError("");
-    try {
-      const cutout = await runImageOperation(productId, sourceId, "REMOVE_BACKGROUND", props.ids.adminUserId, mode);
-      const cutoutWarning = lightweightCutoutWarning(cutout);
-      if (cutoutWarning) throw new Error(cutoutWarning);
-      const white = await runImageOperation(productId, cutout.outputImageId!, "COMPOSE_WHITE_BACKGROUND", props.ids.adminUserId);
-      setComparison(await selectProductMainImage(productId, white.outputImageId!, props.ids.adminUserId));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "图片处理失败。");
-    } finally {
-      setImageBusy("");
-    }
-  }
-
   async function generateAiDisplayMain() {
-    const sourceId = shoes ? comparison?.original?.imageId : comparison?.cutoutWhite?.imageId;
+    const sourceId = comparison?.original?.imageId;
     if (!sourceId) {
-      setError(shoes ? "请先上传整双原图。" : "请先生成白底图。");
+      setError(shoes ? "请先上传整双原图。" : "请先上传正面原图。");
       return;
     }
     setImageBusy("ai-display");
@@ -847,14 +819,14 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       );
       await loadComparison();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "AI 陈列图生成失败。");
+      setError(caught instanceof Error ? caught.message : "白底展示图生成失败。");
     } finally {
       setImageBusy("");
     }
   }
 
   async function selectMain(imageId: string) {
-    if (imageId === comparison?.aiDisplayMain?.imageId && !window.confirm("这是生成式 AI 陈列图。你是否已经对照原图确认所有商品细节和瑕疵完全一致？")) return;
+    if (imageId === comparison?.aiDisplayMain?.imageId && !window.confirm("这是生成式 白底展示图。你是否已经对照原图确认所有商品细节和瑕疵完全一致？")) return;
     setImageBusy(`select-${imageId}`);
     setError("");
     try {
@@ -872,8 +844,8 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       setError(reasons.join(" "));
       return;
     }
-    if (shoes ? !comparison?.original?.imageId : !comparison?.selectedMainImageId) {
-      setError(shoes ? "请先上传整双原图。" : "请选择白底图、优化主图或原图作为商城主图。");
+    if (!comparison?.original?.imageId) {
+      setError("请先上传正面原图。");
       return;
     }
     setBusy(true);
@@ -896,10 +868,6 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     }
   }
 
-  const latestRemovalJob = comparison?.jobs.find((job) =>
-    job.operation === "REMOVE_BACKGROUND" && job.sourceImageId === comparison.original?.imageId
-  );
-
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="max-h-[96vh] overflow-y-auto sm:max-w-[min(96vw,1400px)]">
@@ -911,22 +879,13 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="font-medium">图片版本</h3>
-                <p className="text-xs text-muted-foreground">原图永久保留；抠图和主图只生成新版本。</p>
+                <p className="text-xs text-muted-foreground">人工确认商品信息和尺码后，直接用原图生成白底展示图。</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {!shoes ? <>
-                <Button size="sm" variant="outline" disabled={Boolean(imageBusy)} onClick={() => void processImages("lightweight")}>
-                  <RefreshCwIcon data-icon="inline-start" />
-                  {imageBusy === "lightweight" ? "处理中" : "重跑 lightweight"}
-                </Button>
-                <Button size="sm" variant="outline" disabled={Boolean(imageBusy)} onClick={() => void processImages("rembg_birefnet")}>
+
+                <Button size="sm" variant="outline" disabled={Boolean(imageBusy) || !comparison?.original?.imageId || !["CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED", "UNPUBLISHED", "ARCHIVED"].includes(stringValue(props.product?.status))} onClick={() => void generateAiDisplayMain()}>
                   <WandSparklesIcon data-icon="inline-start" />
-                  {imageBusy === "rembg_birefnet" ? "处理中" : "强制 BiRefNet"}
-                </Button>
-                </> : null}
-                <Button size="sm" variant="outline" disabled={Boolean(imageBusy) || !(shoes ? comparison?.original?.imageId : comparison?.cutoutWhite?.imageId)} onClick={() => void generateAiDisplayMain()}>
-                  <WandSparklesIcon data-icon="inline-start" />
-                  {imageBusy === "ai-display" ? "生成中" : "生成 AI 陈列图"}
+                  {imageBusy === "ai-display" ? "生成中" : "生成 白底展示图"}
                 </Button>
               </div>
             </div>
@@ -937,19 +896,12 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
                   {shoeSupportingImages(props.product).map(({ label, asset }) => <ImageVariantTile key={asset.imageId} label={label} asset={asset} busy={Boolean(imageBusy)} />)}
                 </>
               ) : <>
-                <ImageVariantTile label="白底正面" asset={comparison?.cutoutWhite ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
-                <ImageVariantTile label="白底背面" asset={comparison?.backCutoutWhite ?? null} busy={Boolean(imageBusy)} />
+                <ImageVariantTile label="正面原图" asset={comparison?.original ?? null} busy={Boolean(imageBusy)} />
+                <ImageVariantTile label="背面原图" asset={comparison?.backOriginal ?? null} busy={Boolean(imageBusy)} />
               </>}
-              <ImageVariantTile label="AI 陈列图" asset={comparison?.aiDisplayMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label="白底展示图" asset={comparison?.aiDisplayMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
             </div>
-            {!shoes && latestRemovalJob ? (
-              <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-muted/30 p-3 text-xs">
-                <span>处理引擎：<strong>{latestRemovalJob.provider ?? "-"}</strong></span>
-                <span>质量分：<strong>{latestRemovalJob.qualityScore?.toFixed(3) ?? "-"}</strong></span>
-                {latestRemovalJob.fallbackFrom ? <span>回退来源：<strong>{latestRemovalJob.fallbackFrom}</strong></span> : null}
-                {latestRemovalJob.qualityIssues.map((issue) => <Badge key={issue} variant="secondary">{imageIssueLabel(issue)}</Badge>)}
-              </div>
-            ) : null}
+
             {latestExtraction ? <AiPreview job={latestExtraction} /> : <StatusMessage tone="neutral">等待 AI 识别。</StatusMessage>}
           </section>
 
@@ -990,7 +942,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => props.onOpenChange(false)}>取消</Button>
-          <Button disabled={busy || Boolean(imageBusy) || reasons.length > 0 || (shoes ? !comparison?.original?.imageId : !comparison?.selectedMainImageId)} onClick={() => void save()}>
+          <Button disabled={busy || Boolean(imageBusy) || reasons.length > 0 || (!comparison?.original?.imageId)} onClick={() => void save()}>
             <SaveIcon data-icon="inline-start" />
             保存并下一件
           </Button>
@@ -1079,7 +1031,7 @@ function ProductControlActions(props: {
   run: (label: string, action: () => Promise<void>) => Promise<void>;
 }) {
   const id = stringValue(props.product.id);
-  const status = stringValue(props.product.status);
+  const status = stringValue(props.product?.status);
   const price = typeof props.product.priceKsh === "number" ? props.product.priceKsh : 0;
   const batchId = stringValue(objectRecord(props.product.batch)?.id);
   const canPrepareStorage = status === "APPROVED";

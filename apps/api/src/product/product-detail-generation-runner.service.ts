@@ -226,12 +226,12 @@ export class ProductDetailGenerationRunnerService {
     let aiDisplayMain = comparison.aiDisplayMain;
 
     if (!aiDisplayMain) {
-      // Garment cutout keeps a single connected object and can discard one shoe.
-      const sourceImage = isShoe ? comparison.original : comparison.cutoutWhite;
+      // Display generation always starts from the uploaded original, after manual confirmation.
+      const sourceImage = comparison.original;
       if (!sourceImage) {
         throw new BadRequestException(isShoe
           ? "An original image showing both shoes is required before AI display generation"
-          : "A completed white-background image is required before AI display generation");
+          : "An original FRONT photo is required before AI display generation");
       }
       const job = await this.imageProcessing.start({
         productId,

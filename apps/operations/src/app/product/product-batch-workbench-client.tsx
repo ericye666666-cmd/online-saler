@@ -190,7 +190,7 @@ export function ProductWorkbenchPage() {
       <PageHeader
         eyebrow="商品工厂"
         title="今日工作"
-        description="三段完成上品：批量采集、AI 自动处理、异常确认并发布。"
+        description="三段完成上品：批量采集、商品信息识别、异常确认并发布。"
         action={
           <Button asChild disabled={!hasPermission("action.product.create")}>
             <Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />新建批次</Link>
@@ -256,7 +256,7 @@ export function ProductWorkbenchPage() {
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-3">
           <TaskRow label="1. 批量采集" value={tasks?.upload ?? 0} href="/product/waiting-upload" />
-          <TaskRow label="2. AI 自动处理" value={tasks?.aiImage ?? 0} href="/product/waiting-ai" />
+          <TaskRow label="2. 商品信息识别" value={tasks?.aiImage ?? 0} href="/product/waiting-ai" />
           <TaskRow
             label="3. 异常确认并发布"
             value={(tasks?.calibration ?? 0) + (tasks?.labelApply ?? 0) + (tasks?.review ?? 0) + (tasks?.storage ?? 0)}
@@ -554,7 +554,7 @@ function BatchStageStepper({ batch }: { batch: ProductBatch }) {
             </div>
             <div className="mt-2 text-sm font-medium leading-snug">{PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[stage]}</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {stage === "CAPTURE" ? "按顺序上传正面图，可补充背面与瑕疵图。" : stage === "AUTOMATION" ? "先整批完成抠图、白底和识别，再由员工快速确认。" : "确认后批量生成 AI 陈列主图，再打印贴码、入库并发布。"}
+              {stage === "CAPTURE" ? "按顺序上传正面图，可补充背面与瑕疵图。" : stage === "AUTOMATION" ? "直接用原图识别商品信息，再人工校准、填写尺码。" : "确认后直接由原图批量生成白底展示图，再打印贴码、入库并发布。"}
             </div>
           </li>
         );
