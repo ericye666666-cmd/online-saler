@@ -60,8 +60,8 @@ assert.equal(
   "Batch preprocessing must wait for the quick human pass before generating AI display images."
 );
 assert.ok(
-  calibrationSource.includes("正在批量生成白底展示图、销售详情与 Barcode"),
-  "The last quick confirmation must start batch AI display generation without style selection."
+  calibrationSource.includes("正在生成白底展示图与销售详情"),
+  "The last metadata confirmation must start display generation."
 );
 assert.ok(
   reviewSource.includes("humanConfirmed: true"),

@@ -3,8 +3,9 @@
 import { operationsFetch } from "@/lib/operations-api";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { ProductImageComparisonResponse } from "@online-saler/shared-types";
+import type { ProductImageComparisonResponse, ImageProcessingJobRecord } from "@online-saler/shared-types";
 import JsBarcode from "jsbarcode";
 import {
   AlertTriangleIcon,
@@ -58,6 +59,8 @@ type ProductRecord = Record<string, unknown> & {
   conditionGrade?: string | null;
   labelPrintedAt?: string | null;
   inventoryItem?: InventoryItem | null;
+  detailSourceVersion?: number;
+  detailProfiles?: Array<{ id: string; status: string; sourceDataVersion: number }>;
 };
 
 type ProductBatch = {
@@ -113,7 +116,9 @@ async function loadComparison(productId: string, adminUserId: string) {
   });
 }
 
-export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
+export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batchId: string; reviewMode?: boolean }) {
+  const router = useRouter();
+  const [reviewIndex, setReviewIndex] = useState(0);
   const ids = useOperationIds();
   const [batch, setBatch] = useState<ProductBatch | null>(null);
   const [comparisons, setComparisons] = useState<Record<string, ProductImageComparisonResponse>>({});
@@ -150,16 +155,23 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
     Boolean(comparisons[product.id]?.aiDisplayMain)
   );
 
+  const allDisplaysConfirmed = Boolean(batch?.products.length) && batch!.products.length === batch!.targetCount && batch!.products.every((product) =>
+    product.status === "PUBLISHED" || displayConfirmed(comparisons[product.id])
+  );
+  const allDetailsReady = Boolean(batch?.products.length) && batch!.products.every((product) =>
+    product.status === "PUBLISHED" || detailReady(product)
+  );
+
   useEffect(() => {
-    if (!batch || busy || allAiDisplaysReady || batch.products.every((product) => product.status === "PUBLISHED")) return;
+    if (!batch || busy || (allAiDisplaysReady && allDetailsReady) || batch.products.every((product) => product.status === "PUBLISHED")) return;
     const timer = window.setTimeout(() => {
       void load().catch(() => undefined);
     }, 3_000);
     return () => window.clearTimeout(timer);
-  }, [allAiDisplaysReady, batch, busy, load]);
+  }, [allAiDisplaysReady, allDetailsReady, batch, busy, load]);
 
   async function generateBarcodesAndLocations() {
-    if (!batch) return;
+    if (!batch || !allDisplaysConfirmed || !allDetailsReady) return;
     setBusy("generate");
     setError("");
     try {
@@ -169,6 +181,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
       });
       await load();
       setNotice(`本批 ${batch.targetCount} 个 Barcode 已生成，货架位已同时预留。`);
+      router.push(`/product/barcode?batchId=${encodeURIComponent(batch.id)}`);
     } catch (caught) {
       setError(errorMessage(caught, "无法生成 Barcode 或预留货架位。"));
     } finally {
@@ -181,7 +194,9 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
     setBusy("details");
     setError("");
     try {
-      await request(`/operations/product-batches/${batch.id}/detail-generation/run`, {
+      const statuses = batch.products.map((product) => product.detailProfiles?.[0]?.status);
+      const action = statuses.includes("FAILED") ? "retry-failed" : statuses.includes("OUTDATED") ? "regenerate-outdated" : "run";
+      await request(`/operations/product-batches/${batch.id}/detail-generation/${action}`, {
         method: "POST",
         headers: { "X-Admin-User-Id": ids.adminUserId },
         body: JSON.stringify({})
@@ -195,8 +210,51 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
     }
   }
 
+  async function reviewDisplay(product: ProductRecord, regenerate: boolean) {
+    const comparison = comparisons[product.id];
+    const profile = product.detailProfiles?.[0];
+    if (product.status === "PUBLISHED" || !profile || !detailReady(product) || !comparison?.original) return;
+    if (!regenerate && !comparison.aiDisplayMain) return;
+    setBusy(`${regenerate ? "regenerate" : "confirm"}-${product.id}`);
+    setError("");
+    setNotice("");
+    const select = (imageId: string, humanConfirmed: boolean) => request(
+      `/product-detail-profiles/${encodeURIComponent(profile.id)}/main-image`, {
+        method: "POST", body: JSON.stringify({ imageId, humanConfirmed })
+      }
+    );
+    try {
+      if (regenerate) {
+        // Persist invalidation before generation so failures/reloads cannot retain approval.
+        if (comparison.aiDisplayMain) await select(comparison.aiDisplayMain.imageId, false);
+        const job = await request<ImageProcessingJobRecord>(
+          `/products/${product.id}/images/${comparison.original.imageId}/processing-jobs`, {
+            method: "POST", body: JSON.stringify({ operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" })
+          });
+        const completed = await request<ImageProcessingJobRecord>(`/image-processing-jobs/${job.id}/run`, {
+          method: "POST", body: JSON.stringify({})
+        });
+        if (completed.status !== "SUCCEEDED" || !completed.outputImageId) throw new Error(completed.errorMessage || "白底展示图生成失败，请重试。");
+        await select(completed.outputImageId, false);
+        setNotice("已从原图重新生成，请重新核对并确认这张展示图。");
+      } else {
+        await select(comparison.aiDisplayMain!.imageId, true);
+        setNotice("本件展示图已确认。");
+        const nextIndex = batch!.products.findIndex((item, index) => index > reviewIndex && item.status !== "PUBLISHED" && !displayConfirmed(comparisons[item.id]));
+        const firstPending = batch!.products.findIndex((item) => item.id !== product.id && item.status !== "PUBLISHED" && !displayConfirmed(comparisons[item.id]));
+        if (nextIndex >= 0 || firstPending >= 0) setReviewIndex(nextIndex >= 0 ? nextIndex : firstPending);
+      }
+      await load();
+    } catch (caught) {
+      await load().catch(() => undefined);
+      setError(errorMessage(caught, "无法处理展示图，请重试。"));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function printProducts(products: ProductRecord[]) {
-    if (!batch || products.length === 0) return;
+    if (!batch || products.length === 0 || !allDisplaysConfirmed) return;
     setBusy(products.length === 1 ? `print-${products[0]!.id}` : "print-all");
     setError("");
     setNotice("");
@@ -255,7 +313,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
 
   async function confirmPlacedAndPublish() {
     if (!batch) return;
-    if (!window.confirm(`Have all items been placed in their assigned shelf locations?\n\n请同时确认本批 ${batch.targetCount} 件 白底展示图无异常；继续后将直接入仓并发布。`)) return;
+    if (!window.confirm(`Have all items been placed in their assigned shelf locations?\n\n请确认本批 ${batch.targetCount} 件已贴好标签并按货架位放好；继续后将入仓并发布。`)) return;
     setBusy("publish");
     setError("");
     setNotice("");
@@ -284,19 +342,69 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
   const allBarcodesReady = barcodeCount === batch.targetCount;
   const allLocationsReady = locationCount === batch.targetCount;
   const allPrinted = printedCount === batch.targetCount;
-  const readyToPublish = allBarcodesReady && allLocationsReady && allPrinted && allAiDisplaysReady;
+  const readyToPublish = allBarcodesReady && allLocationsReady && allPrinted && allAiDisplaysReady && allDisplaysConfirmed;
   const shelfGroups = groupProductsByShelf(batch.products);
+
+  if (publishedCount < batch.targetCount && (reviewMode || !allDisplaysConfirmed || !allDetailsReady)) {
+    const product = batch.products[Math.min(reviewIndex, batch.products.length - 1)];
+    const comparison = product ? comparisons[product.id] : undefined;
+    const confirmedCount = batch.products.filter((item) => item.status === "PUBLISHED" || displayConfirmed(comparisons[item.id])).length;
+    return <div className="flex min-w-0 flex-col gap-5">
+      <header>
+        <Link href={`/product/calibration?batchId=${encodeURIComponent(batch.id)}`} className="text-sm text-muted-foreground">返回商品信息校准</Link>
+        <h1 className="mt-2 text-2xl font-semibold">{batch.batchCode} · 第 4 步：白底展示图审核</h1>
+        <p className="mt-2 text-sm text-muted-foreground">逐件对照原图检查颜色、图案、品牌标、衣服结构和瑕疵。图片不符时重新生成；全部确认后才能打印入仓。</p>
+      </header>
+      {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+      {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Badge variant="outline">已确认 {confirmedCount}/{batch.targetCount} 件</Badge>
+        <Button disabled={Boolean(busy)} variant="outline" onClick={() => void load().catch((caught) => setError(errorMessage(caught, "刷新失败")))}>刷新进度</Button>
+      </div>
+      <nav className="flex flex-wrap gap-2" aria-label="选择待审核商品">
+        {batch.products.map((item, index) => <Button key={item.id} variant={index === reviewIndex ? "default" : "outline"} disabled={Boolean(busy)} onClick={() => setReviewIndex(index)}>
+          第 {item.batchItemNumber ?? index + 1} 件{item.status === "PUBLISHED" || displayConfirmed(comparisons[item.id]) ? " · 已确认" : " · 待审核"}
+        </Button>)}
+      </nav>
+      {product ? <section className="rounded-md border p-4">
+        <h2 className="mb-4 font-semibold">{product.title || product.productCode}</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <ReviewImage src={comparisonUrl(comparison?.original?.publicUrl)} label="正面原图" />
+          <ReviewImage src={comparisonUrl(comparison?.aiDisplayMain?.publicUrl)} label="白底展示图" />
+        </div>
+        {product.status === "PUBLISHED" ? <p className="mt-4 text-sm">本件已发布，无需重新审核。</p> : <>
+          <p className="mt-4 text-sm text-muted-foreground">确认展示图没有改变实物的颜色、Logo、图案、口袋、纽扣、拉链、面料、磨损或瑕疵。点击图片可放大检查。</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Button variant="outline" disabled={Boolean(busy) || !detailReady(product) || !comparison?.original} onClick={() => void reviewDisplay(product, true)}>
+              {busy === `regenerate-${product.id}` ? <LoaderCircleIcon className="animate-spin" /> : <RefreshCwIcon />}不满意，重新生成
+            </Button>
+            <Button disabled={Boolean(busy) || !detailReady(product) || !comparison?.aiDisplayMain || displayConfirmed(comparison)} onClick={() => void reviewDisplay(product, false)}>
+              <CheckCircle2Icon />{displayConfirmed(comparison) ? "本件已确认" : "图片正确，确认本件"}
+            </Button>
+          </div>
+          {!detailReady(product) || !comparison?.aiDisplayMain ? <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            <span>展示图与详情尚未就绪，完成后自动更新；生成失败可重试。</span>
+            <Button variant="outline" disabled={Boolean(busy)} onClick={() => void rerunDetails()}>重试未完成生成</Button>
+          </div> : null}
+        </>}
+      </section> : null}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4">
+        <p className="text-sm">{allDisplaysConfirmed ? "全部展示图已确认，可以继续。" : `还有 ${batch.targetCount - confirmedCount} 件展示图待确认。`}</p>
+        <Button disabled={Boolean(busy) || !allDisplaysConfirmed || !allDetailsReady} onClick={() => void generateBarcodesAndLocations()}>继续：生成标签、打印入仓</Button>
+      </div>
+    </div>;
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-3" />返回批次</Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：打印、归位并发布</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Barcode、白底展示图和货架位已集中在一个页面；正常商品不再进入第二轮详情审批。</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 5 步：打印、归位并发布</h1>
+          <p className="mt-1 text-sm text-muted-foreground">展示图已逐件确认。现在打印标签，按货架位归位后确认发布。</p>
         </div>
         {publishedCount < batch.targetCount ? (
-          <Button variant="outline" asChild><Link href={`/product/review?batchId=${encodeURIComponent(batch.id)}`}><AlertTriangleIcon data-icon="inline-start" />发现异常，进入单件处理</Link></Button>
+          <Button variant="outline" asChild><Link href={`/product/display-review?batchId=${encodeURIComponent(batch.id)}`}><AlertTriangleIcon data-icon="inline-start" />返回展示图审核</Link></Button>
         ) : null}
       </header>
 
@@ -386,7 +494,7 @@ export function ProductBatchBarcodePage({ batchId }: { batchId: string }) {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="font-semibold">最后一次批量确认</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">只需确认标签已贴、衣服已按货架号放好、白底展示图无明显异常；详情无需再次逐件审批。</p>
+                  <p className="mt-1 text-sm text-muted-foreground">确认标签已贴、衣服已按货架号放好；展示图审核已在上一步完成。</p>
                 </div>
                 <Button disabled={Boolean(busy) || !readyToPublish} onClick={() => void confirmPlacedAndPublish()}>
                   {busy === "publish" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <PackageCheckIcon data-icon="inline-start" />}
@@ -518,4 +626,20 @@ function translateApiError(value: string) {
 
 function errorMessage(value: unknown, fallback: string) {
   return value instanceof Error ? value.message : fallback;
+}
+
+function displayConfirmed(comparison?: ProductImageComparisonResponse) {
+  return Boolean(comparison?.aiDisplayMain && comparison.selectedMainImageId === comparison.aiDisplayMain.imageId && comparison.selectedMainImageConfirmedAt);
+}
+
+function detailReady(product: ProductRecord) {
+  const profile = product.detailProfiles?.[0];
+  return Boolean(profile && profile.sourceDataVersion === product.detailSourceVersion && ["READY", "APPROVED"].includes(profile.status));
+}
+
+function ReviewImage({ src, label }: { src: string; label: string }) {
+  return <figure className="min-w-0 rounded-md border bg-white p-2">
+    <figcaption className="mb-2 text-center text-sm font-medium text-black">{label}</figcaption>
+    {src ? <a href={src} target="_blank" rel="noreferrer" aria-label={`放大${label}`}><img src={src} alt={label} className="h-[min(55vh,520px)] w-full object-contain" /></a> : <div className="flex h-80 items-center justify-center text-sm text-gray-500">图片尚未生成或加载失败，请刷新或重试</div>}
+  </figure>;
 }

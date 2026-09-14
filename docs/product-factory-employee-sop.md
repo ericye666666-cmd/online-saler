@@ -1,6 +1,6 @@
 # Product Factory employee SOP
 
-Updated 2026-09-14. Follow the three stages shown in the batch workbench.
+Updated 2026-09-14. Follow the five stages shown in the batch workbench.
 For shoes, use the **鞋类 · 一双一个商品** batch option and the [shoe intake SOP](shoe-intake-employee-sop.md).
 For the first clothing training run, use **one batch of ten unique garments**. Keep them
 in positions 1–10 until the matching labels are attached. The first 1,000
@@ -31,7 +31,7 @@ online garments must stay separate from store stock.
 3. Continue to confirmation when the results are ready. If repeated processing
    fails, report the batch number and item number to the supervisor.
 
-## 3. Confirm, label, store and publish · 异常确认并发布
+## 3. Confirm product information and size · 商品信息与尺码
 
 1. **Check each garment.** Compare the original photo and actual
    garment. Correct the title, category, audience, color, condition, defects and price.
@@ -39,29 +39,35 @@ online garments must stay separate from store stock.
    Centimeter measurements are optional and must be measured by hand if supplied.
    AI suggestions need your confirmation; do not guess an unreadable brand or size.
 2. **Save each item.** Once all ten are confirmed, the system prepares sales
-   details and white-background display images directly from the original photos,
-   generates the formal barcodes and assigns
-   shelf locations. Continue to **打印、归位并发布**.
-3. **Check every AI display image against its original and the garment.** An AI
-   display image is required for every item. It must keep the real garment's
-   color, shape, fabric, pattern, pockets, buttons, logos and disclosed defects.
-   Do not approve a missing or misleading image. Report or regenerate only the
-   affected item, then check the replacement again.
-4. **Print and attach the labels.** Each label includes the barcode, size and
+   details and white-background display images directly from the originals.
+   Continue to **白底展示图审核**. Barcodes are generated only after image review.
+
+## 4. Review white-background images · 白底展示图审核
+
+1. Compare each original and display image side by side. Click an image to enlarge it.
+   Check color, shape, fabric, pattern, pockets, buttons, logos and disclosed defects.
+2. If wrong, click **不满意，重新生成**. Only this item is regenerated from its original.
+   The previous confirmation is cleared, including if generation fails. Retry and inspect again.
+3. Click **图片正确，确认本件** for each correct image. The page advances to the next pending item.
+   Approval is saved and survives a page reload. Missing or unconfirmed images block continuation.
+4. When all ten are confirmed, click **继续：生成标签、打印入仓**.
+
+## 5. Print, store and publish · 打印、归位并发布
+
+1. **Print and attach the labels.** Each label includes the barcode, size and
    shelf location. Match the batch item number, photo and garment before
    attaching it. Count ten labels on ten matching garments. Mark **确认已打印**
    only after labels actually print; a printer request is not proof that paper
    came out correctly.
-5. **Place the garments by the shelf list.** Follow **按货架位分组摆放** and the
+2. **Place the garments by the shelf list.** Follow **按货架位分组摆放** and the
    shelf code printed on each label. Count each shelf group and check that the
    total is ten. The normal batch process uses this grouped list and one stock-in
    confirmation; it does not require choosing or scanning a shelf for each item.
-6. **Confirm the batch once.** Only after every label is attached, every garment
+3. **Confirm the batch once.** Only after every label is attached, every garment
    is on its assigned shelf and every AI display image has been checked, click
-   **Confirm all items stored · 入仓并发布** and confirm the message. This is your
-   confirmation of both physical placement and image checks. The normal batch
+   **Confirm all items stored · 入仓并发布** and confirm the message. This confirms physical placement; image approval was already saved separately. The normal batch
    flow does not need a second, separate approval of every detail page.
-7. **Check the result.** Confirm ten items are published and the batch is
+4. **Check the result.** Confirm ten items are published and the batch is
    completed. Open the storefront and check the images, price and size. If the
    system reports a partial result, keep the existing batch and resolve the
    listed problem before continuing; do not create new barcodes or duplicate

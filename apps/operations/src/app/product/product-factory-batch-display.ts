@@ -11,9 +11,9 @@ export const PRODUCT_FACTORY_STAGE_ORDER = [
 
 export const PRODUCT_FACTORY_STAGE_LABELS: Record<string, string> = {
   UPLOAD: "上传图片",
-  AI_IMAGE: "AI 与图片处理",
+  AI_IMAGE: "商品信息识别",
   CALIBRATION: "人工校准",
-  BARCODE: "生成 Barcode",
+  BARCODE: "白底展示图审核",
   LABEL_APPLY: "打印并贴码",
   REVIEW: "商品审核",
   STORAGE: "货架入库",
@@ -25,13 +25,17 @@ export const PRODUCT_FACTORY_STAGE_LABELS: Record<string, string> = {
 export const PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER = [
   "CAPTURE",
   "AUTOMATION",
+  "CALIBRATION",
+  "DISPLAY_REVIEW",
   "CONFIRM_AND_PUBLISH"
 ] as const;
 
 export const PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS: Record<string, string> = {
   CAPTURE: "批量采集",
   AUTOMATION: "商品信息识别",
-  CONFIRM_AND_PUBLISH: "异常确认并发布",
+  CALIBRATION: "商品信息与尺码",
+  DISPLAY_REVIEW: "白底展示图审核",
+  CONFIRM_AND_PUBLISH: "打印、入仓、发布",
   COMPLETE: "批次已完成"
 };
 
@@ -43,6 +47,8 @@ export function productFactoryWorkflowStage(stage: string): ProductFactoryWorkfl
   if (stage === "COMPLETE") return "COMPLETE";
   if (stage === "UPLOAD") return "CAPTURE";
   if (stage === "AI_IMAGE") return "AUTOMATION";
+  if (stage === "CALIBRATION") return "CALIBRATION";
+  if (stage === "BARCODE") return "DISPLAY_REVIEW";
   return "CONFIRM_AND_PUBLISH";
 }
 
@@ -59,7 +65,7 @@ export function batchNextActionHref(batchId: string, nextAction: string): string
     CONTINUE_UPLOAD: `/product/batches/${encodedBatchId}/upload`,
     START_AI_IMAGE: `/product/batches/${encodedBatchId}/processing`,
     CONTINUE_CALIBRATION: `/product/calibration?batchId=${encodedBatchId}`,
-    GENERATE_BARCODES: `/product/barcode?batchId=${encodedBatchId}`,
+    GENERATE_BARCODES: `/product/display-review?batchId=${encodedBatchId}`,
     PRINT_AND_APPLY_LABELS: `/product/barcode?batchId=${encodedBatchId}`,
     CONTINUE_REVIEW: `/product/review?batchId=${encodedBatchId}`,
     COMPLETE_STORAGE: `/product/review?batchId=${encodedBatchId}`,

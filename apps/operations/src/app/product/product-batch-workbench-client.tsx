@@ -542,7 +542,7 @@ function BatchStageStepper({ batch }: { batch: ProductBatch }) {
   const activeStage = productFactoryWorkflowStage(batch.stage);
   const activeIndex = productFactoryWorkflowStageIndex(batch.stage);
   return (
-    <ol className="grid gap-2 sm:grid-cols-3">
+    <ol className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
       {PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER.map((stage, index) => {
         const complete = batch.stage === "COMPLETE" || index < activeIndex;
         const current = stage === activeStage;
@@ -554,7 +554,7 @@ function BatchStageStepper({ batch }: { batch: ProductBatch }) {
             </div>
             <div className="mt-2 text-sm font-medium leading-snug">{PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[stage]}</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {stage === "CAPTURE" ? "按顺序上传正面图，可补充背面与瑕疵图。" : stage === "AUTOMATION" ? "直接用原图识别商品信息，再人工校准、填写尺码。" : "确认后直接由原图批量生成白底展示图，再打印贴码、入库并发布。"}
+              {stage === "CAPTURE" ? "按顺序上传正面图，可补充背面与瑕疵图。" : stage === "AUTOMATION" ? "直接用原图识别商品信息。" : stage === "CALIBRATION" ? "核对商品信息，人工填写尺码。" : stage === "DISPLAY_REVIEW" ? "原图生成白底图，逐件核对；不满意可重新生成。" : "图片全部确认后，打印贴码、归位并发布。"}
             </div>
           </li>
         );

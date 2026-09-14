@@ -371,27 +371,18 @@ export function ProductBatchCalibrationPage({
         setNotice("已确认，进入下一件。");
       } else {
         setBusy("finalize");
-        setNotice(`本批 ${updated.targetCount} 件已确认，正在批量生成白底展示图、销售详情与 Barcode。`);
-        const [detailResult, barcodeResult] = await Promise.allSettled([
-          request(`/operations/product-batches/${batchId}/detail-generation/run`, {
+        setNotice(`本批 ${updated.targetCount} 件已确认，正在生成白底展示图与销售详情。`);
+        try {
+          await request(`/operations/product-batches/${batchId}/detail-generation/run`, {
             method: "POST",
             headers: { "X-Admin-User-Id": ids.adminUserId },
             body: JSON.stringify({}),
             keepalive: true
-          }),
-          request(`/operations/product-batches/${batchId}/generate-barcodes`, {
-            method: "POST",
-            body: JSON.stringify(ids)
-          })
-        ]);
-        if (barcodeResult.status === "rejected") throw barcodeResult.reason;
-        if (detailResult.status === "rejected") {
-          sessionStorage.setItem(
-            `product-factory-notice:${batchId}`,
-            "Barcode 已生成；个别销售详情生成失败，可在异常确认阶段重试，不会重复生成旧资产。"
-          );
+          });
+        } catch {
+          sessionStorage.setItem(`product-factory-notice:${batchId}`, "部分展示图或详情生成失败，请在展示图审核页重试。");
         }
-        router.push(`/product/barcode?batchId=${encodeURIComponent(batchId)}`);
+        router.push(`/product/display-review?batchId=${encodeURIComponent(batchId)}`);
       }
     } catch (caught) {
       setError(errorMessage(caught, "无法保存校准。"));
@@ -462,7 +453,7 @@ export function ProductBatchCalibrationPage({
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             <ArrowLeftIcon className="size-3" />返回批次
           </Link>
-          <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：异常确认并发布</h1>
+          <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：校准商品信息、填写尺码</h1>
           <p className="mt-1 text-sm text-muted-foreground">第 {currentIndex + 1}/{batch.targetCount} {shoes ? "双" : "件"} · 已完成 {completedCount}/{batch.targetCount} · {productStatusLabel(product.status)}</p>
         </div>
         <div className="flex gap-2">
@@ -477,8 +468,8 @@ export function ProductBatchCalibrationPage({
 
       {allComplete ? (
         <div className="flex flex-col gap-3 rounded-md border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 {batch.targetCount} 件已完成最终确认</span>
-          <Button asChild><Link href={`/product/barcode?batchId=${encodeURIComponent(batch.id)}`}>继续打印和发布<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 {batch.targetCount} 件已完成商品信息确认</span>
+          <Button asChild><Link href={`/product/display-review?batchId=${encodeURIComponent(batch.id)}`}>继续白底展示图审核<ArrowRightIcon data-icon="inline-end" /></Link></Button>
         </div>
       ) : null}
 
