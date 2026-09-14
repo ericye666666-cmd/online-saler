@@ -93,8 +93,8 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
       </div>
 
       <div className="marketCardBody depopProductBody">
-        <div className="depopProductBrandRow">
-          <p className="depopProductBrand">{product.brand}</p>
+        <div className="depopProductTitleRow">
+          <Link href={detailHref} className="depopProductTitle">{product.title}</Link>
           <button
             className={`depopSaveButton ${isSaved ? "saved" : ""}`}
             type="button"
@@ -105,7 +105,7 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
             <Heart size={21} fill={isSaved ? "currentColor" : "none"} />
           </button>
         </div>
-        <Link href={detailHref} className="depopProductTitle">{product.title}</Link>
+        <p className="depopProductBrand">{product.brand}</p>
         <p className="depopProductMeta">{translateValue(locale, product.size)}</p>
         <strong className="depopProductPrice">{formatPrice(product.price)}</strong>
         <div className="depopProductBottom">

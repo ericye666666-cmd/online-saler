@@ -3909,7 +3909,7 @@ select:focus-visible {
   padding: 15px 18px 17px;
 }
 
-.depopProductBrandRow {
+.depopProductTitleRow {
   display: flex;
   min-height: 30px;
   align-items: flex-start;
@@ -3919,23 +3919,23 @@ select:focus-visible {
 
 .depopProductBrand {
   overflow: hidden;
-  margin: 3px 0 0;
-  color: #111;
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  line-height: 1.25;
+  margin: 0;
+  color: #737373;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .depopProductTitle {
+  min-width: 0;
   overflow: hidden;
-  color: #1a1a1a;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.35;
+  margin-top: 3px;
+  color: #111;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4376,10 +4376,13 @@ select:focus-visible {
   }
 
   .depopProductBrand,
-  .depopProductTitle,
   .depopProductMeta,
   .depopProductLocation {
     font-size: 11px;
+  }
+
+  .depopProductTitle {
+    font-size: 12px;
   }
 
   .depopProductPrice {
