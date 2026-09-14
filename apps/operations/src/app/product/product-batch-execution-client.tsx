@@ -3,6 +3,7 @@
 import { operationsFetch } from "@/lib/operations-api";
 
 import Link from "next/link";
+import { BatchDisplayProgress, startBatchDisplayWork } from "./product-background-display";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import {
@@ -335,6 +336,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       setBatch(updated);
       const updatedFrontCount = completedCaptureCount(updated.products);
       if (updatedFrontCount === updated.targetCount) {
+        startBatchDisplayWork(updated);
         router.push(`/product/batches/${encodeURIComponent(batchId)}/processing`);
       } else {
         setCurrentIndex(firstProductMissingCapture(updated.products));
@@ -420,7 +422,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       </section>
 
       <p className="text-xs text-muted-foreground">
-        支持 JPEG、PNG、WEBP，单张不超过 10 MB。保存前请用图片下方按钮调整方向，预览方向就是实际上传和 AI 识别方向。iPhone 请使用“兼容性最佳”格式；HEIC 需先转换。原图会永久保留，用于商品识别和确认后的白底展示图生成。
+        支持 JPEG、PNG、WEBP，单张不超过 10 MB。保存前请用图片下方按钮调整方向，预览方向就是实际上传和 AI 识别方向。iPhone 请使用“兼容性最佳”格式；HEIC 需先转换。原图会永久保留，用于商品识别和并行生成白底展示图。
       </p>
 
       <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-background/95 py-3 backdrop-blur sm:flex-row sm:justify-between">
@@ -509,6 +511,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
         description={`已完成 ${completed}/${batch.targetCount}${failed ? ` · 失败 ${failed}` : ""}`}
         batchId={batch.id}
       />
+      <BatchDisplayProgress batch={batch} />
       <ProgressBar value={completed} max={batch.targetCount} />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
 

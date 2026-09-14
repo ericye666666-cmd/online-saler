@@ -72,7 +72,7 @@ test("generates an AI display image first and selects it without changing the de
   }]);
   assert.deepEqual(selections, [{
     input: { productId: "product-1", imageId: "ai-1" },
-    options: { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true }
+    options: { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true, preserveConfirmedSelection: true }
   }]);
 });
 
@@ -143,4 +143,19 @@ test("shoe detail generation will not substitute a one-object cutout for a missi
   } as never, {} as never);
   await assert.rejects(runner.ensureAiDisplayMain("shoe-1", { category: "SHOES", subcategory: "LADIES_SHOES" }),
     /original image showing both shoes is required/);
+});
+
+
+test("waits for the in-flight original image instead of executing it twice", async () => {
+  let waits = 0;
+  const runner = new ProductDetailGenerationRunnerService({} as never, {} as never, {
+    getComparison: async () => ({ original: { imageId: "front" }, aiDisplayMain: null }),
+    start: async (_input: unknown, options: any) => { assert.equal(options.reuseExisting, true); return { id: "running", status: "RUNNING" }; },
+    selectMainImage: async () => ({ aiDisplayMain: { imageId: "done" } })
+  } as never, {
+    run: async () => { throw new Error("duplicate execution"); },
+    waitForCompletion: async (id: string) => { assert.equal(id, "running"); waits++; return { status: "SUCCEEDED", outputImageId: "done" }; }
+  } as never);
+  assert.equal((await runner.ensureAiDisplayMain("p", { category: "TSHIRTS", subcategory: null })).imageId, "done");
+  assert.equal(waits, 1);
 });

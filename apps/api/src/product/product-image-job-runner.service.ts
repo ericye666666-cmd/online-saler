@@ -58,9 +58,8 @@ export class ProductImageJobRunnerService {
     if (claimed.count !== 1) {
       const existing = await prisma.productImageProcessingJob.findUnique({ where: { id: jobId } });
       if (!existing) throw new BadRequestException("Image processing job not found");
-      throw new BadRequestException(
-        `Job must be PENDING before execution; current status is ${existing.status}`
-      );
+      // A concurrent request may already be executing this persisted job.
+      return this.toRecord(existing, existing.outputImageId);
     }
 
     const job = await prisma.productImageProcessingJob.findUnique({ where: { id: jobId } });
@@ -73,8 +72,8 @@ export class ProductImageJobRunnerService {
       if (job.operation !== ImageProcessingOperation.GENERATE_AI_DISPLAY_MAIN_IMAGE) {
         throw new BadRequestException("Cutout processing is retired. Generate a white display image directly from the original photo.");
       }
-      if (!["CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED", "UNPUBLISHED", "ARCHIVED"].includes(product.status)) {
-        throw new BadRequestException("Manual product confirmation and size entry are required before display generation");
+      if (!["PHOTOGRAPHED", "AI_PROCESSING", "AI_PROCESSED", "CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED", "UNPUBLISHED", "ARCHIVED"].includes(product.status)) {
+        throw new BadRequestException("An uploaded product is required before display generation");
       }
       const source = await this.loadSource(job, category);
       const result = await this.process(job.operation, source, backgroundRemovalMode, category);
@@ -100,6 +99,17 @@ export class ProductImageJobRunnerService {
       });
       return this.toRecord(failed, null);
     }
+  }
+
+  async waitForCompletion(jobId: string): Promise<ImageProcessingJobRecord> {
+    const deadline = Date.now() + 210_000;
+    while (Date.now() < deadline) {
+      const job = await prisma.productImageProcessingJob.findUnique({ where: { id: jobId } });
+      if (!job) throw new BadRequestException("Image processing job not found");
+      if (job.status !== ImageProcessingStatus.RUNNING && job.status !== ImageProcessingStatus.PENDING) return this.toRecord(job, job.outputImageId);
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    throw new BadRequestException("White display image is still processing. Refresh its progress before retrying.");
   }
 
   private async loadSource(job: {

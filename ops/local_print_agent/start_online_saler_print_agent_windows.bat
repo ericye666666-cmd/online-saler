@@ -1,5 +1,4 @@
 @echo off
-setlocal
 cd /d "%~dp0"
-powershell -ExecutionPolicy Bypass -File "%~dp0start_windows.ps1"
-endlocal
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start_windows.ps1"
+pause

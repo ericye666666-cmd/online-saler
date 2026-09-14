@@ -32,6 +32,7 @@ export type LabelPrintPayload = {
     size: string;
     condition: string;
     location: string;
+    raster?: { width: 480; height: 320; data: string };
   };
 };
 

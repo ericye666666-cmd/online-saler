@@ -226,7 +226,7 @@ export class ProductDetailGenerationRunnerService {
     let aiDisplayMain = comparison.aiDisplayMain;
 
     if (!aiDisplayMain) {
-      // Display generation always starts from the uploaded original, after manual confirmation.
+      // Display generation always starts from the uploaded original, independently of manual size entry.
       const sourceImage = comparison.original;
       if (!sourceImage) {
         throw new BadRequestException(isShoe
@@ -237,23 +237,21 @@ export class ProductDetailGenerationRunnerService {
         productId,
         sourceImageId: sourceImage.imageId,
         operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE"
-      });
-      if (job.status !== "PENDING") {
-        throw new BadRequestException(`AI display image job is not ready to run; current status is ${job.status}`);
-      }
-      const completed = await this.imageJobs.run(job.id);
+      }, { reuseExisting: true });
+      const started = job.status === "PENDING" ? await this.imageJobs.run(job.id) : job;
+      const completed = started.status === "RUNNING" ? await this.imageJobs.waitForCompletion(job.id) : started;
       if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
         throw new BadRequestException(completed.errorMessage || "AI display image generation failed");
       }
       comparison = await this.imageProcessing.selectMainImage(
         { productId, imageId: completed.outputImageId },
-        { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true }
+        { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true, preserveConfirmedSelection: true }
       );
       aiDisplayMain = comparison.aiDisplayMain;
     } else if (!aiDisplayMain.selectedAsMain) {
       comparison = await this.imageProcessing.selectMainImage(
         { productId, imageId: aiDisplayMain.imageId },
-        { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true }
+        { recordDetailSourceChange: false, humanConfirmed: false, preservePublishedSelection: true, preserveConfirmedSelection: true }
       );
       aiDisplayMain = comparison.aiDisplayMain;
     }

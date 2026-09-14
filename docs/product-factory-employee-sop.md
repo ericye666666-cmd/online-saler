@@ -25,7 +25,7 @@ online garments must stay separate from store stock.
 1. Start the batch processing action. The system reads the uploaded original photos directly to identify
    category/subcategory, visible color, pattern, sleeve and fit features, tags,
    product names and readable brands. No cutout or intermediate white image is created.
-   AI does not estimate sizes or centimeters.
+   AI does not estimate sizes or centimeters. White display images start in parallel once all required originals are uploaded, while you review and enter product information.
 2. Wait for the results. Open **待处理异常** for any failed item and retry the
    failed work. Keep completed items and their photos in the same batch.
 3. Continue to confirmation when the results are ready. If repeated processing
@@ -38,8 +38,7 @@ online garments must stay separate from store stock.
    Enter the size manually from the actual garment; no automatic sizing or conversion is applied.
    Centimeter measurements are optional and must be measured by hand if supplied.
    AI suggestions need your confirmation; do not guess an unreadable brand or size.
-2. **Save each item.** Once all ten are confirmed, the system prepares sales
-   details and white-background display images directly from the originals.
+2. **Save each item.** The image progress panel shows completed and failed images while you type. Once all ten are confirmed, the system prepares sales details and reuses the original-based images already generated.
    Continue to **白底展示图审核**. Barcodes are generated only after image review.
 
 ## 4. Review white-background images · 白底展示图审核
@@ -50,13 +49,13 @@ online garments must stay separate from store stock.
    The previous confirmation is cleared, including if generation fails. Retry and inspect again.
 3. Click **图片正确，确认本件** for each correct image. The page advances to the next pending item.
    Approval is saved and survives a page reload. Missing or unconfirmed images block continuation.
-4. When all ten are confirmed, click **继续：生成标签、打印入仓**.
+4. Images can be reviewed while sales details finish. Once all images are confirmed and sales details are ready, click **继续：生成标签、打印入仓**.
 
 ## 5. Print, store and publish · 打印、归位并发布
 
 1. **Print and attach the labels.** Each label includes the barcode, size and
    shelf location. Match the batch item number, photo and garment before
-   attaching it. Count ten labels on ten matching garments. Mark **确认已打印**
+   attaching it. Open **打印标签 / 贴标确认**, detect the shared ERP / Deli 720 helper, inspect the preview and print. Count ten labels on ten matching garments. Mark **确认全部已贴好**
    only after labels actually print; a printer request is not proof that paper
    came out correctly.
 2. **Place the garments by the shelf list.** Follow **按货架位分组摆放** and the
@@ -90,3 +89,5 @@ the return has been inspected and restocked. Do not start a second batch or
 record stock-in again for that garment. Ask the supervisor to unpublish a live
 product before replacing or cancelling its approved main image. These changed
 paths require the readiness release to be verified in the working environment.
+
+Background generation continues across item changes and in-app navigation. Refreshing reconstructs work from persisted jobs. Closing the browser can interrupt requests and stops unsent work; reopening the batch resumes checks. This workflow does not use a standalone durable worker. Failed images require an explicit retry on the review page.

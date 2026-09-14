@@ -3,6 +3,7 @@
 import { operationsFetch } from "@/lib/operations-api";
 
 import Link from "next/link";
+import { runWithConcurrency } from "./product-batch-processing-concurrency";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ProductImageComparisonResponse, ImageProcessingJobRecord } from "@online-saler/shared-types";
@@ -23,14 +24,8 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  DEFAULT_LABEL_SIZE,
-  DEFAULT_PRINT_AGENT_URL,
-  DEFAULT_PRINTER_NAME,
-  buildLabelPrintPayload,
-  printerList,
-  selectDeliPrinter
-} from "../local-label-print";
+import { DEFAULT_LABEL_SIZE } from "../local-label-print";
+import { ProductLabelPrinter } from "./product-label-printer";
 import { productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
@@ -118,6 +113,7 @@ async function loadComparison(productId: string, adminUserId: string) {
 
 export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batchId: string; reviewMode?: boolean }) {
   const router = useRouter();
+  const [printIndex, setPrintIndex] = useState<number | null>(null);
   const [reviewIndex, setReviewIndex] = useState(0);
   const ids = useOperationIds();
   const [batch, setBatch] = useState<ProductBatch | null>(null);
@@ -175,6 +171,11 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
     setBusy("generate");
     setError("");
     try {
+      // A candidate may be reviewed while sales copy is still rendering.
+      // Synchronize the final assets from the confirmed selection before labels.
+      await runWithConcurrency(batch.products.filter((product) => product.status !== "PUBLISHED"), 2, async (product) => {
+        await request(`/product-detail-profiles/${product.detailProfiles![0]!.id}/assets/generate`, { method: "POST", body: "{}" });
+      });
       await request(`/operations/product-batches/${batch.id}/generate-barcodes`, {
         method: "POST",
         body: JSON.stringify(ids)
@@ -213,13 +214,13 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
   async function reviewDisplay(product: ProductRecord, regenerate: boolean) {
     const comparison = comparisons[product.id];
     const profile = product.detailProfiles?.[0];
-    if (product.status === "PUBLISHED" || !profile || !detailReady(product) || !comparison?.original) return;
+    if (product.status === "PUBLISHED" || !comparison?.original) return;
     if (!regenerate && !comparison.aiDisplayMain) return;
     setBusy(`${regenerate ? "regenerate" : "confirm"}-${product.id}`);
     setError("");
     setNotice("");
     const select = (imageId: string, humanConfirmed: boolean) => request(
-      `/product-detail-profiles/${encodeURIComponent(profile.id)}/main-image`, {
+      profile && detailReady(product) ? `/product-detail-profiles/${encodeURIComponent(profile.id)}/main-image` : `/products/${product.id}/display-image-selection`, {
         method: "POST", body: JSON.stringify({ imageId, humanConfirmed })
       }
     );
@@ -253,34 +254,6 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
     }
   }
 
-  async function printProducts(products: ProductRecord[]) {
-    if (!batch || products.length === 0 || !allDisplaysConfirmed) return;
-    setBusy(products.length === 1 ? `print-${products[0]!.id}` : "print-all");
-    setError("");
-    setNotice("");
-    try {
-      const health = await fetch(`${DEFAULT_PRINT_AGENT_URL}/health`);
-      if (!health.ok) throw new Error("本地打印代理未就绪。");
-      const printersResponse = await fetch(`${DEFAULT_PRINT_AGENT_URL}/printers`);
-      const printersBody = await printersResponse.json() as { printers?: unknown };
-      const printerName = selectDeliPrinter(printerList(printersBody.printers), DEFAULT_PRINTER_NAME);
-      for (const product of products) {
-        const response = await fetch(`${DEFAULT_PRINT_AGENT_URL}/print/label`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(buildLabelPrintPayload({ product, labelSize: DEFAULT_LABEL_SIZE, printerName }))
-        });
-        if (!response.ok) throw new Error(`第 ${product.batchItemNumber ?? "-"} 件标签打印失败。`);
-      }
-      await markPrinted(products);
-      setNotice(`已发送 ${products.length} 张标签到 ${printerName}。`);
-    } catch (caught) {
-      setError(errorMessage(caught, "打印失败。请启动本地打印代理并确认 Deli DL-720C 已连接。"));
-    } finally {
-      setBusy("");
-    }
-  }
-
   async function markPrinted(products: ProductRecord[]) {
     if (!batch) return;
     if (products.length === batch.products.length) {
@@ -295,20 +268,6 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
       });
     }
     await load();
-  }
-
-  async function confirmManualPrint() {
-    if (!batch) return;
-    setBusy("confirm-print");
-    setError("");
-    try {
-      await markPrinted(batch.products.filter((product) => product.barcode));
-      setNotice("已确认标签打印完成。请按每张卡片的大号货架位归位。 ");
-    } catch (caught) {
-      setError(errorMessage(caught, "无法确认打印。"));
-    } finally {
-      setBusy("");
-    }
   }
 
   async function confirmPlacedAndPublish() {
@@ -375,21 +334,21 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
         {product.status === "PUBLISHED" ? <p className="mt-4 text-sm">本件已发布，无需重新审核。</p> : <>
           <p className="mt-4 text-sm text-muted-foreground">确认展示图没有改变实物的颜色、Logo、图案、口袋、纽扣、拉链、面料、磨损或瑕疵。点击图片可放大检查。</p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button variant="outline" disabled={Boolean(busy) || !detailReady(product) || !comparison?.original} onClick={() => void reviewDisplay(product, true)}>
+            <Button variant="outline" disabled={Boolean(busy) || !comparison?.original} onClick={() => void reviewDisplay(product, true)}>
               {busy === `regenerate-${product.id}` ? <LoaderCircleIcon className="animate-spin" /> : <RefreshCwIcon />}不满意，重新生成
             </Button>
-            <Button disabled={Boolean(busy) || !detailReady(product) || !comparison?.aiDisplayMain || displayConfirmed(comparison)} onClick={() => void reviewDisplay(product, false)}>
+            <Button disabled={Boolean(busy) || !comparison?.aiDisplayMain || displayConfirmed(comparison)} onClick={() => void reviewDisplay(product, false)}>
               <CheckCircle2Icon />{displayConfirmed(comparison) ? "本件已确认" : "图片正确，确认本件"}
             </Button>
           </div>
           {!detailReady(product) || !comparison?.aiDisplayMain ? <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            <span>展示图与详情尚未就绪，完成后自动更新；生成失败可重试。</span>
+            <span>未完成的展示图或销售详情正在后台处理，完成后自动更新；已有图片可以先审核。</span>
             <Button variant="outline" disabled={Boolean(busy)} onClick={() => void rerunDetails()}>重试未完成生成</Button>
           </div> : null}
         </>}
       </section> : null}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4">
-        <p className="text-sm">{allDisplaysConfirmed ? "全部展示图已确认，可以继续。" : `还有 ${batch.targetCount - confirmedCount} 件展示图待确认。`}</p>
+        <p className="text-sm">{allDisplaysConfirmed ? (allDetailsReady ? "全部展示图已确认，可以继续。" : "展示图已全部确认，销售详情仍在后台生成。") : `还有 ${batch.targetCount - confirmedCount} 件展示图待确认。`}</p>
         <Button disabled={Boolean(busy) || !allDisplaysConfirmed || !allDetailsReady} onClick={() => void generateBarcodesAndLocations()}>继续：生成标签、打印入仓</Button>
       </div>
     </div>;
@@ -411,7 +370,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
       <div className="grid grid-cols-3 gap-2">
         <ProgressMetric label="Barcode" value={barcodeCount} total={batch.targetCount} />
         <ProgressMetric label="货架位" value={locationCount} total={batch.targetCount} />
-        <ProgressMetric label="已打印" value={printedCount} total={batch.targetCount} />
+        <ProgressMetric label="已贴标" value={printedCount} total={batch.targetCount} />
       </div>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
@@ -427,6 +386,8 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
         </section>
       ) : null}
 
+      {printIndex !== null && allBarcodesReady && allLocationsReady && allDisplaysConfirmed ? <ProductLabelPrinter products={batch.products} initialIndex={printIndex} onClose={() => setPrintIndex(null)} onConfirm={products => markPrinted(products as ProductRecord[])} /> : null}
+
       {allBarcodesReady ? (
         <>
           <section className="flex flex-col gap-3 rounded-md border p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -435,9 +396,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
               <p className="mt-1 text-sm text-muted-foreground">模板 {DEFAULT_LABEL_SIZE} mm · Deli DL-720C · Barcode、尺码和货架位同时打印。</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => window.print()}><PrinterIcon data-icon="inline-start" />打印预览</Button>
-              <Button disabled={Boolean(busy) || !allLocationsReady} onClick={() => void printProducts(batch.products)}><PrinterIcon data-icon="inline-start" />发送到打印机</Button>
-              <Button variant="outline" disabled={Boolean(busy) || allPrinted} onClick={() => void confirmManualPrint()}>确认已打印</Button>
+              <Button disabled={Boolean(busy) || !allLocationsReady || !allDisplaysConfirmed} onClick={() => setPrintIndex(0)}><PrinterIcon data-icon="inline-start" />打印标签 / 贴标确认</Button>
             </div>
           </section>
 
@@ -475,7 +434,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
                 comparison={comparisons[product.id]}
                 targetCount={batch.targetCount}
                 disabled={Boolean(busy)}
-                onPrint={() => void printProducts([product])}
+                onPrint={() => setPrintIndex(batch.products.findIndex(item => item.id === product.id))}
               />
             ))}
           </section>
@@ -543,7 +502,7 @@ function LabelPreview(props: {
       </div>
       <div className="flex items-center justify-between gap-2 border-t px-3 py-2 text-xs print:hidden">
         <Badge variant={props.product.labelPrintedAt ? "default" : "outline"}>
-          {props.product.labelPrintedAt ? "已打印" : productStatusLabel(props.product.status)}
+          {props.product.labelPrintedAt ? "已贴标" : productStatusLabel(props.product.status)}
         </Badge>
         <Button size="sm" variant="ghost" disabled={props.disabled || locationCode === "待分配"} onClick={props.onPrint}><PrinterIcon data-icon="inline-start" />单张打印</Button>
       </div>

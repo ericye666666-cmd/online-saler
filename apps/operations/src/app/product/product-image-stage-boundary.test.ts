@@ -57,11 +57,11 @@ assert.ok(
 assert.equal(
   executionSource.includes('"GENERATE_AI_DISPLAY_MAIN_IMAGE"'),
   false,
-  "Batch preprocessing must wait for the quick human pass before generating AI display images."
+  "Generation is coordinated by the shared background queue."
 );
 assert.ok(
-  calibrationSource.includes("正在生成白底展示图与销售详情"),
-  "The last metadata confirmation must start display generation."
+  calibrationSource.includes("<BatchDisplayProgress"),
+  "Manual information editing must display concurrent image progress."
 );
 assert.ok(
   reviewSource.includes("humanConfirmed: true"),
@@ -91,4 +91,4 @@ assert.ok(
 );
 
 assert.equal(centerSource.includes("!comparison?.selectedMainImageId"), false,
-  "Manual confirmation must not require the display image that is generated after confirmation.");
+  "Manual information confirmation must not depend on display generation.");

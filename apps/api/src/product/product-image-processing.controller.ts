@@ -51,6 +51,18 @@ export class ProductImageProcessingController {
     });
   }
 
+  @Post("products/:productId/images/:imageId/ensure-display")
+  async ensureDisplay(
+    @Param("productId") productId: string,
+    @Param("imageId") imageId: string,
+    @Headers("authorization") authorization?: string
+  ) {
+    await this.identity.permission(authorization, "action.product.edit");
+    const job = await this.imageProcessing.start({ productId, sourceImageId: imageId, operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" }, { reuseExisting: true });
+    // Failed jobs need an explicit employee retry; navigation must not incur retries.
+    return job.status === "PENDING" ? this.jobRunner.run(job.id) : job;
+  }
+
   @Post("image-processing-jobs/:jobId/run")
   async run(
     @Param("jobId") jobId: string,
@@ -94,6 +106,17 @@ export class ProductImageProcessingController {
     response.setHeader("Content-Type", stored.contentType);
     response.setHeader("Cache-Control", "private, max-age=3600");
     response.send(Buffer.from(stored.body));
+  }
+
+  @Post("products/:productId/display-image-selection")
+  async selectDisplayImage(
+    @Param("productId") productId: string,
+    @Body() body: SelectProductMainImageRequest,
+    @Headers("authorization") authorization?: string
+  ) {
+    await this.identity.permission(authorization, "action.product.edit");
+    if (!body?.imageId?.trim()) throw new BadRequestException("imageId is required");
+    return this.imageProcessing.selectDisplayImage({ productId, imageId: body.imageId.trim(), humanConfirmed: body.humanConfirmed });
   }
 
   @Post("products/:productId/main-image")
