@@ -318,7 +318,7 @@ export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean 
                 <NativeSelectOption value="">服装 / 其他商品</NativeSelectOption>
                 <NativeSelectOption value="SHOES">鞋类 · 一双一个商品</NativeSelectOption>
               </NativeSelect>
-              <FieldDescription>{intakeCategory === "SHOES" ? "保持左右鞋配对，按 1–10 编号。每双拍整双、侧面、鞋底和尺码标签，瑕疵另补图。" : "按 1–10 编号摆放，服装使用测量板拍照。"}</FieldDescription>
+              <FieldDescription>{intakeCategory === "SHOES" ? "保持左右鞋配对，按 1–10 编号。每双拍整双、侧面、鞋底和尺码标签，瑕疵另补图。" : "按 1–10 编号摆放，在干净背景上拍清楚整件服装即可，无需测量板；尺码稍后人工填写。"}</FieldDescription>
             </Field>
           </FieldGroup>
           {pilotEnabled ? (

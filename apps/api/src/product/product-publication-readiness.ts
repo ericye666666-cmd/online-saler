@@ -1,4 +1,3 @@
-import { requiredProductMeasurementTypes } from "@online-saler/business-rules";
 import { formatShoeSizeLabel, isShoeProduct, SHOE_REQUIRED_IMAGE_TYPES, SHOE_TYPES } from "@online-saler/shared-types";
 
 type PublicationProduct = {
@@ -39,12 +38,8 @@ export function requiresAiMainImageConfirmation(selection?: PublicationMainImage
 export function missingPublishMeasurementTypes(product: Pick<PublicationProduct,
   "category" | "subcategory" | "sleeveType" | "measurements"
 >): string[] {
-  if (isShoeProduct(product.category, product.subcategory)) return [];
-  const available = new Set(product.measurements.filter((measurement) => {
-    const value = Number(measurement.finalValueCm);
-    return Number.isFinite(value) && value > 0;
-  }).map((measurement) => measurement.measurementType));
-  return requiredProductMeasurementTypes(product).filter((type) => !available.has(type));
+  // A manually entered size label is required; centimeter measurements are optional.
+  return [];
 }
 
 export function shoeIntakeBlocker(product: Pick<PublicationProduct,

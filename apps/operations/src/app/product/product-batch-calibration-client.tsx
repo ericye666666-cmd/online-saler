@@ -26,7 +26,6 @@ import {
   type ProductImageComparisonResponse,
   type ProductImageVariantRecord
 } from "@online-saler/shared-types";
-import { recommendPlatformSize, recommendUkSize } from "@online-saler/business-rules";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -64,17 +63,9 @@ import {
   type WorkspaceForm
 } from "../operations-workspace-flow";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
-import { GarmentMeasurementGuide } from "./garment-measurement-guide";
 import { cutoutQualityWarning } from "./image-processing-quality";
 import { ManualCutoutEditor, type GuidedCutoutPoint } from "./manual-cutout-editor";
-import { ManualMeasurementEditor } from "./manual-measurement-editor";
-import {
-  aiMeasurementSeed,
-  calibrationLinePayload,
-  manualMeasurementValueUpdates,
-  type ManualMeasurementLine
-} from "./manual-measurement-lines";
-import { manualMeasurementAction, resolveCalibrationProductIndex } from "./product-factory-batch-display";
+import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 
 const API_PROXY_URL = "/api-proxy";
@@ -283,11 +274,7 @@ export function ProductBatchCalibrationPage({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
-  const [manualMeasurementEditorOpen, setManualMeasurementEditorOpen] = useState(false);
-  const [manualMeasurementLines, setManualMeasurementLines] = useState<ManualMeasurementLine[]>([]);
   const [formProductId, setFormProductId] = useState("");
-  const [platformSizeManuallyEdited, setPlatformSizeManuallyEdited] = useState(false);
-  const [ukSizeManuallyEdited, setUkSizeManuallyEdited] = useState(false);
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
@@ -312,8 +299,7 @@ export function ProductBatchCalibrationPage({
   const latestExtraction = product?.aiExtractions?.[0] ?? null;
   const aiOutput = normalizedAiOutput(latestExtraction);
   const shoes = isShoeCategory(form.category);
-  const draftKey = product ? `operations.product.calibration.draft.${product.id}` : "";
-  const measurementDraftKey = product ? `operations.product.calibration.measurement-lines.${product.id}` : "";
+  const draftKey = product ? `operations.product.calibration.manual-size-draft.${product.id}` : "";
 
   useEffect(() => {
     if (!product) return;
@@ -327,27 +313,18 @@ export function ProductBatchCalibrationPage({
     setError("");
     setNotice("");
     const baseForm = formForProduct(product, latestExtraction);
-    const saved = localStorage.getItem(`operations.product.calibration.draft.${product.id}`);
+    const saved = localStorage.getItem(`operations.product.calibration.manual-size-draft.${product.id}`);
     let nextForm = baseForm;
-    let savedSizeLabel = "";
-    let savedUkSizeLabel = "";
     if (saved) {
       try {
         const savedForm = JSON.parse(saved) as Partial<WorkspaceForm>;
         nextForm = normalizeWorkspaceForm({ ...baseForm, ...savedForm });
-        savedSizeLabel = typeof savedForm.sizeLabel === "string" ? savedForm.sizeLabel : "";
-        savedUkSizeLabel = typeof savedForm.ukSizeLabel === "string" ? savedForm.ukSizeLabel : "";
       } catch {
-        localStorage.removeItem(`operations.product.calibration.draft.${product.id}`);
+        localStorage.removeItem(`operations.product.calibration.manual-size-draft.${product.id}`);
       }
     }
     setForm(nextForm);
     setFormProductId(product.id);
-    setPlatformSizeManuallyEdited(Boolean(stringValue(product.finalSizeLabel) || savedSizeLabel));
-    setUkSizeManuallyEdited(Boolean(stringValue(product.ukSizeLabel) || savedUkSizeLabel));
-    const persistedLines = manualLinesFromProduct(product, measurementFields(baseForm));
-    const savedLines = localStorage.getItem(`operations.product.calibration.measurement-lines.${product.id}`);
-    setManualMeasurementLines(savedLines ? parseManualMeasurementLines(savedLines, persistedLines) : persistedLines);
     void loadComparison(product.id, ids.adminUserId)
       .then((value) => {
         setComparison(value);
@@ -386,60 +363,6 @@ export function ProductBatchCalibrationPage({
   });
   const completedCount = batch?.products.filter((item) => isCalibrationComplete(item.status)).length ?? 0;
   const readOnly = Boolean(product && isCalibrationComplete(product.status));
-  const platformSizeRecommendation = useMemo(() => isShoeCategory(form.category) ? null : recommendPlatformSize({
-    category: form.category,
-    subcategory: form.subcategory,
-    audience: form.audience,
-    kidsAgeRange: form.kidsAgeRange,
-    fitType: form.fitType,
-    sleeveType: form.sleeveType,
-    tags: form.tags,
-    measurements: {
-      lengthCm: form.lengthCm,
-      chestWidthCm: form.chestWidthCm,
-      shoulderWidthCm: form.shoulderWidthCm,
-      sleeveLengthCm: form.sleeveLengthCm,
-      waistCm: form.waistCm,
-      hipCm: form.hipCm
-    }
-  }), [
-    form.audience,
-    form.category,
-    form.chestWidthCm,
-    form.fitType,
-    form.hipCm,
-    form.kidsAgeRange,
-    form.lengthCm,
-    form.shoulderWidthCm,
-    form.sleeveLengthCm,
-    form.sleeveType,
-    form.subcategory,
-    form.tags,
-    form.waistCm
-  ]);
-  const platformSizeBasis = platformSizeRecommendation
-    ? platformSizeRecommendation.measurementsUsed.map(platformSizeMeasurementText).join("、")
-    : "";
-  const ukSizeRecommendation = useMemo(() => isShoeCategory(form.category) ? null : recommendUkSize({
-    platformSize: form.sizeLabel || platformSizeRecommendation?.size,
-    category: form.category,
-    subcategory: form.subcategory,
-    audience: form.audience,
-    kidsAgeRange: form.kidsAgeRange,
-    measurements: { waistCm: form.waistCm }
-  }), [
-    form.audience,
-    form.category,
-    form.kidsAgeRange,
-    form.sizeLabel,
-    form.subcategory,
-    form.waistCm,
-    platformSizeRecommendation?.size
-  ]);
-  const measurementAction = manualMeasurementAction(
-    product?.status ?? "",
-    Boolean(comparison?.original?.publicUrl)
-  );
   const taxonomyLabels = useMemo(() => taxonomyLabelMap(taxonomy), [taxonomy]);
   const materialLabels = useMemo(
     () => ({ ...taxonomyLabels, DENIM: taxonomyLabels.DENIM ?? "牛仔布" }),
@@ -447,56 +370,14 @@ export function ProductBatchCalibrationPage({
   );
   const categoryOptions = activeValues(taxonomy, "CATEGORY", PRODUCT_CATEGORY_OPTIONS, form.category);
   const visibleMeasurementFields = measurementFields(form);
-  const measurementSuggestions = visibleMeasurementFields.map((field) => ({
-    ...field,
-    ...aiMeasurementSuggestion(product, aiOutput, field.type, field.key)
-  }));
-  const measurementKeySignature = measurementSuggestions.map((item) => item.key).join("|");
-  const measurementOriginalImageId = comparison?.original?.imageId ?? newestImage(product, "FRONT")?.id ?? "";
-  const aiMeasurement = useMemo(
-    () => aiMeasurementSeed(
-      aiOutput,
-      measurementOriginalImageId,
-      measurementKeySignature.split("|").filter(Boolean)
-    ),
-    [aiOutput, measurementKeySignature, measurementOriginalImageId]
-  );
-  const hasAiMeasurements = measurementSuggestions.some((item) => Boolean(item.aiValue));
   const requiredMeasurementKeys = new Set(measurementRequirements(form).map((item) => item.key));
   const colorOptions = activeValues(taxonomy, "COLOR", AI_COLORS, form.color);
-  const sizeOptions = activeValues(taxonomy, "SIZE", ["XS", "S", "M", "L", "XL", "XXL"], form.sizeLabel);
   const conditionOptions = activeValues(taxonomy, "CONDITION", ["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"], form.conditionGrade);
   const materialOptions = activeValues(taxonomy, "MATERIAL", PRODUCT_MATERIAL_OPTIONS, form.material);
   const tagOptions = activeValues(taxonomy, "TAG", PRODUCT_TAG_OPTIONS);
   const subcategoryOptions = taxonomy
     ? activeSubcategories(taxonomy, form.category, form.subcategory)
     : subcategoriesFor(form.category, form.subcategory);
-
-  useEffect(() => {
-    if (
-      !product ||
-      formProductId !== product.id ||
-      readOnly ||
-      platformSizeManuallyEdited ||
-      !platformSizeRecommendation
-    ) return;
-    setForm((current) => current.sizeLabel === platformSizeRecommendation.size
-      ? current
-      : { ...current, sizeLabel: platformSizeRecommendation.size });
-  }, [formProductId, platformSizeManuallyEdited, platformSizeRecommendation, product, readOnly]);
-
-  useEffect(() => {
-    if (
-      !product ||
-      formProductId !== product.id ||
-      readOnly ||
-      ukSizeManuallyEdited ||
-      !ukSizeRecommendation
-    ) return;
-    setForm((current) => current.ukSizeLabel === ukSizeRecommendation.size
-      ? current
-      : { ...current, ukSizeLabel: ukSizeRecommendation.size });
-  }, [formProductId, product, readOnly, ukSizeManuallyEdited, ukSizeRecommendation]);
 
   function updateForm(key: Exclude<keyof WorkspaceForm, "tags" | "shoePairConfirmed">, value: string) {
     setForm((current) => {
@@ -509,8 +390,6 @@ export function ProductBatchCalibrationPage({
       return normalizeWorkspaceForm(next, current.category);
     });
     if (key === "category") {
-      setManualMeasurementLines([]);
-      setManualMeasurementEditorOpen(false);
       setManualEditorOpen(false);
       setActiveImage(isShoeCategory(value) ? "original-FRONT" : "white");
     }
@@ -527,68 +406,10 @@ export function ProductBatchCalibrationPage({
     setNotice("");
   }
 
-  function useMeasuredPlatformSize() {
-    if (!platformSizeRecommendation) return;
-    setPlatformSizeManuallyEdited(false);
-    updateForm("sizeLabel", platformSizeRecommendation.size);
-  }
-
-  function useRecommendedUkSize() {
-    if (!ukSizeRecommendation) return;
-    setUkSizeManuallyEdited(false);
-    updateForm("ukSizeLabel", ukSizeRecommendation.size);
-  }
-
   function saveDraft() {
     if (!draftKey) return;
     localStorage.setItem(draftKey, JSON.stringify(form));
-    if (measurementDraftKey) localStorage.setItem(measurementDraftKey, JSON.stringify(manualMeasurementLines));
     setNotice("草稿已保存在本机，可稍后继续。");
-  }
-
-  function applyManualMeasurementLines(
-    manualLines: ManualMeasurementLine[],
-    resolvedLines: ManualMeasurementLine[]
-  ) {
-    setManualMeasurementLines(manualLines);
-    const updates = manualMeasurementValueUpdates(resolvedLines, measurementSuggestions.map((item) => item.key));
-    setForm((current) => ({ ...current, ...updates }));
-    setNotice("人工连线厘米值已写入尺寸字段，请检查后保存本件。");
-  }
-
-  async function openManualMeasurementCalibration() {
-    if (!product || !measurementAction) return;
-    if (measurementAction === "EDIT") {
-      setManualMeasurementEditorOpen(true);
-      return;
-    }
-    if (!window.confirm("本件已完成校准。重新编辑测量线会将它退回待人工校准，保存后才能继续生成 Barcode。是否继续？")) return;
-
-    setBusy("reopen-measurements");
-    setError("");
-    setNotice("");
-    try {
-      const updatedProduct = await request<ProductRecord>(
-        `/operations/product-batches/products/${product.id}/recalibration`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            ...ids,
-            reason: "修正人工测量定位"
-          })
-        }
-      );
-      setBatch((current) => current ? {
-        ...current,
-        products: current.products.map((item) => item.id === updatedProduct.id ? updatedProduct : item)
-      } : current);
-      setNotice("本件已退回待人工校准。请重新连接测量起点和终点，然后保存本件。");
-      setManualMeasurementEditorOpen(true);
-    } catch (caught) {
-      setError(errorMessage(caught, "无法重新打开本件测量校准。"));
-    } finally {
-      setBusy("");
-    }
   }
 
   async function saveAndNext() {
@@ -609,22 +430,14 @@ export function ProductBatchCalibrationPage({
     setNotice("");
     try {
       const calibrationBody = buildCalibrationBody({ employeeId: ids.employeeId, extractionId, form });
-      const measurementKeys = new Map(visibleMeasurementFields.map((field) => [field.type, field.key]));
-      const measurements = calibrationBody.measurements.map((measurement) => {
-        const key = measurementKeys.get(measurement.type);
-        const line = shoes ? undefined : manualMeasurementLines.find((item) => item.key === key);
-        return line ? { ...measurement, manualLine: calibrationLinePayload(line) } : measurement;
-      });
       await request(`/products/${product.id}/calibrate`, {
         method: "POST",
         body: JSON.stringify({
           ...calibrationBody,
-          measurements,
           adminUserId: ids.adminUserId
         })
       });
       if (draftKey) localStorage.removeItem(draftKey);
-      if (measurementDraftKey) localStorage.removeItem(measurementDraftKey);
       const updated = await loadBatch(batchId, ids.adminUserId);
       setBatch(updated);
       const next = updated.products.findIndex((item, index) => index > currentIndex && isCalibratable(item));
@@ -773,9 +586,9 @@ export function ProductBatchCalibrationPage({
         })
       });
       await load();
-      setNotice(shoes ? "AI 鞋类识别已更新，请对照原图核对鞋码、鞋款和成双情况。" : "AI 商品识别与测量已更新，请对照尺寸示意确认。");
+      setNotice(shoes ? "AI 鞋类识别已更新，请对照原图核对鞋码、鞋款和成双情况。" : "AI 商品资料已更新，尺码仍由员工填写。");
     } catch (caught) {
-      setError(errorMessage(caught, "AI 测量失败。"));
+      setError(errorMessage(caught, "AI 商品识别失败。"));
     } finally {
       setBusy("");
     }
@@ -793,7 +606,6 @@ export function ProductBatchCalibrationPage({
         body: JSON.stringify({ ...ids, reason: reason.trim() })
       });
       if (draftKey) localStorage.removeItem(draftKey);
-      if (measurementDraftKey) localStorage.removeItem(measurementDraftKey);
       router.push(`/product/batches/${encodeURIComponent(batchId)}/upload?productId=${encodeURIComponent(product.id)}`);
     } catch (caught) {
       setError(errorMessage(caught, "无法标记重拍。"));
@@ -909,7 +721,7 @@ export function ProductBatchCalibrationPage({
             {!readOnly ? (
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void rerunAiMeasurements()}>
                 {busy === "ai-measurements" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <WandSparklesIcon data-icon="inline-start" />}
-                {shoes ? "重新 AI 识别鞋子" : "重新 AI 识别与测量"}
+                {shoes ? "重新 AI 识别鞋子" : "重新 AI 识别商品"}
               </Button>
             ) : null}
           </div>
@@ -922,70 +734,9 @@ export function ProductBatchCalibrationPage({
             <FormSelect fieldKey="color" label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
             {!shoes && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
             {!shoes ? <>
-              <FormInput fieldKey="tagSize" label="标签尺码" value={form.tagSize} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sizeLabel")} onChange={(value) => updateForm("tagSize", value)} />
-              <div className="min-w-0">
-                <FormSelect
-                  fieldKey="sizeLabel"
-                  label="平台推荐尺码"
-                  value={form.sizeLabel}
-                  values={sizeOptions}
-                  labels={taxonomyLabels}
-                  required
-                  disabled={readOnly}
-                  suggestion={aiSuggestion(aiOutput, "sizeLabel")}
-                  onChange={(value) => {
-                    setPlatformSizeManuallyEdited(true);
-                    updateForm("sizeLabel", value);
-                  }}
-                />
-                {platformSizeRecommendation ? (
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
-                    <span className={platformSizeRecommendation.requiresHumanReview ? "text-amber-700" : "text-emerald-700"}>
-                      测量推荐：{platformSizeRecommendation.size}（{platformSizeBasis}）
-                    </span>
-                    {!platformSizeManuallyEdited && form.sizeLabel === platformSizeRecommendation.size ? (
-                      <span className="text-muted-foreground">已自动填入，可人工修改</span>
-                    ) : !readOnly && form.sizeLabel !== platformSizeRecommendation.size ? (
-                      <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useMeasuredPlatformSize}>
-                        采用测量推荐
-                      </Button>
-                    ) : null}
-                    {platformSizeRecommendation.requiresHumanReview ? (
-                      <span className="text-amber-700">比例存在冲突，请员工重点核对测量线和适用人群。</span>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="mt-1 text-xs font-normal text-muted-foreground">
-                    {platformSizePendingText(form)}
-                  </p>
-                )}
-              </div>
-              <div className="min-w-0">
-                <FormInput
-                  fieldKey="ukSizeLabel"
-                  label="英码"
-                  value={form.ukSizeLabel}
-                  disabled={readOnly}
-                  suggestion={aiSuggestion(aiOutput, "ukSizeLabel")}
-                  hint="例如 UK 12、UK W32 或 UK M。"
-                  onChange={(value) => {
-                    setUkSizeManuallyEdited(true);
-                    updateForm("ukSizeLabel", value);
-                  }}
-                />
-                {ukSizeRecommendation ? (
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal">
-                    <span className="text-emerald-700">英码推荐：{ukSizeRecommendation.size}</span>
-                    {!ukSizeManuallyEdited && form.ukSizeLabel === ukSizeRecommendation.size ? (
-                      <span className="text-muted-foreground">已自动填入，可人工修改</span>
-                    ) : !readOnly && form.ukSizeLabel !== ukSizeRecommendation.size ? (
-                      <Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs" onClick={useRecommendedUkSize}>
-                        采用英码推荐
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+              <FormInput fieldKey="sizeLabel" label="尺码（人工填写）" value={form.sizeLabel} required disabled={readOnly} hint="按实物填写，例如 M、XL、W32。系统不自动估算或换码。" onChange={(value) => updateForm("sizeLabel", value)} />
+              <FormInput fieldKey="tagSize" label="原标尺码（可选）" value={form.tagSize} disabled={readOnly} onChange={(value) => updateForm("tagSize", value)} />
+              <FormInput fieldKey="ukSizeLabel" label="英码（可选，人工填写）" value={form.ukSizeLabel} disabled={readOnly} onChange={(value) => updateForm("ukSizeLabel", value)} />
             </> : null}
           </div>
 
@@ -998,34 +749,10 @@ export function ProductBatchCalibrationPage({
             />
           ) : (
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-sm font-semibold">尺寸（cm）</h3>
-              <GarmentMeasurementGuide
-                category={form.category}
-                subcategory={form.subcategory}
-                imageUrl={measurementGuideImage(imageTabs)}
-                manualLines={manualMeasurementLines}
-                aiLines={aiMeasurement.lines}
-                onManualCalibrate={measurementAction ? () => void openManualMeasurementCalibration() : undefined}
-                manualCalibrateLabel={manualMeasurementLines.length > 0
-                  ? "修正已有测量线"
-                  : aiMeasurement.lines.length > 0
-                    ? "校正 AI 测量线"
-                    : "打开测量板测量"}
-                manualCalibrateDisabled={Boolean(busy)}
-                measurements={measurementSuggestions.map((item) => ({
-                  key: item.key,
-                  label: item.label,
-                  value: form[item.key],
-                  aiValue: item.aiValue
-                }))}
-              />
-              {!hasAiMeasurements && !readOnly ? (
-                <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                  AI 没有给出可靠厘米值。可直接用软尺实测并填写下方字段，也可打开测量板连接起点和终点，由系统按板面换算厘米。
-                </div>
-              ) : null}
+              <h3 className="mb-3 text-sm font-semibold">人工实测尺寸（cm，可选）</h3>
+              <p className="text-xs text-muted-foreground">以下为可选实测尺寸；使用软尺测量后填写即可，不需要测量板。</p>
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {measurementSuggestions.map((field) => (
+                {visibleMeasurementFields.map((field) => (
                   <FormInput
                     key={field.key}
                     fieldKey={field.key}
@@ -1034,8 +761,6 @@ export function ProductBatchCalibrationPage({
                     required={requiredMeasurementKeys.has(field.key)}
                     inputMode="decimal"
                     disabled={readOnly}
-                    suggestion={field.suggestion}
-                    suggestionLabel="AI 测量"
                     onChange={(value) => updateForm(field.key, value)}
                   />
                 ))}
@@ -1109,22 +834,6 @@ export function ProductBatchCalibrationPage({
         onGuidedCutout={saveGuidedCorrection}
         onSave={saveManualCorrection}
       />
-      <ManualMeasurementEditor
-        open={manualMeasurementEditorOpen}
-        imageUrl={comparison?.original?.publicUrl ? `${API_PROXY_URL}${comparison.original.publicUrl}` : ""}
-        imageId={comparison?.original?.imageId ?? ""}
-        measurements={measurementSuggestions.map((item) => ({
-          key: item.key,
-          label: item.label,
-          value: form[item.key],
-          aiValue: item.aiValue
-        }))}
-        initialLines={manualMeasurementLines}
-        initialAiLines={aiMeasurement.lines}
-        initialBoardCalibration={aiMeasurement.calibration}
-        onOpenChange={setManualMeasurementEditorOpen}
-        onApply={applyManualMeasurementLines}
-      />
     </div>
   );
 }
@@ -1141,33 +850,6 @@ function ProcessingSummary({ job, warning }: { job: ImageProcessingJobRecord; wa
       {job.qualityIssues.length ? <div className="mt-2 flex flex-wrap gap-1">{job.qualityIssues.map((issue) => <Badge key={issue} variant="secondary">{imageIssueLabel(issue)}</Badge>)}</div> : null}
     </div>
   );
-}
-
-function platformSizeMeasurementText(measurement: { type: string; value: number | string }): string {
-  const label = ({
-    LENGTH: "衣长",
-    CHEST_WIDTH: "胸宽",
-    SHOULDER_WIDTH: "肩宽",
-    SLEEVE_LENGTH: "袖长",
-    WAIST: "腰宽",
-    HIP: "臀宽",
-    KIDS_AGE_RANGE: "儿童年龄段"
-  } as Record<string, string>)[measurement.type] ?? measurement.type;
-  return measurement.type === "KIDS_AGE_RANGE"
-    ? `${label} ${enumLabel(String(measurement.value))}`
-    : `${label} ${measurement.value} cm`;
-}
-
-function platformSizePendingText(form: WorkspaceForm): string {
-  if (form.audience === "KIDS" || form.category === "KIDS") return "确认儿童年龄段后自动推荐。";
-  if (form.category === "PANTS" || form.category === "SHORT" || form.subcategory === "KIDS_PANTS") {
-    return "确认腰宽或臀宽后自动推荐。";
-  }
-  if (form.category === "DRESSES") return "确认胸宽、腰宽或臀宽后自动推荐。";
-  if (["TSHIRTS", "SHIRTS", "LADY_TOPS", "JACKETS", "TWO_PIECE"].includes(form.category)) {
-    return "确认胸宽后自动推荐；衣长、有效肩宽和长袖袖长用于比例复核。";
-  }
-  return "该品类暂不自动推荐，请人工选择。";
 }
 
 function FormInput(props: {
@@ -1301,28 +983,23 @@ function variantTab(key: string, label: string, asset: ProductImageVariantRecord
 function formForProduct(product: ProductRecord, extraction: JsonRecord | null): WorkspaceForm {
   const base = formFromProductAndAi(product, extraction);
   const measurements = product.measurements ?? [];
-  const ai = normalizedAiOutput(extraction);
-  const value = (type: string, fieldKey: string) => {
+  const value = (type: string) => {
     const measurement = measurements.find((item) => item.measurementType === type);
-    const aiField = ai?.[fieldKey];
-    const aiFieldValue = aiField && typeof aiField === "object" && !Array.isArray(aiField)
-      ? (aiField as JsonRecord).value
-      : null;
-    const raw = measurement?.finalValueCm ?? measurement?.aiValueCm ?? aiFieldValue;
+    const raw = measurement?.finalValueCm;
     return raw == null ? "" : String(raw);
   };
   return normalizeWorkspaceForm({
     ...base,
     insoleLengthCm: String(measurements.find((item) => item.measurementType === "INSOLE_LENGTH")?.finalValueCm ?? ""),
-    lengthCm: value("LENGTH", "lengthCm"),
-    chestWidthCm: value("CHEST_WIDTH", "chestWidthCm"),
-    shoulderWidthCm: value("SHOULDER_WIDTH", "shoulderWidthCm"),
-    sleeveLengthCm: value("SLEEVE_LENGTH", "sleeveLengthCm"),
-    waistCm: value("WAIST", "waistCm"),
-    hipCm: value("HIP", "hipCm"),
-    thighWidthCm: value("THIGH_WIDTH", "thighWidthCm"),
-    legOpeningCm: value("LEG_OPENING", "legOpeningCm"),
-    inseamCm: value("INSEAM", "inseamCm"),
+    lengthCm: value("LENGTH"),
+    chestWidthCm: value("CHEST_WIDTH"),
+    shoulderWidthCm: value("SHOULDER_WIDTH"),
+    sleeveLengthCm: value("SLEEVE_LENGTH"),
+    waistCm: value("WAIST"),
+    hipCm: value("HIP"),
+    thighWidthCm: value("THIGH_WIDTH"),
+    legOpeningCm: value("LEG_OPENING"),
+    inseamCm: value("INSEAM"),
     defects: product.defects?.length ? product.defects.map((defect) => defect.description).filter(Boolean).join("; ") : isShoeCategory(base.category) ? "" : "None"
   });
 }
@@ -1381,78 +1058,6 @@ function aiArraySuggestion(output: JsonRecord | null, key: string) {
   if (!field || typeof field !== "object" || Array.isArray(field)) return [];
   const value = (field as JsonRecord).value;
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-function aiMeasurementSuggestion(
-  product: ProductRecord | null,
-  output: JsonRecord | null,
-  measurementType: string,
-  fieldKey: string
-) {
-  const persisted = product?.measurements?.find((item) => item.measurementType === measurementType);
-  const aiField = output?.[fieldKey];
-  const fieldRecord = aiField && typeof aiField === "object" && !Array.isArray(aiField) ? aiField as JsonRecord : null;
-  const rawValue = persisted?.aiValueCm ?? fieldRecord?.value;
-  const rawConfidence = persisted?.aiConfidence ?? fieldRecord?.confidence;
-  const value = Number(rawValue);
-  const confidence = Number(rawConfidence);
-  if (!Number.isFinite(value) || value <= 0) return { aiValue: "", suggestion: "" };
-  const aiValue = String(Math.round(value * 10) / 10);
-  const confidenceText = Number.isFinite(confidence) ? ` · 置信度 ${Math.round(confidence * 100)}%` : "";
-  return { aiValue, suggestion: `${aiValue} cm${confidenceText}` };
-}
-
-function measurementGuideImage(tabs: ImageTab[]) {
-  return tabs.find((tab) => tab.key === "white" && tab.url)?.url ?? "";
-}
-
-function manualLinesFromProduct(
-  product: ProductRecord,
-  fields: Array<{ key: keyof WorkspaceForm; type: string }>
-): ManualMeasurementLine[] {
-  const keys = new Map(fields.map((field) => [field.type, String(field.key)]));
-  return (product.measurements ?? []).flatMap((measurement) => {
-    const key = keys.get(String(measurement.measurementType ?? ""));
-    const imageId = String(measurement.manualLineImageId ?? "");
-    const x1 = Number(measurement.manualLineStartX);
-    const y1 = Number(measurement.manualLineStartY);
-    const x2 = Number(measurement.manualLineEndX);
-    const y2 = Number(measurement.manualLineEndY);
-    const valueCm = Number(measurement.finalValueCm);
-    if (!key || !imageId || ![x1, y1, x2, y2, valueCm].every(Number.isFinite)) return [];
-    return [{
-      key,
-      imageId,
-      valueCm: String(Math.round(valueCm * 10) / 10),
-      x1: x1 * 100,
-      y1: y1 * 100,
-      x2: x2 * 100,
-      y2: y2 * 100,
-      labelX: (x1 + x2) * 50,
-      labelY: Math.max(0, (y1 + y2) * 50 - 3),
-      source: "MANUAL"
-    }];
-  });
-}
-
-function parseManualMeasurementLines(value: string, fallback: ManualMeasurementLine[]) {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return fallback;
-    const valid = parsed.filter((item): item is ManualMeasurementLine => {
-      if (!item || typeof item !== "object") return false;
-      const line = item as Partial<ManualMeasurementLine>;
-      return typeof line.key === "string" && typeof line.imageId === "string" && typeof line.valueCm === "string" &&
-        [line.x1, line.y1, line.x2, line.y2, line.labelX, line.labelY].every((coordinate) =>
-          typeof coordinate === "number" && Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 100
-        );
-    });
-    return valid.length
-      ? valid.map((line) => ({ ...line, source: "MANUAL" as const }))
-      : fallback;
-  } catch {
-    return fallback;
-  }
 }
 
 function focusValidationIssue(

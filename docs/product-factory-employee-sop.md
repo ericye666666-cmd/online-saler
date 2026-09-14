@@ -1,6 +1,6 @@
 # Product Factory employee SOP
 
-Updated 2026-09-06. Follow the three stages shown in the batch workbench.
+Updated 2026-09-14. Follow the three stages shown in the batch workbench.
 For shoes, use the **鞋类 · 一双一个商品** batch option and the [shoe intake SOP](shoe-intake-employee-sop.md).
 For the first clothing training run, use **one batch of ten unique garments**. Keep them
 in positions 1–10 until the matching labels are attached. The first 1,000
@@ -10,9 +10,9 @@ online garments must stay separate from store stock.
 
 1. Select ten garments and keep them in order. Photograph all ten before
    sitting down to upload; do not mix garments or photos from another batch.
-2. Lay each garment flat on the measurement board. Take a clear full front
+2. Lay each garment flat on a clean, plain surface. No measurement/background board is required. Take a clear full front
    photo, then any needed back, label, detail and defect photos. Show defects
-   clearly; keep sleeves, hems and measuring marks visible.
+   clearly; keep sleeves and hems visible.
 3. Open **商品中心 > 新建批次**, choose ten items and open the upload task.
 4. Upload the photos to the matching item number, from 1 through 10. Check the
    thumbnails against the physical garment before moving to the next item.
@@ -23,7 +23,8 @@ online garments must stay separate from store stock.
 ## 2. AI processing · AI 自动处理
 
 1. Start the batch processing action. The system prepares the images and reads
-   product information and measurements.
+   category/subcategory, visible color, pattern, sleeve and fit features, tags,
+   product names and readable brands. AI does not estimate sizes or centimeters.
 2. Wait for the results. Open **待处理异常** for any failed item and retry the
    failed work. Keep completed items and their photos in the same batch.
 3. Continue to confirmation when the results are ready. If repeated processing
@@ -32,9 +33,10 @@ online garments must stay separate from store stock.
 ## 3. Confirm, label, store and publish · 异常确认并发布
 
 1. **Check each garment.** Compare the original, prepared image and actual
-   garment. Correct the title, category, audience, color, size, measurements,
-   condition, defects and price. AI suggestions need your confirmation; do
-   not guess a missing measurement or price.
+   garment. Correct the title, category, audience, color, condition, defects and price.
+   Enter the size manually from the actual garment; no automatic sizing or conversion is applied.
+   Centimeter measurements are optional and must be measured by hand if supplied.
+   AI suggestions need your confirmation; do not guess an unreadable brand or size.
 2. **Save each item.** Once all ten are confirmed, the system prepares sales
    details and AI display images, generates the formal barcodes and assigns
    shelf locations. Continue to **打印、归位并发布**.

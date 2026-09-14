@@ -1,5 +1,4 @@
 import { formatShoeSizeLabel, isShoeCategory, isShoeProduct, SHOE_SIZE_SYSTEMS, SHOE_TYPES } from "@online-saler/shared-types";
-import { requiredProductMeasurementTypes } from "@online-saler/business-rules";
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -138,15 +137,15 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     audience: stringValue(product?.gender) || stringField(ai, "audience") || form.audience,
     kidsAgeRange: stringValue(product?.kidsAgeRange) || stringField(ai, "kidsAgeRange") || form.kidsAgeRange,
     brand: stringValue(product?.brand) || stringField(ai, "brandLabel") || form.brand,
-    tagSize: stringValue(product?.tagSize) || stringField(ai, "tagSize") || stringField(ai, "sizeLabel") || form.tagSize,
-    shoeSizeSystem: stringValue(product?.shoeSizeSystem) || stringField(ai, "shoeSizeSystem"),
+    tagSize: stringValue(product?.tagSize) || form.tagSize,
+    shoeSizeSystem: stringValue(product?.shoeSizeSystem),
     shoeType: stringValue(product?.shoeType) || stringField(ai, "shoeType"),
     // Pair and condition checks are human facts, never accepted from AI output.
     shoePairConfirmed: product?.shoePairConfirmed === true,
     shoeConditionNotes: stringValue(product?.shoeConditionNotes),
     insoleLengthCm: persistedInsoleLength(product),
-    sizeLabel: stringValue(product?.finalSizeLabel) || stringField(ai, "sizeLabel") || form.sizeLabel,
-    ukSizeLabel: stringValue(product?.ukSizeLabel) || stringField(ai, "ukSizeLabel") || form.ukSizeLabel,
+    sizeLabel: stringValue(product?.finalSizeLabel) || form.sizeLabel,
+    ukSizeLabel: stringValue(product?.ukSizeLabel) || form.ukSizeLabel,
     pattern: stringValue(product?.pattern) || stringField(ai, "pattern") || form.pattern,
     sleeveType: stringValue(product?.sleeveType) || stringField(ai, "sleeveType") || form.sleeveType,
     fitType: stringValue(product?.fitType) || stringField(ai, "fitType") || form.fitType,
@@ -345,7 +344,7 @@ export function measurementFields(
   form: Pick<WorkspaceForm, "category" | "subcategory" | "sleeveType">
 ): MeasurementRequirement[] {
   if (isShoeProduct(form.category, form.subcategory)) return [{ key: "insoleLengthCm", type: "INSOLE_LENGTH", label: "鞋垫实测长度", required: false }];
-  const requiredTypes = new Set(requiredProductMeasurementTypes(form));
+  const requiredTypes = new Set<string>();
   const isPants = form.category === "PANTS" || form.category === "SHORT" ||
     (form.category === "KIDS" && form.subcategory === "KIDS_PANTS");
   if (isPants) {
