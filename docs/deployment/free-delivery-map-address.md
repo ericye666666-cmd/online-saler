@@ -36,6 +36,43 @@ Acceptance:
 Component source: https://github.com/visgl/react-google-maps (MIT).
 Places (New): https://developers.google.com/maps/documentation/javascript/place-autocomplete-new
 
+## Address picker update — 2026-09-14
+
+Checkout now opens an address-list dialog, then map/search, place type, and
+address details. Apartment floor and door are required; office building is
+required. Customers can adjust the entrance pin and save a label. The saved
+address book and checkout draft are scoped to the signed-in customer on the
+current browser/device. There is no cross-device address synchronization in this
+change, and legacy unscoped checkout drafts are not imported into another account.
+
+Building, floor, door and directions are serialized into the existing
+`deliveryAddress` string, with the existing Google Maps URL last. Operations and
+customer order pages retain the same parser and receive the entrance coordinate.
+No shared schema, API contract, fee or payment state changes are required.
+
+Automatic street-name lookup additionally uses Google's Geocoder; enable and
+allow Geocoding API for the browser key if resolved street names are required.
+The exact selected coordinate remains usable when reverse geocoding fails.
+Maps/Places failures retain manual entry. Runtime key configuration is unchanged.
+
+Before releasing, verify on an iPhone and desktop:
+
+1. Swipe product images both ways, scroll vertically from the photo, tap the
+   progress controls, and use desktop thumbnails/arrow keys.
+2. Add an address, search a Kenyan place, drag the map and confirm the pin.
+3. Choose Apartment, validate floor/door, mark entrance, save, then edit/reselect.
+4. Back/close must retain the previously saved address; refresh restores saved
+   addresses only for the same account on the same device.
+5. Test location refusal, missing/blocked key, blocked browser storage, and a
+   current account with no delivery address. Saving an address must not start
+   payment; payment without an address must fail before a checkout request.
+6. Verify the final order/Operations address includes all details and the exact
+   entrance map link using the existing controlled-order acceptance procedure.
+
+Browser validation for this update is currently blocked by
+`net::ERR_BLOCKED_BY_CLIENT` on the local QA route. Unit/build checks do not
+constitute mobile Safari, live Maps or live payment acceptance.
+
 Local `npm run ci` passed during authoring. Browser QA of the isolated local
 component was blocked by `net::ERR_BLOCKED_BY_CLIENT` at localhost. Do not treat
 build/unit results as proof of live Google Maps, geolocation or delivery.

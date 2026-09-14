@@ -19,7 +19,7 @@ export default async function CheckoutPage() {
       } : undefined} />
       <div className="productPageShell checkoutPageShell">
         {session ? (
-          <CheckoutPageClient mapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""} />
+          <CheckoutPageClient key={session.customerId} customerId={session.customerId} mapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""} />
         ) : (
           <section className="customerLoginCard">
             <p className="detail-meta">{t("checkout.title")}</p>
