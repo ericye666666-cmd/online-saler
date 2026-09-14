@@ -30,7 +30,7 @@ export const PRODUCT_FACTORY_WORKFLOW_STAGE_ORDER = [
 
 export const PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS: Record<string, string> = {
   CAPTURE: "批量采集",
-  AUTOMATION: "AI 自动处理",
+  AUTOMATION: "商品信息识别",
   CONFIRM_AND_PUBLISH: "异常确认并发布",
   COMPLETE: "批次已完成"
 };

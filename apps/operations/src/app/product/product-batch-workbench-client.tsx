@@ -190,7 +190,7 @@ export function ProductWorkbenchPage() {
       <PageHeader
         eyebrow="商品工厂"
         title="今日工作"
-        description="三段完成上品：批量采集、AI 自动处理、异常确认并发布。"
+        description="三段完成上品：批量采集、商品信息识别、异常确认并发布。"
         action={
           <Button asChild disabled={!hasPermission("action.product.create")}>
             <Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />新建批次</Link>
@@ -256,7 +256,7 @@ export function ProductWorkbenchPage() {
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-3">
           <TaskRow label="1. 批量采集" value={tasks?.upload ?? 0} href="/product/waiting-upload" />
-          <TaskRow label="2. AI 自动处理" value={tasks?.aiImage ?? 0} href="/product/waiting-ai" />
+          <TaskRow label="2. 商品信息识别" value={tasks?.aiImage ?? 0} href="/product/waiting-ai" />
           <TaskRow
             label="3. 异常确认并发布"
             value={(tasks?.calibration ?? 0) + (tasks?.labelApply ?? 0) + (tasks?.review ?? 0) + (tasks?.storage ?? 0)}

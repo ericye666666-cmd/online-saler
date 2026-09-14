@@ -89,3 +89,6 @@ assert.ok(
   detailSource.includes("商品发布仍由价格、库存、状态和商品控制规则共同决定"),
   "Detail approval must preserve the product publication gates."
 );
+
+assert.equal(centerSource.includes("!comparison?.selectedMainImageId"), false,
+  "Manual confirmation must not require the display image that is generated after confirmation.");

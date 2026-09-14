@@ -381,7 +381,7 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
               </div>
 
               <div className="border-b px-4 py-3">
-                <p className="text-sm font-medium">第一步先批量生成 白底展示图并设为默认商城主图，再生成文案、尺码和其他销售详情。</p>
+                <p className="text-sm font-medium">人工校准、填写尺码后，直接使用原图批量生成白底展示图；销售详情使用已确认的信息和人工尺码。</p>
                 <p className="mt-1 text-xs text-muted-foreground">员工仍需在详情审核中对照原图确认 Logo、图案、结构、磨损和瑕疵；Model View 占位页不会恢复。</p>
               </div>
 

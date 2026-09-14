@@ -844,8 +844,8 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       setError(reasons.join(" "));
       return;
     }
-    if (shoes ? !comparison?.original?.imageId : !comparison?.selectedMainImageId) {
-      setError(shoes ? "请先上传整双原图。" : "请选择白底图、优化主图或原图作为商城主图。");
+    if (!comparison?.original?.imageId) {
+      setError("请先上传正面原图。");
       return;
     }
     setBusy(true);
@@ -942,7 +942,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => props.onOpenChange(false)}>取消</Button>
-          <Button disabled={busy || Boolean(imageBusy) || reasons.length > 0 || (shoes ? !comparison?.original?.imageId : !comparison?.selectedMainImageId)} onClick={() => void save()}>
+          <Button disabled={busy || Boolean(imageBusy) || reasons.length > 0 || (!comparison?.original?.imageId)} onClick={() => void save()}>
             <SaveIcon data-icon="inline-start" />
             保存并下一件
           </Button>
