@@ -838,7 +838,7 @@ export class OperationsFulfillmentService {
     if (createdAt.gte || createdAt.lt) and.push({ createdAt });
     if (input.orderNumber?.trim()) and.push({ orderNumber: { contains: input.orderNumber.trim(), mode: "insensitive" } });
     if (input.customerName?.trim()) and.push({ customer: { displayName: { contains: input.customerName.trim(), mode: "insensitive" } } });
-    if (input.customerPhone?.trim()) and.push({ customer: { phone: { contains: input.customerPhone.trim(), mode: "insensitive" } } });
+    if (input.customerPhone?.trim()) and.push({ payments: { some: { phone: { contains: input.customerPhone.trim(), mode: "insensitive" } } } });
     if (input.productName?.trim()) and.push({ items: { some: { snapshot: { is: { title: { contains: input.productName.trim(), mode: "insensitive" } } } } } });
     if (input.barcode?.trim()) and.push({ items: { some: { snapshot: { is: { barcode: { contains: input.barcode.trim(), mode: "insensitive" } } } } } });
     if (input.fulfillmentMethod && Object.values(FulfillmentMethod).includes(input.fulfillmentMethod)) and.push({ fulfillmentMethod: input.fulfillmentMethod });

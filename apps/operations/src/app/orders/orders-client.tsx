@@ -459,7 +459,7 @@ function OrderFilters(props: {
           <TextFilter label="结束日期" type="date" value={filters.dateTo} onChange={(value) => update("dateTo", value)} />
           <TextFilter label="订单号" value={filters.orderNumber} onChange={(value) => update("orderNumber", value)} />
           <TextFilter label="顾客姓名" value={filters.customerName} onChange={(value) => update("customerName", value)} />
-          <TextFilter label="顾客手机号" value={filters.customerPhone} onChange={(value) => update("customerPhone", value)} />
+          <TextFilter label="本单付款手机号" value={filters.customerPhone} onChange={(value) => update("customerPhone", value)} />
           <TextFilter label="商品名称" value={filters.productName} onChange={(value) => update("productName", value)} />
           <TextFilter label="Barcode" value={filters.barcode} onChange={(value) => update("barcode", value)} />
           <TextFilter label="配送员" value={filters.rider} onChange={(value) => update("rider", value)} />
@@ -521,7 +521,9 @@ function OrderCard(props: {
               <StatusBadge status={fulfillment?.status ?? order.status} />
               <StatusBadge status={payment?.status ?? "NO_PAYMENT"} />
             </div>
-            <CardDescription>{formatDate(order.createdAt)} · {order.customer.displayName ?? order.customer.email} · {order.customer.phone ?? payment?.phone ?? "未留手机号"}</CardDescription>
+            <CardDescription>{formatDate(order.createdAt)} · {order.customer.displayName ?? order.customer.email}</CardDescription>
+            <CardDescription>本单付款号码：{payment?.phone ?? "暂无付款号码"}</CardDescription>
+            <CardDescription>顾客当前联系方式：{order.customer.phone ?? "未留手机号"}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{order.fulfillmentMethod === "PICKUP" ? "自提" : "配送"}</Badge>
