@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, InternalServerErrorException } from "@
 import { prisma } from "@online-saler/database";
 import {
   AI_AUDIENCES,
+  AI_MEASUREMENT_FIELDS,
   SHOE_SIZE_SYSTEMS,
   SHOE_TYPES,
   isShoeCategory,
@@ -55,7 +56,7 @@ export const PRODUCT_AUDIENCE_TITLE_RULES = [
 export const SHOE_RECOGNITION_RULES = [
   "This intake is SHOES: one product is one matching pair. Set category=SHOES, including children's shoes; use subcategory=KIDS_SHOES for children's footwear.",
   "FRONT shows the entire pair; BACK is a side view; DETAIL shows soles; LABEL shows the original size label. Inspect only visible evidence.",
-  "sizeLabel must transcribe the visible original size label exactly. shoeSizeSystem must be explicit on the label; distinguish US_MEN, US_WOMEN and US_KIDS only when visible text identifies the range.",
+  "Staff enter the original size and size system manually; return null for sizeLabel and shoeSizeSystem.",
   "Never convert EU/UK/US sizes, guess a missing size, infer shoe size from age or outsole length, or output clothing sizes XS/S/M/L. If the size label is unreadable, return null for sizeLabel and shoeSizeSystem.",
   "shoeType uses the supplied footwear enum. Pair matching and condition notes are employee-confirmed facts: do not output shoePairConfirmed or pretend a photo verifies both sizes, hidden damage, smell or authenticity.",
   "All garment centimeter fields and measurementGeometry must be null. No measurement board is required for shoes. Insole length is a separate optional human measurement, never estimated by AI.",
@@ -116,15 +117,6 @@ export class OpenAIVisionProvider implements AIProvider {
           detail: image.type === "FRONT" || (shoes && image.type === "LABEL") ? "high" : "low"
         };
       });
-    const frontStored = storedImages.find(({ image }) => image.type === "FRONT") ?? storedImages[0];
-    const boardDetectionPromise = frontStored && !shoes
-      ? this.measurementBoard.detect({
-          body: Buffer.from(frontStored.stored.body),
-          contentType: frontStored.stored.contentType,
-          filename: `${frontStored.image.id}.${frontStored.stored.contentType.split("/")[1] ?? "jpg"}`
-        })
-      : Promise.resolve(null);
-
     const response = await fetch(RESPONSES_API_URL, {
       method: "POST",
       headers: {
@@ -138,7 +130,7 @@ export class OpenAIVisionProvider implements AIProvider {
             role: "system",
             content: shoes
               ? "You identify second-hand shoes from original product photos for a Kenyan mobile resale catalog. Return JSON only, using exact supplied enums and objects { value, confidence }. Preserve the visible original label and factual wear. Use null for facts that cannot be read. Do not infer shoe size or make size conversions. Confidence must be from 0 to 1."
-              : "You identify and measure second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, use its documented UNKNOWN or OTHER fallback, return an empty array for tags, and null for text or measurement fields. Use the 120 cm by 160 cm measurement board, edge rulers, and perspective cues when visible. Never infer a centimeter measurement from the tag size alone. Confidence must be a number from 0 to 1."
+              : "You identify second-hand clothing from product photos for a Kenyan mobile resale catalog. Return JSON only. Use the exact enum values provided. If a field is not visible, use its documented UNKNOWN or OTHER fallback, return an empty array for tags, and null for text or measurement fields. No measurement board is required. Sizes and measurements are entered by employees; do not infer or transcribe them. Confidence must be a number from 0 to 1."
           },
           {
             role: "user",
@@ -166,18 +158,9 @@ export class OpenAIVisionProvider implements AIProvider {
                   "Each catalog and centimeter field must be an object: { value, confidence }.",
                   ...PRODUCT_AUDIENCE_TITLE_RULES,
                   ...PRODUCT_MATERIAL_TAG_RULES,
-                  ...(shoes ? SHOE_RECOGNITION_RULES : [
-                  "ukSizeLabel is the best UK size notation supported by the visible tag and measured garment fit, for example UK 12, UK W32, or UK M. Use null when the evidence is insufficient; do not convert from sizeLabel alone.",
-                  "All centimeter values are flat-lay garment measurements, not body circumference.",
-                  "lengthCm: shoulder high point at the neck/shoulder seam to hem for tops/dresses; top waistband to hem for bottoms.",
-                  "chestWidthCm: pit to pit. sleeveLengthCm: shoulder seam to cuff.",
-                  ...SHOULDER_WIDTH_MEASUREMENT_RULES,
-                  ...HOODED_GARMENT_MEASUREMENT_RULES,
-                  "waistCm and hipCm are flat widths. thighWidthCm is one leg flat width. legOpeningCm is one opening flat width. inseamCm is crotch to hem.",
-                  ...MEASUREMENT_GEOMETRY_RULES,
-                  "If the item is shoes, apply these overrides:",
-                  ...SHOE_RECOGNITION_RULES.slice(1)
-                  ]),
+                  ...(shoes ? SHOE_RECOGNITION_RULES : []),
+                  "Sizes are manual-only. Return null values for sizeLabel, ukSizeLabel and shoeSizeSystem even when a label is readable.",
+                  "Do not detect a measurement board or estimate centimeters. Return null for all centimeter values and measurementGeometry.",
                   "Base the answer only on the attached images."
                 ].join("\n")
               },
@@ -195,20 +178,27 @@ export class OpenAIVisionProvider implements AIProvider {
       throw new InternalServerErrorException(openAIErrorMessage(response.status, payload));
     }
 
-    const rawOutput = parseOpenAIVisionOutput(payload);
-    const boardDetection = await boardDetectionPromise;
+    const normalizedOutput = normalizeOpenAIVisionOutput(
+      parseOpenAIVisionOutput(payload),
+      request.imageIds,
+      runtimeTaxonomy,
+      images.find((image) => image.type === "FRONT")?.id ?? request.imageIds[0] ?? null,
+      null,
+      request.categoryHint
+    );
+    // Enforce manual sizing after normalization, including model aliases and legacy shapes.
+    for (const key of ["sizeLabel", "ukSizeLabel", "shoeSizeSystem"] as const) {
+      normalizedOutput[key] = { value: null, confidence: 0, evidenceImageIds: [] };
+    }
+    for (const { field } of AI_MEASUREMENT_FIELDS) {
+      normalizedOutput[field] = { value: null, confidence: 0, evidenceImageIds: [] };
+    }
+    normalizedOutput.measurementGeometry = { imageId: null, boardCorners: null, boardConfidence: 0, lines: {} };
     return {
       provider: "openai",
       model: this.model(),
       rawOutput: payload,
-      normalizedOutput: normalizeOpenAIVisionOutput(
-        rawOutput,
-        request.imageIds,
-        runtimeTaxonomy,
-        images.find((image) => image.type === "FRONT")?.id ?? request.imageIds[0] ?? null,
-        boardDetection,
-        request.categoryHint
-      ),
+      normalizedOutput,
       latencyMs: Date.now() - startedAt,
       inputTokens: numberOrUndefined(payload.usage?.input_tokens),
       outputTokens: numberOrUndefined(payload.usage?.output_tokens)

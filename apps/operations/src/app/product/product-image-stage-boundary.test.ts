@@ -24,13 +24,19 @@ assert.equal(
   false,
   "Calibration must not generate AI display images."
 );
-assert.ok(
-  calibrationSource.includes("onManualCalibrate={measurementAction ?"),
-  "Every calibratable product with an original image must expose the measurement-board editor."
+assert.equal(
+  calibrationSource.includes("<ManualMeasurementEditor"),
+  false,
+  "Manual size entry must not require a board or measurement-line editor."
 );
 assert.ok(
-  calibrationSource.includes("打开测量板测量"),
-  "A new item without existing manual lines must still expose the measurement-board action."
+  calibrationSource.includes("尺码（人工填写）"),
+  "Staff must have a manual size field."
+);
+assert.equal(
+  calibrationSource.includes("recommendPlatformSize"),
+  false,
+  "AI measurements must not recommend or overwrite staff-entered size."
 );
 assert.ok(
   calibrationSource.includes("抠图不对，手动修正"),

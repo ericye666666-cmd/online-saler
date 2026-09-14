@@ -90,7 +90,8 @@ test("reports an incomplete response reason when no output text exists", () => {
 });
 
 
-test("shoe recognition reads original pair and size label without invoking garment board detection", async () => {
+for (const categoryHint of ["SHOES", "TSHIRTS"] as const) {
+test(`${categoryHint} recognition retains appearance but ignores AI sizes and board geometry`, async () => {
   const original = { fetch: globalThis.fetch, apiKey: process.env.OPENAI_API_KEY,
     images: prisma.productImage.findMany, setting: prisma.systemSetting.findUnique };
   let boardCalls = 0;
@@ -106,23 +107,34 @@ test("shoe recognition reads original pair and size label without invoking garme
     globalThis.fetch = (async (_url, init) => {
       payload = JSON.parse(String(init?.body));
       return new Response(JSON.stringify({ output_text: JSON.stringify({
-        category: { value: "KIDS", confidence: 1 }, sizeLabel: { value: "EU 28", confidence: 0.8 },
-        shoeSizeSystem: { value: "EU", confidence: 0.8 }, chestWidthCm: { value: 30, confidence: 0.9 }
+        title: { value: "Grey striped T-shirt", confidence: 0.9 },
+        color: { value: "GRAY", confidence: 0.9 }, brand: { value: "Nike", confidence: 0.9 },
+        category: { value: categoryHint, confidence: 1 }, sizeLabel: { value: "EU 28", confidence: 0.8 },
+        shoeSizeSystem: { value: "EU", confidence: 0.8 }, chestWidthCm: { value: 30, confidence: 0.9 },
+        length_cm: { value: 60, confidence: 0.9 }, ukSizeLabel: { value: "UK 12", confidence: 0.9 },
+        measurementGeometry: { boardCorners: { value: { topLeft: {x:0,y:0}, topRight:{x:100,y:0}, bottomRight:{x:100,y:100}, bottomLeft:{x:0,y:100} }, confidence: 1 }, lines: {} }
       }) }));
     }) as typeof fetch;
     const provider = new OpenAIVisionProvider({ bucket: "test", download: async (path: string) => {
       downloaded.push(path); return { body: Buffer.from(path), contentType: "image/jpeg" };
     } } as never, { detect: async () => { boardCalls += 1; throw new Error("Board detection must not run for shoes"); } } as never);
-    const result = await provider.extract({ productId: "shoe", imageIds: ["pair", "label"], promptVersion: "test", categoryHint: "SHOES" });
+    const result = await provider.extract({ productId: "shoe", imageIds: ["pair", "label"], promptVersion: "test", categoryHint });
     assert.equal(boardCalls, 0);
     assert.deepEqual(downloaded, ["pair.jpg", "label.jpg"]);
-    assert.match(payload.input[0].content, /second-hand shoes/);
+    assert.match(payload.input[0].content, categoryHint === "SHOES" ? /second-hand shoes/ : /clothing/);
     const input = payload.input[1].content;
-    assert.match(input[0].text, /Never convert EU\/UK\/US sizes/);
-    assert.equal(input[2].detail, "high");
-    assert.equal(result.normalizedOutput.category.value, "SHOES");
-    assert.equal(result.normalizedOutput.sizeLabel.value, "EU 28");
+    assert.match(input[0].text, /Sizes are manual-only/);
+    assert.doesNotMatch(input[0].text, /OUTER corners of the complete/);
+    assert.equal(input[2].detail, categoryHint === "SHOES" ? "high" : "low");
+    assert.equal(result.normalizedOutput.category.value, categoryHint);
+    assert.equal(result.normalizedOutput.brandLabel.value, "Nike");
+    assert.equal(result.normalizedOutput.title.value, "Grey striped T-shirt");
+    assert.equal(result.normalizedOutput.sizeLabel.value, null);
     assert.equal(result.normalizedOutput.chestWidthCm.value, null);
+    assert.equal(result.normalizedOutput.lengthCm.value, null);
+    assert.equal(result.normalizedOutput.ukSizeLabel.value, null);
+    assert.equal(result.normalizedOutput.shoeSizeSystem?.value, null);
+    assert.equal(result.normalizedOutput.measurementGeometry?.boardCorners, null);
   } finally {
     globalThis.fetch = original.fetch;
     if (original.apiKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = original.apiKey;
@@ -130,3 +142,5 @@ test("shoe recognition reads original pair and size label without invoking garme
     prisma.systemSetting.findUnique = original.setting;
   }
 });
+
+}

@@ -41,9 +41,9 @@ assert.equal(fromAi.category, "DRESSES");
 assert.equal(fromAi.subcategory, "SHORT_DRESSES_SKIRTS");
 assert.equal(fromAi.audience, "WOMEN");
 assert.equal(fromAi.brand, "Mock Brand");
-assert.equal(fromAi.tagSize, "M");
-assert.equal(fromAi.sizeLabel, "M");
-assert.equal(fromAi.ukSizeLabel, "UK 12");
+assert.equal(fromAi.tagSize, "");
+assert.equal(fromAi.sizeLabel, "");
+assert.equal(fromAi.ukSizeLabel, "");
 assert.equal(fromAi.fitType, "RELAXED");
 assert.equal(fromAi.stretchLevel, "LOW");
 assert.equal(fromAi.fabricWeight, "LIGHT");
@@ -83,6 +83,7 @@ assert.ok(!selectedSizeButMissingPrice.some((issue) => issue.field === "sizeLabe
 
 const completeForm = {
   ...fromAi,
+  sizeLabel: "M",
   lengthCm: "92",
   chestWidthCm: "48",
   shoulderWidthCm: "39",
@@ -161,7 +162,7 @@ assert.deepEqual(pantsBody.measurements, [
 ]);
 
 const pantsWithoutHip = workspaceReadiness({ product, image, job, form: { ...pantsForm, hipCm: "" } });
-assert.equal(pantsWithoutHip.canSaveAndNext, false);
+assert.equal(pantsWithoutHip.canSaveAndNext, true);
 
 const sleevelessForm = { ...completeForm, sleeveType: "SLEEVELESS", sleeveLengthCm: "" };
 assert.equal(workspaceReadiness({ product, image, job, form: sleevelessForm }).canSaveAndNext, true);
@@ -200,13 +201,10 @@ const noDefectsBody = buildCalibrationBody({
 });
 assert.deepEqual(noDefectsBody.defects, []);
 
-assert.throws(() =>
-  buildCalibrationBody({
-    employeeId: "employee-1",
-    extractionId: "ai-1",
-    form: { ...emptyWorkspaceForm(), lengthCm: "", chestWidthCm: "48" }
-  })
-);
+assert.deepEqual(buildCalibrationBody({ employeeId: "employee-1", extractionId: "ai-1", form: {
+  ...completeForm, lengthCm: "", chestWidthCm: "", shoulderWidthCm: "", sleeveLengthCm: "", waistCm: "", hipCm: ""
+} }).measurements, []);
+
 
 // Shoe AI may suggest a visible label, but cannot confirm a matching physical pair or shoe condition.
 const shoeAi = {
@@ -226,9 +224,9 @@ const shoeAi = {
 };
 const shoeFromAi = formFromProductAndAi(product, shoeAi);
 assert.equal(shoeFromAi.category, "SHOES");
-assert.equal(shoeFromAi.tagSize, "33");
-assert.equal(shoeFromAi.shoeSizeSystem, "EU");
-assert.equal(shoeFromAi.sizeLabel, "EU 33");
+assert.equal(shoeFromAi.tagSize, "");
+assert.equal(shoeFromAi.shoeSizeSystem, "");
+assert.equal(shoeFromAi.sizeLabel, "");
 assert.equal(shoeFromAi.ukSizeLabel, "");
 assert.equal(shoeFromAi.shoePairConfirmed, false);
 assert.equal(shoeFromAi.shoeConditionNotes, "");
@@ -238,6 +236,7 @@ assert.equal(shoeFromAi.sleeveType, "");
 
 const calibratedPair = {
   ...shoeFromAi,
+  tagSize: "33", shoeSizeSystem: "EU",
   priceKsh: "1200",
   shoePairConfirmed: true,
   shoeConditionNotes: "Light sole wear; no separation or tears in lining.",

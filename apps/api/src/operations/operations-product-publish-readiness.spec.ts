@@ -16,7 +16,7 @@ test("accepts complete top measurements without requiring lower-body fields", ()
   }), []);
 });
 
-test("pants require lower-body measurements instead of chest width", () => {
+test("pants can publish without mandatory centimeter measurements", () => {
   assert.deepEqual(missingPublishMeasurementTypes({
     category: "PANTS",
     measurements: [
@@ -24,11 +24,17 @@ test("pants require lower-body measurements instead of chest width", () => {
       { measurementType: "WAIST", finalValueCm: 41 },
       { measurementType: "HIP", finalValueCm: 53 }
     ]
-  }), ["THIGH_WIDTH", "LEG_OPENING"]);
+  }), []);
 });
 
 test("non-apparel products do not require garment measurements", () => {
   assert.deepEqual(missingPublishMeasurementTypes({ category: "BAG", measurements: [] }), []);
   assert.deepEqual(missingPublishMeasurementTypes({ category: "SHOES", measurements: [] }), []);
   assert.deepEqual(missingPublishMeasurementTypes({ category: "KIDS", subcategory: "KIDS_SHOES", measurements: [] }), []);
+});
+
+ test("clothing without a measurement board has no centimeter publication blocker", () => {
+  for (const category of ["TSHIRTS", "SHIRTS", "PANTS", "DRESSES", "JACKETS"]) {
+    assert.deepEqual(missingPublishMeasurementTypes({ category, measurements: [] }), []);
+  }
 });
