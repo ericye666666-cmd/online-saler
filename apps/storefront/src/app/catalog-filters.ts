@@ -1,4 +1,4 @@
-import { apparelSizes, type Product } from "./data/products";
+import type { Product } from "./data/products";
 
 export type CatalogFilters = Partial<Record<
   "category" | "brand" | "color" | "material" | "store" | "shoeType" | "bagType" | "textileType" | "size" | "condition" | "price" | "query" | "sort",
@@ -10,8 +10,16 @@ export function catalogSizeOptions(products: Product[], category: string): strin
     .filter((product) => category === "All" || product.category === category)
     .map((product) => product.size)
     .filter((size) => size && size !== "Size not confirmed");
-  const defaults = category === "Shoes" ? [] : apparelSizes.filter((size) => size !== "All");
-  return ["All", ...new Set([...defaults, ...sizes].sort((left, right) => left.localeCompare(right, "en", { numeric: true })))];
+  const letterOrder = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"];
+  const sorted = [...new Set(sizes)].sort((left, right) => {
+    const leftRank = letterOrder.indexOf(left);
+    const rightRank = letterOrder.indexOf(right);
+    if (leftRank >= 0 || rightRank >= 0) {
+      return (leftRank < 0 ? letterOrder.length : leftRank) - (rightRank < 0 ? letterOrder.length : rightRank);
+    }
+    return left.localeCompare(right, "en", { numeric: true });
+  });
+  return ["All", ...sorted];
 }
 
 export function filterCatalogProducts(products: Product[], filters: CatalogFilters): Product[] {

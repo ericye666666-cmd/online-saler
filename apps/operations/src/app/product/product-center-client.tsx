@@ -39,6 +39,7 @@ import {
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
+import { ApparelSizeField } from "./apparel-size-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -914,7 +915,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               {!shoes ? <RequiredSelect label="儿童年龄段" value={form.kidsAgeRange} invalid={form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE"} values={AI_KIDS_AGE_RANGES} disabled={form.audience !== "KIDS"} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
               <RequiredSelect label="颜色" value={form.color} invalid={!form.color.trim()} values={AI_COLORS} onChange={(value) => updateForm("color", value)} />
               <FormField label="品牌"><Input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} /></FormField>
-              {!shoes ? <RequiredInput label="尺码" value={form.sizeLabel} invalid={!form.sizeLabel.trim()} onChange={(value) => updateForm("sizeLabel", value)} /> : null}
+              {!shoes ? <ApparelSizeField category={form.category} value={form.sizeLabel} onChange={(value) => updateForm("sizeLabel", value)} /> : null}
               <RequiredSelect label="图案" value={form.pattern} invalid={!form.pattern.trim()} values={AI_PATTERNS} onChange={(value) => updateForm("pattern", value)} />
               {!shoes ? <RequiredSelect label="袖型" value={form.sleeveType} invalid={!form.sleeveType.trim()} values={AI_SLEEVE_TYPES} onChange={(value) => updateForm("sleeveType", value)} /> : null}
               <RequiredSelect label="成色" value={form.conditionGrade} invalid={!form.conditionGrade.trim()} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} onChange={(value) => updateForm("conditionGrade", value)} />

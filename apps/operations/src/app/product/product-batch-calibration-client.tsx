@@ -61,6 +61,7 @@ import {
   type WorkspaceForm
 } from "../operations-workspace-flow";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
+import { ApparelSizeField } from "./apparel-size-field";
 import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { productStatusLabel } from "./product-factory-display";
 
@@ -524,9 +525,11 @@ export function ProductBatchCalibrationPage({
             <FormSelect fieldKey="color" label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
             {!shoes && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
             {!shoes ? <>
-              <FormInput fieldKey="sizeLabel" label="尺码（人工填写）" value={form.sizeLabel} required disabled={readOnly} hint="按实物填写，例如 M、XL、W32。系统不自动估算或换码。" onChange={(value) => updateForm("sizeLabel", value)} />
-              <FormInput fieldKey="tagSize" label="原标尺码（可选）" value={form.tagSize} disabled={readOnly} onChange={(value) => updateForm("tagSize", value)} />
-              <FormInput fieldKey="ukSizeLabel" label="英码（可选，人工填写）" value={form.ukSizeLabel} disabled={readOnly} onChange={(value) => updateForm("ukSizeLabel", value)} />
+              <ApparelSizeField category={form.category} value={form.sizeLabel} disabled={readOnly} onChange={(value) => updateForm("sizeLabel", value)} />
+              <details className="sm:col-span-2">
+                <summary className="cursor-pointer text-sm text-muted-foreground">原标签记录（可选）</summary>
+                <div className="pt-3"><FormInput fieldKey="tagSize" label="原标尺码" value={form.tagSize} disabled={readOnly} onChange={(value) => updateForm("tagSize", value)} /></div>
+              </details>
             </> : null}
           </div>
 

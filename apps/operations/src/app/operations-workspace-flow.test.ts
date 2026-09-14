@@ -69,7 +69,7 @@ assert.equal(missingMeasurements.canSaveAndNext, false);
 const selectedSizeButMissingPrice = calibrationValidationIssues(
   {
     ...fromAi,
-    sizeLabel: "XS",
+    sizeLabel: "S",
     lengthCm: "60",
     chestWidthCm: "60",
     shoulderWidthCm: "40",
@@ -112,6 +112,7 @@ const body = buildCalibrationBody({
   extractionId: "ai-1",
   form: {
     ...completeForm,
+    sizeLabel: "UK 12",
     tagSize: "UK 12",
     ukSizeLabel: "UK 12",
     defects: "small stain on cuff"
@@ -129,7 +130,23 @@ assert.equal(body.subcategory, "SHORT_DRESSES_SKIRTS");
 assert.equal(body.gender, "WOMEN");
 assert.equal(body.priceKsh, 850);
 assert.equal(body.tagSize, "UK 12");
+assert.equal(body.sizeLabel, "UK 12");
 assert.equal(body.ukSizeLabel, "UK 12");
+const letterBody = buildCalibrationBody({
+  employeeId: "employee-1", extractionId: "ai-1",
+  form: { ...completeForm, sizeLabel: "Small", ukSizeLabel: "UK 12", tagSize: "EU 38" }
+});
+assert.equal(letterBody.sizeLabel, "S");
+assert.equal(letterBody.ukSizeLabel, undefined, "Changing to letters clears the obsolete separate UK field");
+assert.equal(letterBody.tagSize, "EU 38", "Original labels must survive the selected-size change");
+for (const unsupported of ["EU 38", "US 8", "38", "UK EU 38", "UK "]) {
+  assert.ok(calibrationValidationIssues({ ...completeForm, sizeLabel: unsupported })
+    .some((issue) => issue.field === "sizeLabel"), `${unsupported} must require manual confirmation`);
+}
+for (const supported of ["S", "M", "L", "XL", "XXL", "UK 12", "UK W32", "UK 6-8Y"]) {
+  assert.ok(!calibrationValidationIssues({ ...completeForm, sizeLabel: supported })
+    .some((issue) => issue.field === "sizeLabel"), `${supported} should be selectable`);
+}
 assert.equal(body.fitType, "RELAXED");
 assert.equal(body.stretchLevel, "LOW");
 assert.equal(body.fabricWeight, "LIGHT");
@@ -297,5 +314,14 @@ assert.equal(persistedShoe.tagSize, "UK 2.5");
 assert.equal(persistedShoe.shoePairConfirmed, true);
 assert.equal(persistedShoe.shoeConditionNotes, "Soles checked by employee");
 assert.equal(persistedShoe.insoleLengthCm, "22");
+
+const bagBody = buildCalibrationBody({
+  employeeId: "employee-1", extractionId: "ai-1",
+  form: { ...completeForm, category: "BAG", sizeLabel: "Small", ukSizeLabel: "Legacy specification" }
+});
+assert.equal(bagBody.sizeLabel, "Small");
+assert.equal(bagBody.ukSizeLabel, "Legacy specification");
+assert.ok(!calibrationValidationIssues({ ...calibratedPair, category: "KIDS", subcategory: "KIDS_SHOES", sizeLabel: "EU 33" })
+  .some((issue) => issue.field === "sizeLabel"));
 
 console.log("Operations workspace flow tests passed");
