@@ -48,3 +48,4 @@ temp/
 .cache/
 
 apps/operations/public/downloads/direct-loop-print-agent.zip
+apps/operations/public/downloads/direct-loop-print-agent.json

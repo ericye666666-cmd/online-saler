@@ -1,4 +1,12 @@
 @echo off
+setlocal
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start_windows.ps1"
+if not exist "%~dp0DirectLoopPrintAgent.exe" (
+  echo DirectLoopPrintAgent.exe is missing. Extract the complete downloaded ZIP first.
+  pause
+  exit /b 1
+)
+"%~dp0DirectLoopPrintAgent.exe"
+set "agent_exit_code=%errorlevel%"
 pause
+exit /b %agent_exit_code%

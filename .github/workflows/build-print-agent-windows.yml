@@ -1,0 +1,63 @@
+name: Build Windows print agent
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify standalone Windows print agent
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Preserve source bytes for cross-platform digest verification
+        run: git config --global core.autocrlf false
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up build-time Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: ops/local_print_agent/requirements-build.txt
+
+      - name: Install pinned Windows executable builder
+        run: python -m pip install -r ops/local_print_agent/requirements-build.txt
+
+      - name: Verify ERP and Online Saler contracts
+        run: python -m unittest discover -s ops/local_print_agent -p 'test_*.py'
+
+      - name: Build self-contained executable
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onefile --console
+          --name DirectLoopPrintAgent
+          --paths ops/local_print_agent
+          --hidden-import erp_agent --hidden-import legacy_product_labels
+          --distpath build/print-agent/dist --workpath build/print-agent/work
+          --specpath build/print-agent ops/local_print_agent/agent.py
+
+      - name: Package executable and manifest
+        run: >-
+          python ops/local_print_agent/build_windows_bundle.py
+          --exe build/print-agent/dist/DirectLoopPrintAgent.exe
+          --output-dir apps/operations/public/downloads
+
+      - name: Smoke-test the extracted EXE without Python on PATH
+        run: >-
+          python ops/local_print_agent/smoke_windows_bundle.py
+          --zip apps/operations/public/downloads/direct-loop-print-agent.zip
+
+      - name: Upload tested Windows download
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-loop-print-agent-windows
+          path: |
+            apps/operations/public/downloads/direct-loop-print-agent.zip
+            apps/operations/public/downloads/direct-loop-print-agent.json
+          if-no-files-found: error
+          retention-days: 30

@@ -15,12 +15,22 @@ permissions:
   contents: read
 
 jobs:
+  windows-print-agent:
+    uses: ./.github/workflows/build-print-agent-windows.yml
+
   repository-check:
     name: Repository check
+    needs: windows-print-agent
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download verified Windows print agent
+        uses: actions/download-artifact@v4
+        with:
+          name: direct-loop-print-agent-windows
+          path: apps/operations/public/downloads
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

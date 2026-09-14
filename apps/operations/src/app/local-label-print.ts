@@ -5,6 +5,7 @@ export type LabelSize = "60x40" | "40x30";
 export const DEFAULT_LABEL_SIZE: LabelSize = "60x40";
 export const DEFAULT_PRINT_AGENT_URL = "http://127.0.0.1:8719";
 export const DEFAULT_PRINTER_NAME = "Deli DL-720C";
+export const PRINT_AGENT_DOWNLOAD_URL = "/downloads/direct-loop-print-agent.zip?v=windows-exe-1";
 
 export type LocalPrinter = {
   name: string;

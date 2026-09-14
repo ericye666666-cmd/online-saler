@@ -1,14 +1,14 @@
-# Direct Loop / ERP shared Deli DL-720C print helper
+# Direct Loop / ERP Deli DL-720C print helper — v1.1.0
 
 ## Windows setup
 
 1. Keep the existing Deli DL-720C Windows driver and 60×40 mm label roll used by ERP (2 mm gap, 203 dpi).
-2. Download the helper from the Operations label-print dialog, extract the ZIP, and close the old ERP helper window. Only one helper can use port 8719.
-3. Double-click `start_online_saler_print_agent_windows.bat`. If Python is missing, the launcher uses Windows Package Manager to install Python 3.12 for the current user. No extra Python packages are required.
+2. Download the Windows helper from the Operations label-print dialog. Right-click the ZIP and choose **Extract All**, then open the extracted `DirectLoopPrintAgent` folder.
+3. Double-click `start_online_saler_print_agent_windows.bat` (or `DirectLoopPrintAgent.exe`). The app is ready to run on 64-bit Windows 10/11. It includes its runtime: no Python, package installation, administrator access, or internet connection is required to start the helper.
 4. Keep that window open. In Operations click **检测**. Allow local-network access if Chrome/Edge asks.
 5. Print one label, check that its barcode scans to the displayed product barcode and that the size / shelf location match. Attach it and click **确认当前标签已贴好**. Then print the remaining labels and confirm attachment.
 
-The helper supports the copied ERP label protocols as well as Online Saler on the same port. No ERP database or inventory settings change. See SOURCE.md for the exact source version.
+Keep the existing Deli Windows printer driver installed. The same helper supports ERP and Online Saler on port 8719. If an older helper is running, close its window before starting this version. If this version is already running, the new window says so and the existing helper continues working. The launcher never stops another process. See SOURCE.md for the ERP source version.
 
 ## Product labels
 
