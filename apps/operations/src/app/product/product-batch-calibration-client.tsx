@@ -3,6 +3,7 @@
 import { operationsFetch } from "@/lib/operations-api";
 
 import Link from "next/link";
+import { BatchDisplayProgress } from "./product-background-display";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -370,18 +371,13 @@ export function ProductBatchCalibrationPage({
       if (firstPending >= 0 || next >= 0) {
         setNotice("已确认，进入下一件。");
       } else {
-        setBusy("finalize");
-        setNotice(`本批 ${updated.targetCount} 件已确认，正在生成白底展示图与销售详情。`);
-        try {
-          await request(`/operations/product-batches/${batchId}/detail-generation/run`, {
-            method: "POST",
-            headers: { "X-Admin-User-Id": ids.adminUserId },
-            body: JSON.stringify({}),
-            keepalive: true
-          });
-        } catch {
-          sessionStorage.setItem(`product-factory-notice:${batchId}`, "部分展示图或详情生成失败，请在展示图审核页重试。");
-        }
+        // Do not await the whole batch: originals are already generating while
+        // staff enter facts. Sales details now run alongside image review.
+        void request(`/operations/product-batches/${batchId}/detail-generation/run`, {
+          method: "POST", headers: { "X-Admin-User-Id": ids.adminUserId }, body: "{}", keepalive: true
+        }).catch(() => {
+          sessionStorage.setItem(`product-factory-notice:${batchId}`, "销售详情尚未完成，可在审核页重试；白底图审核可以继续。");
+        });
         router.push(`/product/display-review?batchId=${encodeURIComponent(batchId)}`);
       }
     } catch (caught) {
@@ -465,6 +461,8 @@ export function ProductBatchCalibrationPage({
       <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${batch.targetCount ? (completedCount / batch.targetCount) * 100 : 0}%` }} /></div>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
+
+      <BatchDisplayProgress batch={batch} />
 
       {allComplete ? (
         <div className="flex flex-col gap-3 rounded-md border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 sm:flex-row sm:items-center sm:justify-between">

@@ -178,6 +178,16 @@ describe("published product main-image protection", () => {
     assert.deepEqual(writes, []);
   });
 
+  it("late automatic generation cannot clear a newer human-confirmed selection", async () => {
+    status = ProductStatus.CALIBRATED;
+    await service.selectMainImage({ productId: "product-1", imageId: "ai-new" }, {
+      humanConfirmed: false, recordDetailSourceChange: false, preserveConfirmedSelection: true
+    });
+    assert.equal(selection.selectedImageId, "ai-live");
+    assert.equal(selection.confirmedAt, now);
+    assert.deepEqual(writes, []);
+  });
+
   it("still auto-selects an unconfirmed candidate after the product has been unpublished", async () => {
     status = ProductStatus.UNPUBLISHED;
     await service.selectMainImage({ productId: "product-1", imageId: "ai-new" }, {
@@ -227,7 +237,7 @@ describe("original image source validation", () => {
   const imageFind = prisma.productImage.findFirst;
   afterEach(() => { prisma.product.findUnique = productFind; prisma.productImage.findFirst = imageFind; });
   for (const category of ["SHOES", "TSHIRTS", "PANTS"]) {
-  it(`${category} accepts original FRONT only after confirmation and rejects retired cutout operations`, async () => {
+  it(`${category} accepts uploaded original FRONT during manual confirmation and rejects retired cutout operations`, async () => {
     let status = "CALIBRATED";
     prisma.product.findUnique = (async () => ({ category, status })) as never;
     prisma.productImage.findFirst = (async ({ where }: { where: { id: string; type: string } }) =>
@@ -241,8 +251,40 @@ describe("original image source validation", () => {
     await assert.rejects(validate("shoe", "pair-original", "COMPOSE_WHITE_BACKGROUND"), /Cutout processing is retired/);
     status = "UNPUBLISHED";
     await validate("shoe", "pair-original", "GENERATE_AI_DISPLAY_MAIN_IMAGE");
-    status = "CALIBRATION_PENDING";
-    await assert.rejects(validate("shoe", "pair-original", "GENERATE_AI_DISPLAY_MAIN_IMAGE"), /Confirm product information/);
+    for (status of ["PHOTOGRAPHED", "AI_PROCESSING", "AI_PROCESSED", "CALIBRATION_PENDING"]) await validate("shoe", "pair-original", "GENERATE_AI_DISPLAY_MAIN_IMAGE");
+    status = "DRAFT";
+    await assert.rejects(validate("shoe", "pair-original", "GENERATE_AI_DISPLAY_MAIN_IMAGE"), /Upload an original photo/);
   });
   }
+});
+
+
+describe("background image job reuse", () => {
+  const savedTransaction = prisma.$transaction;
+  const savedProduct = prisma.product.findUnique;
+  const savedImage = prisma.productImage.findFirst;
+  afterEach(() => { prisma.$transaction = savedTransaction; prisma.product.findUnique = savedProduct; prisma.productImage.findFirst = savedImage; });
+  for (const state of ["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]) {
+    it(`reuses ${state} without a second billable job`, async () => {
+      const date = new Date(); let locked = false; let creates = 0;
+      const job = { id: "existing", productId: "p", sourceImageId: "front", operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE", targetVariant: "AI_DISPLAY_MAIN", status: state, outputImageId: "asset", createdAt: date, updatedAt: date, retryCount: 0, qualityIssues: [] };
+      prisma.product.findUnique = (async () => ({ category: "TSHIRTS", status: "PHOTOGRAPHED" })) as never;
+      prisma.productImage.findFirst = (async () => ({ id: "front" })) as never;
+      prisma.$transaction = (async (callback: any) => callback({
+        $queryRaw: async () => { locked = true; return [{ id: "p" }]; },
+        productImageProcessingJob: {
+          findFirst: async ({ where }: any) => { assert.equal(locked, true); assert.equal(where.sourceImageId, "front"); assert.equal(where.status, undefined); return job; },
+          create: async () => { creates++; return job; }
+        }, productImageVariantAsset: { findFirst: async () => ({ id: "asset" }) }
+      })) as never;
+      const service = new ProductImageProcessingService({} as never, {} as never, {} as never);
+      const result = await service.start({ productId: "p", sourceImageId: "front", operation: "GENERATE_AI_DISPLAY_MAIN_IMAGE" }, { reuseExisting: true });
+      assert.equal(result.id, "existing"); assert.equal(creates, 0);
+    });
+  }
+  it("does not allow an early generated candidate to bypass manual product confirmation", async () => {
+    prisma.product.findUnique = (async () => ({ status: "CALIBRATION_PENDING" })) as never;
+    const service = new ProductImageProcessingService({} as never, {} as never, {} as never);
+    await assert.rejects(service.selectDisplayImage({ productId: "p", imageId: "asset" }), /Confirm product information/);
+  });
 });

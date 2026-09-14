@@ -44,7 +44,7 @@ export class ProductImageProcessingService {
     productId: string;
     sourceImageId: string;
     operation: string;
-  }): Promise<ImageProcessingJobRecord> {
+  }, options: { reuseExisting?: boolean } = {}): Promise<ImageProcessingJobRecord> {
     if (!isImageProcessingOperation(input.operation)) {
       throw new BadRequestException("Unsupported image processing operation");
     }
@@ -52,31 +52,30 @@ export class ProductImageProcessingService {
     const operation = input.operation;
     await this.requireOperationSource(input.productId, input.sourceImageId, operation);
 
-    const activeJob = await prisma.productImageProcessingJob.findFirst({
-      where: {
-        productId: input.productId,
-        sourceImageId: input.sourceImageId,
-        operation: operation as DatabaseImageProcessingOperation,
-        status: {
-          in: [DatabaseImageProcessingStatus.PENDING, DatabaseImageProcessingStatus.RUNNING]
-        }
-      },
-      orderBy: { createdAt: "desc" }
-    });
-
-    if (activeJob) return this.toJobRecord(activeJob);
-
-    const job = await prisma.productImageProcessingJob.create({
-      data: {
-        productId: input.productId,
-        sourceImageId: input.sourceImageId,
+    // Serialize creation per product across browser tabs and API instances.
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Product" WHERE "id" = ${input.productId} FOR UPDATE`);
+      const existing = await tx.productImageProcessingJob.findFirst({
+        where: {
+          productId: input.productId, sourceImageId: input.sourceImageId,
+          operation: operation as DatabaseImageProcessingOperation,
+          ...(!options.reuseExisting ? { status: { in: [DatabaseImageProcessingStatus.PENDING, DatabaseImageProcessingStatus.RUNNING] } } : {})
+        },
+        orderBy: { createdAt: "desc" }
+      });
+      if (existing) {
+        const reusable = existing.status !== DatabaseImageProcessingStatus.SUCCEEDED || (existing.outputImageId &&
+          await tx.productImageVariantAsset.findFirst({ where: { id: existing.outputImageId, productId: input.productId } }));
+        if (reusable) return this.toJobRecord(existing);
+      }
+      const job = await tx.productImageProcessingJob.create({ data: {
+        productId: input.productId, sourceImageId: input.sourceImageId,
         operation: operation as DatabaseImageProcessingOperation,
         targetVariant: targetVariantForOperation(operation) as DatabaseProductImageVariant,
         status: DatabaseImageProcessingStatus.PENDING
-      }
+      } });
+      return this.toJobRecord(job);
     });
-
-    return this.toJobRecord(job);
   }
 
   async retry(input: { jobId: string; reason?: string }): Promise<ImageProcessingJobRecord> {
@@ -282,10 +281,20 @@ export class ProductImageProcessingService {
     return this.toJobRecord(result.job);
   }
 
+  async selectDisplayImage(input: { productId: string; imageId: string; humanConfirmed?: boolean }) {
+    const product = await prisma.product.findUnique({ where: { id: input.productId }, select: { status: true } });
+    if (!product || !["CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "UNPUBLISHED"].includes(product.status)) {
+      throw new BadRequestException("Confirm product information before reviewing the display image.");
+    }
+    const comparison = await this.getComparison(input.productId);
+    if (comparison.aiDisplayMain?.imageId !== input.imageId) throw new BadRequestException("Review the current original's AI display image.");
+    return this.selectMainImage(input, { recordDetailSourceChange: false, humanConfirmed: input.humanConfirmed !== false });
+  }
+
   async selectMainImage(input: {
     productId: string;
     imageId: string;
-  }, options: { recordDetailSourceChange?: boolean; humanConfirmed?: boolean; preservePublishedSelection?: boolean } = {}): Promise<ProductImageComparisonResponse> {
+  }, options: { recordDetailSourceChange?: boolean; humanConfirmed?: boolean; preservePublishedSelection?: boolean; preserveConfirmedSelection?: boolean } = {}): Promise<ProductImageComparisonResponse> {
     const original = await prisma.productImage.findFirst({
       where: {
         id: input.imageId,
@@ -334,6 +343,7 @@ export class ProductImageProcessingService {
         }
       }
       const currentSelection = await tx.productMainImageSelection.findUnique({ where: { productId: input.productId } });
+      if (options.preserveConfirmedSelection && currentSelection?.confirmedAt) return;
       if (product.status === ProductStatus.PUBLISHED) {
         const confirmedDisplay = currentSelection?.variant === DatabaseProductImageVariant.AI_DISPLAY_MAIN && currentSelection.confirmedAt;
         if (confirmedDisplay && (options.preservePublishedSelection ||
@@ -496,17 +506,17 @@ export class ProductImageProcessingService {
   }
 
   private async rejectRetiredCutout(_productId: string) {
-    throw new BadRequestException("Cutout processing is retired. Refresh the page, recognize original photos, then generate a white display image after manual confirmation.");
+    throw new BadRequestException("Cutout processing is retired. Refresh the page, recognize original photos, then generate a white display image while product information is being confirmed.");
   }
 
   private async requireOperationSource(productId: string, sourceImageId: string, operation: ImageProcessingOperation) {
     if (operation !== "GENERATE_AI_DISPLAY_MAIN_IMAGE") {
-      throw new BadRequestException("Cutout processing is retired. Use the original photo for white display generation after manual confirmation.");
+      throw new BadRequestException("Cutout processing is retired. Use the original photo for white display generation while product information is being confirmed.");
     }
     const product = await prisma.product.findUnique({ where: { id: productId }, select: { status: true } });
     if (!product) throw new BadRequestException("Product not found");
-    if (!["CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED", "UNPUBLISHED", "ARCHIVED"].includes(product.status)) {
-      throw new BadRequestException("Confirm product information and enter the size before generating a white display image.");
+    if (!["PHOTOGRAPHED", "AI_PROCESSING", "AI_PROCESSED", "CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED", "UNPUBLISHED", "ARCHIVED"].includes(product.status)) {
+      throw new BadRequestException("Upload an original photo before generating a white display image.");
     }
     const source = await prisma.productImage.findFirst({
       where: { id: sourceImageId, productId, type: ProductImageType.FRONT }, select: { id: true }

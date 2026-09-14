@@ -118,7 +118,7 @@ it(`${category} display reads exact original bytes without background removal or
 
 }
 
-it("rejects queued legacy cutout jobs and unconfirmed display jobs before loading image bytes", async () => {
+it("rejects queued legacy cutout jobs and draft display jobs before loading image bytes", async () => {
   const saved = {
     claim: prisma.productImageProcessingJob.updateMany,
     find: prisma.productImageProcessingJob.findUnique,
@@ -141,10 +141,10 @@ it("rejects queued legacy cutout jobs and unconfirmed display jobs before loadin
       assert.match(result.errorMessage ?? "", /Cutout processing is retired/);
     }
     operation = "GENERATE_AI_DISPLAY_MAIN_IMAGE";
-    status = "CALIBRATION_PENDING";
+    status = "DRAFT";
     const result = await runner.run("legacy-job");
     assert.equal(result.status, "FAILED");
-    assert.match(result.errorMessage ?? "", /Manual product confirmation/);
+    assert.match(result.errorMessage ?? "", /uploaded product/);
     assert.equal(downloads, 0);
   } finally {
     prisma.productImageProcessingJob.updateMany = saved.claim;
