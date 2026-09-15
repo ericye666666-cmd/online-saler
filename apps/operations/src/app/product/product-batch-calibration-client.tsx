@@ -536,7 +536,7 @@ export function ProductBatchCalibrationPage({
             </> : null}
           </div>
 
-          {form.category === "BAG" ? <BagStrapField tags={form.tags} disabled={readOnly} onChange={updateTags} /> : null}
+          {form.category === "BAG" ? <BagStrapField tags={form.tags} disabled={readOnly} onChange={(tags) => setForm((current) => ({ ...current, tags }))} /> : null}
           {shoes ? (
             <ShoeCalibrationFields
               form={form}
