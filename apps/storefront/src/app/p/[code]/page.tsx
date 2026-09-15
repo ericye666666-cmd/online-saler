@@ -2,7 +2,7 @@ import { productShareMetadata } from "../../product-sharing";
 import { getPublicRecommenderName } from "../../../affiliate/affiliate-platform-service";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, MapPin } from "lucide-react";
+import { ChevronRight, MapPin, MessageCircle } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ProductGallery } from "../../components/product-gallery";
 import { ProductShareSheet } from "../../components/product-share-sheet";
@@ -12,6 +12,7 @@ import { SiteHeader } from "../../components/site-header";
 import { CatalogBuyAction } from "../../catalog-buy-action";
 import {
   formatPrice,
+  customerServiceUrl,
   normalizeSellerRef,
   normalizeTrackingParam,
 } from "../../data/products";
@@ -122,6 +123,10 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             {isShoe ? <p className="fitDisclaimer">{t("product.shoeSizeHelp")}</p> : null}
 
             <CatalogBuyAction product={product} />
+            <a className="customerServiceButton" href={customerServiceUrl(product, sellerRef)} target="_blank" rel="noopener noreferrer">
+              <MessageCircle size={18} aria-hidden="true" />
+              {t("support.chat")}
+            </a>
             <ProductShareSheet product={product} />
           </div>
         </section>

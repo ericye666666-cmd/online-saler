@@ -38,6 +38,7 @@ import type { CartValidationResponse, ValidatedCartItem } from "../../cart/cart-
 import { moneyKsh } from "../storefront-products";
 import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded, paymentTone } from "../../payments/payment-ui";
 import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
+import { CUSTOMER_SERVICE_PHONE_LABEL, supportWhatsAppUrl } from "../../support/whatsapp";
 
 type CheckoutState = "loading" | "empty" | "ready" | "error";
 type Reservation = {
@@ -342,6 +343,10 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
   const isPaymentSucceeded = paymentSucceeded(payment?.orderStatus, paymentStatus);
   const isPaymentFailed = paymentFailed(paymentStatus);
   const isPaymentRetryable = canRetryPayment(paymentStatus, secondsRemaining);
+  const supportItems = validation.items.slice(0, 3)
+    .map((item) => [item.title.slice(0, 120), item.productCode].filter(Boolean).join(" / "))
+    .join("; ");
+  const checkoutSupportMessage = `Hello Direct Loop, I need help placing an order. Items: ${supportItems}${validation.items.length > 3 ? "; and more items" : ""}.`;
   if (reservation && isPaymentSucceeded) {
     return (
       <section className="commerceCheckoutShell checkoutSuccessShell" aria-label="Payment confirmation">
@@ -393,6 +398,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
               />
             ) : (
               <form className="checkoutForm" onSubmit={submitCheckout}>
+                <CheckoutSupport message={checkoutSupportMessage} />
                 <CheckoutItemsPreview items={validation.items} />
                 {unavailableItems.length ? (
                   <p className="checkoutError" role="alert">Some cart items cannot be paid for. Return to cart to remove them before payment.</p>
@@ -554,6 +560,7 @@ function PaymentPanel({
   timerLabel: string;
 }) {
   const { t } = useStorefrontI18n();
+  const supportMessage = `Hello Direct Loop, I need help with order ${reservation.orderNumber}.`;
   const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
   const tone = paymentTone({
     orderStatus: payment?.orderStatus,
@@ -576,7 +583,6 @@ function PaymentPanel({
 
   if (isPaymentSucceeded) {
     const isPickup = fulfillment === "PICKUP";
-    const whatsappUrl = `https://wa.me/254742001507?text=${encodeURIComponent(`Hello Direct Loop, I need help with order ${reservation.orderNumber}.`)}`;
     return (
       <div className="paymentSuccessPanel" role="status">
         <div className="paymentSuccessMark"><CheckCircle2 size={36} aria-hidden="true" /></div>
@@ -603,14 +609,7 @@ function PaymentPanel({
           </div>
         </section>
 
-        <section className="paymentSupportRow">
-          <MessageCircle size={22} aria-hidden="true" />
-          <div>
-            <h2>Direct Loop customer service</h2>
-            <p>WhatsApp 0742 001 507 if you need help with this order.</p>
-          </div>
-          <a className="commerceSecondaryButton" href={whatsappUrl} target="_blank" rel="noreferrer">Contact us</a>
-        </section>
+        <CheckoutSupport message={supportMessage} />
 
         <div className="paymentSuccessActions">
           <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
@@ -689,7 +688,25 @@ function PaymentPanel({
           <Smartphone size={16} /> {paymentLoading ? "Retrying..." : "Retry M-Pesa"}
         </button>
       ) : null}
+      <CheckoutSupport message={supportMessage} />
     </div>
+  );
+}
+
+function CheckoutSupport({ message }: { message: string }) {
+  const { t } = useStorefrontI18n();
+
+  return (
+    <section className="paymentSupportRow" aria-label={t("support.title")}>
+      <MessageCircle size={22} aria-hidden="true" />
+      <div>
+        <h2>{t("support.title")}</h2>
+        <p>{t("support.phoneHelp", { phone: CUSTOMER_SERVICE_PHONE_LABEL })}</p>
+      </div>
+      <a className="commerceSecondaryButton" href={supportWhatsAppUrl(message)} target="_blank" rel="noopener noreferrer">
+        {t("support.chat")}
+      </a>
+    </section>
   );
 }
 

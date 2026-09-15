@@ -1,3 +1,5 @@
+import { supportWhatsAppUrl } from "../../support/whatsapp";
+
 export const SITE_URL =
   "https://dloop.co.ke";
 
@@ -379,10 +381,7 @@ export function whatsappShareUrl(product: Product, sellerRef?: string) {
 export function customerServiceUrl(
   product: Product,
   sellerRef: string | undefined,
-  supportPhone: string,
 ) {
-  const phone = supportPhone.replace(/\D/g, "");
-  if (!phone) return null;
   const message = [
     "Hello Direct Loop, I would like to check this item:",
     `${product.title} (${product.code})`,
@@ -391,7 +390,7 @@ export function customerServiceUrl(
       : []),
     productUrl(product.code, sellerRef),
   ].join("\n");
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  return supportWhatsAppUrl(message);
 }
 
 export function productShareCopy(product: Product, recommender?: string | null) {

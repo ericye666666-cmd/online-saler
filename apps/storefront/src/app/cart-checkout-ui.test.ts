@@ -30,7 +30,7 @@ const checkoutPage = readFileSync(new URL("./checkout/checkout-page-client.tsx",
 assert.doesNotMatch(checkoutPage, /checkoutServiceStrip|commerceFeatureGrid|CheckoutProgress/);
 assert.match(checkoutPage, /payment\.confirmed/);
 assert.match(checkoutPage, /payment\.nextTitle/);
-assert.match(checkoutPage, /Direct Loop customer service/);
+assert.match(checkoutPage, /t\("support\.title"\)/);
 assert.match(checkoutPage, /payment\.viewOrder/);
 
 const checkoutRoute = readFileSync(new URL("./checkout/page.tsx", import.meta.url), "utf8");
