@@ -787,8 +787,7 @@ function ProductPublishPreview({
           <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{shortDescription || "商品描述尚未生成，请进入编辑与素材补充。"}</p>
           {sellingPoints.length ? <ul className="mt-4 space-y-2 text-sm">{sellingPoints.map((point) => <li key={point} className="border-l-2 pl-3">{point}</li>)}</ul> : null}
           <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-3 border-t pt-4 text-sm">
-            <OptionalPreviewFact label="平台尺码" value={profile.product.finalSizeLabel} />
-            <OptionalPreviewFact label="英码" value={profile.product.ukSizeLabel} />
+            <OptionalPreviewFact label="尺码" value={profile.product.finalSizeLabel} />
             <OptionalPreviewFact label="分类" value={labelValue(profile.product.subcategory || profile.product.category)} />
             <OptionalPreviewFact label="适用人群" value={labelValue(profile.product.gender)} />
             <OptionalPreviewFact label="面料" value={profile.product.material} />

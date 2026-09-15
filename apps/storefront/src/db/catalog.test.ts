@@ -98,3 +98,40 @@ test("catalog preserves unavailable status so purchase controls stay disabled", 
   assert.equal(toCatalogProduct({ ...shoe, availability: "RESERVED" }).status, "Reserved");
   assert.equal(toCatalogProduct({ ...shoe, availability: "AVAILABLE" }).status, "Available");
 });
+
+test("apparel letter aliases share canonical display and size filters without inferred conversions", () => {
+  const originals = ["Small", "S", "Medium", "UK M", "Large", "Extra-large", "2XL", "UK 12", "EU 38", "Waist 30"];
+  const products = originals.map((size, index) => toCatalogProduct({
+    ...shoe, barcode: `apparel-${index}`, category: "TOP", subcategory: "TSHIRT", size,
+  }));
+  assert.deepEqual(products.map((product) => product.size), ["S", "S", "M", "M", "L", "XL", "XXL", "UK 12", "EU 38", "Waist 30"]);
+  assert.deepEqual(catalogSizeOptions(products, "Tops"), ["All", "S", "M", "L", "XL", "XXL", "EU 38", "UK 12", "Waist 30"]);
+  assert.deepEqual(filterCatalogProducts(products, { size: "M" }).map((product) => product.code), ["apparel-2", "apparel-3"]);
+  for (const size of catalogSizeOptions(products, "Tops").slice(1)) {
+    assert.ok(filterCatalogProducts(products, { category: "Tops", size }).length > 0, `size ${size} must have a matching item`);
+  }
+  assert.deepEqual(products[0]?.detail?.measurements, [{ type: "CHEST_WIDTH", valueCm: "48" }]);
+});
+
+test("size filters use actual category stock and never assign M to missing apparel sizes", () => {
+  const missing = toCatalogProduct({ ...shoe, category: "TOP", subcategory: "TSHIRT", size: null });
+  assert.equal(missing.size, "Size not confirmed");
+  assert.deepEqual(catalogSizeOptions([missing], "Tops"), ["All"]);
+  assert.deepEqual(catalogSizeOptions([], "All"), ["All"]);
+
+  const uk = toCatalogProduct({ ...shoe, category: "DRESS", subcategory: "DRESS", size: "UK 12" });
+  assert.deepEqual(catalogSizeOptions([missing, uk, toCatalogProduct(shoe)], "Dresses"), ["All", "UK 12"]);
+  const kids = toCatalogProduct({ ...shoe, category: "KIDS", subcategory: "KIDS_TOPS", size: null, kidsAgeRange: "8-10 years" });
+  assert.equal(kids.size, "8-10 years");
+});
+
+test("legacy original shoe systems remain unchanged and discoverable", () => {
+  const products = [
+    toCatalogProduct({ ...shoe, size: "EU 42", tagSize: "42", shoeSizeSystem: "EU" }),
+    toCatalogProduct({ ...shoe, size: "US Men 9", tagSize: "9", shoeSizeSystem: "US_MEN" }),
+  ];
+  assert.deepEqual(products.map((product) => product.size), ["EU 42", "US Men 9"]);
+  assert.deepEqual(catalogSizeOptions(products, "Shoes"), ["All", "EU 42", "US Men 9"]);
+  assert.equal(filterCatalogProducts(products, { size: "EU 42" }).length, 1);
+  assert.equal(filterCatalogProducts(products, { size: "US Men 9" }).length, 1);
+});

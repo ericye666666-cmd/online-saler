@@ -1,4 +1,5 @@
 import { formatShoeSizeLabel, isShoeCategory, isShoeProduct, SHOE_SIZE_SYSTEMS, SHOE_TYPES } from "@online-saler/shared-types";
+import { isSelectableApparelSize, normalizeApparelSize, usesApparelSizing } from "./product/apparel-size";
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -258,6 +259,9 @@ export function calibrationValidationIssues(
   for (const [field, label] of requiredFields) {
     if (!form[field].trim()) issues.push({ field, label, message: `${label}为必填项。` });
   }
+  if (!shoes && usesApparelSizing(form.category) && form.sizeLabel.trim() && !isSelectableApparelSize(form.sizeLabel)) {
+    issues.push({ field: "sizeLabel", label: "尺码", message: "请选择 S、M、L、XL、XXL，或填写已核实的 UK 尺码。" });
+  }
   if (shoes) {
     if (form.shoeSizeSystem && !(SHOE_SIZE_SYSTEMS as readonly string[]).includes(form.shoeSizeSystem)) {
       issues.push({ field: "shoeSizeSystem", label: "鞋码制式", message: "请选择标签上的鞋码制式。" });
@@ -418,8 +422,10 @@ export function buildCalibrationBody(input: {
     tags: input.form.tags,
     brand: input.form.brand.trim() || undefined,
     tagSize: input.form.tagSize.trim() || undefined,
-    sizeLabel: shoes ? formatShoeSizeLabel(input.form.tagSize, input.form.shoeSizeSystem) ?? undefined : input.form.sizeLabel.trim() || undefined,
-    ukSizeLabel: shoes ? undefined : input.form.ukSizeLabel.trim() || undefined,
+    sizeLabel: shoes ? formatShoeSizeLabel(input.form.tagSize, input.form.shoeSizeSystem) ?? undefined : (usesApparelSizing(input.form.category) ? normalizeApparelSize(input.form.sizeLabel) : input.form.sizeLabel.trim()) || undefined,
+    ukSizeLabel: shoes ? undefined : usesApparelSizing(input.form.category)
+      ? (normalizeApparelSize(input.form.sizeLabel).startsWith("UK ") ? normalizeApparelSize(input.form.sizeLabel) : undefined)
+      : input.form.ukSizeLabel.trim() || undefined,
     ...(shoes ? {
       shoeSizeSystem: input.form.shoeSizeSystem,
       shoeType: input.form.shoeType,

@@ -64,7 +64,7 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
   const condition = mapValue(conditionMap, product.conditionGrade, isShoe ? "Not specified" : "Good");
   const size = isShoe
     ? formatShoeSizeLabel(product.tagSize || product.size, product.shoeSizeSystem) || "Size not confirmed"
-    : product.size?.trim() || product.kidsAgeRange?.trim() || "M";
+    : (["BAG", "TEXTILE", "OTHERS", "OTHER"].includes(product.category ?? "") ? product.size?.trim() : normalizeApparelSizeLabel(product.size)) || product.kidsAgeRange?.trim() || "Size not confirmed";
   const color = display(product.color ?? "Unknown");
 
   return {
@@ -124,6 +124,20 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
         .map((image) => ({ ...image, image: publicProductImageSrc(image) }))
     }
   };
+}
+
+/** Standardize equivalent letter labels without converting numeric or legacy sizes. */
+function normalizeApparelSizeLabel(value?: string | null): string {
+  const original = value?.trim() ?? "";
+  const alias = original.toUpperCase().replace(/^UK[\s:-]+/, "").replace(/[\s_-]+/g, "");
+  const letterSizes: Record<string, string> = {
+    XXS: "XXS", XS: "XS", EXTRASMALL: "XS",
+    S: "S", SMALL: "S", M: "M", MEDIUM: "M", L: "L", LARGE: "L",
+    XL: "XL", EXTRALARGE: "XL",
+    XXL: "XXL", "2XL": "XXL", DOUBLEEXTRALARGE: "XXL",
+    XXXL: "3XL", "3XL": "3XL", "4XL": "4XL", "5XL": "5XL"
+  };
+  return letterSizes[alias] ?? original;
 }
 
 function mapValue(map: Record<string, string>, value: string | null | undefined, fallback: string): string {

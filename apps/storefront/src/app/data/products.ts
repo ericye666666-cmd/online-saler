@@ -304,8 +304,6 @@ export const extendedShoeSizes = [
   "EU 51+",
 ];
 
-export const apparelSizes = ["All", "S", "M", "L", "One size"];
-
 export const productStatuses: ProductStatus[] = [
   "Available",
   "Reserved",
