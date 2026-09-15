@@ -1,5 +1,7 @@
 "use client";
 
+import { pickupPoints, pickupOrderNote } from "./pickup-points";
+
 import Link from "next/link";
 import dynamic from "next/dynamic";
 
@@ -71,6 +73,7 @@ type CheckoutDraft = {
   fulfillment: FulfillmentChoice;
   deliveryAddress: string;
   deliveryNote: string;
+  pickupPointId: string;
 };
 
 function checkoutDraftStorageKey(customerId: string): string {
@@ -85,6 +88,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
   const [phone, setPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
+  const [pickupPointId, setPickupPointId] = useState("");
   const [draftCustomerId, setDraftCustomerId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -103,14 +107,15 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
     setFulfillment(draft?.fulfillment ?? "PICKUP");
     setDeliveryAddress(draft?.deliveryAddress ?? "");
     setDeliveryNote(draft?.deliveryNote ?? "");
+    setPickupPointId(draft?.pickupPointId ?? "");
     setDraftCustomerId(customerId);
     void loadAndValidate();
   }, [customerId]);
 
   useEffect(() => {
     if (reservation || draftCustomerId !== customerId) return;
-    writeCheckoutDraft(customerId, { phone, fulfillment, deliveryAddress, deliveryNote });
-  }, [customerId, draftCustomerId, deliveryAddress, deliveryNote, fulfillment, phone, reservation]);
+    writeCheckoutDraft(customerId, { phone, fulfillment, deliveryAddress, deliveryNote, pickupPointId });
+  }, [customerId, draftCustomerId, deliveryAddress, deliveryNote, fulfillment, phone, pickupPointId, reservation]);
 
   useEffect(() => {
     function handleFocus() {
@@ -181,6 +186,10 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
     event.preventDefault();
     if (submitting || reservation) return;
     setError("");
+    if (fulfillment === "PICKUP" && !pickupPoints.some((point) => point.id === pickupPointId)) {
+      setError("Choose a pickup point before continuing to payment.");
+      return;
+    }
     if (deliveryRequiresAddress(fulfillment)) {
       if (!deliveryAddress.trim()) {
         setError("Add a delivery address before continuing to payment.");
@@ -207,7 +216,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
           phone,
           fulfillmentMethod: fulfillment,
           deliveryAddress: deliveryRequiresAddress(fulfillment) ? deliveryAddress : null,
-          deliveryNote: deliveryNote || null
+          deliveryNote: fulfillment === "PICKUP" ? pickupOrderNote(pickupPointId, deliveryNote) : deliveryNote || null
         })
       });
       const result = await response.json().catch(() => ({})) as Reservation & { error?: string };
@@ -402,7 +411,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
                     <PackageCheck size={20} />
                     <div>
                       <span>Free</span>
-                      <strong>Kikuyu pickup</strong>
+                      <strong>Choose a pickup point</strong>
                     </div>
                   </label>
                   <label className={`commerceOption ${fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "selected" : ""}`}>
@@ -416,10 +425,24 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
                     <Truck size={20} />
                     <div>
                       <span>Free</span>
-                      <strong>Kikuyu local delivery</strong>
+                      <strong>Courier delivery</strong>
                     </div>
                   </label>
                 </div>
+
+                {fulfillment === "PICKUP" ? (
+                  <div className="checkoutField">
+                    <label htmlFor="pickup-point">Pickup point</label>
+                    <select id="pickup-point" name="pickupPoint" required value={pickupPointId}
+                      disabled={submitting} onChange={(event) => setPickupPointId(event.target.value)}>
+                      <option value="">Choose a pickup point</option>
+                      {pickupPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
+                    </select>
+                    {pickupPoints.filter((point) => point.id === pickupPointId).map((point) => (
+                      <a key={point.id} href={point.mapsUrl} target="_blank" rel="noopener noreferrer">View {point.name} on Google Maps ↗</a>
+                    ))}
+                  </div>
+                ) : null}
 
                 {requiresAddress ? (
                   <DeliveryAddressPicker
@@ -683,7 +706,8 @@ function readCheckoutDraft(customerId: string): CheckoutDraft | null {
       phone: text(fields.phone, 40),
       fulfillment: fields.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "KIKUYU_LOCAL_DELIVERY" : "PICKUP",
       deliveryAddress: text(fields.deliveryAddress, 1500),
-      deliveryNote: text(fields.deliveryNote, 10_000)
+      deliveryNote: text(fields.deliveryNote, 10_000),
+      pickupPointId: pickupPoints.some((point) => point.id === fields.pickupPointId) ? String(fields.pickupPointId) : ""
     };
   } catch {
     return null;
