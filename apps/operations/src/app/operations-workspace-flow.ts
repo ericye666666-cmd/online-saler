@@ -260,7 +260,7 @@ export function calibrationValidationIssues(
     if (!form[field].trim()) issues.push({ field, label, message: `${label}为必填项。` });
   }
   if (!shoes && usesApparelSizing(form.category) && form.sizeLabel.trim() && !isSelectableApparelSize(form.sizeLabel)) {
-    issues.push({ field: "sizeLabel", label: "尺码", message: "请选择 S、M、L、XL、XXL，或填写已核实的 UK 尺码。" });
+    issues.push({ field: "sizeLabel", label: "尺码", message: "请选择 S、M、L、XL、XXL、XXXL，或填写已核实的 UK 尺码。" });
   }
   if (shoes) {
     if (form.shoeSizeSystem && !(SHOE_SIZE_SYSTEMS as readonly string[]).includes(form.shoeSizeSystem)) {
