@@ -1,5 +1,7 @@
 "use client";
 
+import { supportWhatsAppUrl } from "../../support/whatsapp";
+
 import {
   ArrowRight,
   BadgeCheck,
@@ -388,5 +390,5 @@ function rewardClass(status: SellerRewardStatus) {
 }
 
 function supportWhatsappUrl() {
-  return "https://wa.me/254742001507?text=Hello%20Direct%20Loop%2C%20I%20want%20to%20apply%20for%20seller%20access.";
+  return supportWhatsAppUrl("Hello Direct Loop, I want to apply for seller access.");
 }

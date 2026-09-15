@@ -12,6 +12,7 @@ import {
 } from "../../../orders/order-service";
 import { moneyKsh } from "../../storefront-products";
 import { getStorefrontI18n } from "../../../i18n/server";
+import { supportWhatsAppUrl } from "../../../support/whatsapp";
 
 type OrderPageProps = {
   params: Promise<{ orderNumber: string }>;
@@ -129,7 +130,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
           </div>
 
           <div className="orderStatusActions">
-            <a className="reserve-button secondary" href={`https://wa.me/254742001507?text=${encodeURIComponent(`Hello Direct Loop, I need after-sales help with order ${order.orderNumber}.`)}`}>{t("payment.contactSupport")}</a>
+            <a className="reserve-button secondary" href={supportWhatsAppUrl(`Hello Direct Loop, I need after-sales help with order ${order.orderNumber}.`)} target="_blank" rel="noopener noreferrer">{t("support.chat")}</a>
             <Link className="reserve-link" href="/">{t("cart.continueShopping")}</Link>
             {!["PAID", "FULFILLING", "COMPLETED"].includes(order.status) ? <Link className="reserve-button secondary" href="/checkout">Back to checkout</Link> : null}
           </div>

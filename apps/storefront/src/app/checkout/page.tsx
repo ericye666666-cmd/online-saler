@@ -3,6 +3,8 @@ import { CheckoutPageClient } from "./checkout-page-client";
 import { SiteHeader } from "../components/site-header";
 import { currentCustomerSession } from "../../auth/customer-auth";
 import { getStorefrontI18n } from "../../i18n/server";
+import { MessageCircle } from "lucide-react";
+import { supportWhatsAppUrl } from "../../support/whatsapp";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,9 @@ export default async function CheckoutPage() {
               {t("auth.google")}
             </Link>
             <Link className="customerLoginBack" href="/cart">{t("auth.backToCart")}</Link>
+            <a className="customerServiceButton" href={supportWhatsAppUrl("Hello Direct Loop, I need help placing an order.")} target="_blank" rel="noopener noreferrer">
+              <MessageCircle size={18} aria-hidden="true" /> <span>{t("support.chat")}</span>
+            </a>
           </section>
         )}
       </div>
