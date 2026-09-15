@@ -32,6 +32,7 @@ const MEASUREMENT_LABELS: Record<string, string> = {
   HEM_WIDTH: "Hem width",
   RISE: "Rise",
   INSOLE_LENGTH: "Insole length",
+  BAG_WIDTH: "Width", BAG_HEIGHT: "Height (excluding handles)", BAG_DEPTH: "Depth",
 };
 
 const MEASUREMENT_PRIORITIES: Record<string, string[]> = {

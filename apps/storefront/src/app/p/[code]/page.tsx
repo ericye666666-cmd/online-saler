@@ -109,7 +109,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             </div>
 
             <dl className="quickFacts" aria-label="Item summary">
-              <div><dt>{t("product.size")}</dt><dd>{product.size === "Size not confirmed" ? t("product.sizeNotConfirmed") : product.size}</dd></div>
+              {product.size ? <div><dt>{t("product.size")}</dt><dd>{product.size === "Size not confirmed" ? t("product.sizeNotConfirmed") : product.size}</dd></div> : null}
               {isShoe && product.shoeType ? <div><dt>{t("filter.shoeType")}</dt><dd>{product.shoeType}</dd></div> : null}
               {isShoe && product.tagSize ? <div><dt>{t("product.originalSizeLabel")}</dt><dd>{product.tagSize}</dd></div> : null}
               {fit ? <div><dt>{t("product.fit")}</dt><dd>{fit}</dd></div> : null}

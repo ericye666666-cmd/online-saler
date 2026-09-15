@@ -1,3 +1,4 @@
+import { bagDimensionsLabel, BAG_MEASUREMENT_TYPES } from "@online-saler/shared-types";
 import { Controller, Get, NotFoundException, Param, Query } from "@nestjs/common";
 import { formatShoeSizeLabel, isShoeProduct } from "@online-saler/shared-types";
 import {
@@ -293,18 +294,18 @@ export function publicProduct(product: ProductWithPublicRelations) {
     brand: product.brand,
     material: product.material,
     tags: product.tags,
-    size: isShoe
+    size: product.category === "BAG" ? bagDimensionsLabel(product.measurements) : isShoe
       ? formatShoeSizeLabel(product.tagSize || product.finalSizeLabel, product.shoeSizeSystem)
       : product.finalSizeLabel ?? product.tagSize,
-    tagSize: product.tagSize,
+    tagSize: product.category === "BAG" ? null : product.tagSize,
     shoeSizeSystem: isShoe ? product.shoeSizeSystem : null,
     shoeType: isShoe ? product.shoeType : null,
     shoeConditionNotes: isShoe ? product.shoeConditionNotes : null,
     saleUnit: isShoe ? "PAIR" as const : "ITEM" as const,
     conditionGrade: product.conditionGrade,
-    fitType: isShoe ? null : product.fitType,
-    stretchLevel: isShoe ? null : product.stretchLevel,
-    fabricWeight: isShoe ? null : product.fabricWeight,
+    fitType: (isShoe || product.category === "BAG") ? null : product.fitType,
+    stretchLevel: (isShoe || product.category === "BAG") ? null : product.stretchLevel,
+    fabricWeight: (isShoe || product.category === "BAG") ? null : product.fabricWeight,
     priceKsh: product.priceKsh,
     publishedAt: product.publishedAt,
     availability: product.inventoryItem?.status === InventoryItemStatus.RESERVED ? "RESERVED" as const
@@ -312,6 +313,7 @@ export function publicProduct(product: ProductWithPublicRelations) {
     onlyOneAvailable: !product.inventoryItem || product.inventoryItem.status === InventoryItemStatus.AVAILABLE,
     images,
     measurements: product.measurements
+      .filter((measurement) => product.category !== "BAG" || (BAG_MEASUREMENT_TYPES as readonly string[]).includes(measurement.measurementType))
       .filter((measurement) => !isShoe || (measurement.measurementType === "INSOLE_LENGTH"
         && ["HUMAN_ENTERED", "HUMAN_EDITED"].includes(measurement.finalSource ?? "")))
       .map((measurement) => ({
