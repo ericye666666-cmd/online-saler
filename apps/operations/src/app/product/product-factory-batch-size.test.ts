@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
-import {
-  PRODUCTION_PRODUCT_BATCH_SIZE,
-  STAGING_PILOT_PRODUCT_BATCH_SIZE,
-  productBatchSizeOptions
-} from "./product-factory-batch-size";
+import { isAllowedProductBatchSize } from "./product-factory-batch-size";
 
-assert.deepEqual(productBatchSizeOptions(false), [PRODUCTION_PRODUCT_BATCH_SIZE]);
-assert.deepEqual(productBatchSizeOptions(true), [
-  STAGING_PILOT_PRODUCT_BATCH_SIZE,
-  PRODUCTION_PRODUCT_BATCH_SIZE
-]);
+for (const count of [1, 3, 5, 10, 25, 100]) {
+  assert.equal(isAllowedProductBatchSize(count), true);
+}
+for (const count of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+  assert.equal(isAllowedProductBatchSize(count), false);
+}

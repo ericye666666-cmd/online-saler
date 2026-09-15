@@ -263,7 +263,7 @@ export function ProductWorkbenchPage() {
       <Card>
         <CardHeader>
           <CardTitle>当前批次</CardTitle>
-          <CardDescription>每个批次固定 10 件。员工按批次完成照片、AI、校准、贴码和入库。</CardDescription>
+          <CardDescription>每个批次可自定义商品数量。员工按批次完成照片、AI、校准、贴码和入库。</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <BatchTable batches={summary?.activeBatches ?? []} ids={ids} canEdit={canEdit} onChanged={load} />

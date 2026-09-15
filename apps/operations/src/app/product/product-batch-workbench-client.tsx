@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Dialog,
@@ -43,9 +44,8 @@ import {
   productFactoryWorkflowStageIndex
 } from "./product-factory-batch-display";
 import {
-  PRODUCTION_PRODUCT_BATCH_SIZE,
-  STAGING_PILOT_PRODUCT_BATCH_SIZE,
-  productBatchSizeOptions
+  DEFAULT_PRODUCT_BATCH_SIZE,
+  isAllowedProductBatchSize
 } from "./product-factory-batch-size";
 
 const API_PROXY_URL = "/api-proxy";
@@ -268,20 +268,24 @@ export function ProductWorkbenchPage() {
   );
 }
 
-export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean }) {
+export function NewBatchPage() {
   const ids = useOperationIds();
   const router = useRouter();
   const { hasPermission } = useOperationsSession();
   const [note, setNote] = useState("");
   const [intakeCategory, setIntakeCategory] = useState<"" | "SHOES">("");
   const unit = intakeCategory === "SHOES" ? "双" : "件";
-  const [targetCount, setTargetCount] = useState(
-    pilotEnabled ? STAGING_PILOT_PRODUCT_BATCH_SIZE : PRODUCTION_PRODUCT_BATCH_SIZE
-  );
+  const [quantity, setQuantity] = useState(String(DEFAULT_PRODUCT_BATCH_SIZE));
+  const targetCount = Number(quantity);
+  const validCount = /^\d+$/.test(quantity) && isAllowedProductBatchSize(targetCount);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   async function createBatch() {
+    if (!validCount) {
+      setError("请输入大于 0 的整数数量。");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -302,13 +306,13 @@ export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean 
       <PageHeader
         eyebrow="商品工厂"
         title="新建批次"
-        description={pilotEnabled ? `可用 3 ${unit}测试完整流程；正式生产使用 10 ${unit}批次。` : `每批固定 10 ${unit}。先集中拍照，再坐下批量上传。`}
+        description="输入本批商品数量。先集中拍照，再坐下批量上传。"
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       <Card>
         <CardHeader>
-          <CardTitle>{targetCount} {unit}{intakeCategory === "SHOES" ? "鞋类" : "商品"}{targetCount === STAGING_PILOT_PRODUCT_BATCH_SIZE ? "测试" : ""}批次</CardTitle>
-          <CardDescription>系统会生成 {targetCount} 个有顺序的商品位置，正式 Barcode 在全部校准完成后生成。</CardDescription>
+          <CardTitle>{validCount ? `${targetCount} ${unit}` : ""}{intakeCategory === "SHOES" ? "鞋类" : "商品"}批次</CardTitle>
+          <CardDescription>系统会按填写的数量生成有顺序的商品位置，正式 Barcode 在全部校准完成后生成。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <FieldGroup>
@@ -318,28 +322,27 @@ export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean 
                 <NativeSelectOption value="">服装 / 其他商品</NativeSelectOption>
                 <NativeSelectOption value="SHOES">鞋类 · 一双一个商品</NativeSelectOption>
               </NativeSelect>
-              <FieldDescription>{intakeCategory === "SHOES" ? "保持左右鞋配对，按 1–10 编号。每双拍整双、侧面、鞋底和尺码标签，瑕疵另补图。" : "按 1–10 编号摆放，在干净背景上拍清楚整件服装即可，无需测量板；尺码稍后人工填写。"}</FieldDescription>
+              <FieldDescription>{intakeCategory === "SHOES" ? "保持左右鞋配对，按顺序编号。每双拍整双、侧面、鞋底和尺码标签，瑕疵另补图。" : "按顺序编号摆放，在干净背景上拍清楚整件服装即可，无需测量板；尺码稍后人工填写。"}</FieldDescription>
             </Field>
           </FieldGroup>
-          {pilotEnabled ? (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">批次数量</div>
-              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="批次数量">
-                {productBatchSizeOptions(pilotEnabled).map((size) => (
-                  <Button
-                    key={size}
-                    type="button"
-                    variant={targetCount === size ? "default" : "outline"}
-                    aria-checked={targetCount === size}
-                    role="radio"
-                    onClick={() => setTargetCount(size)}
-                  >
-                    {size === STAGING_PILOT_PRODUCT_BATCH_SIZE ? "3 件测试" : "10 件正式"}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <Field>
+            <FieldLabel htmlFor="batch-quantity">批次数量（{unit}）</FieldLabel>
+            <Input
+              id="batch-quantity"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={quantity}
+              disabled={busy}
+              aria-invalid={!validCount}
+              aria-describedby="batch-quantity-help"
+              onChange={(event) => setQuantity(event.target.value)}
+            />
+            <FieldDescription id="batch-quantity-help">
+              {validCount ? "输入本批实际上传的商品数量，至少 1 件；鞋类一双计一个商品。" : "请输入大于 0 的整数数量。"}
+            </FieldDescription>
+          </Field>
           <label className="block space-y-2 text-sm font-medium">
             批次备注（可选）
             <textarea
@@ -352,7 +355,7 @@ export function NewBatchPage({ pilotEnabled = false }: { pilotEnabled?: boolean 
           </label>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button asChild variant="outline"><Link href="/">取消</Link></Button>
-            <Button disabled={busy || !hasPermission("action.product.create")} onClick={() => void createBatch()}>
+            <Button disabled={busy || !validCount || !hasPermission("action.product.create")} onClick={() => void createBatch()}>
               <PlusIcon data-icon="inline-start" />{busy ? "创建中" : "创建并开始上传"}
             </Button>
           </div>
