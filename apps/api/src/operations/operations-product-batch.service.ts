@@ -18,9 +18,8 @@ import { OperationsProductControlService } from "./operations-product-control.se
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
 import { deriveProductFactoryBatchFlow, startOfDayAtUtcOffset } from "./product-factory-batch-flow";
 import {
-  PRODUCTION_PRODUCT_BATCH_SIZE,
-  isAllowedProductBatchSize,
-  stagingPilotBatchEnabled
+  DEFAULT_PRODUCT_BATCH_SIZE,
+  isAllowedProductBatchSize
 } from "./product-factory-batch-size";
 import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
 import { buildProductBatchImagePreviews } from "./product-batch-image-preview";
@@ -209,14 +208,9 @@ export class OperationsProductBatchService {
       throw new BadRequestException("Choose the clothing workflow or SHOES intake category.");
     }
     const intakeCategory = input.intakeCategory ?? null;
-    const targetCount = input.targetCount ?? PRODUCTION_PRODUCT_BATCH_SIZE;
-    const pilotEnabled = stagingPilotBatchEnabled();
-    if (!isAllowedProductBatchSize(targetCount, pilotEnabled)) {
-      throw new BadRequestException(
-        pilotEnabled
-          ? "Staging batches must contain exactly 3 or 10 products."
-          : "The production batch workflow creates exactly 10 products."
-      );
+    const targetCount = input.targetCount ?? DEFAULT_PRODUCT_BATCH_SIZE;
+    if (!isAllowedProductBatchSize(targetCount)) {
+      throw new BadRequestException("Batch quantity must be a positive whole number.");
     }
 
     const code = batchCode();

@@ -1,28 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  PRODUCTION_PRODUCT_BATCH_SIZE,
-  STAGING_PILOT_PRODUCT_BATCH_SIZE,
-  isAllowedProductBatchSize,
-  stagingPilotBatchEnabled
-} from "./product-factory-batch-size";
+import { isAllowedProductBatchSize } from "./product-factory-batch-size";
 
-test("keeps production batches fixed at ten products", () => {
-  assert.equal(isAllowedProductBatchSize(PRODUCTION_PRODUCT_BATCH_SIZE, false), true);
-  assert.equal(isAllowedProductBatchSize(STAGING_PILOT_PRODUCT_BATCH_SIZE, false), false);
-  assert.equal(isAllowedProductBatchSize(5, false), false);
-  assert.equal(isAllowedProductBatchSize(10.5, false), false);
+test("accepts custom positive whole product counts", () => {
+  for (const count of [1, 3, 5, 10, 25, 100]) {
+    assert.equal(isAllowedProductBatchSize(count), true);
+  }
 });
 
-test("allows a three-product pilot only when the staging flag is enabled", () => {
-  assert.equal(isAllowedProductBatchSize(STAGING_PILOT_PRODUCT_BATCH_SIZE, true), true);
-  assert.equal(isAllowedProductBatchSize(PRODUCTION_PRODUCT_BATCH_SIZE, true), true);
-  assert.equal(isAllowedProductBatchSize(1, true), false);
-});
-
-test("requires an explicit staging pilot flag", () => {
-  assert.equal(stagingPilotBatchEnabled({ NODE_ENV: "staging", STAGING_PILOT_BATCH_ENABLED: "true" }), true);
-  assert.equal(stagingPilotBatchEnabled({ NODE_ENV: "production", STAGING_PILOT_BATCH_ENABLED: "true" }), false);
-  assert.equal(stagingPilotBatchEnabled({ NODE_ENV: "staging", STAGING_PILOT_BATCH_ENABLED: "false" }), false);
-  assert.equal(stagingPilotBatchEnabled({}), false);
+test("rejects invalid counts before allocating product positions", () => {
+  for (const count of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, "5", null]) {
+    assert.equal(isAllowedProductBatchSize(count as number), false);
+  }
 });
