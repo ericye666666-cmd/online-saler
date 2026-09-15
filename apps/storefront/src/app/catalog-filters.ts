@@ -10,7 +10,7 @@ export function catalogSizeOptions(products: Product[], category: string): strin
     .filter((product) => category === "All" || product.category === category)
     .map((product) => product.size)
     .filter((size) => size && size !== "Size not confirmed");
-  const letterOrder = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"];
+  const letterOrder = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "4XL", "5XL"];
   const sorted = [...new Set(sizes)].sort((left, right) => {
     const leftRank = letterOrder.indexOf(left);
     const rightRank = letterOrder.indexOf(right);

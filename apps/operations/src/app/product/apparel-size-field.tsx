@@ -30,7 +30,7 @@ export function ApparelSizeField({ value, category, disabled, onChange }: {
         <NativeSelect id={`${id}-system`} className="w-full" value={uk ? "UK" : "LETTER"} disabled={disabled}
           onChange={(event) => onChange(event.target.value === "UK" ? "UK " : "")}>
           <NativeSelectOption value="UK">UK 英码</NativeSelectOption>
-          <NativeSelectOption value="LETTER">字母码 S / M / L / XL / XXL</NativeSelectOption>
+          <NativeSelectOption value="LETTER">字母码 S / M / L / XL / XXL / XXXL</NativeSelectOption>
         </NativeSelect>
       </Field>
       <Field data-field-key="sizeLabel" data-invalid={!valid} data-disabled={disabled}>

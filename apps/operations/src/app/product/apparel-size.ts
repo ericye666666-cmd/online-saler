@@ -1,4 +1,4 @@
-export const APPAREL_LETTER_SIZES = ["S", "M", "L", "XL", "XXL"] as const;
+export const APPAREL_LETTER_SIZES = ["S", "M", "L", "XL", "XXL", "XXXL"] as const;
 
 export function usesApparelSizing(category: string): boolean {
   return ["KIDS", "PANTS", "JACKETS", "DRESSES", "LADY_TOPS", "SHIRTS", "TSHIRTS", "SHORT", "TWO_PIECE"].includes(category);
@@ -10,7 +10,7 @@ export function normalizeApparelSize(value: string): string {
   const upper = trimmed.toUpperCase();
   const letters: Record<string, string> = {
     SMALL: "S", MEDIUM: "M", LARGE: "L", "EXTRA LARGE": "XL",
-    "EXTRA EXTRA LARGE": "XXL", "2XL": "XXL"
+    "EXTRA EXTRA LARGE": "XXL", "2XL": "XXL", "3XL": "XXXL"
   };
   const candidate = upper.replace(/^UK\s+/, "");
   const letter = letters[candidate] ?? candidate;

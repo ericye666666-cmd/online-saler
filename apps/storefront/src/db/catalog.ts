@@ -134,8 +134,8 @@ function normalizeApparelSizeLabel(value?: string | null): string {
     XXS: "XXS", XS: "XS", EXTRASMALL: "XS",
     S: "S", SMALL: "S", M: "M", MEDIUM: "M", L: "L", LARGE: "L",
     XL: "XL", EXTRALARGE: "XL",
-    XXL: "XXL", "2XL": "XXL", DOUBLEEXTRALARGE: "XXL",
-    XXXL: "3XL", "3XL": "3XL", "4XL": "4XL", "5XL": "5XL"
+    XXL: "XXL", "2XL": "XXL", "3XL": "XXXL", DOUBLEEXTRALARGE: "XXL",
+    XXXL: "XXXL", "3XL": "XXXL", "4XL": "4XL", "5XL": "5XL"
   };
   return letterSizes[alias] ?? original;
 }
