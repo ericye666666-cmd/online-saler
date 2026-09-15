@@ -125,7 +125,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             <CatalogBuyAction product={product} />
             <a className="customerServiceButton" href={customerServiceUrl(product, sellerRef)} target="_blank" rel="noopener noreferrer">
               <MessageCircle size={18} aria-hidden="true" />
-              {t("support.chat")}
+              <span>{t("support.chat")}</span>
             </a>
             <ProductShareSheet product={product} />
           </div>

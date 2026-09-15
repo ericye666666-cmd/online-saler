@@ -32,7 +32,7 @@ export default async function CheckoutPage() {
             </Link>
             <Link className="customerLoginBack" href="/cart">{t("auth.backToCart")}</Link>
             <a className="customerServiceButton" href={supportWhatsAppUrl("Hello Direct Loop, I need help placing an order.")} target="_blank" rel="noopener noreferrer">
-              <MessageCircle size={18} aria-hidden="true" /> {t("support.chat")}
+              <MessageCircle size={18} aria-hidden="true" /> <span>{t("support.chat")}</span>
             </a>
           </section>
         )}
