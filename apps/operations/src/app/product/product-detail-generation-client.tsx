@@ -423,12 +423,12 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
   );
 }
 
-export function ProductDetailReviewPage({ profileId }: { profileId: string }) {
+export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: { profileId: string; initialMode?: "preview" | "edit" }) {
   const ids = useOperationIds();
   const [profile, setProfile] = useState<DetailProfile | null>(null);
   const [comparison, setComparison] = useState<ProductImageComparisonResponse | null>(null);
   const [copy, setCopy] = useState<EditableCopy>(emptyCopy());
-  const [viewMode, setViewMode] = useState<"preview" | "edit">("preview");
+  const [viewMode, setViewMode] = useState<"preview" | "edit">(initialMode);
   const [activeAsset, setActiveAsset] = useState("FRONT_MAIN");
   const [activeMainImage, setActiveMainImage] = useState<DetailMainImageChoice["key"]>("ai-display");
   const [recalibrationReason, setRecalibrationReason] = useState("");

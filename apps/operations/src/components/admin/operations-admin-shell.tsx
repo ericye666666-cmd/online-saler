@@ -114,6 +114,7 @@ export const operationsModules: ModuleNav[] = [
         permission: "page.product.digitalization"
       },
       { label: "待处理异常", href: "/product/exceptions", icon: XCircleIcon, permission: "page.product.digitalization" },
+      { label: "商品管理", href: "/product/manage", icon: PackageCheckIcon, permission: "page.product.digitalization" },
       { label: "商品查询", href: "/product/search", icon: SearchIcon, permission: "page.product.digitalization" },
       { label: "详情生成", href: "/product/details", icon: FileTextIcon, permission: "page.product.details" },
       { label: "分类与属性", href: "/product/taxonomy", icon: SettingsIcon, permission: "page.product.control" },

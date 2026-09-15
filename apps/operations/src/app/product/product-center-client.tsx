@@ -74,7 +74,8 @@ import {
 import {
   canAssignProductLocation,
   canPublishProduct,
-  canUnpublishProduct
+  canUnpublishProduct,
+  productControlLocationCode
 } from "../product-control-flow";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 import { frontImage } from "./product-factory-upload-flow";
@@ -104,6 +105,7 @@ type QueueConfig = {
   queue: QueueKey;
   title: string;
   description: string;
+  management?: boolean;
 };
 
 type ProductSummary = {
@@ -349,7 +351,7 @@ export function NewBatchPage() {
   );
 }
 
-export function ProductQueuePage({ queue, title, description }: QueueConfig) {
+export function ProductQueuePage({ queue, title, description, management = false }: QueueConfig) {
   const ids = useOperationIds();
   const { hasPermission } = useOperationsSession();
   const canEdit = hasPermission("action.product.edit");
@@ -365,6 +367,7 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
   const [dateTo, setDateTo] = useState("");
   const [includeTestData, setIncludeTestData] = useState(false);
   const [editingProduct, setEditingProduct] = useState<JsonRecord | null>(null);
+  const [pricingProduct, setPricingProduct] = useState<JsonRecord | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -378,7 +381,7 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
     setBusy("load");
     setError("");
     try {
-      const query = new URLSearchParams({ adminUserId: ids.adminUserId, employeeId: ids.employeeId, queue });
+      const query = new URLSearchParams({ adminUserId: ids.adminUserId, queue, ...(!management ? { employeeId: ids.employeeId } : {}) });
       if (search.trim()) query.set("search", search.trim());
       if (batchFilter.trim()) query.set("batchId", batchFilter.trim());
       if (statusFilter.trim()) query.set("status", statusFilter.trim());
@@ -393,7 +396,7 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
     } finally {
       setBusy("");
     }
-  }, [batchFilter, categoryFilter, dateFrom, dateTo, employeeFilter, ids.adminUserId, ids.employeeId, includeTestData, queue, search, statusFilter]);
+  }, [batchFilter, categoryFilter, dateFrom, dateTo, employeeFilter, ids.adminUserId, ids.employeeId, includeTestData, management, queue, search, statusFilter]);
 
   useEffect(() => {
     void load();
@@ -476,7 +479,7 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
       <Card>
         <CardHeader>
           <CardTitle>商品列表</CardTitle>
-          <CardDescription>{products.length} 件商品</CardDescription>
+          <CardDescription>{products.length} 件商品{products.length === 200 ? " · 当前显示前 200 件，请用搜索或筛选缩小范围" : ""}{management ? " · 修改详情前请先下架，完成详情审核后重新上架" : ""}</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
@@ -487,6 +490,7 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
                 <TableHead>状态</TableHead>
                 <TableHead>分类</TableHead>
                 <TableHead>Barcode</TableHead>
+                {management ? <TableHead>尺码 / 售价 / 货架</TableHead> : null}
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -506,8 +510,10 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
                   <TableCell><StatusBadge status={stringValue(product.status)} /></TableCell>
                   <TableCell>{stringValue(product.category) || "-"}</TableCell>
                   <TableCell className="font-mono text-xs">{stringValue(product.barcode) || "-"}</TableCell>
+                  {management ? <TableCell><div>{stringValue(product.finalSizeLabel) || "未填尺码"}</div><div>{product.priceKsh ? `${product.priceKsh} KSh` : "未定价"}</div><div className="text-muted-foreground text-xs">{productControlLocationCode(product) || "未归位"}</div></TableCell> : null}
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {management ? <ProductManagementActions product={product} canEdit={canEdit} canPublish={canPublish} canEditDetails={canEdit && hasPermission("page.product.details")} busy={busy} ids={ids} run={run} onPrice={() => setPricingProduct(product)} /> : null}
                       {queue === "waiting-upload" ? <UploadButton product={product} ids={ids} disabled={!canEdit || Boolean(busy)} onDone={load} /> : null}
                       {queue === "waiting-ai" ? (
                         <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy) || !latestImage(product)} onClick={() => run(`ai-${product.id}`, () => runSingleAi(product, ids))}>
@@ -542,10 +548,12 @@ export function ProductQueuePage({ queue, title, description }: QueueConfig) {
                   </TableCell>
                 </TableRow>
               ))}
+              {products.length === 0 ? <TableRow><TableCell colSpan={management ? 7 : 6} className="py-10 text-center text-muted-foreground">{busy === "load" ? "正在读取商品…" : "没有符合条件的商品。"}</TableCell></TableRow> : null}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+      <ProductPriceDialog key={stringValue(pricingProduct?.id)} product={pricingProduct} ids={ids} onClose={() => setPricingProduct(null)} onSaved={() => { setPricingProduct(null); void load(); }} />
       <CalibrationDialog product={editingProduct} ids={ids} open={Boolean(editingProduct)} onOpenChange={(open) => !open && setEditingProduct(null)} onSaved={() => { setEditingProduct(null); void load(); }} />
     </div>
   );
@@ -1020,6 +1028,69 @@ function ReviewButtons(props: { product: JsonRecord; ids: ReturnType<typeof useO
       </Button>
     </>
   );
+}
+
+function ProductManagementActions(props: {
+  product: JsonRecord;
+  canEdit: boolean;
+  canEditDetails: boolean;
+  canPublish: boolean;
+  busy: string;
+  ids: ReturnType<typeof useOperationIds>;
+  run: (label: string, action: () => Promise<void>) => Promise<void>;
+  onPrice: () => void;
+}) {
+  const id = stringValue(props.product.id);
+  const status = stringValue(props.product.status);
+  const profile = objectRecord(Array.isArray(props.product.detailProfiles) ? props.product.detailProfiles[0] : null);
+  const profileId = stringValue(profile?.id);
+  const canEditDetails = props.canEditDetails && profileId && profile?.status !== "OUTDATED" && status !== "PUBLISHED";
+  return <>
+    <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy)} onClick={props.onPrice}>改价</Button>
+    {canEditDetails ? (
+      <Button size="sm" variant="outline" asChild><Link href={`/product/details/${encodeURIComponent(profileId)}?mode=edit`}>编辑商品详情</Link></Button>
+    ) : <Button size="sm" variant="outline" disabled title={status === "PUBLISHED" ? "请先下架再编辑详情" : "需生成有效详情，并具有详情编辑权限"}>编辑商品详情</Button>}
+    {profileId && props.canEditDetails ? <Button size="sm" variant="ghost" asChild><Link href={`/product/details/${encodeURIComponent(profileId)}`}>预览 / 审核</Link></Button> : null}
+    <Button size="sm" disabled={!props.canPublish || Boolean(props.busy) || !canPublishProduct(props.product)} onClick={() => props.run(`publish-${id}`, () => publishProduct(props.product, props.ids))}>上架</Button>
+    <Button size="sm" variant="outline" disabled={!props.canPublish || Boolean(props.busy) || !canUnpublishProduct(props.product)} onClick={() => props.run(`unpublish-${id}`, () => unpublishProduct(props.product, props.ids))}>下架</Button>
+    {props.product.batchId ? <Button size="sm" variant="ghost" asChild><Link href={`/product/batches/${encodeURIComponent(stringValue(props.product.batchId))}`}>批次</Link></Button> : null}
+  </>;
+}
+
+function ProductPriceDialog(props: {
+  product: JsonRecord | null;
+  ids: ReturnType<typeof useOperationIds>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [price, setPrice] = useState(props.product?.priceKsh ? String(props.product.priceKsh) : "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const priceKsh = Number(price);
+  const valid = /^\d+$/.test(price) && Number.isSafeInteger(priceKsh) && priceKsh > 0;
+  async function save() {
+    if (!props.product || !valid || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await request(`/operations/product-control/products/${encodeURIComponent(stringValue(props.product.id))}/price`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...props.ids, priceKsh })
+      });
+      props.onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "保存价格失败。");
+    } finally { setSaving(false); }
+  }
+  return <Dialog open={Boolean(props.product)} onOpenChange={(open) => { if (!open && !saving) props.onClose(); }}>
+    <DialogContent>
+      <DialogHeader><DialogTitle>修改商品售价</DialogTitle></DialogHeader>
+      <p className="text-sm">{stringValue(props.product?.title) || stringValue(props.product?.productCode)}</p>
+      <Field><FieldLabel htmlFor="management-price">售价（KSh）</FieldLabel><Input id="management-price" type="number" min={1} step={1} value={price} disabled={saving} onChange={(event) => setPrice(event.target.value)} /><FieldDescription>输入大于 0 的整数。保存后应用于后续购买。</FieldDescription></Field>
+      {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+      <DialogFooter><Button variant="outline" disabled={saving} onClick={props.onClose}>取消</Button><Button disabled={saving || !valid} onClick={() => void save()}>{saving ? "保存中…" : "保存价格"}</Button></DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }
 
 function ProductControlActions(props: {
