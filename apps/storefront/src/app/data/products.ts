@@ -1,7 +1,7 @@
 export const SITE_URL =
-  "https://direct-loop-catalog-v0.ericye666666.chatgpt.site";
+  "https://dloop.co.ke";
 
-export const SHARE_CARD_VERSION = "20260718-1";
+export const SHARE_CARD_VERSION = "20260915-1";
 
 export type ProductStatus = "Available" | "Reserved" | "Sold";
 
@@ -369,7 +369,7 @@ export function whatsappShareMessage(
   product: Product,
   sellerRef?: string,
 ) {
-  return productUrl(product.code, sellerRef, { source: "whatsapp" });
+  return `${productShareText(product)}\n${productUrl(product.code, sellerRef, { source: "whatsapp" })}`;
 }
 
 export function whatsappShareUrl(product: Product, sellerRef?: string) {
@@ -394,4 +394,17 @@ export function customerServiceUrl(
     productUrl(product.code, sellerRef),
   ].join("\n");
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+export function productShareCopy(product: Product, recommender?: string | null) {
+  const name = recommender?.replace(/[\r\n\t]+/g, " ").trim() || "Direct Loop";
+  return {
+    title: `${name} recommends ${product.title}`,
+    description: `Size: ${product.size} · ${product.status === "Available" ? "Limited-time offer" : product.status}: ${formatPrice(product.price)}`,
+  };
+}
+
+export function productShareText(product: Product, recommender?: string | null) {
+  const { title, description } = productShareCopy(product, recommender);
+  return `${title}\n${description}`;
 }

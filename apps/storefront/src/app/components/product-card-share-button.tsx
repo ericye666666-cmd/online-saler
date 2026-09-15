@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   Product,
   productUrl,
+  productShareText,
 } from "../data/products";
 import { recordClientEvent } from "../lib/client-events";
 
@@ -38,10 +39,10 @@ export function ProductCardShareButton({
       });
 
       if (navigator.share) {
-        await navigator.share({ text: directUrl });
+        await navigator.share({ title: product.title, text: productShareText(product), url: directUrl });
       } else {
         window.open(
-          `https://wa.me/?text=${encodeURIComponent(directUrl)}`,
+          `https://wa.me/?text=${encodeURIComponent(`${productShareText(product)}\n${directUrl}`)}`,
           "_blank",
           "noopener,noreferrer",
         );

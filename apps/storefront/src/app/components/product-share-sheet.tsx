@@ -21,7 +21,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { affiliateJson, type AffiliateCollection, useAffiliateSession } from "../../affiliate/affiliate-client";
 import type { Product } from "../data/products";
-import { productPath } from "../data/products";
+import { productPath, productShareText } from "../data/products";
 import { recordClientEvent } from "../lib/client-events";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -71,7 +71,7 @@ export function ProductShareSheet({ product, className, compact = false }: Produ
   async function nativeShare(source: string, placement: string) {
     const url = currentShareUrl(product, affiliate?.affiliateCode, source, placement, "organic");
     if (navigator.share) {
-      await navigator.share({ title: product.title, text: `${product.title} · KSh ${product.price.toLocaleString("en-KE")}`, url });
+      await navigator.share({ title: product.title, text: productShareText(product, affiliate?.displayName), url });
     } else {
       await copyText(url);
       setCopied(true);
@@ -79,13 +79,13 @@ export function ProductShareSheet({ product, className, compact = false }: Produ
     recordShare(product, affiliate?.affiliateCode, source);
   }
 
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(currentShareUrl(
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${productShareText(product, affiliate?.displayName)}\n${currentShareUrl(
     product,
     affiliate?.affiliateCode,
     "whatsapp",
     "direct-message",
     "organic",
-  ))}`;
+  )}`)}`;
 
   return (
     <Sheet>
