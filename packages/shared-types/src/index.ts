@@ -24,3 +24,5 @@ export type MoneyKsh = number;
 export * from "./ai-extraction";
 export * from "./image-processing";
 export * from "./shoe-intake";
+
+export * from "./bag-intake";

@@ -1,4 +1,6 @@
 "use client";
+import { BAG_STYLES, BAG_STYLE_LABELS } from "@online-saler/shared-types";
+
 
 import { operationsFetch } from "@/lib/operations-api";
 
@@ -61,6 +63,7 @@ import {
   type WorkspaceForm
 } from "../operations-workspace-flow";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
+import { BagStrapField } from "./bag-strap-field";
 import { ApparelSizeField } from "./apparel-size-field";
 import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { productStatusLabel } from "./product-factory-display";
@@ -520,11 +523,11 @@ export function ProductBatchCalibrationPage({
           <FormInput fieldKey="title" label="标题" value={form.title} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "title")} onChange={(value) => updateForm("title", value)} />
           <div className="grid gap-4 sm:grid-cols-2">
             <FormSelect fieldKey="category" label="分类" value={form.category} values={categoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "category")} onChange={(value) => updateForm("category", value)} />
-            <FormSelect fieldKey="subcategory" label="子分类" value={form.subcategory} values={subcategoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
+            <FormSelect fieldKey="subcategory" label={form.category === "BAG" ? "包款式" : "子分类"} value={form.subcategory} values={form.category === "BAG" ? BAG_STYLES : subcategoryOptions} labels={form.category === "BAG" ? BAG_STYLE_LABELS : taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
             <FormSelect fieldKey="audience" label="适用人群" value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
             <FormSelect fieldKey="color" label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
-            {!shoes && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
-            {!shoes ? <>
+            {!shoes && form.category !== "BAG" && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
+            {!shoes && form.category !== "BAG" ? <>
               <ApparelSizeField category={form.category} value={form.sizeLabel} disabled={readOnly} onChange={(value) => updateForm("sizeLabel", value)} />
               <details className="sm:col-span-2">
                 <summary className="cursor-pointer text-sm text-muted-foreground">原标签记录（可选）</summary>
@@ -533,6 +536,7 @@ export function ProductBatchCalibrationPage({
             </> : null}
           </div>
 
+          {form.category === "BAG" ? <BagStrapField tags={form.tags} disabled={readOnly} onChange={(tags) => setForm((current) => ({ ...current, tags }))} /> : null}
           {shoes ? (
             <ShoeCalibrationFields
               form={form}
@@ -543,7 +547,7 @@ export function ProductBatchCalibrationPage({
           ) : (
             <div className="border-t pt-4">
               <h3 className="mb-3 text-sm font-semibold">人工实测尺寸（cm，可选）</h3>
-              <p className="text-xs text-muted-foreground">以下为可选实测尺寸；使用软尺测量后填写即可，不需要测量板。</p>
+              <p className="text-xs text-muted-foreground">仅填写人工实测值，未测量可留空。包的高度不包含提手。</p>
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {visibleMeasurementFields.map((field) => (
                   <FormInput
@@ -566,7 +570,7 @@ export function ProductBatchCalibrationPage({
             <FormInput fieldKey="brand" label="品牌" value={form.brand} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "brandLabel")} onChange={(value) => updateForm("brand", value)} />
             <FormInput fieldKey="priceKsh" label="价格（KSh）" value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
             <FormSelect fieldKey="pattern" label="图案" value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
-            {!shoes ? <>
+            {!shoes && form.category !== "BAG" ? <>
               <FormSelect fieldKey="sleeveType" label="袖型" value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
               <FormSelect fieldKey="fitType" label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fitType")} onChange={(value) => updateForm("fitType", value)} />
               <FormSelect fieldKey="stretchLevel" label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "stretchLevel")} onChange={(value) => updateForm("stretchLevel", value)} />
@@ -575,7 +579,7 @@ export function ProductBatchCalibrationPage({
             <FormSelect fieldKey="material" label={shoes ? "材质" : "面料"} value={form.material} values={materialOptions} labels={materialLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "material")} onChange={(value) => updateForm("material", value)} />
           </div>
 
-          {!shoes ? (
+          {!shoes && form.category !== "BAG" ? (
             <FormTagPicker
               fieldKey="tags"
               label="商品标签"

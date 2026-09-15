@@ -1,3 +1,4 @@
+import { BAG_STYLES, BAG_STRAPS } from "@online-saler/shared-types";
 import { formatShoeSizeLabel, isShoeCategory, isShoeProduct, SHOE_SIZE_SYSTEMS, SHOE_TYPES } from "@online-saler/shared-types";
 import { isSelectableApparelSize, normalizeApparelSize, usesApparelSizing } from "./product/apparel-size";
 
@@ -21,6 +22,9 @@ export type WorkspaceForm = {
   shoePairConfirmed: boolean;
   shoeConditionNotes: string;
   insoleLengthCm: string;
+  bagWidthCm: string;
+  bagHeightCm: string;
+  bagDepthCm: string;
   pattern: string;
   sleeveType: string;
   fitType: string;
@@ -73,6 +77,7 @@ export const emptyWorkspaceForm = (): WorkspaceForm => ({
   shoePairConfirmed: false,
   shoeConditionNotes: "",
   insoleLengthCm: "",
+  bagWidthCm: "", bagHeightCm: "", bagDepthCm: "",
   pattern: "SOLID",
   sleeveType: "SHORT",
   fitType: "UNKNOWN",
@@ -145,6 +150,10 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     shoePairConfirmed: product?.shoePairConfirmed === true,
     shoeConditionNotes: stringValue(product?.shoeConditionNotes),
     insoleLengthCm: persistedInsoleLength(product),
+    ...Object.fromEntries([["bagWidthCm", "BAG_WIDTH"], ["bagHeightCm", "BAG_HEIGHT"], ["bagDepthCm", "BAG_DEPTH"]].map(([key, type]) => {
+      const measurement = (Array.isArray(product?.measurements) ? product.measurements : []).find((item) => item.measurementType === type);
+      return [key, measurement?.finalValueCm == null ? "" : String(measurement.finalValueCm)];
+    })),
     sizeLabel: stringValue(product?.finalSizeLabel) || form.sizeLabel,
     ukSizeLabel: stringValue(product?.ukSizeLabel) || form.ukSizeLabel,
     pattern: stringValue(product?.pattern) || stringField(ai, "pattern") || form.pattern,
@@ -161,6 +170,17 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
 
 /** Keep product-category changes and restored drafts free of stale clothing/shoe facts. */
 export function normalizeWorkspaceForm(form: WorkspaceForm, previousCategory = form.category): WorkspaceForm {
+  if (form.category === "BAG") return {
+    ...form,
+    subcategory: (BAG_STYLES as readonly string[]).includes(form.subcategory) ? form.subcategory : "",
+    sizeLabel: "", tagSize: "", ukSizeLabel: "", kidsAgeRange: "NOT_APPLICABLE",
+    sleeveType: "NOT_APPLICABLE", fitType: "UNKNOWN", stretchLevel: "UNKNOWN", fabricWeight: "UNKNOWN",
+    shoeSizeSystem: "", shoeType: "", shoePairConfirmed: false, shoeConditionNotes: "", insoleLengthCm: "",
+    lengthCm: "", chestWidthCm: "", shoulderWidthCm: "", sleeveLengthCm: "", waistCm: "", hipCm: "", thighWidthCm: "", legOpeningCm: "", inseamCm: "",
+    tags: form.tags.filter((tag) => (BAG_STRAPS as readonly string[]).includes(tag)),
+    ...(previousCategory !== "BAG" ? { bagWidthCm: "", bagHeightCm: "", bagDepthCm: "" } : {})
+  };
+  if (previousCategory === "BAG") form = { ...form, bagWidthCm: "", bagHeightCm: "", bagDepthCm: "", tags: [] };
   if (!isShoeProduct(form.category, form.subcategory)) {
     if (!isShoeCategory(previousCategory)) return form;
     return {
@@ -253,7 +273,7 @@ export function calibrationValidationIssues(
   ];
   if (shoes) {
     requiredFields.push(["tagSize", "原标鞋码"], ["shoeSizeSystem", "鞋码制式"], ["shoeType", "鞋款"], ["shoeConditionNotes", "鞋况检查"]);
-  } else {
+  } else if (form.category !== "BAG") {
     requiredFields.push(["sizeLabel", "尺码"], ["fitType", "版型"], ["stretchLevel", "弹性"], ["fabricWeight", "面料厚度"]);
   }
   for (const [field, label] of requiredFields) {
@@ -277,8 +297,14 @@ export function calibrationValidationIssues(
       issues.push({ field: "insoleLengthCm", label: "鞋垫实测长度", message: "鞋垫实测长度必须是大于 0 的厘米数，也可留空。" });
     }
   }
-  if (!shoes && form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE") {
+  if (!shoes && form.category !== "BAG" && form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE") {
     issues.push({ field: "kidsAgeRange", label: "儿童年龄段", message: "儿童商品必须填写年龄段。" });
+  }
+  if (form.category === "BAG") {
+    if (!(BAG_STYLES as readonly string[]).includes(form.subcategory)) issues.push({ field: "subcategory", label: "包款式", message: "请选择包款式。" });
+    for (const field of measurementFields(form)) {
+      if (form[field.key].trim() && !positiveNumber(form[field.key])) issues.push({ field: field.key, label: field.label, message: "实测尺寸应为大于 0 的厘米数，也可留空。" });
+    }
   }
   for (const requirement of measurementRequirements(form)) {
     if (!positiveNumber(form[requirement.key])) {
@@ -327,7 +353,7 @@ export type MeasurementRequirement = {
     | "thighWidthCm"
     | "legOpeningCm"
     | "inseamCm"
-    | "insoleLengthCm";
+    | "insoleLengthCm" | "bagWidthCm" | "bagHeightCm" | "bagDepthCm";
   type:
     | "LENGTH"
     | "OUTSEAM"
@@ -339,7 +365,7 @@ export type MeasurementRequirement = {
     | "THIGH_WIDTH"
     | "LEG_OPENING"
     | "INSEAM"
-    | "INSOLE_LENGTH";
+    | "INSOLE_LENGTH" | "BAG_WIDTH" | "BAG_HEIGHT" | "BAG_DEPTH";
   label: string;
   required: boolean;
 };
@@ -347,6 +373,11 @@ export type MeasurementRequirement = {
 export function measurementFields(
   form: Pick<WorkspaceForm, "category" | "subcategory" | "sleeveType">
 ): MeasurementRequirement[] {
+  if (form.category === "BAG") return [
+    { key: "bagWidthCm", type: "BAG_WIDTH", label: "宽", required: false },
+    { key: "bagHeightCm", type: "BAG_HEIGHT", label: "高（不含提手）", required: false },
+    { key: "bagDepthCm", type: "BAG_DEPTH", label: "厚", required: false }
+  ];
   if (isShoeProduct(form.category, form.subcategory)) return [{ key: "insoleLengthCm", type: "INSOLE_LENGTH", label: "鞋垫实测长度", required: false }];
   const requiredTypes = new Set<string>();
   const isPants = form.category === "PANTS" || form.category === "SHORT" ||
@@ -422,8 +453,8 @@ export function buildCalibrationBody(input: {
     tags: input.form.tags,
     brand: input.form.brand.trim() || undefined,
     tagSize: input.form.tagSize.trim() || undefined,
-    sizeLabel: shoes ? formatShoeSizeLabel(input.form.tagSize, input.form.shoeSizeSystem) ?? undefined : (usesApparelSizing(input.form.category) ? normalizeApparelSize(input.form.sizeLabel) : input.form.sizeLabel.trim()) || undefined,
-    ukSizeLabel: shoes ? undefined : usesApparelSizing(input.form.category)
+    sizeLabel: input.form.category === "BAG" ? undefined : shoes ? formatShoeSizeLabel(input.form.tagSize, input.form.shoeSizeSystem) ?? undefined : (usesApparelSizing(input.form.category) ? normalizeApparelSize(input.form.sizeLabel) : input.form.sizeLabel.trim()) || undefined,
+    ukSizeLabel: shoes || input.form.category === "BAG" ? undefined : usesApparelSizing(input.form.category)
       ? (normalizeApparelSize(input.form.sizeLabel).startsWith("UK ") ? normalizeApparelSize(input.form.sizeLabel) : undefined)
       : input.form.ukSizeLabel.trim() || undefined,
     ...(shoes ? {

@@ -1,3 +1,4 @@
+import { BAG_STYLES, BAG_MEASUREMENT_TYPES } from "@online-saler/shared-types";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import {
   AIFieldDecisionSource,
@@ -92,6 +93,11 @@ export class ProductCalibrationService {
           : input.measurements
       };
     }
+    if (input.category === "BAG") input = {
+      ...input, sizeLabel: undefined, ukSizeLabel: undefined, tagSize: undefined, kidsAgeRange: undefined,
+      sleeveType: "NOT_APPLICABLE", fitType: ProductFitType.UNKNOWN, stretchLevel: ProductStretchLevel.UNKNOWN, fabricWeight: ProductFabricWeight.UNKNOWN,
+      measurements: Array.isArray(input.measurements) ? input.measurements.filter((item) => (BAG_MEASUREMENT_TYPES as readonly string[]).includes(item.type)) : input.measurements
+    };
     this.validate(input);
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
@@ -290,8 +296,9 @@ export class ProductCalibrationService {
     if (!input.gender || !Object.values(ProductGender).includes(input.gender)) {
       throw new BadRequestException("audience must be confirmed by an employee");
     }
+    if (input.category === "BAG" && !(BAG_STYLES as readonly string[]).includes(input.subcategory)) throw new BadRequestException("Confirm the bag style.");
     const shoes = isShoeProduct(input.category, input.subcategory);
-    if (!shoes && input.gender === ProductGender.KIDS && !input.kidsAgeRange?.trim()) {
+    if (input.category !== "BAG" && !shoes && input.gender === ProductGender.KIDS && !input.kidsAgeRange?.trim()) {
       throw new BadRequestException("kids age range is required for kids items");
     }
     if (shoes) {

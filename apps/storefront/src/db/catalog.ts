@@ -62,7 +62,7 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
   const frontAsset = detailAsset(product, "FRONT_MAIN");
   const image = frontAsset ? detailAssetSrc(frontAsset) : productImageSrc(product) || "/products/920260718001.webp";
   const condition = mapValue(conditionMap, product.conditionGrade, isShoe ? "Not specified" : "Good");
-  const size = isShoe
+  const size = product.category === "BAG" ? product.size?.trim() || "" : isShoe
     ? formatShoeSizeLabel(product.tagSize || product.size, product.shoeSizeSystem) || "Size not confirmed"
     : (["BAG", "TEXTILE", "OTHERS", "OTHER"].includes(product.category ?? "") ? product.size?.trim() : normalizeApparelSizeLabel(product.size)) || product.kidsAgeRange?.trim() || "Size not confirmed";
   const color = display(product.color ?? "Unknown");
@@ -84,7 +84,7 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
     brand,
     price: product.priceKsh ?? 0,
     size,
-    material: display(product.material || (!isShoe && (product.detail.fabricWeight || product.fabricWeight)) || "Not specified"),
+    material: display(product.material || (!isShoe && product.category !== "BAG" && (product.detail.fabricWeight || product.fabricWeight)) || "Not specified"),
     color,
     store: "Kikuyu",
     status: product.availability === "SOLD" ? "Sold" : product.availability === "RESERVED" ? "Reserved" : "Available",
@@ -105,13 +105,13 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
         ? optionalDisplayValue(product.shoeConditionNotes) || optionalDisplayValue(product.detail.conditionSummary)
         : product.defects.length ? optionalDisplayValue(product.detail.conditionSummary) : null,
       styleTags: [...new Set([...product.tags.map(display), ...product.detail.styleTags])],
-      fitType: !isShoe && optionalDisplayValue(product.detail.fitType || product.fitType)
+      fitType: !isShoe && product.category !== "BAG" && optionalDisplayValue(product.detail.fitType || product.fitType)
         ? display(product.detail.fitType || product.fitType || "")
         : null,
-      stretchLevel: !isShoe && optionalDisplayValue(product.detail.stretchLevel || product.stretchLevel)
+      stretchLevel: !isShoe && product.category !== "BAG" && optionalDisplayValue(product.detail.stretchLevel || product.stretchLevel)
         ? display(product.detail.stretchLevel || product.stretchLevel || "")
         : null,
-      fabricWeight: !isShoe && optionalDisplayValue(product.detail.fabricWeight || product.fabricWeight)
+      fabricWeight: !isShoe && product.category !== "BAG" && optionalDisplayValue(product.detail.fabricWeight || product.fabricWeight)
         ? display(product.detail.fabricWeight || product.fabricWeight || "")
         : null,
       measurements: isShoe ? product.measurements.filter((measurement) => measurement.type === "INSOLE_LENGTH") : product.measurements,

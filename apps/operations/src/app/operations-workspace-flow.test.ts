@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   buildCalibrationBody,
   calibrationValidationIssues,
+  calibrationValidationReasons,
   emptyWorkspaceForm,
   formFromProductAndAi,
   normalizeWorkspaceForm,
@@ -187,7 +188,7 @@ assert.equal(workspaceReadiness({ product, image, job, form: sleevelessForm }).c
 const nonApparelForm = {
   ...completeForm,
   category: "BAG",
-  subcategory: "LADIES_BAGS",
+  subcategory: "CROSSBODY_BAG",
   lengthCm: "",
   chestWidthCm: "",
   shoulderWidthCm: "",
@@ -319,9 +320,22 @@ const bagBody = buildCalibrationBody({
   employeeId: "employee-1", extractionId: "ai-1",
   form: { ...completeForm, category: "BAG", sizeLabel: "Small", ukSizeLabel: "Legacy specification" }
 });
-assert.equal(bagBody.sizeLabel, "Small");
-assert.equal(bagBody.ukSizeLabel, "Legacy specification");
+assert.equal(bagBody.sizeLabel, undefined);
+assert.equal(bagBody.ukSizeLabel, undefined);
 assert.ok(!calibrationValidationIssues({ ...calibratedPair, category: "KIDS", subcategory: "KIDS_SHOES", sizeLabel: "EU 33" })
   .some((issue) => issue.field === "sizeLabel"));
 
 console.log("Operations workspace flow tests passed");
+
+{
+  const bag = normalizeWorkspaceForm({ ...emptyWorkspaceForm(), category: "BAG", subcategory: "CROSSBODY_BAG", defects: "None", title: "Bag", priceKsh: "500", conditionGrade: "GOOD", sizeLabel: "Small", bagWidthCm: "24", bagHeightCm: "18", bagDepthCm: "8" });
+  assert.equal(bag.sizeLabel, "");
+  assert.deepEqual(calibrationValidationReasons(bag, { hasPhoto: true, hasAi: true }), []);
+  const payload = buildCalibrationBody({ employeeId: "staff", extractionId: "ai", form: bag });
+  assert.equal(payload.sizeLabel, undefined);
+  assert.deepEqual(payload.measurements.map((item) => item.type), ["BAG_WIDTH", "BAG_HEIGHT", "BAG_DEPTH"]);
+  assert.equal(calibrationValidationReasons({ ...bag, bagWidthCm: "-1" }).length > 0, true);
+  assert.equal(calibrationValidationReasons({ ...bag, subcategory: "" }).length > 0, true);
+  const noMeasurements = { ...bag, bagWidthCm: "", bagHeightCm: "", bagDepthCm: "" };
+  assert.deepEqual(calibrationValidationReasons(noMeasurements), []);
+}

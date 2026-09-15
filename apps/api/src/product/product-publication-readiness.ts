@@ -67,7 +67,7 @@ export function productContentBlocker(product: PublicationProduct): string | nul
   if (!product.category?.trim()) return "Confirm the category before publishing.";
   const shoeBlocker = shoeIntakeBlocker(product);
   if (shoeBlocker) return shoeBlocker;
-  if (!product.finalSizeLabel?.trim()) return "Confirm the size label before publishing.";
+  if (product.category !== "BAG" && !product.finalSizeLabel?.trim()) return "Confirm the size label before publishing.";
   if (!product.conditionGrade) return "Confirm the condition before publishing.";
   const missing = missingPublishMeasurementTypes(product);
   if (missing.length) return `Confirm required measurements before publishing: ${missing.join(", ")}.`;
