@@ -126,7 +126,7 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     } } });
     assert.equal(paidResult.status, "SUCCESS");
     assert.equal((await prisma.payment.findUniqueOrThrow({ where: { id: payment.paymentId } })).status, "SUCCESS");
-    assert.equal((await prisma.commission.findUniqueOrThrow({ where: { orderId: checkout.orderId } })).commissionAmountKsh, 50);
+    assert.equal((await prisma.commission.findUniqueOrThrow({ where: { orderId: checkout.orderId } })).commissionAmountKsh, 125);
 
     // A separate commission is an isolation sentinel; after-sales must never
     // affect other orders belonging to the same affiliate or customer.
@@ -183,7 +183,7 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     assert.equal(openCase.requiresRefund, true);
     assert.equal(openCase.affectsAffiliateCommission, true);
     assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "COMPLETED");
-    assert.equal((await prisma.commission.findUniqueOrThrow({ where: { orderId: order.id } })).commissionAmountKsh, 30);
+    assert.equal((await prisma.commission.findUniqueOrThrow({ where: { orderId: order.id } })).commissionAmountKsh, 75);
     await assert.rejects(afterSales.execute(order.id, returnA.id, "RESTOCK", { idempotencyKey: `${key}-too-early-restock`, note: "Attempt before completing the refund", locationCode: location.locationCode }, actorId), /refund/i);
     await assert.rejects(afterSales.execute(order.id, returnA.id, "REFUND", { ...firstRefund, amountKsh: 2 }, actorId), /Idempotency key/);
     await assert.rejects(afterSales.execute(order.id, returnA.id, "REFUND", refundInput("a-duplicate-reference", 1, firstRefund.externalReference), actorId), /already been recorded/);
@@ -194,7 +194,7 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     assert.equal((await prisma.afterSaleReturn.findUniqueOrThrow({ where: { id: returnA.id } })).status, "REFUND_RECORDED");
     assert.equal((await prisma.customerServiceCase.findUniqueOrThrow({ where: { id: returnA.serviceCaseId } })).status, "RESOLVED");
     assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "COMPLETED", "Refunding one item must not mark the whole order refunded");
-    assert.equal((await prisma.commission.findUniqueOrThrow({ where: { orderId: order.id } })).commissionAmountKsh, 30);
+    assert.equal((await prisma.commission.findUniqueOrThrow({ where: { orderId: order.id } })).commissionAmountKsh, 75);
     assert.equal(await prisma.commissionAdjustment.count({ where: { afterSaleReturnId: returnA.id } }), 1);
     const restockA = { idempotencyKey: `${key}-a-restock`, note: "Move inspected return into the review queue", locationCode: location.locationCode };
     await afterSales.execute(order.id, returnA.id, "RESTOCK", restockA, actorId);
@@ -217,7 +217,7 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     const revoked = await prisma.commission.findUniqueOrThrow({ where: { orderId: order.id }, include: { adjustments: true } });
     assert.equal(revoked.status, "REJECTED");
     assert.equal(revoked.commissionAmountKsh, 0);
-    assert.deepEqual(revoked.adjustments.map((row) => row.amountKsh).sort((a, b) => a - b), [20, 30]);
+    assert.deepEqual(revoked.adjustments.map((row) => row.amountKsh).sort((a, b) => a - b), [50, 75]);
     assert.ok(revoked.adjustments.every((row) => row.kind === "REVERSAL"));
     const untouched = await prisma.commission.findUniqueOrThrow({ where: { orderId: untouchedOrder.id } });
     assert.equal(untouched.status, "CONFIRMED");

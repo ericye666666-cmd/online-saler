@@ -335,7 +335,7 @@ export async function seedStagingBaseline(prisma) {
     update: {},
     create: {
       key: "affiliate.defaultCommissionRateBps",
-      valueJson: 1000,
+      valueJson: 2500,
       scope: "GLOBAL"
     }
   });
@@ -350,7 +350,7 @@ export async function seedStagingBaseline(prisma) {
       phone: "+254700000046",
       email: "affiliate@online-saler.local",
       status: "ACTIVE",
-      commissionRateBps: 1000
+      commissionRateBps: 2500
     }
   });
 

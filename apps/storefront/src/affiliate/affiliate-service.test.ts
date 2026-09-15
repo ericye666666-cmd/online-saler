@@ -20,8 +20,8 @@ async function verifyLaunchCommission() {
     commission: { create: async ({ data }: { data: { rateBps: number; commissionAmountKsh: number } }) => { creates++; return data; } }
   } as unknown as Parameters<typeof createPendingCommissionForPaidOrder>[0];
   const commission = await createPendingCommissionForPaidOrder(tx, "paid");
-  assert.equal(commission?.rateBps, 1000, "legacy 30% override must not override the launch rate");
-  assert.equal(commission?.commissionAmountKsh, 30, "only item subtotal is commissionable");
+  assert.equal(commission?.rateBps, 2500, "legacy 30% override must not override the launch rate");
+  assert.equal(commission?.commissionAmountKsh, 75, "only item subtotal is commissionable");
   existing = { rateBps: 3000, commissionAmountKsh: 90 };
   assert.equal(await createPendingCommissionForPaidOrder(tx, "paid"), existing, "payment retries preserve historical commissions");
   assert.equal(creates, 1);

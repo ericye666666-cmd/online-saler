@@ -93,9 +93,9 @@ test("invalid commission values require review without changing historic amounts
   }
 });
 
-test("Operations and checkout parse defaults identically and keep the existing 10% fallback", () => {
-  assert.deepEqual(resolveDefaultCommissionRate(undefined), { valueBps: 1000, source: "FALLBACK" });
-  assert.deepEqual(resolveDefaultCommissionRate("invalid"), { valueBps: 1000, source: "FALLBACK" });
+test("Operations and checkout parse defaults identically and use the 25% fallback", () => {
+  assert.deepEqual(resolveDefaultCommissionRate(undefined), { valueBps: 2500, source: "FALLBACK" });
+  assert.deepEqual(resolveDefaultCommissionRate("invalid"), { valueBps: 2500, source: "FALLBACK" });
   assert.deepEqual(resolveDefaultCommissionRate("3000"), { valueBps: 3000, source: "SYSTEM_SETTING" });
   assert.deepEqual(resolveDefaultCommissionRate(0), { valueBps: 0, source: "SYSTEM_SETTING" });
   assert.deepEqual(resolveDefaultCommissionRate(6000), { valueBps: 5000, source: "SYSTEM_SETTING" });
