@@ -6,6 +6,7 @@ import {
   Product,
   productPath,
   productUrl,
+  productShareText,
 } from "../data/products";
 
 type ShareActionsProps = {
@@ -43,7 +44,7 @@ export function ShareActions({ product, sellerRef }: ShareActionsProps) {
     <div className="shareActions" aria-label="Share this item">
       <a
         className="whatsappTextButton"
-        href={`https://wa.me/?text=${encodeURIComponent(new URL(productPath(product.code, sellerRef, { source: "whatsapp" }), directUrl).toString())}`}
+        href={`https://wa.me/?text=${encodeURIComponent(`${productShareText(product)}\n${new URL(productPath(product.code, sellerRef, { source: "whatsapp" }), directUrl).toString()}`)}`}
         target="_blank"
         rel="noreferrer"
       >

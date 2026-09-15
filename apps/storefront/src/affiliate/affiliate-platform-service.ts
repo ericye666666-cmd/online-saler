@@ -481,3 +481,16 @@ function topByKey(rows: Array<{ key: string; label: string }>) {
   }
   return [...counts.values()].sort((a, b) => b.count - a.count)[0] ?? null;
 }
+
+// Use only the active affiliate's public name, never customer identity fields.
+export async function getPublicRecommenderName(affiliateCode: string): Promise<string | null> {
+  try {
+    const affiliate = await prisma.affiliate.findFirst({
+      where: { affiliateCode, status: AffiliateStatus.ACTIVE },
+      select: { displayName: true },
+    });
+    return affiliate?.displayName ?? null;
+  } catch {
+    return null;
+  }
+}

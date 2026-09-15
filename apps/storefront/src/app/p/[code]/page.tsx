@@ -1,3 +1,5 @@
+import { productShareMetadata } from "../../product-sharing";
+import { getPublicRecommenderName } from "../../../affiliate/affiliate-platform-service";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight, MapPin } from "lucide-react";
@@ -12,7 +14,6 @@ import {
   formatPrice,
   normalizeSellerRef,
   normalizeTrackingParam,
-  SITE_URL,
 } from "../../data/products";
 import {
   buildProductGallery,
@@ -37,42 +38,13 @@ type ProductPageProps = {
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
-  const { code } = await params;
+export async function generateMetadata({ params, searchParams }: ProductPageProps): Promise<Metadata> {
+  const [{ code }, query] = await Promise.all([params, searchParams]);
   const product = await getPublishedProduct(code);
   if (!product) return {};
-
-  const title = `${product.title} · ${formatPrice(product.price)}`;
-  const productType = product.shoeType ?? product.bagType ?? product.textileType;
-  const description = [product.title, productType, product.size, product.condition, product.store]
-    .filter(Boolean)
-    .join(", ");
-
-  return {
-    title,
-    description,
-    alternates: { canonical: `/p/${product.code}` },
-    openGraph: {
-      title,
-      description,
-      url: `${SITE_URL}/p/${product.code}`,
-      siteName: "Direct Loop Catalog",
-      type: "website",
-      images: product.ogImage ? [{
-        url: product.ogImage,
-        width: 1200,
-        height: 630,
-        type: "image/jpeg",
-        alt: `${product.title} product card`,
-      }] : [],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: product.ogImage ? [product.ogImage] : [],
-    },
-  };
+  const ref = normalizeSellerRef(query.ref);
+  const recommender = ref ? await getPublicRecommenderName(ref) : null;
+  return productShareMetadata(product, ref, recommender);
 }
 
 export default async function ProductPage({ params, searchParams }: ProductPageProps) {

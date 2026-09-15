@@ -2,12 +2,14 @@ import "./globals.css";
 import "./customer-auth.css";
 import "./checkout-reservation.css";
 import "./cart-checkout.css";
+import { SITE_URL } from "./data/products";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { getStorefrontI18n } from "../i18n/server";
 import { StorefrontI18nProvider } from "../i18n/provider";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Online Saler Storefront",
   description: "Kikuyu second-hand fashion storefront foundation."
 };
