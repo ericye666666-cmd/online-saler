@@ -70,6 +70,7 @@ type PaymentState = {
 };
 type CheckoutDraft = {
   phone: string;
+  whatsappPhone: string;
   fulfillment: FulfillmentChoice;
   deliveryAddress: string;
   deliveryNote: string;
@@ -86,6 +87,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
   const [state, setState] = useState<CheckoutState>("loading");
   const [fulfillment, setFulfillment] = useState<FulfillmentChoice>("PICKUP");
   const [phone, setPhone] = useState("");
+  const [whatsappPhone, setWhatsappPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [pickupPointId, setPickupPointId] = useState("");
@@ -104,6 +106,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
   useEffect(() => {
     const draft = readCheckoutDraft(customerId);
     setPhone(draft?.phone ?? "");
+    setWhatsappPhone(draft?.whatsappPhone ?? "");
     setFulfillment(draft?.fulfillment ?? "PICKUP");
     setDeliveryAddress(draft?.deliveryAddress ?? "");
     setDeliveryNote(draft?.deliveryNote ?? "");
@@ -114,8 +117,8 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
 
   useEffect(() => {
     if (reservation || draftCustomerId !== customerId) return;
-    writeCheckoutDraft(customerId, { phone, fulfillment, deliveryAddress, deliveryNote, pickupPointId });
-  }, [customerId, draftCustomerId, deliveryAddress, deliveryNote, fulfillment, phone, pickupPointId, reservation]);
+    writeCheckoutDraft(customerId, { phone, whatsappPhone, fulfillment, deliveryAddress, deliveryNote, pickupPointId });
+  }, [customerId, draftCustomerId, deliveryAddress, deliveryNote, fulfillment, phone, whatsappPhone, pickupPointId, reservation]);
 
   useEffect(() => {
     function handleFocus() {
@@ -186,6 +189,11 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
     event.preventDefault();
     if (submitting || reservation) return;
     setError("");
+    const contact = whatsappPhone.trim().replace(/[\s()-]/g, "");
+    if (!/^\+?[0-9]{8,15}$/.test(contact)) {
+      setError("Enter a valid WhatsApp number, including the country code if outside Kenya.");
+      return;
+    }
     if (fulfillment === "PICKUP" && !pickupPoints.some((point) => point.id === pickupPointId)) {
       setError("Choose a pickup point before continuing to payment.");
       return;
@@ -216,7 +224,10 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
           phone,
           fulfillmentMethod: fulfillment,
           deliveryAddress: deliveryRequiresAddress(fulfillment) ? deliveryAddress : null,
-          deliveryNote: fulfillment === "PICKUP" ? pickupOrderNote(pickupPointId, deliveryNote) : deliveryNote || null
+          deliveryNote: [
+            `WhatsApp contact: ${contact}`,
+            fulfillment === "PICKUP" ? pickupOrderNote(pickupPointId, deliveryNote) : deliveryNote.trim()
+          ].filter(Boolean).join("\n")
         })
       });
       const result = await response.json().catch(() => ({})) as Reservation & { error?: string };
@@ -397,6 +408,22 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                   />
+                </label>
+
+                <label className="checkoutField">
+                  <span>WhatsApp number</span>
+                  <input
+                    type="tel"
+                    autoComplete="section-whatsapp tel"
+                    name="whatsappPhone"
+                    placeholder="e.g. +254 7XX XXX XXX"
+                    required
+                    maxLength={30}
+                    aria-describedby="whatsapp-contact-help"
+                    value={whatsappPhone}
+                    onChange={(event) => setWhatsappPhone(event.target.value)}
+                  />
+                  <small id="whatsapp-contact-help">Please leave your WhatsApp number. Our customer service team will contact you to arrange pickup or delivery.</small>
                 </label>
 
                 <div className="commerceOptionGrid" role="radiogroup" aria-label="Fulfillment">
@@ -704,6 +731,7 @@ function readCheckoutDraft(customerId: string): CheckoutDraft | null {
     const text = (value: unknown, maximum: number) => typeof value === "string" && value.length <= maximum ? value : "";
     return {
       phone: text(fields.phone, 40),
+      whatsappPhone: text(fields.whatsappPhone, 30),
       fulfillment: fields.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "KIKUYU_LOCAL_DELIVERY" : "PICKUP",
       deliveryAddress: text(fields.deliveryAddress, 1500),
       deliveryNote: text(fields.deliveryNote, 10_000),
