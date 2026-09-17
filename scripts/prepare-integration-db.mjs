@@ -10,7 +10,15 @@ import { fileURLToPath } from "node:url";
 // prove that the resulting database matches the proposed Prisma schema.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const baseline = "e319fe94febb0479fe143914c0e2b6f6d87b764d";
-const migrations = ["20260906140000_add_manual_after_sales", "20260906180000_shoe_intake"];
+// Every migration that changes the schema after the baseline must be listed here,
+// in order. A data-only migration does not belong: it moves no structure, so the
+// diff below stays empty without it. Forgetting a structural one fails CI with
+// the missing columns spelled out.
+const migrations = [
+  "20260906140000_add_manual_after_sales",
+  "20260906180000_shoe_intake",
+  "20260917120000_guest_phone_checkout"
+];
 const raw = process.env.MVP_INTEGRATION_DATABASE_URL;
 if (!raw) throw new Error("MVP_INTEGRATION_DATABASE_URL must name a disposable local test database.");
 const url = new URL(raw);
