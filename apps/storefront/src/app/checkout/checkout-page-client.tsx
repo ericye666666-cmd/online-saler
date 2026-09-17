@@ -378,9 +378,11 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   const contactSummary = contactBlocker
     ? "M-Pesa phone and WhatsApp number"
     : `${phone.trim()} · WhatsApp ${whatsappPhone.trim()}`;
+  // The step row already carries "Pickup" or "Delivery" as its title, so the
+  // summary states only the answer.
   const handoffSummary = fulfillment === "PICKUP"
-    ? (selectedPickupPoint ? `Pickup · ${selectedPickupPoint.name}` : "Choose where to collect your order")
-    : (deliveryAddress.trim() ? `Delivery · ${deliveryAddress.split("\n")[0]}` : "Tell us where to deliver");
+    ? (selectedPickupPoint ? selectedPickupPoint.name : "Choose where to collect your order")
+    : (deliveryAddress.trim() ? deliveryAddress.split("\n")[0] : "Tell us where to deliver");
   if (reservation && isPaymentSucceeded) {
     return (
       <section className="commerceCheckoutShell checkoutSuccessShell" aria-label="Payment confirmation">
