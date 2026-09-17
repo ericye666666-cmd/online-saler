@@ -77,13 +77,19 @@
   border-right: 0;
 }
 
+/* The display images are square with a deliberate, equal margin. `cover` in a
+   portrait box cropped 27% off the sides, undoing that framing and clipping
+   long garments, so the whole item is shown inside a tinted panel instead —
+   the same multiply treatment as the category tiles. */
 .homeRailCard img,
 .homeRailNoImage {
+  display: block;
   width: 160px;
   height: 200px;
-  margin-bottom: 5px;
-  background: #f4f3f1;
-  object-fit: cover;
+  margin-bottom: 8px;
+  background: #f2f1ef;
+  mix-blend-mode: multiply;
+  object-fit: contain;
 }
 
 .homeRailBrand {
