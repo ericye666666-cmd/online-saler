@@ -490,19 +490,19 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
 
                 {error ? <p className="checkoutError" role="alert">{error}</p> : null}
 
-                <CheckoutSupport message={checkoutSupportMessage} />
-
-                {/* Total and action travel together, pinned on phones, so the
-                    amount is never scrolled away from the button that charges it. */}
+                {/* Pinned on phones so the charge is never scrolled out of
+                    reach. The button names the amount, so the bar does not
+                    repeat the total the breakdown above already gives. */}
                 <div className="checkoutPayBar">
                   {payBlocker ? <p className="checkoutPayHint">{payBlocker}</p> : null}
-                  <div className="checkoutPayTotal"><span>Total</span><strong>{totalLabel}</strong></div>
                   <button className="commercePrimaryButton full" type="submit" disabled={submitting || Boolean(payBlocker)}>
                     <CreditCard size={17} /> {submitting ? "Checking stock..." : `Pay ${totalLabel} with M-Pesa`}
                   </button>
                 </div>
               </form>
             )}
+
+            {!reservation && !activeStep ? <CheckoutSupport message={checkoutSupportMessage} /> : null}
           </section>
         </div>
       </div>

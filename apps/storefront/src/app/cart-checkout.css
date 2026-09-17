@@ -214,19 +214,10 @@
 .checkoutStepPanelBody { display: grid; gap: 18px; }
 
 .checkoutPayBar { display: grid; gap: 10px; }
-
-.checkoutPayTotal {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.checkoutPayTotal span { color: #6b6b6b; font-size: 14px; }
-.checkoutPayTotal strong { font-size: 19px; }
 .checkoutPayHint { margin: 0; color: #9e2f20; font-size: 13px; }
 
-/* On phones the amount and the button ride the bottom edge together, so the
-   shopper can always see what they are about to be charged. */
+/* On phones the pay action rides the bottom edge, so the charge is always one
+   tap away however far the bag has been scrolled. */
 @media (max-width: 900px) {
   .checkoutPayBar {
     position: sticky;
