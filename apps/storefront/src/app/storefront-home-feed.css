@@ -7,17 +7,21 @@
   padding: 0 0 8px;
 }
 
+/* Reads as a line about the shop, not a system notice: no alert colour, real
+   padding, and the same voice as the rest of the page. */
 .homeDropStrip {
-  margin: 0 0 18px;
-  background: #eef6ee;
-  color: #1c5b2a;
-  padding: 11px 18px;
-  font-size: 13px;
-  font-weight: 700;
+  margin: 0 0 30px;
+  border-bottom: 1px solid #ececec;
+  background: #fbfaf9;
+  color: #3d3d3d;
+  padding: 18px;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: .01em;
 }
 
 .homeFeedSection {
-  margin-bottom: 26px;
+  margin-bottom: 44px;
 }
 
 .homeFeedHeading {
@@ -25,15 +29,16 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 18px 10px;
+  padding: 0 18px 16px;
 }
 
 .homeFeedHeading h2 {
   margin: 0;
   color: #111;
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display), Georgia, "Songti SC", serif;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
 .homeFeedHeading a,
@@ -51,7 +56,7 @@
 /* Rails scroll sideways so one screen can show several themes instead of one. */
 .homeRail {
   display: flex;
-  gap: 10px;
+  gap: 0;
   overflow-x: auto;
   scroll-snap-type: x proximity;
   /* Snap targets align to the scrollport edge, which would scroll the rail by
@@ -69,70 +74,89 @@
 
 .homeRailCard {
   display: flex;
-  width: 142px;
+  width: 160px;
   flex: none;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+  border-right: 1px solid #ececec;
   color: #111;
+  padding: 0 14px 4px 0;
+  margin-right: 14px;
   scroll-snap-align: start;
   text-decoration: none;
 }
 
+.homeRail .homeRailCard:last-child {
+  border-right: 0;
+}
+
 .homeRailCard img,
 .homeRailNoImage {
-  width: 142px;
-  height: 178px;
+  width: 160px;
+  height: 200px;
   margin-bottom: 5px;
   background: #f4f3f1;
   object-fit: cover;
 }
 
+.homeRailBrand {
+  color: #8a8a8a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
 .homeRailCard strong {
   display: -webkit-box;
   overflow: hidden;
+  color: #1a1a1a;
   font-size: 13px;
-  font-weight: 700;
-  line-height: 1.25;
+  font-weight: 500;
+  line-height: 1.3;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 .homeRailSize {
+  color: #666;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .homeRailPrice {
+  margin-top: 4px;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 /* Category tiles */
 
 .homeCategoryTile {
   display: flex;
-  width: 104px;
+  width: 132px;
   flex: none;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   color: #111;
+  margin-right: 12px;
   scroll-snap-align: start;
   text-decoration: none;
 }
 
 .homeCategoryTile img,
 .homeCategoryTile .homeRailNoImage {
-  width: 104px;
-  height: 104px;
-  margin-bottom: 2px;
+  width: 132px;
+  height: 132px;
+  margin-bottom: 6px;
   background: #f4f3f1;
   object-fit: cover;
 }
 
 .homeCategoryTile span {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .homeCategoryTile small {
@@ -188,15 +212,26 @@
   .homeRailCard,
   .homeRailCard img,
   .homeRailNoImage {
-    width: 178px;
+    width: 196px;
   }
 
   .homeRailCard img,
   .homeRailNoImage {
-    height: 222px;
+    height: 245px;
   }
 
   .homeFeedHeading h2 {
-    font-size: 20px;
+    font-size: 32px;
+  }
+
+  .homeCategoryTile,
+  .homeCategoryTile img,
+  .homeCategoryTile .homeRailNoImage {
+    width: 168px;
+  }
+
+  .homeCategoryTile img,
+  .homeCategoryTile .homeRailNoImage {
+    height: 168px;
   }
 }

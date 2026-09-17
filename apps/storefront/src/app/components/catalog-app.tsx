@@ -80,6 +80,9 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
       </div>
 
       <div className="marketCardBody depopProductBody">
+        {/* Brand leads as a small eyebrow so every card opens on the same beat;
+            the name still carries the weight. */}
+        {brandLabel ? <p className="depopProductBrand">{brandLabel}</p> : null}
         <div className="depopProductTitleRow">
           <Link href={detailHref} className="depopProductTitle">{title}</Link>
           <button
@@ -92,7 +95,6 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
             <Heart size={21} fill={isSaved ? "currentColor" : "none"} />
           </button>
         </div>
-        {brandLabel ? <p className="depopProductBrand">{brandLabel}</p> : null}
         {sizeLabel ? <p className="depopProductMeta">{sizeLabel}</p> : null}
         <strong className="depopProductPrice">{formatPrice(product.price)}</strong>
       </div>

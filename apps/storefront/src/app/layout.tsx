@@ -5,7 +5,24 @@ import "./cart-checkout.css";
 import "./storefront-tab-bar.css";
 import "./storefront-tab-pages.css";
 import "./storefront-home-feed.css";
+import { Inter, Playfair_Display } from "next/font/google";
 import { StorefrontTabBar } from "./components/storefront-tab-bar";
+
+// Self-hosted at build time, so the storefront never waits on a third party and
+// an Android phone gets the same faces as a desktop. Latin only: Chinese falls
+// through to the system CJK face, which every device already has.
+const sans = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-sans"
+});
+
+const display = Playfair_Display({
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["500", "600", "700"],
+  variable: "--font-display"
+});
 import { SITE_URL } from "./data/products";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
@@ -21,7 +38,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const { locale } = await getStorefrontI18n();
   return (
-    <html lang={locale}>
+    <html lang={locale} className={`${sans.variable} ${display.variable}`}>
       <body>
         <StorefrontI18nProvider locale={locale}>
           {children}
