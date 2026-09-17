@@ -21,6 +21,7 @@ import {
   formatMeasurement,
   optionalBrandValue,
   optionalDisplayValue,
+  productDisplayTitle,
   visibleMeasurements,
 } from "../../product-detail-commerce";
 import { productSizeDisplay } from "../../product-size-display";
@@ -75,6 +76,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   const fit = isShoe ? null : optionalDisplayValue(detail?.fitType);
   const stretch = isShoe ? null : optionalDisplayValue(detail?.stretchLevel);
   const fabricWeight = isShoe ? null : optionalDisplayValue(detail?.fabricWeight);
+  const displayTitle = productDisplayTitle(product.title);
   const brandLabel = optionalBrandValue(product.brand);
   const sizeDisplay = productSizeDisplay(product);
   const sizeLabel = product.size
@@ -99,18 +101,18 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             {product.category}
           </Link>
           <ChevronRight size={14} />
-          <span>{product.title}</span>
+          <span>{displayTitle}</span>
         </nav>
 
         <aside className="productAvailabilityNotice">{t(product.status === "Sold" ? "product.sold" : product.status === "Reserved" ? "product.reserved" : isShoe ? "product.pairAvailabilityNotice" : "product.availabilityNotice")}</aside>
 
         <section className="productDetailGrid">
-          <ProductGallery items={gallery} productTitle={product.title} />
+          <ProductGallery items={gallery} productTitle={displayTitle} />
 
           <div className="productPurchasePanel">
             {brandLabel ? <p className="productDetailBrand">{brandLabel}</p> : null}
-            <h1>{product.title}</h1>
-            <ProductSaveButton productCode={product.code} productTitle={product.title} />
+            <h1>{displayTitle}</h1>
+            <ProductSaveButton productCode={product.code} productTitle={displayTitle} />
             <div className="commercePriceRow">
               <strong>{formatPrice(product.price)}</strong>
               <span>{t(product.status === "Sold" ? "product.sold" : product.status === "Reserved" ? "product.reserved" : isShoe ? "product.onlyOnePair" : "product.onlyOne")}</span>
@@ -270,8 +272,8 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               {related.map((item) => (
                 <article key={item.code}>
                   <Link href={sellerRef ? `/p/${item.code}?ref=${sellerRef}` : `/p/${item.code}`}>
-                    {item.image ? <img src={item.image} alt={item.title} loading="lazy" /> : null}
-                    <strong>{item.title}</strong>
+                    {item.image ? <img src={item.image} alt={productDisplayTitle(item.title)} loading="lazy" /> : null}
+                    <strong>{productDisplayTitle(item.title)}</strong>
                     <span>{formatPrice(item.price)}</span>
                     <small>Size {item.size}{item.condition ? ` · ${item.condition}` : ""}</small>
                   </Link>

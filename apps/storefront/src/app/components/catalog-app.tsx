@@ -25,7 +25,7 @@ import { catalogSizeOptions, filterCatalogProducts } from "../catalog-filters";
 import { ProductCollectionButton } from "./product-share-sheet";
 import { ReferralTracker } from "./referral-tracker";
 import { BrowseSelection, SiteHeader } from "./site-header";
-import { optionalBrandValue, optionalDisplayValue } from "../product-detail-commerce";
+import { optionalBrandValue, optionalDisplayValue, productDisplayTitle } from "../product-detail-commerce";
 import { readSavedCodes, subscribeToSaved, toggleSaved as toggleSavedItem } from "../saved-items";
 import { productSizeDisplay } from "../product-size-display";
 import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
@@ -59,16 +59,17 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
     ? `/p/${product.code}?${new URLSearchParams({ ref: sellerRef, ...(source ? { source } : {}), ...(placement ? { placement } : {}), ...(campaign ? { campaign } : {}) }).toString()}`
     : `/p/${product.code}`;
   // Brand and size are blank for whole categories (bags carry no apparel size), so each line is optional.
+  const title = productDisplayTitle(product.title);
   const brandLabel = optionalBrandValue(product.brand);
   const sizeLabel = optionalDisplayValue(translateValue(locale, productSizeDisplay(product).headline));
 
   return (
     <article className={`marketCard depopProductCard ${product.status !== "Available" ? "unavailable" : ""}`}>
       <div className="marketImageWrap depopProductImage group relative">
-        <Link href={detailHref} aria-label={t("catalog.viewItem", { item: product.title })}>
+        <Link href={detailHref} aria-label={t("catalog.viewItem", { item: title })}>
           <img
             src={product.image}
-            alt={product.title}
+            alt={title}
             width={640}
             height={640}
             loading={priority ? "eager" : "lazy"}
@@ -80,12 +81,12 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
 
       <div className="marketCardBody depopProductBody">
         <div className="depopProductTitleRow">
-          <Link href={detailHref} className="depopProductTitle">{product.title}</Link>
+          <Link href={detailHref} className="depopProductTitle">{title}</Link>
           <button
             className={`depopSaveButton ${isSaved ? "saved" : ""}`}
             type="button"
             onClick={() => onToggleSaved(product.code)}
-            aria-label={isSaved ? t("catalog.removeSaved", { item: product.title }) : t("catalog.saveItem", { item: product.title })}
+            aria-label={isSaved ? t("catalog.removeSaved", { item: title }) : t("catalog.saveItem", { item: title })}
             aria-pressed={isSaved}
           >
             <Heart size={21} fill={isSaved ? "currentColor" : "none"} />

@@ -79,6 +79,20 @@ export function optionalBrandValue(value: string | null | undefined): string | n
   return EMPTY_BRAND_VALUES.has(visible.toLowerCase()) ? null : visible;
 }
 
+// Extraction sometimes writes the missing brand into the name itself, leaving
+// titles like "UNKNOWN Designer Handbag" on the shelf. Customers should read
+// what the thing is, never that a field was empty.
+const NOISE_TITLE_PREFIX = /^(unknown|unbranded|no\s*brand)\b[\s\-—·,]*/i;
+
+export function productDisplayTitle(title: string | null | undefined): string {
+  const raw = normalizeSpace(title ?? "");
+  if (!raw) return "";
+  const cleaned = normalizeSpace(raw.replace(NOISE_TITLE_PREFIX, ""));
+  // A title that was only the placeholder leaves nothing to show; keep the raw
+  // text rather than rendering a nameless card.
+  return cleaned || raw;
+}
+
 export function productCopyWithoutPrice(value: string | null | undefined): string | null {
   const visible = optionalDisplayValue(value);
   if (!visible) return null;

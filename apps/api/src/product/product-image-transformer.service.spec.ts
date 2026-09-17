@@ -80,4 +80,72 @@ describe("ProductImageTransformerService", () => {
     assert.equal(result.provider, "deterministic-sharp");
   });
 
+  it("frames generated display images to the same subject size whatever the model produced", async () => {
+    const service = new ProductImageTransformerService();
+    // Same garment, framed small by the model in one image and edge to edge in
+    // the other — the two must come out identical in subject size.
+    const generated = async (subjectSize: number) => ({
+      body: await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#ffffff" } })
+        .composite([{
+          input: {
+            create: { width: subjectSize, height: subjectSize, channels: 3, background: { r: 20, g: 30, b: 40 } }
+          },
+          left: Math.floor((1024 - subjectSize) / 2),
+          top: Math.floor((1024 - subjectSize) / 2)
+        }])
+        .png()
+        .toBuffer(),
+      contentType: "image/png" as const,
+      provider: "openai-image-edit",
+      processorVersion: "test",
+      widthPx: 1024,
+      heightPx: 1024
+    });
+
+    const subjectWidth = async (body: Buffer) => {
+      const { data, info } = await sharp(body).raw().toBuffer({ resolveWithObject: true });
+      let left = info.width;
+      let right = -1;
+      for (let x = 0; x < info.width; x += 1) {
+        const index = (Math.floor(info.height / 2) * info.width + x) * info.channels;
+        if (data[index] < 200) {
+          if (x < left) left = x;
+          if (x > right) right = x;
+        }
+      }
+      return right - left + 1;
+    };
+
+    const small = await service.normalizeDisplayFraming(await generated(300));
+    const large = await service.normalizeDisplayFraming(await generated(1000));
+
+    assert.equal((await sharp(small.body).metadata()).width, 1200);
+    assert.equal((await sharp(large.body).metadata()).width, 1200);
+    const smallWidth = await subjectWidth(small.body);
+    const largeWidth = await subjectWidth(large.body);
+    assert.ok(Math.abs(smallWidth - largeWidth) <= 4, `subject widths differ: ${smallWidth} vs ${largeWidth}`);
+    assert.ok(smallWidth >= 980 && smallWidth <= 1020, `subject width off target: ${smallWidth}`);
+    assert.equal(small.provider, "openai-image-edit");
+  });
+
+  it("keeps a near-white subject rather than trimming it away", async () => {
+    const service = new ProductImageTransformerService();
+    const whiteOnWhite = {
+      body: await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#ffffff" } })
+        .png()
+        .toBuffer(),
+      contentType: "image/png" as const,
+      provider: "openai-image-edit",
+      processorVersion: "test",
+      widthPx: 1024,
+      heightPx: 1024
+    };
+
+    const result = await service.normalizeDisplayFraming(whiteOnWhite);
+    const metadata = await sharp(result.body).metadata();
+
+    assert.equal(metadata.width, 1200);
+    assert.equal(metadata.height, 1200);
+  });
+
 });

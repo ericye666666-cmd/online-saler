@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import sharp from "sharp";
 import {
   ProductImageVariant,
   prisma
 } from "@online-saler/database";
 import type { BackgroundRemovalResult } from "./background-removal.provider";
 import { ProductImageJobRunnerService } from "./product-image-job-runner.service";
+import { ProductImageTransformerService } from "./product-image-transformer.service";
+
+// The framing step runs on the generated image, so the stub must return a real one.
+const generatedDisplayImage = () =>
+  sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#ffffff" } })
+    .composite([{ input: { create: { width: 500, height: 500, channels: 3, background: { r: 20, g: 30, b: 40 } } }, left: 262, top: 262 }])
+    .png()
+    .toBuffer();
 
 const originalTransaction = prisma.$transaction;
 
@@ -100,8 +109,8 @@ it(`${category} display reads exact original bytes without background removal or
     const runner = new ProductImageJobRunnerService({
       bucket: "test", download: async () => ({ body: Buffer.from("both-shoes-original"), contentType: "image/jpeg" })
     } as never, { removeBackground: async () => { throw new Error("No garment background processor"); } } as never,
-    {} as never, { balance: async () => { throw new Error("No garment balancing"); } } as never,
-    { generate: async (input: Record<string, unknown>) => { displayInput = input; return { body: Buffer.from("pair-display") }; } } as never);
+    new ProductImageTransformerService(), { balance: async () => { throw new Error("No garment balancing"); } } as never,
+    { generate: async (input: Record<string, unknown>) => { displayInput = input; return { body: await generatedDisplayImage(), contentType: "image/png", provider: "openai-image-edit", processorVersion: "test", widthPx: 1024, heightPx: 1024 }; } } as never);
     const privateRunner = runner as unknown as {
       loadSource: (job: Record<string, unknown>, category: string) => Promise<any>;
       process: (operation: string, source: any, mode: undefined, category: string) => Promise<any>;

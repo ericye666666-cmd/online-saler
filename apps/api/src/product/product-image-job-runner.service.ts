@@ -181,12 +181,15 @@ export class ProductImageJobRunnerService {
       });
     }
     if (operation === ImageProcessingOperation.GENERATE_AI_DISPLAY_MAIN_IMAGE) {
-      return this.displayImage.generate({
+      const generated = await this.displayImage.generate({
         category,
         body: source.body,
         contentType: source.contentType,
         filename: `${source.id}.png`
       });
+      // The model frames each item its own way; normalising afterwards gives
+      // every storefront card the same subject size and margin.
+      return this.transformer.normalizeDisplayFraming(generated);
     }
     throw new BadRequestException(`Unsupported image processing operation: ${operation}`);
   }

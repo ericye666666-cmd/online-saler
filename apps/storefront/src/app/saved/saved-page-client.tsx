@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatPrice, Product } from "../data/products";
-import { optionalBrandValue, optionalDisplayValue } from "../product-detail-commerce";
+import { optionalBrandValue, optionalDisplayValue, productDisplayTitle } from "../product-detail-commerce";
 import { productSizeDisplay } from "../product-size-display";
 import { readSavedCodes, subscribeToSaved, toggleSaved } from "../saved-items";
 import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
@@ -41,14 +41,15 @@ export function SavedPageClient({ products }: { products: Product[] }) {
   return (
     <ul className="savedList">
       {savedProducts.map((product) => {
+        const title = productDisplayTitle(product.title);
         const brandLabel = optionalBrandValue(product.brand);
         const sizeLabel = optionalDisplayValue(translateValue(locale, productSizeDisplay(product).headline));
         return (
           <li key={product.code}>
             <Link className="savedItem" href={`/p/${product.code}`}>
-              {product.image ? <img src={product.image} alt={product.title} loading="lazy" /> : <span className="savedItemNoImage" />}
+              {product.image ? <img src={product.image} alt={title} loading="lazy" /> : <span className="savedItemNoImage" />}
               <span className="savedItemText">
-                <strong>{product.title}</strong>
+                <strong>{title}</strong>
                 {brandLabel ? <span className="savedItemBrand">{brandLabel}</span> : null}
                 {sizeLabel ? <span className="savedItemSize">{sizeLabel}</span> : null}
                 <span className="savedItemPrice">{formatPrice(product.price)}</span>
@@ -62,7 +63,7 @@ export function SavedPageClient({ products }: { products: Product[] }) {
                 toggleSaved(product.code);
                 setCodes(readSavedCodes());
               }}
-              aria-label={t("catalog.removeSaved", { item: product.title })}
+              aria-label={t("catalog.removeSaved", { item: title })}
             >
               ×
             </button>
