@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { currentCustomerSession } from "../../../../../auth/customer-auth";
+import { checkoutViewers, resolveOrderViewer } from "../../../../../auth/checkout-identity";
 import { getPaymentStatus, PaymentValidationError } from "../../../../../payments/payment-service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const session = await currentCustomerSession();
-  if (!session) return NextResponse.json({ error: "Sign in with Google before payment." }, { status: 401 });
+  const viewers = await checkoutViewers();
+  if (!viewers.length) return NextResponse.json({ error: "Start checkout again before paying." }, { status: 401 });
 
   try {
     const orderId = request.nextUrl.searchParams.get("orderId")?.trim();
     if (!orderId) throw new PaymentValidationError("Order ID is required.");
-    const result = await getPaymentStatus(orderId, session.customerId);
+    const customerId = await resolveOrderViewer(orderId, viewers);
+    if (!customerId) throw new PaymentValidationError("Order was not found.");
+    const result = await getPaymentStatus(orderId, customerId);
     return NextResponse.json(result, {
       headers: { "cache-control": "no-store" }
     });

@@ -78,11 +78,13 @@ type CheckoutDraft = {
   pickupPointId: string;
 };
 
-function checkoutDraftStorageKey(customerId: string): string {
-  return `online-saler-checkout-draft-v2:${encodeURIComponent(customerId)}`;
+function checkoutDraftStorageKey(draftKey: string): string {
+  return `online-saler-checkout-draft-v2:${encodeURIComponent(draftKey)}`;
 }
 
-export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey?: string; customerId: string }) {
+// draftKey scopes the locally saved checkout draft: a signed-in customer id, or
+// "guest" for shoppers who go straight to payment without an account.
+export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false }: { mapsApiKey?: string; draftKey: string; signedIn?: boolean }) {
   const [snapshot, setSnapshot] = useState<CartSnapshot | null>(null);
   const [validation, setValidation] = useState<CartValidationResponse | null>(null);
   const [state, setState] = useState<CheckoutState>("loading");
@@ -92,7 +94,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [pickupPointId, setPickupPointId] = useState("");
-  const [draftCustomerId, setDraftCustomerId] = useState<string | null>(null);
+  const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [reservation, setReservation] = useState<Reservation | null>(null);
@@ -105,21 +107,21 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
   const reservedCartIdsRef = useRef<string[]>([]);
 
   useEffect(() => {
-    const draft = readCheckoutDraft(customerId);
+    const draft = readCheckoutDraft(draftKey);
     setPhone(draft?.phone ?? "");
     setWhatsappPhone(draft?.whatsappPhone ?? "");
     setFulfillment(draft?.fulfillment ?? "PICKUP");
     setDeliveryAddress(draft?.deliveryAddress ?? "");
     setDeliveryNote(draft?.deliveryNote ?? "");
     setPickupPointId(draft?.pickupPointId ?? "");
-    setDraftCustomerId(customerId);
+    setLoadedDraftKey(draftKey);
     void loadAndValidate();
-  }, [customerId]);
+  }, [draftKey]);
 
   useEffect(() => {
-    if (reservation || draftCustomerId !== customerId) return;
-    writeCheckoutDraft(customerId, { phone, whatsappPhone, fulfillment, deliveryAddress, deliveryNote, pickupPointId });
-  }, [customerId, draftCustomerId, deliveryAddress, deliveryNote, fulfillment, phone, whatsappPhone, pickupPointId, reservation]);
+    if (reservation || loadedDraftKey !== draftKey) return;
+    writeCheckoutDraft(draftKey, { phone, whatsappPhone, fulfillment, deliveryAddress, deliveryNote, pickupPointId });
+  }, [draftKey, loadedDraftKey, deliveryAddress, deliveryNote, fulfillment, phone, whatsappPhone, pickupPointId, reservation]);
 
   useEffect(() => {
     function handleFocus() {
@@ -287,7 +289,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
     setPayment(nextPayment);
     if (paymentSucceeded(nextPayment.orderStatus, nextPayment.paymentStatus ?? nextPayment.status)) {
       removePurchasedCartItems(reservedCartIdsRef.current.length ? reservedCartIdsRef.current : reservedCartIds);
-      clearCheckoutDraft(customerId);
+      clearCheckoutDraft(draftKey);
     }
   }
 
@@ -352,6 +354,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
       <section className="commerceCheckoutShell checkoutSuccessShell" aria-label="Payment confirmation">
         <PaymentPanel
           fulfillment={fulfillment}
+          signedIn={signedIn}
           isPaymentFailed={isPaymentFailed}
           isPaymentRetryable={isPaymentRetryable}
           isPaymentSucceeded={isPaymentSucceeded}
@@ -383,6 +386,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
             {reservation ? (
               <PaymentPanel
                 fulfillment={fulfillment}
+                signedIn={signedIn}
                 isPaymentFailed={isPaymentFailed}
                 isPaymentRetryable={isPaymentRetryable}
                 isPaymentSucceeded={isPaymentSucceeded}
@@ -480,7 +484,7 @@ export function CheckoutPageClient({ mapsApiKey = "", customerId }: { mapsApiKey
                 {requiresAddress ? (
                   <DeliveryAddressPicker
                     apiKey={mapsApiKey}
-                    customerId={customerId}
+                    draftKey={draftKey}
                     value={deliveryAddress}
                     onChange={setDeliveryAddress}
                     disabled={submitting}
@@ -532,6 +536,7 @@ async function validateCart(productIds: string[]): Promise<CartValidationRespons
 
 function PaymentPanel({
   fulfillment,
+  signedIn,
   isPaymentFailed,
   isPaymentRetryable,
   isPaymentSucceeded,
@@ -546,6 +551,7 @@ function PaymentPanel({
   timerLabel
 }: {
   fulfillment: FulfillmentChoice;
+  signedIn: boolean;
   isPaymentFailed: boolean;
   isPaymentRetryable: boolean;
   isPaymentSucceeded: boolean;
@@ -610,6 +616,20 @@ function PaymentPanel({
         </section>
 
         <CheckoutSupport message={supportMessage} />
+
+        {!signedIn ? (
+          // Offered only after the money is in. Registration must never sit
+          // between a shopper and their payment.
+          <section className="paymentSaveAccount">
+            <div>
+              <h2>{t("auth.saveTitle")}</h2>
+              <p>{t("auth.saveBody")}</p>
+            </div>
+            <Link className="commerceSecondaryButton" href={`/login?returnTo=${encodeURIComponent(`/orders/${reservation.orderNumber}`)}`}>
+              {t("auth.google")}
+            </Link>
+          </section>
+        ) : null}
 
         <div className="paymentSuccessActions">
           <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
@@ -738,9 +758,9 @@ function CheckoutEmpty({ title, body, action }: { title: string; body: string; a
   );
 }
 
-function readCheckoutDraft(customerId: string): CheckoutDraft | null {
+function readCheckoutDraft(draftKey: string): CheckoutDraft | null {
   try {
-    const raw = window.localStorage.getItem(checkoutDraftStorageKey(customerId));
+    const raw = window.localStorage.getItem(checkoutDraftStorageKey(draftKey));
     if (!raw || raw.length > 20_000) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
@@ -759,17 +779,17 @@ function readCheckoutDraft(customerId: string): CheckoutDraft | null {
   }
 }
 
-function writeCheckoutDraft(customerId: string, draft: CheckoutDraft) {
+function writeCheckoutDraft(draftKey: string, draft: CheckoutDraft) {
   try {
-    window.localStorage.setItem(checkoutDraftStorageKey(customerId), JSON.stringify(draft));
+    window.localStorage.setItem(checkoutDraftStorageKey(draftKey), JSON.stringify(draft));
   } catch {
     // The current checkout stays usable if browser storage is blocked or full.
   }
 }
 
-function clearCheckoutDraft(customerId: string) {
+function clearCheckoutDraft(draftKey: string) {
   try {
-    window.localStorage.removeItem(checkoutDraftStorageKey(customerId));
+    window.localStorage.removeItem(checkoutDraftStorageKey(draftKey));
   } catch {
     // Clearing an optional local draft is separate from payment confirmation.
   }

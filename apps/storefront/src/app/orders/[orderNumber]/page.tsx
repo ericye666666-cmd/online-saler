@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { parseDeliveryAddress, deliveryMapUrl } from "@online-saler/business-rules";
-import { notFound } from "next/navigation";
+import { MessageCircle } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
-import { currentCustomerSession } from "../../../auth/customer-auth";
+import { checkoutViewers } from "../../../auth/checkout-identity";
 import {
   customerFulfillmentProgress,
   customerOrderStatusLabel,
@@ -21,19 +21,28 @@ type OrderPageProps = {
 export const dynamic = "force-dynamic";
 
 export default async function OrderPage({ params }: OrderPageProps) {
-  const [{ orderNumber }, session, i18n] = await Promise.all([params, currentCustomerSession(), getStorefrontI18n()]);
+  const [{ orderNumber }, viewers, i18n] = await Promise.all([params, checkoutViewers(), getStorefrontI18n()]);
   const { t } = i18n;
   const returnTo = `/orders/${encodeURIComponent(orderNumber)}`;
 
-  if (!session) {
+  // A guest reaches the orders their own device placed. Anything else — another
+  // handset, cleared cookies, an older order — goes through customer service,
+  // who can look it up and offer to set the shopper up with an account.
+  const order = await getCustomerOrderByNumber(orderNumber, viewers.map((viewer) => viewer.customerId));
+  const viewer = order ? viewers.find((candidate) => candidate.customerId === order.customerId) : null;
+  if (!order || !viewer?.ownsOrder(order.id)) {
     return (
       <main className="productPage">
         <SiteHeader />
         <div className="productPageShell">
           <section className="customerLoginCard">
             <p className="detail-meta">{t("order.progress")}</p>
-            <h1>{t("order.signInTitle")}</h1>
-            <p>{t("order.signInBody")}</p>
+            <h1>{t("order.lookupTitle")}</h1>
+            <p>{t("order.lookupBody")}</p>
+            <a className="customerServiceButton" href={supportWhatsAppUrl(`Hello Direct Loop, I would like an update on order ${orderNumber}.`)} target="_blank" rel="noopener noreferrer">
+              <MessageCircle size={18} aria-hidden="true" /> <span>{t("support.chat")}</span>
+            </a>
+            <p className="customerLoginHint">{t("order.lookupRegister")}</p>
             <Link className="googleLoginButton" href={`/login?returnTo=${encodeURIComponent(returnTo)}`}>
               {t("auth.google")}
             </Link>
@@ -43,9 +52,6 @@ export default async function OrderPage({ params }: OrderPageProps) {
       </main>
     );
   }
-
-  const order = await getCustomerOrderByNumber(orderNumber, session.customerId);
-  if (!order) notFound();
 
   const delivery = parseDeliveryAddress(order.deliveryAddress ?? "");
   const latestPayment = order.payments[0] ?? null;

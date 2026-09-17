@@ -154,7 +154,7 @@ export class OperationsAffiliateService {
         slug: affiliateSlug(displayName, affiliateCode),
         displayName,
         phone: cleanOptional(input.phone) ?? linkedCustomer?.phone ?? null,
-        email: cleanOptional(input.email)?.toLowerCase() ?? linkedCustomer?.email.toLowerCase() ?? null,
+        email: cleanOptional(input.email)?.toLowerCase() ?? linkedCustomer?.email?.toLowerCase() ?? null,
         commissionRateBps
       }
     });
@@ -189,11 +189,15 @@ export class OperationsAffiliateService {
       include: { affiliateProfile: true }
     });
     if (!customer) throw new NotFoundException("Customer account was not found.");
-    const displayName = input.displayName?.trim() || customer.displayName || customer.email;
+    // A guest customer has no email at all, so both the display name and the
+    // email-based lookup have to work without one.
+    const customerEmail = customer.email?.toLowerCase() ?? null;
+    const displayName = input.displayName?.trim() || customer.displayName || customerEmail || customer.phone;
+    if (!displayName) throw new BadRequestException("Affiliate display name is required.");
     const commissionRateBps = normalizeOptionalRate(input.commissionRateBps);
-    const existing = customer.affiliateProfile ?? await prisma.affiliate.findFirst({
-      where: { email: customer.email.toLowerCase() }
-    });
+    const existing = customer.affiliateProfile ?? (customerEmail
+      ? await prisma.affiliate.findFirst({ where: { email: customerEmail } })
+      : null);
 
     if (existing) {
       return prisma.affiliate.update({
@@ -202,7 +206,7 @@ export class OperationsAffiliateService {
           customerId: customer.id,
           displayName,
           phone: cleanOptional(input.phone) ?? customer.phone ?? existing.phone,
-          email: customer.email.toLowerCase(),
+          email: customerEmail ?? existing.email,
           commissionRateBps: input.commissionRateBps === undefined ? existing.commissionRateBps : commissionRateBps,
           status: AffiliateStatus.ACTIVE,
           disabledAt: null
@@ -218,7 +222,7 @@ export class OperationsAffiliateService {
         slug: affiliateSlug(displayName, affiliateCode),
         displayName,
         phone: cleanOptional(input.phone) ?? customer.phone ?? null,
-        email: customer.email.toLowerCase(),
+        email: customerEmail,
         commissionRateBps,
         status: AffiliateStatus.ACTIVE
       }

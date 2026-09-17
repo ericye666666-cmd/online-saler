@@ -8,11 +8,13 @@ import {
 
 export type CustomerOrderDetail = Awaited<ReturnType<typeof getCustomerOrderByNumber>>;
 
-export async function getCustomerOrderByNumber(orderNumber: string, customerId: string) {
+/** Looks the order up across every identity this browser holds (account, guest). */
+export async function getCustomerOrderByNumber(orderNumber: string, customerIds: string[]) {
+  if (!customerIds.length) return null;
   return prisma.order.findFirst({
     where: {
       orderNumber,
-      customerId
+      customerId: { in: customerIds }
     },
     include: {
       sourceDraft: true,

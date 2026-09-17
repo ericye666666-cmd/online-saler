@@ -32,12 +32,14 @@ const checks = [
     }
   },
   {
-    name: "Checkout sign-in page", path: "/checkout",
+    name: "Checkout page", path: "/checkout",
     validate(body) {
+      // Checkout must open straight onto the cart shell for a shopper with no
+      // account. A sign-in gate here is the regression this check exists for.
       const html = renderedHtml(body);
-      assert.match(html, /<section\b[^>]*class="[^"]*\bcustomerLoginCard\b[^"]*"/);
-      assert.match(html, /<h1\b[^>]*>Sign in before checkout<\/h1>/);
-      assert.match(html, /href="\/login\?returnTo=%2Fcheckout"/);
+      assert.match(html, /<section\b[^>]*class="[^"]*\bcheckoutEmptyState\b[^"]*"[^>]*>\s*<h1\b[^>]*>Checkout<\/h1>/);
+      assert.doesNotMatch(html, /\bcustomerLoginCard\b/);
+      assert.doesNotMatch(html, /href="\/login\?returnTo=%2Fcheckout"/);
     }
   },
   {

@@ -94,6 +94,11 @@ export class OperationsCustomerServiceService {
   async searchCustomers(input: SearchInput) {
     await this.access.requirePermission(input.adminUserId, CUSTOMER_SERVICE_VIEW);
     const search = input.search?.trim();
+    // Guests have no email or name, so the phone is how customer service finds
+    // them. Shoppers read it out as "0712..." while it is stored as "254712...",
+    // so match on the last nine digits too.
+    const searchDigits = search?.replace(/\D/g, "") ?? "";
+    const phoneTail = searchDigits.length >= 9 ? searchDigits.slice(-9) : "";
     return prisma.customer.findMany({
       where: search
         ? {
@@ -101,7 +106,8 @@ export class OperationsCustomerServiceService {
               { email: { contains: search, mode: "insensitive" } },
               { normalizedEmail: { contains: search.toLowerCase(), mode: "insensitive" } },
               { displayName: { contains: search, mode: "insensitive" } },
-              { phone: { contains: search, mode: "insensitive" } }
+              { phone: { contains: search, mode: "insensitive" } },
+              ...(phoneTail ? [{ phone: { contains: phoneTail } }] : [])
             ]
           }
         : {},

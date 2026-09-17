@@ -1225,6 +1225,36 @@
   gap: 10px;
 }
 
+/* Deliberately quieter than .paymentNextStep: creating an account is optional,
+   so it must not compete with the steps the shopper actually has to take. */
+.paymentSaveAccount {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #e2e2e2;
+  background: #fafafa;
+  padding: 16px 20px;
+}
+
+.paymentSaveAccount h2 {
+  color: #333;
+  font-size: 15px;
+}
+
+.paymentSaveAccount p {
+  margin-top: 4px;
+  color: #6b6b6b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 620px) {
+  .paymentSaveAccount {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 900px) {
   .checkoutHero {
     display: grid;

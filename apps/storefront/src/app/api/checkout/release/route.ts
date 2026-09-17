@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentCustomerSession } from "../../../../auth/customer-auth";
+import { checkoutViewers } from "../../../../auth/checkout-identity";
 import {
   CheckoutValidationError,
   releaseCustomerCheckoutReservations
@@ -8,16 +8,25 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const session = await currentCustomerSession();
-  if (!session) return NextResponse.json({ error: "Sign in before releasing a payment lock." }, { status: 401 });
+  // Guests hold reservations too, and they must be able to let them go.
+  const viewers = await checkoutViewers();
+  if (!viewers.length) return NextResponse.json({ cancelledOrders: 0, releasedItems: 0 }, { headers: { "cache-control": "no-store" } });
 
   try {
     const body = await request.json() as { productIds?: unknown };
     const productIds = Array.isArray(body.productIds)
       ? body.productIds.filter((productId) => typeof productId === "string")
       : [];
-    const result = await releaseCustomerCheckoutReservations(session.customerId, productIds);
-    return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
+    // Reservations may sit on the guest record even after the shopper signs in,
+    // so release across every identity this browser holds.
+    let cancelledOrders = 0;
+    let releasedItems = 0;
+    for (const viewer of viewers) {
+      const result = await releaseCustomerCheckoutReservations(viewer.customerId, productIds);
+      cancelledOrders += result.cancelledOrders;
+      releasedItems += result.releasedItems;
+    }
+    return NextResponse.json({ cancelledOrders, releasedItems }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     if (error instanceof CheckoutValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

@@ -67,6 +67,14 @@
   text-decoration: underline;
 }
 
+/* Separates the optional "create an account" offer from the customer-service
+   action above it, so registering never reads as a requirement. */
+.customerLoginHint {
+  margin-top: 6px !important;
+  font-size: 13px;
+  color: #777 !important;
+}
+
 .customerLoginError {
   border: 1px solid #e4aaa1;
   background: #fff2ef;

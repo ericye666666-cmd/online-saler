@@ -98,7 +98,7 @@ export async function becomeAffiliate(session: CustomerSession | null) {
   if (!customer) throw new AffiliatePlatformError("Customer account was not found.", 404);
 
   const suffix = customer.id.replace(/-/g, "").slice(0, 10).toUpperCase();
-  const displayName = customer.displayName?.trim() || customer.email.split("@")[0] || "Direct Loop Affiliate";
+  const displayName = customer.displayName?.trim() || customer.email?.split("@")[0] || "Direct Loop Affiliate";
   return prisma.affiliate.create({
     data: {
       customerId: customer.id,

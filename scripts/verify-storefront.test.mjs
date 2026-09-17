@@ -8,7 +8,7 @@ const responses = {
   "/api-proxy/public/products": [200, "[]"],
   "/api-proxy/public/products/filters": [200, '{"categories":[]}'],
   "/cart": [200, '<main><section class="checkoutEmptyState"><h1>Your bag</h1><p>Loading…</p></section></main>'],
-  "/checkout": [200, '<main><section class="customerLoginCard"><h1>Sign in before checkout</h1><a href="/login?returnTo=%2Fcheckout">Continue with Google</a></section></main>'],
+  "/checkout": [200, '<main><section class="checkoutEmptyState"><h1>Checkout</h1><p>Checking your cart before payment...</p></section></main>'],
   "/api/payments/mpesa/callback": [400, '{"error":"Invalid callback payload"}'],
   "/seller/staging-affiliate": [200, '<main><h1 class="text-4xl">Staging Affiliate</h1></main>']
 };
@@ -77,9 +77,16 @@ test("rejects a filters error containing the categories word", async (t) => {
   await assert.rejects(fixture.run(), /Product filters API .*response did not match/);
 });
 
-test("fails when checkout returns a generic page instead of the login gate", async (t) => {
+test("fails when checkout returns a generic page instead of the cart shell", async (t) => {
   const fixture = await serverFixture(t, { "/checkout": [200, '<main><h1>Checkout</h1></main>'] });
-  await assert.rejects(fixture.run(), /Checkout sign-in page .*response did not match/);
+  await assert.rejects(fixture.run(), /Checkout page .*response did not match/);
+});
+
+test("fails when checkout puts a sign-in gate back in front of payment", async (t) => {
+  const fixture = await serverFixture(t, {
+    "/checkout": [200, '<main><section class="customerLoginCard"><h1>Sign in before checkout</h1><a href="/login?returnTo=%2Fcheckout">Continue with Google</a></section></main>']
+  });
+  await assert.rejects(fixture.run(), /Checkout page .*response did not match/);
 });
 
 test("retries a cold-start GET and logs the path and status", async (t) => {

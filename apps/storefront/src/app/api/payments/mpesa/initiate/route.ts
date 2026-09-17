@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentCustomerSession } from "../../../../../auth/customer-auth";
+import { checkoutViewers, resolveOrderViewer } from "../../../../../auth/checkout-identity";
 import {
   PaymentConflictError,
   PaymentValidationError,
@@ -12,15 +12,17 @@ import { MpesaProductionGuardError } from "../../../../../payments/mpesa-product
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const session = await currentCustomerSession();
-  if (!session) return NextResponse.json({ error: "Sign in with Google before payment." }, { status: 401 });
+  const viewers = await checkoutViewers();
+  if (!viewers.length) return NextResponse.json({ error: "Start checkout again before paying." }, { status: 401 });
 
   try {
     const body = await request.json() as { orderId?: string };
     const orderId = body.orderId?.trim();
     if (!orderId) throw new PaymentValidationError("Order ID is required.");
+    const customerId = await resolveOrderViewer(orderId, viewers);
+    if (!customerId) throw new PaymentValidationError("Order was not found.");
 
-    const result = await initiateMpesaPayment(orderId, session.customerId);
+    const result = await initiateMpesaPayment(orderId, customerId);
     return NextResponse.json(result, {
       status: 201,
       headers: { "cache-control": "no-store" }

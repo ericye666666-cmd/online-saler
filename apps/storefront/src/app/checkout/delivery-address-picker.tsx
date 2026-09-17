@@ -9,11 +9,11 @@ import { addressStorageKey, addressSummary, emptyDeliveryAddress, parseSavedAddr
 import "./delivery-address-picker.css";
 
 const AddressLocationMap = dynamic(() => import("./address-location-map"), { ssr: false });
-type Props = { apiKey: string; customerId: string; value: string; onChange: (value: string) => void; disabled: boolean };
+type Props = { apiKey: string; draftKey: string; value: string; onChange: (value: string) => void; disabled: boolean };
 type Step = "closed" | "list" | "map" | "type" | "details" | "entrance";
 const placeTypes = [{ value: "house", label: "House", icon: Home }, { value: "apartment", label: "Apartment", icon: Building2 }, { value: "office", label: "Office", icon: Monitor }, { value: "other", label: "Other", icon: MapPin }] as const;
 
-export default function DeliveryAddressPicker({ apiKey, customerId, value, onChange, disabled }: Props) {
+export default function DeliveryAddressPicker({ apiKey, draftKey, value, onChange, disabled }: Props) {
   const [step, setStep] = useState<Step>("closed");
   const [draft, setDraft] = useState<SavedDeliveryAddress>(emptyDeliveryAddress);
   const [addresses, setAddresses] = useState<SavedDeliveryAddress[]>([]);
@@ -36,9 +36,9 @@ export default function DeliveryAddressPicker({ apiKey, customerId, value, onCha
   const current = selected ?? toSavedDeliveryAddress(value);
 
   useEffect(() => {
-    try { setAddresses(parseSavedAddresses(window.localStorage.getItem(addressStorageKey(customerId)))); }
+    try { setAddresses(parseSavedAddresses(window.localStorage.getItem(addressStorageKey(draftKey)))); }
     catch { setAddresses([]); }
-  }, [customerId]);
+  }, [draftKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -109,7 +109,7 @@ export default function DeliveryAddressPicker({ apiKey, customerId, value, onCha
     const saved = next[0];
     if (!saved) return;
     try {
-      window.localStorage.setItem(addressStorageKey(customerId), JSON.stringify(next));
+      window.localStorage.setItem(addressStorageKey(draftKey), JSON.stringify(next));
       setNotice("");
     } catch {
       setNotice("Address selected for this order. Your browser could not save it for next time.");

@@ -37,12 +37,14 @@ function sign(payload: string): string {
   return createHmac("sha256", authSecret()).update(payload).digest("base64url");
 }
 
-export function createSessionToken(session: CustomerSession): string {
-  const payload = encode(JSON.stringify(session));
+/** Signs any cookie payload with the shared customer session secret. */
+export function createSignedToken(value: unknown): string {
+  const payload = encode(JSON.stringify(value));
   return `${payload}.${sign(payload)}`;
 }
 
-export function parseSessionToken(token: string | undefined): CustomerSession | null {
+/** Verifies the signature and returns the payload, without interpreting it. */
+export function readSignedToken<T>(token: string | undefined): T | null {
   if (!token) return null;
   const [payload, signature] = token.split(".");
   if (!payload || !signature) return null;
@@ -51,12 +53,21 @@ export function parseSessionToken(token: string | undefined): CustomerSession | 
   const expectedBuffer = Buffer.from(expected);
   if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) return null;
   try {
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as CustomerSession;
-    if (!parsed.customerId || !parsed.email || parsed.expiresAt <= Date.now()) return null;
-    return parsed;
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as T;
   } catch {
     return null;
   }
+}
+
+export function createSessionToken(session: CustomerSession): string {
+  return createSignedToken(session);
+}
+
+export function parseSessionToken(token: string | undefined): CustomerSession | null {
+  const parsed = readSignedToken<CustomerSession>(token);
+  if (!parsed) return null;
+  if (!parsed.customerId || !parsed.email || parsed.expiresAt <= Date.now()) return null;
+  return parsed;
 }
 
 export async function currentCustomerSession(): Promise<CustomerSession | null> {
@@ -101,7 +112,7 @@ export async function upsertGoogleCustomer(profile: GoogleProfile): Promise<Cust
   });
   return {
     customerId: customer.id,
-    email: customer.email,
+    email: customer.email ?? profile.email,
     displayName: customer.displayName,
     avatarUrl: customer.avatarUrl,
     expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000

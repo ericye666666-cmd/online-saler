@@ -751,9 +751,15 @@ enum CustomerServiceIssueType {
 
 model Customer {
   id                         String                 @id @default(uuid())
-  googleSubjectId            String                 @unique
-  email                      String
-  normalizedEmail            String                 @unique
+  // Google sign-in is optional. Guests check out with an M-Pesa phone only, so
+  // every Google-specific column has to tolerate a customer that never signed in.
+  googleSubjectId            String?                @unique
+  email                      String?
+  normalizedEmail            String?                @unique
+  // Normalized 2547xxxxxxxx form of the M-Pesa phone, set on guest records only.
+  // It is how a returning guest is recognised without signing in; accounts stay
+  // unreachable this way so an unauthenticated checkout cannot write to them.
+  normalizedPhone            String?                @unique
   emailVerified              Boolean                @default(false)
   displayName                String?
   avatarUrl                  String?

@@ -197,7 +197,8 @@ export async function getSellerDashboardForCustomer(customer: CustomerSession | 
       return {
         orderReference: order.orderNumber,
         status: sellerOrderStatus(order.status),
-        customerName: order.customer.displayName || order.customer.email,
+        // Guests check out with a phone only, so there is no name or email to show.
+        customerName: order.customer.displayName || order.customer.email || "Direct Loop customer",
         customerPhone: order.customer.phone,
         saleAmount: order.itemSubtotalKsh,
         commissionAmount: order.commission?.commissionAmountKsh ?? 0,
