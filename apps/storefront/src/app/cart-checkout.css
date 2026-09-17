@@ -106,6 +106,138 @@
   gap: 16px;
 }
 
+/* Checkout is a single column at every width. A second column beside a payment
+   flow is just somewhere for attention to leak. */
+.checkoutSingleColumn {
+  display: grid;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.checkoutOverview {
+  display: grid;
+  gap: 14px;
+}
+
+.checkoutItemsSummary {
+  border: 1px solid #ebe5de;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.checkoutItemsToggle {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: none;
+  padding: 14px 16px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.checkoutItemsToggle span { color: #6b6b6b; font-size: 14px; }
+.checkoutItemsToggle strong { font-size: 15px; }
+.checkoutItemsToggle svg { color: #6b6b6b; transition: transform .15s ease; }
+.checkoutItemsToggle svg.open { transform: rotate(180deg); }
+.checkoutItemsSummary .checkoutItemsPreview { padding: 0 16px 14px; }
+
+.checkoutSteps {
+  display: grid;
+  gap: 10px;
+}
+
+.checkoutStepRow {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #ebe5de;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px 16px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.checkoutStepRow:hover { border-color: #171717; }
+
+.checkoutStepIndex {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: #ebe5de;
+  color: #5b5b5b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.checkoutStepRow.complete .checkoutStepIndex { background: #147d43; color: #fff; }
+
+.checkoutStepText { display: grid; min-width: 0; gap: 2px; }
+.checkoutStepText strong { font-size: 15px; }
+
+.checkoutStepText span {
+  overflow: hidden;
+  color: #6b6b6b;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checkoutStepPanel { display: grid; gap: 18px; }
+
+.checkoutStepPanelHead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.checkoutStepPanelHead button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.checkoutStepPanelHead strong { font-size: 19px; letter-spacing: -.02em; }
+.checkoutStepPanelBody { display: grid; gap: 18px; }
+
+.checkoutPayBar { display: grid; gap: 10px; }
+
+.checkoutPayTotal {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.checkoutPayTotal span { color: #6b6b6b; font-size: 14px; }
+.checkoutPayTotal strong { font-size: 19px; }
+.checkoutPayHint { margin: 0; color: #9e2f20; font-size: 13px; }
+
+/* On phones the amount and the button ride the bottom edge together, so the
+   shopper can always see what they are about to be charged. */
+@media (max-width: 900px) {
+  .checkoutPayBar {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    border-top: 1px solid #ebe5de;
+    background: #fff;
+    padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  }
+}
+
 .checkoutPanel,
 .checkoutSummaryPanel,
 .checkoutEmptyState,

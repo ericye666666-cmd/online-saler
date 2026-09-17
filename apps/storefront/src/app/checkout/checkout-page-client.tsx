@@ -8,8 +8,12 @@ import dynamic from "next/dynamic";
 const DeliveryAddressPicker = dynamic(() => import("./delivery-address-picker"), { ssr: false });
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock3,
   CreditCard,
   MessageCircle,
@@ -41,6 +45,7 @@ import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 import { CUSTOMER_SERVICE_PHONE_LABEL, supportWhatsAppUrl } from "../../support/whatsapp";
 
 type CheckoutState = "loading" | "empty" | "ready" | "error";
+type CheckoutStepId = "contact" | "handoff";
 type Reservation = {
   orderId: string;
   orderNumber: string;
@@ -94,6 +99,10 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [pickupPointId, setPickupPointId] = useState("");
+  // Checkout is an overview with two collapsed steps; opening one replaces the
+  // overview so the shopper answers a single question at a time.
+  const [activeStep, setActiveStep] = useState<CheckoutStepId | null>(null);
+  const [itemsOpen, setItemsOpen] = useState(false);
   const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -349,6 +358,29 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
     .map((item) => [item.title.slice(0, 120), item.productCode].filter(Boolean).join(" / "))
     .join("; ");
   const checkoutSupportMessage = `Hello Direct Loop, I need help placing an order. Items: ${supportItems}${validation.items.length > 3 ? "; and more items" : ""}.`;
+
+  // One source of truth for "what is still missing", so the step rows, the step
+  // buttons and the pay button never disagree about whether checkout is ready.
+  const contactBlocker = !phone.trim()
+    ? "Add your M-Pesa phone"
+    : !/^\+?[0-9]{8,15}$/.test(whatsappPhone.trim().replace(/[\s()-]/g, ""))
+      ? "Add your WhatsApp number"
+      : null;
+  const selectedPickupPoint = pickupPoints.find((point) => point.id === pickupPointId);
+  const handoffBlocker = fulfillment === "PICKUP"
+    ? (selectedPickupPoint ? null : "Choose a pickup point")
+    : (deliveryAddress.trim() ? null : "Add a delivery address");
+  const payBlocker = !hasCheckoutableItems
+    ? "Add an available item to your bag"
+    : unavailableItems.length
+      ? "Remove the unavailable items in your bag"
+      : contactBlocker ?? handoffBlocker;
+  const contactSummary = contactBlocker
+    ? "M-Pesa phone and WhatsApp number"
+    : `${phone.trim()} · WhatsApp ${whatsappPhone.trim()}`;
+  const handoffSummary = fulfillment === "PICKUP"
+    ? (selectedPickupPoint ? `Pickup · ${selectedPickupPoint.name}` : "Choose where to collect your order")
+    : (deliveryAddress.trim() ? `Delivery · ${deliveryAddress.split("\n")[0]}` : "Tell us where to deliver");
   if (reservation && isPaymentSucceeded) {
     return (
       <section className="commerceCheckoutShell checkoutSuccessShell" aria-label="Payment confirmation">
@@ -378,10 +410,10 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
         <h1>{reservation ? "Complete payment" : "Checkout"}</h1>
       </div>
 
-      <div className="commerceCheckoutGrid">
+      <div className="checkoutSingleColumn">
         <div className="checkoutStack">
           <section className="checkoutPanel">
-            <h2>{reservation ? "M-Pesa request" : "Contact and handoff details"}</h2>
+            {reservation ? <h2>M-Pesa request</h2> : null}
 
             {reservation ? (
               <PaymentPanel
@@ -400,124 +432,79 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
                 secondsRemaining={secondsRemaining}
                 timerLabel={secondsRemaining > 0 ? `${minutes}:${seconds}` : "Expired"}
               />
+            ) : activeStep ? (
+              <CheckoutStepPanel
+                step={activeStep}
+                blocker={activeStep === "contact" ? contactBlocker : handoffBlocker}
+                onBack={() => setActiveStep(null)}
+                submitting={submitting}
+                phone={phone}
+                setPhone={setPhone}
+                whatsappPhone={whatsappPhone}
+                setWhatsappPhone={setWhatsappPhone}
+                fulfillment={fulfillment}
+                setFulfillment={setFulfillment}
+                pickupPointId={pickupPointId}
+                setPickupPointId={setPickupPointId}
+                deliveryAddress={deliveryAddress}
+                setDeliveryAddress={setDeliveryAddress}
+                deliveryNote={deliveryNote}
+                setDeliveryNote={setDeliveryNote}
+                mapsApiKey={mapsApiKey}
+                draftKey={draftKey}
+              />
             ) : (
-              <form className="checkoutForm" onSubmit={submitCheckout}>
-                <CheckoutSupport message={checkoutSupportMessage} />
-                <CheckoutItemsPreview items={validation.items} />
+              <form className="checkoutForm checkoutOverview" onSubmit={submitCheckout}>
+                <CheckoutItemsSummary
+                  items={validation.items}
+                  open={itemsOpen}
+                  onToggle={() => setItemsOpen((current) => !current)}
+                  totalLabel={itemTotalLabel}
+                />
                 {unavailableItems.length ? (
                   <p className="checkoutError" role="alert">Some cart items cannot be paid for. Return to cart to remove them before payment.</p>
                 ) : null}
-                <label className="checkoutField">
-                  <span>M-Pesa phone</span>
-                  <input
-                    autoComplete="tel"
-                    inputMode="tel"
-                    name="phone"
-                    placeholder="07..."
-                    required
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
-                  />
-                </label>
 
-                <label className="checkoutField">
-                  <span>WhatsApp number</span>
-                  <input
-                    type="tel"
-                    autoComplete="section-whatsapp tel"
-                    name="whatsappPhone"
-                    placeholder="e.g. +254 7XX XXX XXX"
-                    required
-                    maxLength={30}
-                    aria-describedby="whatsapp-contact-help"
-                    value={whatsappPhone}
-                    onChange={(event) => setWhatsappPhone(event.target.value)}
+                <div className="checkoutSteps">
+                  <CheckoutStepRow
+                    index={1}
+                    title="Contact"
+                    summary={contactSummary}
+                    complete={!contactBlocker}
+                    onOpen={() => setActiveStep("contact")}
                   />
-                  <small id="whatsapp-contact-help">Please leave your WhatsApp number. Our customer service team will contact you to arrange pickup or delivery.</small>
-                </label>
-
-                <div className="commerceOptionGrid" role="radiogroup" aria-label="Fulfillment">
-                  <label className={`commerceOption ${fulfillment === "PICKUP" ? "selected" : ""}`}>
-                    <input
-                      type="radio"
-                      name="fulfillment"
-                      value="PICKUP"
-                      checked={fulfillment === "PICKUP"}
-                      onChange={() => setFulfillment("PICKUP")}
-                    />
-                    <PackageCheck size={20} />
-                    <div>
-                      <span>Free</span>
-                      <strong>Choose a pickup point</strong>
-                    </div>
-                  </label>
-                  <label className={`commerceOption ${fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "selected" : ""}`}>
-                    <input
-                      type="radio"
-                      name="fulfillment"
-                      value="KIKUYU_LOCAL_DELIVERY"
-                      checked={fulfillment === "KIKUYU_LOCAL_DELIVERY"}
-                      onChange={() => setFulfillment("KIKUYU_LOCAL_DELIVERY")}
-                    />
-                    <Truck size={20} />
-                    <div>
-                      <span>Free</span>
-                      <strong>Courier delivery</strong>
-                    </div>
-                  </label>
+                  <CheckoutStepRow
+                    index={2}
+                    title={requiresAddress ? "Delivery" : "Pickup"}
+                    summary={handoffSummary}
+                    complete={!handoffBlocker}
+                    onOpen={() => setActiveStep("handoff")}
+                  />
                 </div>
 
-                {fulfillment === "PICKUP" ? (
-                  <div className="checkoutField">
-                    <label htmlFor="pickup-point">Pickup point</label>
-                    <select id="pickup-point" name="pickupPoint" required value={pickupPointId}
-                      disabled={submitting} onChange={(event) => setPickupPointId(event.target.value)}>
-                      <option value="">Choose a pickup point</option>
-                      {pickupPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
-                    </select>
-                    {pickupPoints.filter((point) => point.id === pickupPointId).map((point) => (
-                      <a key={point.id} href={point.mapsUrl} target="_blank" rel="noopener noreferrer">View {point.name} on Google Maps ↗</a>
-                    ))}
-                  </div>
-                ) : null}
-
-                {requiresAddress ? (
-                  <DeliveryAddressPicker
-                    apiKey={mapsApiKey}
-                    draftKey={draftKey}
-                    value={deliveryAddress}
-                    onChange={setDeliveryAddress}
-                    disabled={submitting}
-                  />
-                ) : null}
-
-                <label className="checkoutField">
-                  <span>{fulfillment === "PICKUP" ? "Pickup note for customer service" : "Order note (optional)"}</span>
-                  <textarea
-                    name="deliveryNote"
-                    placeholder="Preferred time or anything else the team should know"
-                    value={deliveryNote}
-                    onChange={(event) => setDeliveryNote(event.target.value)}
-                  />
-                </label>
+                <div className="commerceSummaryRows">
+                  <div className="commerceSummaryRow"><span>Items</span><strong>{itemTotalLabel}</strong></div>
+                  <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{deliveryFeeLabel}</strong></div>
+                  <div className="commerceSummaryRow total"><span>Total</span><strong>{totalLabel}</strong></div>
+                </div>
 
                 {error ? <p className="checkoutError" role="alert">{error}</p> : null}
-                <button className="commercePrimaryButton full" type="submit" disabled={submitting || !checkoutableItems.length || Boolean(unavailableItems.length)}>
-                  <CreditCard size={17} /> {submitting ? "Checking stock..." : `Pay ${totalLabel} with M-Pesa`}
-                </button>
+
+                <CheckoutSupport message={checkoutSupportMessage} />
+
+                {/* Total and action travel together, pinned on phones, so the
+                    amount is never scrolled away from the button that charges it. */}
+                <div className="checkoutPayBar">
+                  {payBlocker ? <p className="checkoutPayHint">{payBlocker}</p> : null}
+                  <div className="checkoutPayTotal"><span>Total</span><strong>{totalLabel}</strong></div>
+                  <button className="commercePrimaryButton full" type="submit" disabled={submitting || Boolean(payBlocker)}>
+                    <CreditCard size={17} /> {submitting ? "Checking stock..." : `Pay ${totalLabel} with M-Pesa`}
+                  </button>
+                </div>
               </form>
             )}
           </section>
         </div>
-
-        <aside className="checkoutSummaryPanel">
-          <h2>Order summary</h2>
-          <div className="commerceSummaryRows">
-            <div className="commerceSummaryRow"><span>Items</span><strong>{itemTotalLabel}</strong></div>
-            <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{deliveryFeeLabel}</strong></div>
-            <div className="commerceSummaryRow total"><span>Total</span><strong>{totalLabel}</strong></div>
-          </div>
-        </aside>
       </div>
     </section>
   );
@@ -727,6 +714,197 @@ function CheckoutSupport({ message }: { message: string }) {
         {t("support.chat")}
       </a>
     </section>
+  );
+}
+
+/**
+ * The bag collapsed to one line. Four large product cards used to push every
+ * input below the fold; the amount stays visible, the detail is one tap away.
+ */
+function CheckoutItemsSummary({ items, open, onToggle, totalLabel }: {
+  items: ValidatedCartItem[];
+  open: boolean;
+  onToggle: () => void;
+  totalLabel: string;
+}) {
+  return (
+    <div className="checkoutItemsSummary">
+      <button className="checkoutItemsToggle" type="button" onClick={onToggle} aria-expanded={open}>
+        <span>{items.length} {items.length === 1 ? "item" : "items"}</span>
+        <strong>{totalLabel}</strong>
+        <ChevronDown size={18} className={open ? "open" : ""} aria-hidden="true" />
+      </button>
+      {open ? <CheckoutItemsPreview items={items} /> : null}
+    </div>
+  );
+}
+
+/** A collapsed step: what it is, what has been answered, and a way in. */
+function CheckoutStepRow({ index, title, summary, complete, onOpen }: {
+  index: number;
+  title: string;
+  summary: string;
+  complete: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button className={`checkoutStepRow ${complete ? "complete" : ""}`} type="button" onClick={onOpen}>
+      <span className="checkoutStepIndex" aria-hidden="true">{complete ? <Check size={14} /> : index}</span>
+      <span className="checkoutStepText">
+        <strong>{title}</strong>
+        <span>{summary}</span>
+      </span>
+      <ChevronRight size={18} aria-hidden="true" />
+    </button>
+  );
+}
+
+type CheckoutStepPanelProps = {
+  step: CheckoutStepId;
+  blocker: string | null;
+  onBack: () => void;
+  submitting: boolean;
+  phone: string;
+  setPhone: (value: string) => void;
+  whatsappPhone: string;
+  setWhatsappPhone: (value: string) => void;
+  fulfillment: FulfillmentChoice;
+  setFulfillment: (value: FulfillmentChoice) => void;
+  pickupPointId: string;
+  setPickupPointId: (value: string) => void;
+  deliveryAddress: string;
+  setDeliveryAddress: (value: string) => void;
+  deliveryNote: string;
+  setDeliveryNote: (value: string) => void;
+  mapsApiKey: string;
+  draftKey: string;
+};
+
+/**
+ * One step, full width, with its own way back. Inputs stay controlled by the
+ * parent, so leaving a step never discards what was typed in it.
+ */
+function CheckoutStepPanel(props: CheckoutStepPanelProps) {
+  const { step, blocker, onBack, submitting } = props;
+  const requiresAddress = deliveryRequiresAddress(props.fulfillment);
+
+  return (
+    <div className="checkoutStepPanel">
+      <header className="checkoutStepPanelHead">
+        <button type="button" onClick={onBack} aria-label="Back to checkout"><ArrowLeft size={22} /></button>
+        <strong>{step === "contact" ? "Contact" : requiresAddress ? "Delivery" : "Pickup"}</strong>
+      </header>
+
+      <div className="checkoutStepPanelBody">
+        {step === "contact" ? (
+          <>
+            <label className="checkoutField">
+              <span>M-Pesa phone</span>
+              <input
+                autoComplete="tel"
+                inputMode="tel"
+                name="phone"
+                placeholder="07..."
+                required
+                autoFocus
+                value={props.phone}
+                onChange={(event) => props.setPhone(event.target.value)}
+              />
+            </label>
+
+            <label className="checkoutField">
+              <span>WhatsApp number</span>
+              <input
+                type="tel"
+                autoComplete="section-whatsapp tel"
+                name="whatsappPhone"
+                placeholder="e.g. +254 7XX XXX XXX"
+                required
+                maxLength={30}
+                aria-describedby="whatsapp-contact-help"
+                value={props.whatsappPhone}
+                onChange={(event) => props.setWhatsappPhone(event.target.value)}
+              />
+              <small id="whatsapp-contact-help">Please leave your WhatsApp number. Our customer service team will contact you to arrange pickup or delivery.</small>
+            </label>
+          </>
+        ) : (
+          <>
+            <div className="commerceOptionGrid" role="radiogroup" aria-label="Fulfillment">
+              <label className={`commerceOption ${props.fulfillment === "PICKUP" ? "selected" : ""}`}>
+                <input
+                  type="radio"
+                  name="fulfillment"
+                  value="PICKUP"
+                  checked={props.fulfillment === "PICKUP"}
+                  onChange={() => props.setFulfillment("PICKUP")}
+                />
+                <PackageCheck size={20} />
+                <div>
+                  <span>Free</span>
+                  <strong>Choose a pickup point</strong>
+                </div>
+              </label>
+              <label className={`commerceOption ${props.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "selected" : ""}`}>
+                <input
+                  type="radio"
+                  name="fulfillment"
+                  value="KIKUYU_LOCAL_DELIVERY"
+                  checked={props.fulfillment === "KIKUYU_LOCAL_DELIVERY"}
+                  onChange={() => props.setFulfillment("KIKUYU_LOCAL_DELIVERY")}
+                />
+                <Truck size={20} />
+                <div>
+                  <span>Free</span>
+                  <strong>Courier delivery</strong>
+                </div>
+              </label>
+            </div>
+
+            {props.fulfillment === "PICKUP" ? (
+              <div className="checkoutField">
+                <label htmlFor="pickup-point">Pickup point</label>
+                <select id="pickup-point" name="pickupPoint" required value={props.pickupPointId}
+                  disabled={submitting} onChange={(event) => props.setPickupPointId(event.target.value)}>
+                  <option value="">Choose a pickup point</option>
+                  {pickupPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
+                </select>
+                {pickupPoints.filter((point) => point.id === props.pickupPointId).map((point) => (
+                  <a key={point.id} href={point.mapsUrl} target="_blank" rel="noopener noreferrer">View {point.name} on Google Maps ↗</a>
+                ))}
+              </div>
+            ) : null}
+
+            {requiresAddress ? (
+              <DeliveryAddressPicker
+                apiKey={props.mapsApiKey}
+                draftKey={props.draftKey}
+                value={props.deliveryAddress}
+                onChange={props.setDeliveryAddress}
+                disabled={submitting}
+              />
+            ) : null}
+
+            <label className="checkoutField">
+              <span>{props.fulfillment === "PICKUP" ? "Pickup note for customer service" : "Order note (optional)"}</span>
+              <textarea
+                name="deliveryNote"
+                placeholder="Preferred time or anything else the team should know"
+                value={props.deliveryNote}
+                onChange={(event) => props.setDeliveryNote(event.target.value)}
+              />
+            </label>
+          </>
+        )}
+      </div>
+
+      <div className="checkoutPayBar">
+        {blocker ? <p className="checkoutPayHint">{blocker}</p> : null}
+        <button className="commercePrimaryButton full" type="button" onClick={onBack} disabled={Boolean(blocker)}>
+          Save and continue
+        </button>
+      </div>
+    </div>
   );
 }
 
