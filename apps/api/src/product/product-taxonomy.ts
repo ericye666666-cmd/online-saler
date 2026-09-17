@@ -1,4 +1,5 @@
 import { prisma } from "@online-saler/database";
+import { ADULT_STANDARD_SIZES, KIDS_STANDARD_SIZES } from "@online-saler/business-rules";
 import {
   AI_COLORS,
   PRODUCT_CATEGORY_OPTIONS,
@@ -49,7 +50,10 @@ export function defaultProductTaxonomy(): ProductTaxonomyDocument {
         displayName: code === "DENIM" ? "牛仔布" : TAXONOMY_LABELS[code] ?? code.replaceAll("_", " ")
       })),
       TAG: PRODUCT_TAG_OPTIONS.map((code, index) => option(code, index)),
-      SIZE: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"].map((code, index) => option(code, index)),
+      // The size-chart ladders: BABY/XS are kids-only, S-XXXL are the adult sizes.
+      SIZE: ["BABY", ...KIDS_STANDARD_SIZES.filter((size) => size !== "BABY"), ...ADULT_STANDARD_SIZES]
+        .filter((code, index, all) => all.indexOf(code) === index)
+        .map((code, index) => option(code, index)),
       CONDITION: ["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"].map((code, index) => option(code, index)),
       DEFECT: ["STAIN", "HOLE", "TEAR", "FADING", "PILLING", "MISSING_BUTTON", "BROKEN_ZIP", "LOOSE_STITCHING", "OTHER"].map((code, index) => option(code, index))
     }
@@ -115,5 +119,6 @@ const TAXONOMY_LABELS: Record<string, string> = {
   COTTON: "棉", COTTON_BLEND: "棉混纺", POLYESTER: "聚酯纤维", WOOL: "羊毛", WOOL_BLEND: "羊毛混纺", LINEN: "亚麻", VISCOSE_RAYON: "粘胶/人造丝", NYLON: "尼龙", LEATHER: "真皮", FAUX_LEATHER: "人造革", SILK: "真丝", SATIN: "缎面", FLEECE: "抓绒", VELVET: "天鹅绒", KNIT: "针织", ACRYLIC: "腈纶", SPANDEX_BLEND: "弹力混纺", LACE: "蕾丝", CHIFFON: "雪纺", CANVAS: "帆布", CORDUROY: "灯芯绒", MIXED: "混合面料", UNKNOWN: "无法确认",
   HOODED: "连帽", ZIP_FRONT: "前拉链", BUTTON_FRONT: "前纽扣", PULLOVER: "套头", COLLARED: "有领", V_NECK: "V领", CREW_NECK: "圆领", TURTLENECK: "高领", POCKETS: "有口袋", CARGO_POCKETS: "工装口袋", LINED: "有内衬", REVERSIBLE: "双面穿", WATER_RESISTANT: "防泼水", INSULATED: "保暖填充", LIGHTWEIGHT: "轻量", HIGH_WAIST: "高腰", ELASTIC_WAIST: "松紧腰", DRAWSTRING_WAIST: "抽绳腰", STRAIGHT_LEG: "直筒", WIDE_LEG: "阔腿", SKINNY_FIT: "紧身", FLARED: "喇叭型", CROPPED: "短款", MIDI_LENGTH: "中长款", MAXI_LENGTH: "长款", MINI_LENGTH: "短款长度", GRAPHIC_PRINT: "图案印花", EMBROIDERED: "刺绣", BEADED: "珠饰", CASUAL: "休闲", FORMAL: "正装", SPORTS: "运动", OUTDOOR: "户外", MATERNITY: "孕妇装", DROP_SHOULDER: "落肩", RAGLAN_SLEEVE: "插肩袖", RIBBED: "罗纹", BASE_LAYER: "打底款", THERMAL: "保暖内层",
   BLACK: "黑色", WHITE: "白色", OFF_WHITE: "米白", GREY: "灰色", BROWN: "棕色", BEIGE: "米色", CREAM: "奶油色", TAN: "棕褐色", KHAKI: "卡其色", RED: "红色", MAROON: "栗色", BURGUNDY: "酒红", ORANGE: "橙色", CORAL: "珊瑚色", PEACH: "桃色", YELLOW: "黄色", MUSTARD: "芥末黄", GREEN: "绿色", LIGHT_GREEN: "浅绿", DARK_GREEN: "深绿", OLIVE: "橄榄绿", BLUE: "蓝色", LIGHT_BLUE: "浅蓝", DARK_BLUE: "深蓝", NAVY: "藏青", DENIM: "牛仔蓝", TEAL: "蓝绿色", TURQUOISE: "青绿色", PURPLE: "紫色", LILAC: "丁香紫", PINK: "粉色", GOLD: "金色", SILVER: "银色", MULTICOLOR: "多色",
+  BABY: "婴儿（0-1 岁）",
   LIKE_NEW: "近全新", EXCELLENT: "成色优秀", GOOD: "成色良好", FAIR: "有明显使用痕迹", STAIN: "污渍", HOLE: "破洞", TEAR: "撕裂", FADING: "褪色", PILLING: "起球", MISSING_BUTTON: "缺纽扣", BROKEN_ZIP: "拉链损坏", LOOSE_STITCHING: "开线"
 };

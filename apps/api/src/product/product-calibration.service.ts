@@ -16,6 +16,7 @@ import {
 import { ProductStateMachine } from "./product-state-machine";
 import { ProductDetailGenerationService } from "./product-detail-generation.service";
 import { formatShoeSizeLabel, isShoeProduct, SHOE_SIZE_SYSTEMS, SHOE_TYPES } from "@online-saler/shared-types";
+import { resolveGarmentSize, standardSizesForFit, usesSizeChart, usesWaistSizing } from "@online-saler/business-rules";
 
 export interface CalibrationMeasurementInput {
   type: string;
@@ -98,6 +99,16 @@ export class ProductCalibrationService {
       sleeveType: "NOT_APPLICABLE", fitType: ProductFitType.UNKNOWN, stretchLevel: ProductStretchLevel.UNKNOWN, fabricWeight: ProductFabricWeight.UNKNOWN,
       measurements: Array.isArray(input.measurements) ? input.measurements.filter((item) => (BAG_MEASUREMENT_TYPES as readonly string[]).includes(item.type)) : input.measurements
     };
+    if (!shoes && input.category !== "BAG" && usesSizeChart(input.category)) {
+      // UK size and kids age range are chart lookups, never values the client gets to choose.
+      const resolved = resolveGarmentSize(input.gender, input.category, input.sizeLabel);
+      input = {
+        ...input,
+        sizeLabel: resolved?.sizeLabel ?? input.sizeLabel,
+        ukSizeLabel: resolved?.ukSize ?? undefined,
+        kidsAgeRange: resolved?.kidsAgeRange ?? undefined
+      };
+    }
     this.validate(input);
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
@@ -298,6 +309,15 @@ export class ProductCalibrationService {
     }
     if (input.category === "BAG" && !(BAG_STYLES as readonly string[]).includes(input.subcategory)) throw new BadRequestException("Confirm the bag style.");
     const shoes = isShoeProduct(input.category, input.subcategory);
+    if (input.category !== "BAG" && !shoes && usesSizeChart(input.category)) {
+      if (!resolveGarmentSize(input.gender, input.category, input.sizeLabel)) {
+        throw new BadRequestException(
+          usesWaistSizing(input.category, input.gender)
+            ? "Confirm the trouser waist in inches from the original label (20-60)."
+            : `Confirm a size-chart size for this fit: ${standardSizesForFit(input.gender).join(", ")}.`
+        );
+      }
+    }
     if (input.category !== "BAG" && !shoes && input.gender === ProductGender.KIDS && !input.kidsAgeRange?.trim()) {
       throw new BadRequestException("kids age range is required for kids items");
     }

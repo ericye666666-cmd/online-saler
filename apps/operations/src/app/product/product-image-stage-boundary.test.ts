@@ -30,13 +30,17 @@ assert.equal(
   "Manual size entry must not require a board or measurement-line editor."
 );
 assert.ok(
-  calibrationSource.includes('<ApparelSizeField category={form.category} value={form.sizeLabel}') &&
+  calibrationSource.includes('<ApparelSizeField category={form.category} audience={form.audience} value={form.sizeLabel}') &&
     calibrationSource.includes('onChange={(value) => updateForm("sizeLabel", value)}'),
-  "Staff must have a controlled manual UK/letter size field."
+  "Staff must have a controlled size field driven by the confirmed fit."
 );
 const sizeFieldSource = readFileSync(join(process.cwd(), "src/app/product/apparel-size-field.tsx"), "utf8");
 assert.ok(sizeFieldSource.includes('data-field-key="sizeLabel"'), "Manual size validation must target the visible size field.");
-assert.ok(sizeFieldSource.includes('value="UK"') && sizeFieldSource.includes('value="LETTER"'), "Staff must be able to choose UK or letter sizing.");
+assert.equal(
+  sizeFieldSource.includes('value="UK"') || sizeFieldSource.includes('value="LETTER"'),
+  false,
+  "UK size is derived from the size chart, so staff must not pick a size system."
+);
 assert.equal(
   calibrationSource.includes("recommendPlatformSize"),
   false,

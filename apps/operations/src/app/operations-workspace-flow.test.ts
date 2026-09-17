@@ -7,6 +7,7 @@ import {
   formFromProductAndAi,
   normalizeWorkspaceForm,
   measurementFields,
+  syncSizeFields,
   workspaceReadiness,
   type JsonRecord
 } from "./operations-workspace-flow";
@@ -131,23 +132,53 @@ assert.equal(body.subcategory, "SHORT_DRESSES_SKIRTS");
 assert.equal(body.gender, "WOMEN");
 assert.equal(body.priceKsh, 850);
 assert.equal(body.tagSize, "UK 12");
-assert.equal(body.sizeLabel, "UK 12");
-assert.equal(body.ukSizeLabel, "UK 12");
+assert.equal(body.sizeLabel, "M", "A women's UK 12 label is the chart's standard size M");
+assert.equal(body.ukSizeLabel, "UK 10-12", "UK size is looked up, not carried over from the form");
 const letterBody = buildCalibrationBody({
   employeeId: "employee-1", extractionId: "ai-1",
   form: { ...completeForm, sizeLabel: "Small", ukSizeLabel: "UK 12", tagSize: "EU 38" }
 });
 assert.equal(letterBody.sizeLabel, "S");
-assert.equal(letterBody.ukSizeLabel, undefined, "Changing to letters clears the obsolete separate UK field");
+assert.equal(letterBody.ukSizeLabel, "UK 6-8", "UK size follows the selected standard size, not the old field");
 assert.equal(letterBody.tagSize, "EU 38", "Original labels must survive the selected-size change");
-for (const unsupported of ["EU 38", "US 8", "38", "UK EU 38", "UK "]) {
+for (const unsupported of ["EU 38", "US 8", "38", "UK EU 38", "UK ", "UK W32", "UK 6-8Y", "BABY", "4XL"]) {
   assert.ok(calibrationValidationIssues({ ...completeForm, sizeLabel: unsupported })
     .some((issue) => issue.field === "sizeLabel"), `${unsupported} must require manual confirmation`);
 }
-for (const supported of ["S", "M", "L", "XL", "XXL", "UK 12", "UK W32", "UK 6-8Y"]) {
+for (const supported of ["S", "M", "L", "XL", "XXL", "XXXL", "Small", "UK 12", "UK 14"]) {
   assert.ok(!calibrationValidationIssues({ ...completeForm, sizeLabel: supported })
     .some((issue) => issue.field === "sizeLabel"), `${supported} should be selectable`);
 }
+
+// Men's and unisex trousers carry a waist in inches; the chart never turns it into a letter size.
+const waistForm = { ...completeForm, category: "PANTS", subcategory: "MEN_JEANS", audience: "MEN", sizeLabel: "W32" };
+assert.ok(!calibrationValidationIssues(waistForm).some((issue) => issue.field === "sizeLabel"));
+const waistBody = buildCalibrationBody({ employeeId: "employee-1", extractionId: "ai-1", form: waistForm });
+assert.equal(waistBody.sizeLabel, "W32");
+assert.equal(waistBody.ukSizeLabel, undefined, "A waist in inches has no UK equivalent");
+assert.ok(calibrationValidationIssues({ ...waistForm, sizeLabel: "M" }).some((issue) => issue.field === "sizeLabel"));
+assert.ok(calibrationValidationIssues({ ...waistForm, sizeLabel: "W99" }).some((issue) => issue.field === "sizeLabel"));
+// Women's trousers stay on the UK ladder.
+assert.ok(!calibrationValidationIssues({ ...waistForm, audience: "WOMEN", subcategory: "WOMEN_JEANS", sizeLabel: "UK 14" })
+  .some((issue) => issue.field === "sizeLabel"));
+
+// Fit, size and kids age range are one row of the chart.
+const kidsSynced = syncSizeFields({ ...completeForm, category: "KIDS", subcategory: "KIDS_TOPS", audience: "KIDS", sizeLabel: "M" }, "sizeLabel");
+assert.equal(kidsSynced.kidsAgeRange, "KIDS_5_8Y");
+const kidsFromAge = syncSizeFields({ ...kidsSynced, kidsAgeRange: "KIDS_8_11Y" }, "kidsAgeRange");
+assert.equal(kidsFromAge.sizeLabel, "L");
+const kidsBody = buildCalibrationBody({ employeeId: "employee-1", extractionId: "ai-1", form: kidsFromAge });
+assert.equal(kidsBody.sizeLabel, "L");
+assert.equal(kidsBody.kidsAgeRange, "KIDS_8_11Y");
+assert.equal(kidsBody.ukSizeLabel, undefined, "Kids sizing has no UK equivalent");
+// An adult XXL does not survive a switch to the kids ladder.
+assert.equal(syncSizeFields({ ...completeForm, category: "KIDS", audience: "KIDS", sizeLabel: "XXL" }, "audience").sizeLabel, "");
+assert.equal(syncSizeFields({ ...completeForm, audience: "MEN", sizeLabel: "XXL" }, "audience").sizeLabel, "XXL");
+// Legacy kids age codes fold onto the current buckets when a draft is reopened.
+assert.equal(
+  formFromProductAndAi({ ...product, gender: "KIDS", kidsAgeRange: "KIDS_9_12Y", category: "KIDS", subcategory: "KIDS_TOPS" }, job).kidsAgeRange,
+  "KIDS_8_11Y"
+);
 assert.equal(body.fitType, "RELAXED");
 assert.equal(body.stretchLevel, "LOW");
 assert.equal(body.fabricWeight, "LIGHT");

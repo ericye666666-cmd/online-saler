@@ -306,15 +306,15 @@ export const AI_AUDIENCES = [
 
 export type AIAudience = (typeof AI_AUDIENCES)[number];
 
+/** Mirrors the six Kids rows of the Direct Loop size chart; see business-rules/size-chart. */
 export const AI_KIDS_AGE_RANGES = [
   "NOT_APPLICABLE",
-  "NEWBORN",
-  "BABY_0_12M",
+  "BABY_0_1Y",
   "TODDLER_1_3Y",
   "PRESCHOOL_3_5Y",
-  "KIDS_6_8Y",
-  "KIDS_9_12Y",
-  "TEEN_13_16Y"
+  "KIDS_5_8Y",
+  "KIDS_8_11Y",
+  "KIDS_11_14Y"
 ] as const;
 
 export type AIKidsAgeRange = (typeof AI_KIDS_AGE_RANGES)[number];

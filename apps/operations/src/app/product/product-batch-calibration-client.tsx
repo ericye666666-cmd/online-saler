@@ -59,12 +59,14 @@ import {
   normalizedAiOutput,
   normalizeWorkspaceForm,
   stringValue,
+  syncSizeFields,
   type JsonRecord,
   type WorkspaceForm
 } from "../operations-workspace-flow";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { BagStrapField } from "./bag-strap-field";
 import { ApparelSizeField } from "./apparel-size-field";
+import { KIDS_AGE_RANGE_LABELS } from "./apparel-size";
 import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { productStatusLabel } from "./product-factory-display";
 
@@ -319,8 +321,7 @@ export function ProductBatchCalibrationPage({
         const options = taxonomy ? activeSubcategories(taxonomy, value) : subcategoriesFor(value);
         next.subcategory = options.includes(next.subcategory) ? next.subcategory : options[0] ?? "OTHER";
       }
-      if (key === "audience" && value !== "KIDS") next.kidsAgeRange = "NOT_APPLICABLE";
-      return normalizeWorkspaceForm(next, current.category);
+      return syncSizeFields(normalizeWorkspaceForm(next, current.category), key);
     });
     if (key === "category") {
       setActiveImage("original-FRONT");
@@ -526,9 +527,9 @@ export function ProductBatchCalibrationPage({
             <FormSelect fieldKey="subcategory" label={form.category === "BAG" ? "包款式" : "子分类"} value={form.subcategory} values={form.category === "BAG" ? BAG_STYLES : subcategoryOptions} labels={form.category === "BAG" ? BAG_STYLE_LABELS : taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
             <FormSelect fieldKey="audience" label="适用人群" value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
             <FormSelect fieldKey="color" label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
-            {!shoes && form.category !== "BAG" && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
+            {!shoes && form.category !== "BAG" && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} labels={KIDS_AGE_RANGE_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
             {!shoes && form.category !== "BAG" ? <>
-              <ApparelSizeField category={form.category} value={form.sizeLabel} disabled={readOnly} onChange={(value) => updateForm("sizeLabel", value)} />
+              <ApparelSizeField category={form.category} audience={form.audience} value={form.sizeLabel} disabled={readOnly} onChange={(value) => updateForm("sizeLabel", value)} />
               <details className="sm:col-span-2">
                 <summary className="cursor-pointer text-sm text-muted-foreground">原标签记录（可选）</summary>
                 <div className="pt-3"><FormInput fieldKey="tagSize" label="原标尺码" value={form.tagSize} disabled={readOnly} onChange={(value) => updateForm("tagSize", value)} /></div>

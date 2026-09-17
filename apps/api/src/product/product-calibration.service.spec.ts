@@ -163,6 +163,7 @@ describe("ProductCalibrationService", () => {
       material: "COTTON_BLEND",
       tags: ["HOODED", "CASUAL"],
       sizeLabel: "M",
+      // Ignored: UK size comes from the size chart, not from the client.
       ukSizeLabel: "UK M",
       conditionGrade: ConditionGrade.GOOD,
       priceKsh: 850,
@@ -185,7 +186,7 @@ describe("ProductCalibrationService", () => {
     assert.equal(productUpdate?.fabricWeight, "HEAVY");
     assert.equal(productUpdate?.material, "COTTON_BLEND");
     assert.deepEqual(productUpdate?.tags, ["HOODED", "CASUAL"]);
-    assert.equal(productUpdate?.ukSizeLabel, "UK M");
+    assert.equal(productUpdate?.ukSizeLabel, "UK 38-40");
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "STRIPED"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "LONG"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "REGULAR"));
@@ -193,7 +194,7 @@ describe("ProductCalibrationService", () => {
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "HEAVY"));
     assert.ok(decisionUpdates.some((update) => update.finalValueJson === "COTTON_BLEND"));
     assert.ok(decisionUpdates.some((update) => JSON.stringify(update.finalValueJson) === JSON.stringify(["HOODED", "CASUAL"])));
-    assert.ok(decisionUpdates.some((update) => update.finalValueJson === "UK M"));
+    assert.ok(decisionUpdates.some((update) => update.finalValueJson === "UK 38-40"));
     assert.ok(decisionUpdates.every((update) => !("aiValueJson" in update)));
     assert.ok(measurementUpdates.every((update) => !("aiValueCm" in update) && !("aiConfidence" in update)));
     assert.equal(measurementUpdates[0]?.manualLineImageId, "front-original");

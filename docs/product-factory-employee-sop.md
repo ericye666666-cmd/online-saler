@@ -35,10 +35,22 @@ online garments must stay separate from store stock.
 
 1. **Check each garment.** Compare the original photo and actual
    garment. Correct the title, category, audience, color, condition, defects and price.
-   Enter the size manually from the actual garment; no automatic sizing or conversion is applied.
+2. **Confirm the fit, then the standard size · 先定人群，再定尺码.**
+   Pick the audience first — MEN / WOMEN / UNISEX / KIDS — because it decides which size
+   ladder the dropdown offers. Then pick the standard size from the actual garment:
+   - Adults: S / M / L / XL / XXL / XXXL. Women can pick by the UK number shown in the option
+     (UK 6-8 = S, UK 10-12 = M, UK 14 = L, UK 16 = XL, UK 18-20 = XXL, UK 22-24 = XXXL).
+   - Kids: Baby / XS / S / M / L / XL. The age range fills in automatically and stays in sync,
+     so you can pick either one.
+   - Men's and unisex trousers: type the waist in inches from the label (30 / 32 / 34 …).
+     A waist in inches is never converted into a letter size.
+   The UK size, recommended height, recommended weight and kids age are looked up from the
+   Direct Loop size chart and shown under the field. You never type them.
+   Record the garment's original label under **原标签记录** when it is readable — that is the
+   real label, kept separate from the standard size.
    Centimeter measurements are optional and must be measured by hand if supplied.
    AI suggestions need your confirmation; do not guess an unreadable brand or size.
-2. **Save each item.** The image progress panel shows completed and failed images while you type. Once all ten are confirmed, the system prepares sales details and reuses the original-based images already generated.
+3. **Save each item.** The image progress panel shows completed and failed images while you type. Once all ten are confirmed, the system prepares sales details and reuses the original-based images already generated.
    Continue to **白底展示图审核**. Barcodes are generated only after image review.
 
 ## 4. Review white-background images · 白底展示图审核

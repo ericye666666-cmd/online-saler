@@ -23,6 +23,7 @@ import {
   optionalDisplayValue,
   visibleMeasurements,
 } from "../../product-detail-commerce";
+import { productSizeDisplay } from "../../product-size-display";
 import { getPublishedProduct, listPublishedProducts } from "../../../db/catalog";
 import { getStorefrontI18n } from "../../../i18n/server";
 
@@ -75,8 +76,9 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   const stretch = isShoe ? null : optionalDisplayValue(detail?.stretchLevel);
   const fabricWeight = isShoe ? null : optionalDisplayValue(detail?.fabricWeight);
   const brandLabel = optionalBrandValue(product.brand);
+  const sizeDisplay = productSizeDisplay(product);
   const sizeLabel = product.size
-    ? (product.size === "Size not confirmed" ? t("product.sizeNotConfirmed") : product.size)
+    ? (product.size === "Size not confirmed" ? t("product.sizeNotConfirmed") : sizeDisplay.headline)
     : null;
   const color = optionalDisplayValue(product.color);
   const conditionSummary = optionalDisplayValue(detail?.conditionSummary);
@@ -115,10 +117,20 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             </div>
             {/* Size decides the purchase for one-of-one second-hand, so it sits with the price, not in the facts table. */}
             {sizeLabel ? (
-              <p className="productDetailSize">
-                <span>{t("product.size")}</span>
-                <strong>{sizeLabel}</strong>
-              </p>
+              <>
+                <p className="productDetailSize">
+                  <span>{t("product.size")}</span>
+                  <strong>{sizeLabel}</strong>
+                </p>
+                {sizeDisplay.ukEquivalent || sizeDisplay.age || sizeDisplay.recommendation ? (
+                  <dl className="sizeGuidance">
+                    {sizeDisplay.ukEquivalent ? <div><dt>{t("product.ukEquivalent")}</dt><dd>{sizeDisplay.ukEquivalent}</dd></div> : null}
+                    {sizeDisplay.age ? <div><dt>{t("product.recommendedAge")}</dt><dd>{sizeDisplay.age}</dd></div> : null}
+                    {sizeDisplay.recommendation ? <div><dt>{t("product.recommended")}</dt><dd>{sizeDisplay.recommendation}</dd></div> : null}
+                  </dl>
+                ) : null}
+                {sizeDisplay.recommendation ? <p className="fitDisclaimer">{t("product.sizeChartDisclaimer")}</p> : null}
+              </>
             ) : null}
 
             <dl className="quickFacts" aria-label="Item summary">

@@ -109,6 +109,12 @@ export type Product = {
   textileType?: TextileType;
   price: number;
   size: string;
+  /** Size-chart facts derived from Fit + standard size; see business-rules/size-chart. */
+  fit?: string | null;
+  ukSize?: string | null;
+  recommendedHeight?: string | null;
+  recommendedWeight?: string | null;
+  recommendedAge?: string | null;
   material: string;
   color: string;
   store: string;

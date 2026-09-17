@@ -1,6 +1,14 @@
 import { BAG_STYLES, BAG_STRAPS } from "@online-saler/shared-types";
 import { formatShoeSizeLabel, isShoeCategory, isShoeProduct, SHOE_SIZE_SYSTEMS, SHOE_TYPES } from "@online-saler/shared-types";
-import { isSelectableApparelSize, normalizeApparelSize, usesApparelSizing } from "./product/apparel-size";
+import {
+  apparelSizeOptions,
+  derivedUkSizeLabel,
+  isSelectableApparelSize,
+  normalizeApparelSize,
+  usesApparelSizing,
+  usesWaistSizing
+} from "./product/apparel-size";
+import { kidsAgeRangeCodeFor, kidsStandardSizeFromAgeRange, normalizeKidsAgeRangeCode } from "@online-saler/business-rules";
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -141,7 +149,7 @@ export function formFromProductAndAi(product: JsonRecord | null, job: JsonRecord
     subcategory: stringValue(product?.subcategory) || stringField(ai, "subcategory") || form.subcategory,
     color: stringValue(product?.color) || stringField(ai, "primaryColor") || form.color,
     audience: stringValue(product?.gender) || stringField(ai, "audience") || form.audience,
-    kidsAgeRange: stringValue(product?.kidsAgeRange) || stringField(ai, "kidsAgeRange") || form.kidsAgeRange,
+    kidsAgeRange: normalizeKidsAgeRangeCode(stringValue(product?.kidsAgeRange) || stringField(ai, "kidsAgeRange")) || form.kidsAgeRange,
     brand: stringValue(product?.brand) || stringField(ai, "brandLabel") || form.brand,
     tagSize: stringValue(product?.tagSize) || form.tagSize,
     shoeSizeSystem: stringValue(product?.shoeSizeSystem),
@@ -204,6 +212,29 @@ export function normalizeWorkspaceForm(form: WorkspaceForm, previousCategory = f
     waistCm: "", hipCm: "", thighWidthCm: "", legOpeningCm: "", inseamCm: "",
     ...(switchedFromClothing ? { shoeType: "", shoePairConfirmed: false, shoeConditionNotes: "", insoleLengthCm: "", tags: [] } : {})
   };
+}
+
+/**
+ * Fit, standard size and kids age range are one row of the size chart, so editing any of
+ * them re-derives the others. Changing the Fit drops a size that belongs to another ladder.
+ */
+export function syncSizeFields(form: WorkspaceForm, changedKey: keyof WorkspaceForm): WorkspaceForm {
+  if (!usesApparelSizing(form.category)) return form;
+
+  if (changedKey === "audience") {
+    const carried = normalizeApparelSize(form.sizeLabel, form.audience);
+    const sizeLabel = isSelectableApparelSize(carried, form.category, form.audience) ? carried : "";
+    form = { ...form, sizeLabel };
+  }
+
+  if (form.audience !== "KIDS") return { ...form, kidsAgeRange: "NOT_APPLICABLE" };
+
+  if (changedKey === "kidsAgeRange") {
+    const size = kidsStandardSizeFromAgeRange(form.kidsAgeRange);
+    return size ? { ...form, sizeLabel: size } : form;
+  }
+  const ageRange = kidsAgeRangeCodeFor(normalizeApparelSize(form.sizeLabel, "KIDS"));
+  return ageRange ? { ...form, kidsAgeRange: ageRange } : form;
 }
 
 export function stringValue(value: unknown): string {
@@ -279,8 +310,14 @@ export function calibrationValidationIssues(
   for (const [field, label] of requiredFields) {
     if (!form[field].trim()) issues.push({ field, label, message: `${label}为必填项。` });
   }
-  if (!shoes && usesApparelSizing(form.category) && form.sizeLabel.trim() && !isSelectableApparelSize(form.sizeLabel)) {
-    issues.push({ field: "sizeLabel", label: "尺码", message: "请选择 S、M、L、XL、XXL、XXXL，或填写已核实的 UK 尺码。" });
+  if (!shoes && usesApparelSizing(form.category) && form.sizeLabel.trim() && !isSelectableApparelSize(form.sizeLabel, form.category, form.audience)) {
+    issues.push({
+      field: "sizeLabel",
+      label: "尺码",
+      message: usesWaistSizing(form.category, form.audience)
+        ? "男裤／中性裤请按裤标填写 20–60 之间的腰围英寸。"
+        : `请按适用人群选择标准尺码：${apparelSizeOptions(form.category, form.audience).map((option) => option.value).join(" / ")}。`
+    });
   }
   if (shoes) {
     if (form.shoeSizeSystem && !(SHOE_SIZE_SYSTEMS as readonly string[]).includes(form.shoeSizeSystem)) {
@@ -297,8 +334,9 @@ export function calibrationValidationIssues(
       issues.push({ field: "insoleLengthCm", label: "鞋垫实测长度", message: "鞋垫实测长度必须是大于 0 的厘米数，也可留空。" });
     }
   }
+  // Kids size and age range are the same fact in the size chart, so one confirmed value covers both.
   if (!shoes && form.category !== "BAG" && form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE") {
-    issues.push({ field: "kidsAgeRange", label: "儿童年龄段", message: "儿童商品必须填写年龄段。" });
+    issues.push({ field: "kidsAgeRange", label: "儿童年龄段", message: "儿童商品必须选择童装尺码或年龄段。" });
   }
   if (form.category === "BAG") {
     if (!(BAG_STYLES as readonly string[]).includes(form.subcategory)) issues.push({ field: "subcategory", label: "包款式", message: "请选择包款式。" });
@@ -443,7 +481,9 @@ export function buildCalibrationBody(input: {
     subcategory: input.form.subcategory.trim(),
     color: input.form.color.trim(),
     gender: input.form.audience.trim(),
-    kidsAgeRange: !shoes && input.form.audience === "KIDS" ? input.form.kidsAgeRange.trim() : undefined,
+    kidsAgeRange: !shoes && input.form.audience === "KIDS"
+      ? kidsAgeRangeCodeFor(normalizeApparelSize(input.form.sizeLabel, "KIDS")) ?? input.form.kidsAgeRange.trim()
+      : undefined,
     pattern: input.form.pattern.trim(),
     sleeveType: shoes ? undefined : input.form.sleeveType.trim(),
     fitType: shoes ? undefined : input.form.fitType.trim(),
@@ -453,9 +493,10 @@ export function buildCalibrationBody(input: {
     tags: input.form.tags,
     brand: input.form.brand.trim() || undefined,
     tagSize: input.form.tagSize.trim() || undefined,
-    sizeLabel: input.form.category === "BAG" ? undefined : shoes ? formatShoeSizeLabel(input.form.tagSize, input.form.shoeSizeSystem) ?? undefined : (usesApparelSizing(input.form.category) ? normalizeApparelSize(input.form.sizeLabel) : input.form.sizeLabel.trim()) || undefined,
+    sizeLabel: input.form.category === "BAG" ? undefined : shoes ? formatShoeSizeLabel(input.form.tagSize, input.form.shoeSizeSystem) ?? undefined : (usesApparelSizing(input.form.category) ? normalizeApparelSize(input.form.sizeLabel, input.form.audience) : input.form.sizeLabel.trim()) || undefined,
+    // UK size is looked up from the size chart, never typed by staff.
     ukSizeLabel: shoes || input.form.category === "BAG" ? undefined : usesApparelSizing(input.form.category)
-      ? (normalizeApparelSize(input.form.sizeLabel).startsWith("UK ") ? normalizeApparelSize(input.form.sizeLabel) : undefined)
+      ? derivedUkSizeLabel(input.form.sizeLabel, input.form.category, input.form.audience)
       : input.form.ukSizeLabel.trim() || undefined,
     ...(shoes ? {
       shoeSizeSystem: input.form.shoeSizeSystem,

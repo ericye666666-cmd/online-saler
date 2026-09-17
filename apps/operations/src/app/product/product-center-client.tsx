@@ -43,6 +43,7 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { BagStrapField } from "./bag-strap-field";
 import { ApparelSizeField } from "./apparel-size-field";
+import { KIDS_AGE_RANGE_LABELS } from "./apparel-size";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +62,7 @@ import {
   formFromProductAndAi,
   normalizedAiOutput,
   normalizeWorkspaceForm,
+  syncSizeFields,
   measurementFields,
   stringValue,
   type JsonRecord,
@@ -809,8 +811,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
         const options = subcategoriesFor(value);
         next.subcategory = options.includes(next.subcategory) ? next.subcategory : options[0] ?? "OTHER";
       }
-      if (key === "audience" && value !== "KIDS") next.kidsAgeRange = "NOT_APPLICABLE";
-      return normalizeWorkspaceForm(next, current.category);
+      return syncSizeFields(normalizeWorkspaceForm(next, current.category), key);
     });
   }
 
@@ -923,10 +924,10 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               <RequiredSelect label="分类" value={form.category} invalid={!form.category.trim()} values={PRODUCT_CATEGORY_OPTIONS} onChange={(value) => updateForm("category", value)} />
               {form.category === "BAG" ? <Field><FieldLabel>包款式 *</FieldLabel><NativeSelect value={form.subcategory} onChange={(event) => updateForm("subcategory", event.target.value)}><NativeSelectOption value="">请选择款式</NativeSelectOption>{BAG_STYLES.map((style) => <NativeSelectOption key={style} value={style}>{BAG_STYLE_LABELS[style]}</NativeSelectOption>)}</NativeSelect></Field> : <RequiredSelect label="子分类" value={form.subcategory} invalid={!form.subcategory.trim()} values={subcategoriesFor(form.category, form.subcategory)} onChange={(value) => updateForm("subcategory", value)} />}
               <RequiredSelect label="适用人群" value={form.audience} invalid={!form.audience.trim()} values={AI_AUDIENCES} onChange={(value) => updateForm("audience", value)} />
-              {!shoes && form.category !== "BAG" ? <RequiredSelect label="儿童年龄段" value={form.kidsAgeRange} invalid={form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE"} values={AI_KIDS_AGE_RANGES} disabled={form.audience !== "KIDS"} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
+              {!shoes && form.category !== "BAG" ? <RequiredSelect label="儿童年龄段" value={form.kidsAgeRange} invalid={form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE"} values={AI_KIDS_AGE_RANGES} labels={KIDS_AGE_RANGE_LABELS} disabled={form.audience !== "KIDS"} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
               <RequiredSelect label="颜色" value={form.color} invalid={!form.color.trim()} values={AI_COLORS} onChange={(value) => updateForm("color", value)} />
               <FormField label="品牌"><Input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} /></FormField>
-              {!shoes && form.category !== "BAG" ? <ApparelSizeField category={form.category} value={form.sizeLabel} onChange={(value) => updateForm("sizeLabel", value)} /> : null}
+              {!shoes && form.category !== "BAG" ? <ApparelSizeField category={form.category} audience={form.audience} value={form.sizeLabel} onChange={(value) => updateForm("sizeLabel", value)} /> : null}
               <RequiredSelect label="图案" value={form.pattern} invalid={!form.pattern.trim()} values={AI_PATTERNS} onChange={(value) => updateForm("pattern", value)} />
               {!shoes && form.category !== "BAG" ? <RequiredSelect label="袖型" value={form.sleeveType} invalid={!form.sleeveType.trim()} values={AI_SLEEVE_TYPES} onChange={(value) => updateForm("sleeveType", value)} /> : null}
               <RequiredSelect label="成色" value={form.conditionGrade} invalid={!form.conditionGrade.trim()} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} onChange={(value) => updateForm("conditionGrade", value)} />
@@ -1379,12 +1380,12 @@ function RequiredInput(props: { label: string; value: string; invalid: boolean; 
   );
 }
 
-function RequiredSelect(props: { label: string; value: string; values: readonly string[]; invalid: boolean; disabled?: boolean; onChange: (value: string) => void }) {
+function RequiredSelect(props: { label: string; value: string; values: readonly string[]; labels?: Record<string, string>; invalid: boolean; disabled?: boolean; onChange: (value: string) => void }) {
   return (
     <Field data-invalid={props.invalid} data-disabled={props.disabled}>
       <FieldLabel>{props.label} *</FieldLabel>
       <NativeSelect className="w-full" aria-invalid={props.invalid} disabled={props.disabled} value={props.value} onChange={(event) => props.onChange(event.target.value)}>
-        {props.values.map((value) => <NativeSelectOption key={value} value={value}>{optionLabel(value)}</NativeSelectOption>)}
+        {props.values.map((value) => <NativeSelectOption key={value} value={value}>{props.labels?.[value] ?? optionLabel(value)}</NativeSelectOption>)}
       </NativeSelect>
       {props.invalid ? <FieldDescription>必填</FieldDescription> : null}
     </Field>

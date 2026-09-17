@@ -11,6 +11,14 @@ import {
 import { shoeTypes, type Product } from "../app/data/products";
 import { formatShoeSizeLabel, isShoeProduct } from "@online-saler/shared-types";
 import {
+  formatAgeRange,
+  formatHeightRange,
+  formatWeightRange,
+  resolveGarmentSize,
+  usesSizeChart,
+  usesWaistSizing
+} from "@online-saler/business-rules";
+import {
   normalizeProductTitle,
   optionalDisplayValue,
   productCopyWithoutPrice,
@@ -62,9 +70,14 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
   const frontAsset = detailAsset(product, "FRONT_MAIN");
   const image = frontAsset ? detailAssetSrc(frontAsset) : productImageSrc(product) || "/products/920260718001.webp";
   const condition = mapValue(conditionMap, product.conditionGrade, isShoe ? "Not specified" : "Good");
+  const chart = usesSizeChart(product.category)
+    ? resolveGarmentSize(product.audience, product.category, product.size)
+    : null;
   const size = product.category === "BAG" ? product.size?.trim() || "" : isShoe
     ? formatShoeSizeLabel(product.tagSize || product.size, product.shoeSizeSystem) || "Size not confirmed"
-    : (["BAG", "TEXTILE", "OTHERS", "OTHER"].includes(product.category ?? "") ? product.size?.trim() : normalizeApparelSizeLabel(product.size)) || product.kidsAgeRange?.trim() || "Size not confirmed";
+    : chart
+      ? chart.waistInches === null ? chart.sizeLabel : `Waist ${chart.waistInches}`
+      : (["BAG", "TEXTILE", "OTHERS", "OTHER"].includes(product.category ?? "") ? product.size?.trim() : normalizeApparelSizeLabel(product.size)) || product.kidsAgeRange?.trim() || "Size not confirmed";
   const color = display(product.color ?? "Unknown");
 
   return {
@@ -84,6 +97,12 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
     brand,
     price: product.priceKsh ?? 0,
     size,
+    // Reference-only fit guidance from the size chart; never a guaranteed fit.
+    fit: chart && !usesWaistSizing(product.category, product.audience) ? product.audience : null,
+    ukSize: chart?.ukSize ?? null,
+    recommendedHeight: chart?.entry ? formatHeightRange(chart.entry) : null,
+    recommendedWeight: chart?.entry ? formatWeightRange(chart.entry) : null,
+    recommendedAge: chart?.entry ? formatAgeRange(chart.entry) : null,
     material: display(product.material || (!isShoe && product.category !== "BAG" && (product.detail.fabricWeight || product.fabricWeight)) || "Not specified"),
     color,
     store: "Kikuyu",

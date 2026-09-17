@@ -1454,6 +1454,33 @@ select:focus-visible {
   font-weight: 800;
 }
 
+.sizeGuidance {
+  display: grid;
+  gap: 4px;
+  margin: -8px 0 16px;
+}
+
+.sizeGuidance > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sizeGuidance dt {
+  color: #737373;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.sizeGuidance dd {
+  margin: 0;
+  color: #111;
+  font-size: 14px;
+  font-weight: 650;
+}
+
 .quickFacts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
