@@ -14,6 +14,8 @@ export type VisibleMeasurement = {
 
 const EMPTY_VALUES = new Set(["", "not confirmed", "not specified", "unknown", "n/a", "none recorded"]);
 
+const EMPTY_BRAND_VALUES = new Set(["unbranded", "no brand", "nobrand"]);
+
 const MEASUREMENT_LABELS: Record<string, string> = {
   LENGTH: "Garment length",
   GARMENT_LENGTH: "Garment length",
@@ -68,6 +70,13 @@ export function optionalDisplayValue(value: string | null | undefined): string |
   const clean = normalizeSpace(value ?? "");
   if (EMPTY_VALUES.has(clean.toLowerCase())) return null;
   return clean;
+}
+
+// "Unbranded" is how intake records "this item has no brand", not a brand to show.
+export function optionalBrandValue(value: string | null | undefined): string | null {
+  const visible = optionalDisplayValue(value);
+  if (!visible) return null;
+  return EMPTY_BRAND_VALUES.has(visible.toLowerCase()) ? null : visible;
 }
 
 export function productCopyWithoutPrice(value: string | null | undefined): string | null {

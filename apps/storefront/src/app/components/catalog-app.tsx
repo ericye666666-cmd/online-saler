@@ -5,9 +5,7 @@ import {
   Check,
   ChevronDown,
   Heart,
-  MapPin,
   RotateCcw,
-  ShoppingBag,
   SlidersHorizontal,
   X,
 } from "lucide-react";
@@ -24,16 +22,10 @@ import {
   textileTypes,
 } from "../data/products";
 import { catalogSizeOptions, filterCatalogProducts } from "../catalog-filters";
-import { ProductCollectionButton, ProductShareSheet } from "./product-share-sheet";
+import { ProductCollectionButton } from "./product-share-sheet";
 import { ReferralTracker } from "./referral-tracker";
 import { BrowseSelection, SiteHeader } from "./site-header";
-import {
-  CART_STORAGE_KEY,
-  addCartItem,
-  catalogProductToCartItem,
-  notifyCartUpdated,
-  parseCartSnapshot
-} from "../storefront-cart";
+import { optionalBrandValue, optionalDisplayValue } from "../product-detail-commerce";
 import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 import type { DictionaryKey } from "../../i18n/dictionary";
 import { translateValue } from "../../i18n/dictionary";
@@ -64,17 +56,9 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
   const detailHref = sellerRef
     ? `/p/${product.code}?${new URLSearchParams({ ref: sellerRef, ...(source ? { source } : {}), ...(placement ? { placement } : {}), ...(campaign ? { campaign } : {}) }).toString()}`
     : `/p/${product.code}`;
-  const [cartMessage, setCartMessage] = useState("");
-
-  function addToCart() {
-    if (product.status !== "Available") return;
-    const snapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
-    const nextSnapshot = addCartItem(snapshot, catalogProductToCartItem(product));
-    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
-    notifyCartUpdated();
-    setCartMessage(nextSnapshot.items.length === snapshot?.items.length ? t("catalog.inCart") : t("catalog.added"));
-    window.setTimeout(() => setCartMessage(""), 1200);
-  }
+  // Brand and size are blank for whole categories (bags carry no apparel size), so each line is optional.
+  const brandLabel = optionalBrandValue(product.brand);
+  const sizeLabel = optionalDisplayValue(translateValue(locale, product.size));
 
   return (
     <article className={`marketCard depopProductCard ${product.status !== "Available" ? "unavailable" : ""}`}>
@@ -105,27 +89,9 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
             <Heart size={21} fill={isSaved ? "currentColor" : "none"} />
           </button>
         </div>
-        <p className="depopProductBrand">{product.brand}</p>
-        <p className="depopProductMeta">{translateValue(locale, product.size)}</p>
+        {brandLabel ? <p className="depopProductBrand">{brandLabel}</p> : null}
+        {sizeLabel ? <p className="depopProductMeta">{sizeLabel}</p> : null}
         <strong className="depopProductPrice">{formatPrice(product.price)}</strong>
-        <div className="depopProductBottom">
-          <span className="depopProductLocation"><MapPin size={13} strokeWidth={1.6} /> {product.store}</span>
-          <button
-            className="depopCartButton"
-            disabled={product.status !== "Available"}
-            type="button"
-            onClick={addToCart}
-            aria-label={t("catalog.addToCart", { item: product.title })}
-          >
-            <ShoppingBag size={16} />
-            <span>{cartMessage || "Cart"}</span>
-          </button>
-          <ProductShareSheet
-            className="whatsappIconButton depopShareButton"
-            product={product}
-            compact
-          />
-        </div>
       </div>
     </article>
   );

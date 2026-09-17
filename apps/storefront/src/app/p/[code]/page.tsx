@@ -19,6 +19,7 @@ import {
 import {
   buildProductGallery,
   formatMeasurement,
+  optionalBrandValue,
   optionalDisplayValue,
   visibleMeasurements,
 } from "../../product-detail-commerce";
@@ -73,6 +74,10 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   const fit = isShoe ? null : optionalDisplayValue(detail?.fitType);
   const stretch = isShoe ? null : optionalDisplayValue(detail?.stretchLevel);
   const fabricWeight = isShoe ? null : optionalDisplayValue(detail?.fabricWeight);
+  const brandLabel = optionalBrandValue(product.brand);
+  const sizeLabel = product.size
+    ? (product.size === "Size not confirmed" ? t("product.sizeNotConfirmed") : product.size)
+    : null;
   const color = optionalDisplayValue(product.color);
   const conditionSummary = optionalDisplayValue(detail?.conditionSummary);
   const description = optionalDisplayValue(product.description);
@@ -101,16 +106,22 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           <ProductGallery items={gallery} productTitle={product.title} />
 
           <div className="productPurchasePanel">
-            <p className="productDetailBrand">{product.brand}</p>
+            {brandLabel ? <p className="productDetailBrand">{brandLabel}</p> : null}
             <h1>{product.title}</h1>
             <ProductSaveButton productTitle={product.title} />
             <div className="commercePriceRow">
               <strong>{formatPrice(product.price)}</strong>
               <span>{t(product.status === "Sold" ? "product.sold" : product.status === "Reserved" ? "product.reserved" : isShoe ? "product.onlyOnePair" : "product.onlyOne")}</span>
             </div>
+            {/* Size decides the purchase for one-of-one second-hand, so it sits with the price, not in the facts table. */}
+            {sizeLabel ? (
+              <p className="productDetailSize">
+                <span>{t("product.size")}</span>
+                <strong>{sizeLabel}</strong>
+              </p>
+            ) : null}
 
             <dl className="quickFacts" aria-label="Item summary">
-              {product.size ? <div><dt>{t("product.size")}</dt><dd>{product.size === "Size not confirmed" ? t("product.sizeNotConfirmed") : product.size}</dd></div> : null}
               {isShoe && product.shoeType ? <div><dt>{t("filter.shoeType")}</dt><dd>{product.shoeType}</dd></div> : null}
               {isShoe && product.tagSize ? <div><dt>{t("product.originalSizeLabel")}</dt><dd>{product.tagSize}</dd></div> : null}
               {fit ? <div><dt>{t("product.fit")}</dt><dd>{fit}</dd></div> : null}

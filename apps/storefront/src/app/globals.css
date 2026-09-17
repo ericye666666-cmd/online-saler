@@ -1433,6 +1433,27 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+.productDetailSize {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.productDetailSize span {
+  color: #737373;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.productDetailSize strong {
+  color: #111;
+  font-size: 20px;
+  font-weight: 800;
+}
+
 .quickFacts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3930,7 +3951,7 @@ select:focus-visible {
 
 .depopProductBody {
   display: flex;
-  min-height: 184px;
+  min-height: 132px;
   flex-direction: column;
   gap: 4px;
   padding: 15px 18px 17px;
@@ -3956,6 +3977,7 @@ select:focus-visible {
 }
 
 .depopProductTitle {
+  display: -webkit-box;
   min-width: 0;
   overflow: hidden;
   margin-top: 3px;
@@ -3963,8 +3985,8 @@ select:focus-visible {
   font-size: 15px;
   font-weight: 800;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .depopProductMeta {
@@ -3972,6 +3994,7 @@ select:focus-visible {
   margin: 0;
   color: #2c2c2c;
   font-size: 14px;
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3984,49 +4007,6 @@ select:focus-visible {
   font-size: 16px;
   font-weight: 800;
   line-height: 1.35;
-}
-
-.depopProductBottom {
-  display: flex;
-  min-height: 32px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: auto;
-}
-
-.depopCartButton {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px solid #ded8d0;
-  border-radius: 999px;
-  background: #fff;
-  color: #202020;
-  cursor: pointer;
-  padding: 0 10px;
-  font-size: 12px;
-  font-weight: 950;
-  white-space: nowrap;
-}
-
-.depopCartButton:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.depopProductLocation {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  color: #2d2d2d;
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .depopShareButton {
@@ -4398,13 +4378,12 @@ select:focus-visible {
   }
 
   .depopProductBody {
-    min-height: 154px;
+    min-height: 112px;
     padding: 11px 10px 10px;
   }
 
   .depopProductBrand,
-  .depopProductMeta,
-  .depopProductLocation {
+  .depopProductMeta {
     font-size: 11px;
   }
 
@@ -4749,17 +4728,21 @@ select:focus-visible {
     padding: 0 18px 28px;
   }
 
+  /* Product name leads on mobile, matching desktop; the brand line stays secondary. */
   .productPurchasePanel > h1 {
     margin-right: 58px;
-    font-size: 20px;
-    font-weight: 450;
-    line-height: 1.35;
-    letter-spacing: -.015em;
+    font-size: 25px;
+    font-weight: 750;
+    line-height: 1.2;
+    letter-spacing: -.02em;
   }
 
   .productDetailBrand {
-    margin-top: 2px;
-    font-size: 22px;
+    margin-top: 0;
+    margin-bottom: 4px;
+    color: #737373;
+    font-size: 13px;
+    font-weight: 700;
   }
 
   .productDetailSave {
