@@ -233,7 +233,10 @@ jobs:
             --retry-delay 5 \
             --output "${RUNNER_TEMP}/production-checkout.html" \
             "${SERVICE_URL}/checkout"
-          grep -Eq "Review your order|Sign in before checkout" "${RUNNER_TEMP}/production-checkout.html"
+          # Guest checkout replaced the "Sign in before checkout" wall, so the
+          # check follows the states /checkout can actually render: an empty
+          # cart, a fresh checkout, or one with a live reservation.
+          grep -Eq "checkoutEmptyState|>Checkout<|Complete payment" "${RUNNER_TEMP}/production-checkout.html"
 
           CALLBACK_STATUS="$(curl \
             --show-error \
