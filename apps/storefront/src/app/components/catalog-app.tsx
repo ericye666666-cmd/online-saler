@@ -26,6 +26,7 @@ import { ProductCollectionButton } from "./product-share-sheet";
 import { ReferralTracker } from "./referral-tracker";
 import { BrowseSelection, SiteHeader } from "./site-header";
 import { optionalBrandValue, optionalDisplayValue } from "../product-detail-commerce";
+import { readSavedCodes, subscribeToSaved, toggleSaved as toggleSavedItem } from "../saved-items";
 import { productSizeDisplay } from "../product-size-display";
 import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 import type { DictionaryKey } from "../../i18n/dictionary";
@@ -137,6 +138,7 @@ export function CatalogApp({
   const [textileType, setTextileType] = useState("All");
   const [availableOnly, setAvailableOnly] = useState(false);
   const [sort, setSort] = useState("Newest first");
+  // Seeded after mount so the server render and the hydrated markup agree.
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [openFilter, setOpenFilter] = useState<FilterMenu>(null);
@@ -159,6 +161,12 @@ export function CatalogApp({
     [initialProducts],
   );
   const sizeOptions = useMemo(() => catalogSizeOptions(initialProducts, category), [initialProducts, category]);
+
+  useEffect(() => {
+    const sync = () => setSaved(new Set(readSavedCodes()));
+    sync();
+    return subscribeToSaved(sync);
+  }, []);
 
   useEffect(() => {
     if (!mobileFiltersOpen) return;
@@ -270,12 +278,8 @@ export function CatalogApp({
   }
 
   function toggleSaved(code: string) {
-    setSaved((current) => {
-      const next = new Set(current);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
+    toggleSavedItem(code);
+    setSaved(new Set(readSavedCodes()));
   }
 
   function recordSearch(submittedQuery: string) {

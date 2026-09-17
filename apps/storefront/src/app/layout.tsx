@@ -2,6 +2,9 @@ import "./globals.css";
 import "./customer-auth.css";
 import "./checkout-reservation.css";
 import "./cart-checkout.css";
+import "./storefront-tab-bar.css";
+import "./storefront-tab-pages.css";
+import { StorefrontTabBar } from "./components/storefront-tab-bar";
 import { SITE_URL } from "./data/products";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
@@ -18,7 +21,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const { locale } = await getStorefrontI18n();
   return (
     <html lang={locale}>
-      <body><StorefrontI18nProvider locale={locale}>{children}</StorefrontI18nProvider></body>
+      <body>
+        <StorefrontI18nProvider locale={locale}>
+          {children}
+          <StorefrontTabBar />
+        </StorefrontI18nProvider>
+      </body>
     </html>
   );
 }

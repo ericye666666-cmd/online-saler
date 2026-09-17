@@ -110,7 +110,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           <div className="productPurchasePanel">
             {brandLabel ? <p className="productDetailBrand">{brandLabel}</p> : null}
             <h1>{product.title}</h1>
-            <ProductSaveButton productTitle={product.title} />
+            <ProductSaveButton productCode={product.code} productTitle={product.title} />
             <div className="commercePriceRow">
               <strong>{formatPrice(product.price)}</strong>
               <span>{t(product.status === "Sold" ? "product.sold" : product.status === "Reserved" ? "product.reserved" : isShoe ? "product.onlyOnePair" : "product.onlyOne")}</span>

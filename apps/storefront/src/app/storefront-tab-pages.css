@@ -1,0 +1,199 @@
+/* Pages reached from the bottom tab bar: Browse, Saved and Account.
+   Kept out of globals.css so the tab-bar work stays self-contained. */
+
+.browseShell,
+.savedShell,
+.accountShell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 18px 40px;
+}
+
+.browseShell h1,
+.savedShell h1,
+.accountShell h1 {
+  margin: 0 0 6px;
+  color: #111;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.browseIntro {
+  margin: 0 0 18px;
+  color: #666;
+  font-size: 14px;
+}
+
+.browseAllRow,
+.browseList a,
+.accountList a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #ededed;
+  color: #111;
+  padding: 16px 2px;
+  font-size: 16px;
+  text-decoration: none;
+}
+
+.browseAllRow {
+  border-top: 1px solid #ededed;
+  font-weight: 800;
+}
+
+.browseList,
+.accountList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.browseList a > span:first-child,
+.accountRowText {
+  flex: 1;
+  min-width: 0;
+}
+
+.browseCount {
+  color: #8a8a8a;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.accountRowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.accountRowText strong {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.accountRowText span {
+  color: #777;
+  font-size: 13px;
+}
+
+.accountAffiliate {
+  margin-top: 26px;
+}
+
+/* Saved */
+
+.savedLoading {
+  color: #777;
+  padding: 24px 0;
+}
+
+.savedEmpty {
+  padding: 40px 0;
+  text-align: center;
+}
+
+.savedEmptyTitle {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.savedEmptyHint {
+  max-width: 34ch;
+  margin: 0 auto 20px;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.savedExplore {
+  display: inline-block;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  padding: 12px 26px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.savedList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.savedList li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #ededed;
+}
+
+.savedItem {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+  color: #111;
+  padding: 14px 2px;
+  text-decoration: none;
+}
+
+.savedItem img,
+.savedItemNoImage {
+  width: 74px;
+  height: 92px;
+  flex: none;
+  background: #f4f3f1;
+  object-fit: cover;
+}
+
+.savedItemText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.savedItemText strong {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.savedItemBrand {
+  color: #8a8a8a;
+  font-size: 12px;
+}
+
+.savedItemSize {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.savedItemPrice {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.savedItemSold {
+  color: #b3261e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.savedRemove {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}

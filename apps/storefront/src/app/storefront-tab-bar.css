@@ -1,0 +1,44 @@
+/* Bottom tab bar. Phones only: on desktop the header already carries the same
+   destinations, and a pinned bar there would just eat viewport height. */
+
+.storefrontTabBar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .storefrontTabBar {
+    position: fixed;
+    z-index: 60;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid #e4e4e4;
+    background: #fff;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .storefrontTab {
+    display: flex;
+    min-height: 56px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: #737373;
+    font-size: 11px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .storefrontTab.active {
+    color: #111;
+    font-weight: 800;
+  }
+
+  /* Keep the last row of every page clear of the bar. */
+  body:has(.storefrontTabBar) {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+}
