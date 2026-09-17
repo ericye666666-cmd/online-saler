@@ -54,6 +54,10 @@
   gap: 10px;
   overflow-x: auto;
   scroll-snap-type: x proximity;
+  /* Snap targets align to the scrollport edge, which would scroll the rail by
+     exactly the left padding and leave the first card flush against the screen.
+     Matching scroll-padding keeps that first card aligned with the headings. */
+  scroll-padding-left: 18px;
   padding: 0 18px 4px;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
