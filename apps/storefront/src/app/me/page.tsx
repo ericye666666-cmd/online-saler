@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight, Heart, MessageCircle, TrendingUp } from "lucide-react";
 import { SiteHeader } from "../components/site-header";
+import { AccountSessionRow } from "./account-session-row";
 import { supportWhatsAppUrl } from "../../support/whatsapp";
 import { getStorefrontI18n } from "../../i18n/server";
 
@@ -16,6 +17,8 @@ export default async function AccountPage() {
 
       <div className="accountShell">
         <h1>{t("account.title")}</h1>
+
+        <AccountSessionRow />
 
         <ul className="accountList">
           <li>

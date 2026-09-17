@@ -82,6 +82,41 @@
   margin-top: 26px;
 }
 
+.accountSessionRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #ededed;
+  padding: 16px 2px;
+}
+
+.accountSessionRow .accountRowText strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountSignOut {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d9d9d9;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.accountSignOut:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 /* Saved */
 
 .savedLoading {
