@@ -64,7 +64,11 @@ def smoke(archive_path):
     with socket.socket() as probe:
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         probe.bind(("127.0.0.1", 8719))
-    with tempfile.TemporaryDirectory(prefix="direct-loop-exe-smoke-") as temp:
+    # Windows can still hold the image handle for a moment after taskkill has
+    # returned, which failed the run on directory cleanup long after every
+    # assertion had already passed. The checks below are what this script is
+    # for; a temp folder the runner discards anyway is not worth failing over.
+    with tempfile.TemporaryDirectory(prefix="direct-loop-exe-smoke-", ignore_cleanup_errors=True) as temp:
         work = Path(temp)
         with zipfile.ZipFile(archive_path) as archive:
             require(set(archive.namelist()) == {"DirectLoopPrintAgent/" + name for name in BUNDLE_FILES},
