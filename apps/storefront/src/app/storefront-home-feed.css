@@ -1,0 +1,198 @@
+/* Home feed: the horizontal rails that sit above the full catalogue grid.
+   Kept out of globals.css so this work stays self-contained. */
+
+.homeFeed {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 0 8px;
+}
+
+.homeDropStrip {
+  margin: 0 0 18px;
+  background: #eef6ee;
+  color: #1c5b2a;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.homeFeedSection {
+  margin-bottom: 26px;
+}
+
+.homeFeedHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px 10px;
+}
+
+.homeFeedHeading h2 {
+  margin: 0;
+  color: #111;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.homeFeedHeading a,
+.homeSizeChange {
+  border: 0;
+  background: transparent;
+  color: #444;
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Rails scroll sideways so one screen can show several themes instead of one. */
+.homeRail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 0 18px 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.homeRail::-webkit-scrollbar {
+  display: none;
+}
+
+.homeRailCard {
+  display: flex;
+  width: 142px;
+  flex: none;
+  flex-direction: column;
+  gap: 3px;
+  color: #111;
+  scroll-snap-align: start;
+  text-decoration: none;
+}
+
+.homeRailCard img,
+.homeRailNoImage {
+  width: 142px;
+  height: 178px;
+  margin-bottom: 5px;
+  background: #f4f3f1;
+  object-fit: cover;
+}
+
+.homeRailCard strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.homeRailSize {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.homeRailPrice {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+/* Category tiles */
+
+.homeCategoryTile {
+  display: flex;
+  width: 104px;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: #111;
+  scroll-snap-align: start;
+  text-decoration: none;
+}
+
+.homeCategoryTile img,
+.homeCategoryTile .homeRailNoImage {
+  width: 104px;
+  height: 104px;
+  margin-bottom: 2px;
+  background: #f4f3f1;
+  object-fit: cover;
+}
+
+.homeCategoryTile span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.homeCategoryTile small {
+  color: #8a8a8a;
+  font-size: 11px;
+}
+
+/* Size preference */
+
+.homeSizeAsk {
+  border-top: 1px solid #ededed;
+  border-bottom: 1px solid #ededed;
+  padding: 18px 0 20px;
+}
+
+.homeSizeAskHint {
+  margin: 0 18px 12px;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.homeSizeChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 18px;
+}
+
+.homeSizeChoices button {
+  min-width: 56px;
+  border: 1px solid #cfcfcf;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.homeSizeChoices button:hover {
+  border-color: #111;
+}
+
+.homeSizeEmpty {
+  margin: 0 18px;
+  color: #666;
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  .homeRailCard,
+  .homeRailCard img,
+  .homeRailNoImage {
+    width: 178px;
+  }
+
+  .homeRailCard img,
+  .homeRailNoImage {
+    height: 222px;
+  }
+
+  .homeFeedHeading h2 {
+    font-size: 20px;
+  }
+}

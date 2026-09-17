@@ -1,4 +1,5 @@
 import { CatalogApp } from "./components/catalog-app";
+import { HomeFeed } from "./components/home-feed";
 import { categories, normalizeSellerRef, normalizeTrackingParam } from "./data/products";
 import { listPublishedProducts } from "../db/catalog";
 
@@ -33,6 +34,7 @@ export default async function Home({ searchParams }: HomeProps) {
       source={source}
       placement={placement}
       campaign={campaign}
+      feed={<HomeFeed products={products} />}
     />
   );
 }

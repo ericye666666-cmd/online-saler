@@ -9,7 +9,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   apparelConditions,
   bagTypes,
@@ -115,6 +115,7 @@ export function CatalogApp({
   source,
   placement,
   campaign,
+  feed,
 }: {
   initialProducts: Product[];
   initialCategory?: CatalogCategory;
@@ -122,6 +123,8 @@ export function CatalogApp({
   source?: string;
   placement?: string;
   campaign?: string;
+  /** Home rails, rendered above the grid while nothing is filtered. */
+  feed?: ReactNode;
 }) {
   const { locale, t } = useStorefrontI18n();
   const [query, setQuery] = useState("");
@@ -370,6 +373,10 @@ export function CatalogApp({
         onSelectCategory={selectCategory}
         onSelectBrowse={applyBrowseSelection}
       />
+
+      {/* The rails are a way in, not a filter result: once someone has narrowed
+          the catalogue they want the grid, so the feed steps aside. */}
+      {feed && category === "All" && !query.trim() && activeFilterCount === 0 ? feed : null}
 
       <section className="marketShell depopMarketShell" id="catalog">
         <div className="marketResults depopMarketResults">
