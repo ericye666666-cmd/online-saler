@@ -23,10 +23,6 @@ export async function HomeFeed({ products }: { products: Product[] }) {
 
   return (
     <div className="homeFeed">
-      <p className="homeDropStrip">
-        {t("home.dropStrip", { count: String(available.length) })}
-      </p>
-
       {categoryTiles.length > 1 ? (
         <section className="homeFeedSection">
           <div className="homeFeedHeading">
@@ -36,9 +32,10 @@ export async function HomeFeed({ products }: { products: Product[] }) {
           <div className="homeRail homeCategoryRail">
             {categoryTiles.map((tile) => (
               <Link className="homeCategoryTile" key={tile.category} href={`/?category=${encodeURIComponent(tile.category)}`}>
-                {tile.image ? <img src={tile.image} alt="" loading="lazy" /> : <span className="homeRailNoImage" />}
-                <span>{translateValue(locale, tile.category)}</span>
-                <small>{tile.count}</small>
+                <span className="homeCategoryFrame">
+                  {tile.image ? <img src={tile.image} alt="" loading="lazy" /> : null}
+                </span>
+                <span className="homeCategoryLabel">{translateValue(locale, tile.category)}</span>
               </Link>
             ))}
           </div>

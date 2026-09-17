@@ -7,19 +7,6 @@
   padding: 0 0 8px;
 }
 
-/* Reads as a line about the shop, not a system notice: no alert colour, real
-   padding, and the same voice as the rest of the page. */
-.homeDropStrip {
-  margin: 0 0 30px;
-  border-bottom: 1px solid #ececec;
-  background: #fbfaf9;
-  color: #3d3d3d;
-  padding: 18px;
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: .01em;
-}
-
 .homeFeedSection {
   margin-bottom: 44px;
 }
@@ -130,38 +117,46 @@
   font-weight: 700;
 }
 
-/* Category tiles */
+/* Category tiles
+
+   The product photos are shot on pure white. Dropped straight onto a tinted
+   tile they would show as a white square, so the image multiplies with the
+   tile: white leaves nothing behind and the garment keeps its own tones. That
+   is what lets a catalogue tile read as a framed object rather than a cut-out
+   floating on the page. */
 
 .homeCategoryTile {
   display: flex;
   width: 132px;
   flex: none;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
   color: #111;
-  margin-right: 12px;
+  margin-right: 10px;
   scroll-snap-align: start;
   text-decoration: none;
 }
 
-.homeCategoryTile img,
-.homeCategoryTile .homeRailNoImage {
+.homeCategoryFrame {
+  display: block;
   width: 132px;
   height: 132px;
-  margin-bottom: 6px;
-  background: #f4f3f1;
-  object-fit: cover;
+  overflow: hidden;
+  background: #f2f1ef;
 }
 
-.homeCategoryTile span {
+.homeCategoryFrame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  mix-blend-mode: multiply;
+  object-fit: contain;
+}
+
+.homeCategoryLabel {
+  padding-top: 10px;
   font-size: 13px;
-  font-weight: 500;
-}
-
-.homeCategoryTile small {
-  color: #8a8a8a;
-  font-size: 11px;
+  font-weight: 400;
+  text-align: center;
 }
 
 /* Size preference */
@@ -225,13 +220,11 @@
   }
 
   .homeCategoryTile,
-  .homeCategoryTile img,
-  .homeCategoryTile .homeRailNoImage {
-    width: 168px;
+  .homeCategoryFrame {
+    width: 188px;
   }
 
-  .homeCategoryTile img,
-  .homeCategoryTile .homeRailNoImage {
-    height: 168px;
+  .homeCategoryFrame {
+    height: 188px;
   }
 }
