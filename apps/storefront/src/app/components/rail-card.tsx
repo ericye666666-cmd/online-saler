@@ -4,6 +4,7 @@ import { optionalBrandValue, optionalDisplayValue, productDisplayTitle } from ".
 import { productSizeDisplay } from "../product-size-display";
 import { translateValue } from "../../i18n/dictionary";
 import type { StorefrontLocale } from "../../i18n/dictionary";
+import { RailSaveButton } from "./rail-save-button";
 
 /**
  * A card sized for a horizontal rail: image, name, size, price.
@@ -16,12 +17,15 @@ export function RailCard({ product, locale }: { product: Product; locale: Storef
   const brandLabel = optionalBrandValue(product.brand);
   const sizeLabel = optionalDisplayValue(translateValue(locale, productSizeDisplay(product).headline));
   return (
-    <Link className="homeRailCard" href={`/p/${product.code}`}>
-      {product.image ? <img src={product.image} alt={title} loading="lazy" /> : <span className="homeRailNoImage" />}
-      {brandLabel ? <span className="homeRailBrand">{brandLabel}</span> : null}
-      <strong>{title}</strong>
-      {sizeLabel ? <span className="homeRailSize">{sizeLabel}</span> : null}
-      <span className="homeRailPrice">{formatPrice(product.price)}</span>
-    </Link>
+    <div className="homeRailCard">
+      <Link className="homeRailLink" href={`/p/${product.code}`}>
+        {product.image ? <img src={product.image} alt={title} loading="lazy" /> : <span className="homeRailNoImage" />}
+        {brandLabel ? <span className="homeRailBrand">{brandLabel}</span> : null}
+        <strong>{title}</strong>
+        {sizeLabel ? <span className="homeRailSize">{sizeLabel}</span> : null}
+        <span className="homeRailPrice">{formatPrice(product.price)}</span>
+      </Link>
+      <RailSaveButton productCode={product.code} productTitle={title} />
+    </div>
   );
 }

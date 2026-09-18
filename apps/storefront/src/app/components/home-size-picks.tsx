@@ -72,7 +72,7 @@ export function HomeSizePicks({ products, locale }: { products: Product[]; local
         </button>
       </div>
       {matches.length > 0 ? (
-        <div className="homeRail">
+        <div className="homeRail homeProductRail">
           {matches.map((product) => <RailCard key={product.code} product={product} locale={locale} />)}
         </div>
       ) : (

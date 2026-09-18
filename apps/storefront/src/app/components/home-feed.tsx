@@ -27,7 +27,6 @@ export async function HomeFeed({ products }: { products: Product[] }) {
         <section className="homeFeedSection">
           <div className="homeFeedHeading">
             <h2>{t("home.shopByCategory")}</h2>
-            <Link href="/categories">{t("home.seeAll")}</Link>
           </div>
           <div className="homeRail homeCategoryRail">
             {categoryTiles.map((tile) => (
@@ -47,9 +46,10 @@ export async function HomeFeed({ products }: { products: Product[] }) {
           <div className="homeFeedHeading">
             <h2>{t("home.newIn")}</h2>
           </div>
-          <div className="homeRail">
+          <div className="homeRail homeProductRail">
             {newest.map((product) => <RailCard key={product.code} product={product} locale={locale} />)}
           </div>
+          <a className="homeSeeAllButton" href="#catalog">{t("home.seeAll")}</a>
         </section>
       ) : null}
 
