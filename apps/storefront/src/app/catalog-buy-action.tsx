@@ -20,15 +20,19 @@ export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
   function saveToCart(nextStep: "cart" | "buy") {
     if (!available || saving) return;
     setSaving(nextStep);
+    const item = catalogProductToCartItem(product);
+    if (nextStep === "buy") {
+      // Buy now pays for this piece alone and leaves the bag exactly as it was,
+      // so a quick purchase never drags earlier finds - some since sold - into
+      // the payment and blocks it.
+      window.location.href = `/checkout?buy=${encodeURIComponent(item.productId)}`;
+      return;
+    }
     const snapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
-    const nextSnapshot = addCartItem(snapshot, catalogProductToCartItem(product));
+    const nextSnapshot = addCartItem(snapshot, item);
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
     notifyCartUpdated();
     setMessage(nextSnapshot.items.length === snapshot?.items.length ? t("product.alreadyInBag") : t("product.addedToBag"));
-    if (nextStep === "buy") {
-      window.location.href = "/checkout";
-      return;
-    }
     window.setTimeout(() => setSaving(null), 350);
   }
 

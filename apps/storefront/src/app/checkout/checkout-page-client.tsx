@@ -83,6 +83,10 @@ type CheckoutDraft = {
   pickupPointId: string;
 };
 
+function buyNowProductId(): string | null {
+  return new URLSearchParams(window.location.search).get("buy")?.trim() || null;
+}
+
 function checkoutDraftStorageKey(draftKey: string): string {
   return `online-saler-checkout-draft-v2:${encodeURIComponent(draftKey)}`;
 }
@@ -103,6 +107,7 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   // overview so the shopper answers a single question at a time.
   const [activeStep, setActiveStep] = useState<CheckoutStepId | null>(null);
   const [itemsOpen, setItemsOpen] = useState(false);
+  const [buyNowId, setBuyNowId] = useState<string | null>(null);
   const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -181,13 +186,17 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
     try {
       const nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
       setSnapshot(nextSnapshot);
-      if (!nextSnapshot?.items.length) {
+      // "Buy now" checks out one piece and ignores the bag entirely.
+      const buyId = buyNowProductId();
+      setBuyNowId(buyId);
+      const productIds = buyId ? [buyId] : nextSnapshot ? cartProductIds(nextSnapshot) : [];
+      if (!productIds.length) {
         setValidation(null);
         setState("empty");
         return null;
       }
       if (showLoading) setState("loading");
-      const nextValidation = await validateCart(cartProductIds(nextSnapshot));
+      const nextValidation = await validateCart(productIds);
       setValidation(nextValidation);
       setState("ready");
       return nextValidation;
@@ -297,12 +306,19 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   function applyPaymentStatus(nextPayment: PaymentState) {
     setPayment(nextPayment);
     if (paymentSucceeded(nextPayment.orderStatus, nextPayment.paymentStatus ?? nextPayment.status)) {
-      removePurchasedCartItems(reservedCartIdsRef.current.length ? reservedCartIdsRef.current : reservedCartIds);
+      removeBagItems(reservedCartIdsRef.current.length ? reservedCartIdsRef.current : reservedCartIds);
       clearCheckoutDraft(draftKey);
     }
   }
 
-  function removePurchasedCartItems(productIds: string[]) {
+  // Drop pieces from the bag from inside checkout, so an item that sold while it
+  // waited there never strands the shopper at a disabled pay button.
+  async function removeFromBag(productIds: string[]) {
+    removeBagItems(productIds);
+    await loadAndValidate(false);
+  }
+
+  function removeBagItems(productIds: string[]) {
     try {
       let nextSnapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
       for (const productId of productIds) {
@@ -373,7 +389,7 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   const payBlocker = !hasCheckoutableItems
     ? "Add an available item to your bag"
     : unavailableItems.length
-      ? "Remove the unavailable items in your bag"
+      ? (buyNowId ? "This item is no longer available" : "Remove the unavailable items above")
       : contactBlocker ?? handoffBlocker;
   const contactSummary = contactBlocker
     ? "M-Pesa phone and WhatsApp number"
@@ -459,12 +475,26 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
               <form className="checkoutForm checkoutOverview" onSubmit={submitCheckout}>
                 <CheckoutItemsSummary
                   items={validation.items}
-                  open={itemsOpen}
+                  // A blocked item is the reason payment is disabled, so it is
+                  // never hidden behind the collapsed row.
+                  open={itemsOpen || unavailableItems.length > 0}
                   onToggle={() => setItemsOpen((current) => !current)}
                   totalLabel={itemTotalLabel}
+                  onRemove={buyNowId ? undefined : (productId) => void removeFromBag([productId])}
                 />
                 {unavailableItems.length ? (
-                  <p className="checkoutError" role="alert">Some cart items cannot be paid for. Return to cart to remove them before payment.</p>
+                  <div className="checkoutError checkoutUnavailable" role="alert">
+                    <span>
+                      {buyNowId
+                        ? "This item has just been taken and can no longer be bought."
+                        : `${unavailableItems.length} ${unavailableItems.length === 1 ? "item" : "items"} in your bag can't be bought right now.`}
+                    </span>
+                    {buyNowId ? null : (
+                      <button type="button" onClick={() => void removeFromBag(unavailableItems.map((item) => item.requestedProductId))}>
+                        {unavailableItems.length === 1 ? "Remove it" : "Remove them"}
+                      </button>
+                    )}
+                  </div>
                 ) : null}
 
                 <div className="checkoutSteps">
@@ -723,11 +753,12 @@ function CheckoutSupport({ message }: { message: string }) {
  * The bag collapsed to one line. Four large product cards used to push every
  * input below the fold; the amount stays visible, the detail is one tap away.
  */
-function CheckoutItemsSummary({ items, open, onToggle, totalLabel }: {
+function CheckoutItemsSummary({ items, open, onToggle, totalLabel, onRemove }: {
   items: ValidatedCartItem[];
   open: boolean;
   onToggle: () => void;
   totalLabel: string;
+  onRemove?: (productId: string) => void;
 }) {
   return (
     <div className="checkoutItemsSummary">
@@ -736,7 +767,7 @@ function CheckoutItemsSummary({ items, open, onToggle, totalLabel }: {
         <strong>{totalLabel}</strong>
         <ChevronDown size={18} className={open ? "open" : ""} aria-hidden="true" />
       </button>
-      {open ? <CheckoutItemsPreview items={items} /> : null}
+      {open ? <CheckoutItemsPreview items={items} onRemove={onRemove} /> : null}
     </div>
   );
 }
@@ -910,7 +941,7 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
   );
 }
 
-function CheckoutItemsPreview({ items }: { items: ValidatedCartItem[] }) {
+function CheckoutItemsPreview({ items, onRemove }: { items: ValidatedCartItem[]; onRemove?: (productId: string) => void }) {
   return (
     <div className="checkoutItemsPreview">
       {items.map((item) => (
@@ -920,6 +951,11 @@ function CheckoutItemsPreview({ items }: { items: ValidatedCartItem[] }) {
             <strong>{item.title}</strong>
             <span>{[item.productCode, item.size, item.condition].filter(Boolean).join(" / ")}</span>
             {!item.canCheckout ? <small>{item.statusMessage}</small> : null}
+            {onRemove ? (
+              <button className="checkoutItemRemove" type="button" onClick={() => onRemove(item.requestedProductId)}>
+                Remove
+              </button>
+            ) : null}
           </div>
           <b>{moneyKsh(item.priceKsh)}</b>
         </div>
