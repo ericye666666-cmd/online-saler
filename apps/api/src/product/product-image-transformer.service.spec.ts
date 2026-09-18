@@ -245,6 +245,58 @@ describe("ProductImageTransformerService", () => {
     assert.ok(data[nearBackground] >= 254, `model background left at ${data[nearBackground]}`);
   });
 
+  it("widens the garment's tonal range without shifting its colour or darkening the background", async () => {
+    const service = new ProductImageTransformerService();
+    // A two-tone mustard garment on the model's off-white: the gap between the
+    // tones should open up, their average should hold, and everything beside
+    // the garment — including right against the edge of the framed region —
+    // must stay white.
+    const light = { r: 236, g: 196, b: 60 };
+    const dark = { r: 200, g: 164, b: 40 };
+    const generated = {
+      body: await sharp({ create: { width: 1024, height: 1024, channels: 3, background: { r: 253, g: 253, b: 253 } } })
+        .composite([
+          { input: { create: { width: 250, height: 600, channels: 3, background: light } }, left: 262, top: 212 },
+          { input: { create: { width: 250, height: 600, channels: 3, background: dark } }, left: 512, top: 212 }
+        ])
+        .png()
+        .toBuffer(),
+      contentType: "image/png" as const,
+      provider: "openai-image-edit",
+      processorVersion: "test",
+      widthPx: 1024,
+      heightPx: 1024
+    };
+
+    const result = await service.normalizeDisplayFraming(generated);
+    const { data, info } = await sharp(result.body).raw().toBuffer({ resolveWithObject: true });
+    const pixel = (x: number, y: number) => {
+      const index = (y * info.width + x) * info.channels;
+      return [data[index], data[index + 1], data[index + 2]];
+    };
+    const midY = Math.floor(info.height / 2);
+    let left = -1, right = -1;
+    for (let x = 0; x < info.width; x += 1) {
+      if (255 - Math.min(...pixel(x, midY)) > 75) { if (left < 0) left = x; right = x; }
+    }
+    const lightOut = pixel(left + 40, midY);
+    const darkOut = pixel(right - 40, midY);
+    const lum = ([r, g, b]: number[]) => 0.299 * r + 0.587 * g + 0.114 * b;
+    const gapIn = lum([light.r, light.g, light.b]) - lum([dark.r, dark.g, dark.b]);
+
+    assert.ok(lum(lightOut) - lum(darkOut) > gapIn * 1.05, "tonal gap did not widen");
+    for (let channel = 0; channel < 3; channel += 1) {
+      const before = ([light.r, light.g, light.b][channel] + [dark.r, dark.g, dark.b][channel]) / 2;
+      assert.ok(Math.abs((lightOut[channel] + darkOut[channel]) / 2 - before) <= 6, `channel ${channel} average moved`);
+    }
+    // Every pixel on this row beside the garment, out to the canvas edge. A
+    // frame around the region was only a few pixels wide, so spot checks miss it.
+    for (let x = 0; x < info.width; x += 1) {
+      if (x > left - 20 && x < right + 20) continue;
+      assert.ok(Math.min(...pixel(x, midY)) >= 253, `background at x=${x} is ${pixel(x, midY).join(",")}`);
+    }
+  });
+
   it("keeps a near-white subject rather than trimming it away", async () => {
     const service = new ProductImageTransformerService();
     const whiteOnWhite = {

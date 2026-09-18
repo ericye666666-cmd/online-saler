@@ -37,6 +37,15 @@ const WHITE_LIFT_FULL = 252;
 // Only near-grey pixels count as background; anything with more channel spread
 // than this is coloured fabric and is never touched.
 const NEUTRAL_SPREAD = 6;
+// Finishing on the garment itself: tonal range is widened around the garment's
+// own midtone and fine detail sharpened, so fabric reads crisper. Brightness
+// only — all three channels scale together, so hue does not move. Pixels near
+// white (background, contact shadow, bleed) are excluded by their distance from
+// white, so the shadow the prompt asked for is not washed out.
+const GARMENT_CONTRAST = 1.12;
+const GARMENT_SHARPEN_SIGMA = 1;
+const GARMENT_MASK_FROM = 45;
+const GARMENT_MASK_FULL = 75;
 
 @Injectable()
 export class ProductImageTransformerService {
@@ -89,13 +98,14 @@ export class ProductImageTransformerService {
   async normalizeDisplayFraming(
     generated: ProductImageTransformResult
   ): Promise<ProductImageTransformResult> {
-    const subject = await this.trimToSubject(generated.body);
+    const trimmed = await this.trimToSubject(generated.body);
+    const subject = await this.finishGarment(trimmed.data);
     const data = await this.centreOnWhite(subject.data, subject.info.width, subject.info.height);
     return {
       ...generated,
       body: data,
       contentType: "image/jpeg",
-      processorVersion: `${generated.processorVersion}+framed-v4-${DISPLAY_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
+      processorVersion: `${generated.processorVersion}+framed-v5-${DISPLAY_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
       widthPx: DISPLAY_CANVAS_SIZE,
       heightPx: DISPLAY_CANVAS_SIZE
     };
@@ -132,6 +142,46 @@ export class ProductImageTransformerService {
       // sharp throws when a trim would leave nothing at all; fall through.
     }
     return this.fitSubject(oriented.data);
+  }
+
+  private async finishGarment(input: Buffer): Promise<{ data: Buffer; info: { width: number; height: number } }> {
+    const { data, info } = await sharp(input).flatten({ background: "#ffffff" }).raw().toBuffer({ resolveWithObject: true });
+    const pixels = info.width * info.height;
+    const weight = new Float32Array(pixels);
+    const luminance = new Float32Array(pixels);
+    const garmentLuminance: number[] = [];
+    for (let pixel = 0; pixel < pixels; pixel += 1) {
+      const index = pixel * 3;
+      const r = data[index], g = data[index + 1], b = data[index + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const distanceFromWhite = 255 - Math.min(r, g, b);
+      luminance[pixel] = lum;
+      weight[pixel] = Math.min(1, Math.max(0, (distanceFromWhite - GARMENT_MASK_FROM) / (GARMENT_MASK_FULL - GARMENT_MASK_FROM)));
+      if (distanceFromWhite > GARMENT_MASK_FULL && pixel % 7 === 0) garmentLuminance.push(lum);
+    }
+    if (garmentLuminance.length === 0) return { data: input, info: { width: info.width, height: info.height } };
+    garmentLuminance.sort((left, right) => left - right);
+    const midtone = garmentLuminance[Math.floor(garmentLuminance.length / 2)];
+
+    for (let pixel = 0; pixel < pixels; pixel += 1) {
+      const w = weight[pixel];
+      if (w === 0) continue;
+      const lum = Math.max(1, luminance[pixel]);
+      const ratio = (midtone + (lum - midtone) * GARMENT_CONTRAST) / lum;
+      const index = pixel * 3;
+      for (let channel = 0; channel < 3; channel += 1) {
+        const value = data[index + channel];
+        const target = Math.min(255, Math.max(0, value * ratio));
+        data[index + channel] = Math.round(value + w * (target - value));
+      }
+    }
+    // sharp sharpens the lightness channel only, so colour is untouched and
+    // the flat white around the garment stays flat.
+    const finished = await sharp(data, { raw: { width: info.width, height: info.height, channels: 3 } })
+      .sharpen({ sigma: GARMENT_SHARPEN_SIGMA })
+      .png()
+      .toBuffer();
+    return { data: finished, info: { width: info.width, height: info.height } };
   }
 
   private async liftBackgroundToWhite(input: Buffer): Promise<{ data: Buffer; info: { width: number; height: number } }> {
@@ -172,13 +222,15 @@ export class ProductImageTransformerService {
       .extractChannel(0)
       .raw()
       .toBuffer();
-    // Settle the fade onto white here, so the resize that follows works on a
-    // plain opaque image rather than carrying an alpha channel through it.
-    return sharp(region)
+    const faded = await sharp(region)
       .joinChannel(mask, { raw: { width, height, channels: 1 } })
-      .flatten({ background: "#ffffff" })
       .png()
       .toBuffer();
+    // Settle the fade onto white so the resize that follows works on a plain
+    // opaque image. This has to be its own pipeline: sharp always runs flatten
+    // before joinChannel regardless of call order, so chaining them flattened
+    // nothing and left transparent black around the region.
+    return sharp(faded).flatten({ background: "#ffffff" }).png().toBuffer();
   }
 
   private async fitSubject(input: Buffer) {
