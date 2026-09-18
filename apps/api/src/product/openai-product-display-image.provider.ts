@@ -13,6 +13,10 @@ const DEFAULT_TIMEOUT_MS = 180_000;
 // it for the contact shadow the prompt asks for. Sending a square with the
 // photo taking this share of it lets the model keep that room.
 const INPUT_SUBJECT_SHARE = 0.8;
+// The model returns 1024px, so a phone's full 4000px photo adds nothing but
+// weight. Squaring one up at full size needed a 5000px bitmap and pushed the
+// 512 MiB API container over its limit, killing the job mid-request.
+const INPUT_MAX_PHOTO_SIDE = 1536;
 
 export type ShadowSide = "left" | "right";
 
@@ -203,7 +207,11 @@ async function withRoomAroundPhoto(
   input: BackgroundRemovalInput
 ): Promise<{ body: Buffer; contentType: string; filename: string }> {
   try {
-    const oriented = await sharp(input.body).rotate().toBuffer({ resolveWithObject: true });
+    const oriented = await sharp(input.body)
+      .rotate()
+      .resize({ width: INPUT_MAX_PHOTO_SIDE, height: INPUT_MAX_PHOTO_SIDE, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 95, chromaSubsampling: "4:4:4" })
+      .toBuffer({ resolveWithObject: true });
     const { width, height } = oriented.info;
     const side = Math.round(Math.max(width, height) / INPUT_SUBJECT_SHARE);
     const left = Math.floor((side - width) / 2);

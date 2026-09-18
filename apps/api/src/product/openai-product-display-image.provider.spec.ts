@@ -72,6 +72,29 @@ describe("OpenAIProductDisplayImageProvider", () => {
     assert.equal(metadata.height, 1600, "the photo's long side should take 80% of that square");
   });
 
+  it("scales a full-size phone photo down before squaring it, so the job stays inside the container's memory", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    let submittedForm: FormData | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      submittedForm = init?.body as FormData;
+      return new Response(JSON.stringify({
+        data: [{ b64_json: Buffer.from("generated-png").toString("base64") }]
+      }), { status: 200 });
+    }) as typeof fetch;
+    const phonePhoto = await sharp({ create: { width: 4000, height: 3000, channels: 3, background: "#b8c0cc" } })
+      .jpeg()
+      .toBuffer();
+
+    await new OpenAIProductDisplayImageProvider().generate({
+      body: phonePhoto, contentType: "image/jpeg", filename: "sweater.jpg"
+    });
+
+    const uploaded = submittedForm?.get("image[]") as Blob;
+    const metadata = await sharp(Buffer.from(await uploaded.arrayBuffer())).metadata();
+    assert.equal(metadata.width, metadata.height);
+    assert.equal(metadata.width, 1920, "a 1536px photo at 80% of the square, not the 5000px square the full photo needed");
+  });
+
   it("puts each item's shadow on one side, the same side every time it is regenerated", () => {
     const sides = Array.from({ length: 200 }, (_, index) => shadowSideFor(`image-${index}.png`));
     const left = sides.filter((side) => side === "left").length;
