@@ -3,8 +3,9 @@ import { afterEach, describe, it } from "node:test";
 import sharp from "sharp";
 import {
   OpenAIProductDisplayImageProvider,
-  PRODUCT_DISPLAY_IMAGE_PROMPT,
-  SHOE_DISPLAY_IMAGE_PROMPT,
+  productDisplayImagePrompt,
+  shadowSideFor,
+  shoeDisplayImagePrompt,
   SHOE_DISPLAY_PROMPT_VERSION,
   PRODUCT_DISPLAY_PROMPT_VERSION
 } from "./openai-product-display-image.provider";
@@ -71,6 +72,17 @@ describe("OpenAIProductDisplayImageProvider", () => {
     assert.equal(metadata.height, 1600, "the photo's long side should take 80% of that square");
   });
 
+  it("puts each item's shadow on one side, the same side every time it is regenerated", () => {
+    const sides = Array.from({ length: 200 }, (_, index) => shadowSideFor(`image-${index}.png`));
+    const left = sides.filter((side) => side === "left").length;
+    assert.ok(left > 60 && left < 140, `catalogue should mix both sides, got ${left} left of 200`);
+    assert.equal(shadowSideFor("abc.png"), shadowSideFor("abc.png"));
+    const prompt = productDisplayImagePrompt("left");
+    assert.match(prompt, /falling to the left of the garment/);
+    assert.match(prompt, /no shadow on the right side/);
+    assert.doesNotMatch(prompt, /just around the garment/);
+  });
+
   it("honors an explicit model and quality override", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENAI_IMAGE_EDIT_MODEL = "gpt-image-2";
@@ -129,7 +141,7 @@ describe("OpenAIProductDisplayImageProvider", () => {
     assert.equal(submittedForm.get("model"), "gpt-image-test");
     assert.equal(submittedForm.get("quality"), "high");
     assert.equal(submittedForm.get("size"), "1024x1024");
-    assert.equal(submittedForm.get("prompt"), PRODUCT_DISPLAY_IMAGE_PROMPT);
+    assert.equal(submittedForm.get("prompt"), productDisplayImagePrompt(shadowSideFor("white.jpg")));
     assert.ok(submittedForm.get("image[]") instanceof Blob);
     assert.equal(await (submittedForm.get("image[]") as Blob).text(), "white-background-source", "The uploaded source must reach the provider unchanged.");
     assert.match(String(submittedForm.get("prompt")), /Do not flatten, straighten, symmetrize/);
@@ -154,7 +166,7 @@ describe("OpenAIProductDisplayImageProvider", () => {
     const result = await new OpenAIProductDisplayImageProvider().generate({
       body: Buffer.from("original-pair"), contentType: "image/jpeg", filename: "pair.jpg", category: "SHOES"
     });
-    assert.equal(submittedForm?.get("prompt"), SHOE_DISPLAY_IMAGE_PROMPT);
+    assert.equal(submittedForm?.get("prompt"), shoeDisplayImagePrompt(shadowSideFor("pair.jpg")));
     assert.match(String(submittedForm?.get("prompt")), /Keep both original shoes fully visible/);
     assert.match(String(submittedForm?.get("prompt")), /Do not repair, clean away, hide/);
     assert.match(String(submittedForm?.get("prompt")), /mirror or duplicate one shoe/);
