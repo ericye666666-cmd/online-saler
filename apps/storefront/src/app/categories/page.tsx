@@ -1,28 +1,29 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { SiteHeader } from "../components/site-header";
-import { categories } from "../data/products";
 import { listPublishedProducts } from "../../db/catalog";
 import { getStorefrontI18n } from "../../i18n/server";
 import { translateValue } from "../../i18n/dictionary";
+import { browseHref, isDepartment, stockedMenu } from "../shop-taxonomy";
 
 export const dynamic = "force-dynamic";
 
-// Every category the catalog can hold, in the order shoppers think about them.
-const browseOrder = categories.filter((category) => category !== "All");
+type BrowseProps = { searchParams: Promise<{ d?: string }> };
 
-export default async function CategoriesPage() {
-  const [products, { locale, t }] = await Promise.all([
+/**
+ * Department tabs across the top, that department's categories below — the
+ * Vestiaire app's Browse screen. Only departments and categories with
+ * something available are listed, so no row leads to an empty page.
+ */
+export default async function CategoriesPage({ searchParams }: BrowseProps) {
+  const [{ d }, products, { locale, t }] = await Promise.all([
+    searchParams,
     listPublishedProducts(),
     getStorefrontI18n(),
   ]);
-
-  const counts = new Map<string, number>();
-  for (const product of products) {
-    counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
-  }
-  // A category with nothing in it is a dead end, so it stays off the list.
-  const stocked = browseOrder.filter((category) => (counts.get(category) ?? 0) > 0);
+  const available = products.filter((product) => product.status === "Available");
+  const menu = stockedMenu(available.map((product) => product.placements ?? []));
+  const active = menu.find((entry) => entry.department === (isDepartment(d) ? d : null)) ?? menu[0];
 
   return (
     <main className="browsePage">
@@ -30,25 +31,42 @@ export default async function CategoriesPage() {
 
       <div className="browseShell">
         <h1>{t("browse.title")}</h1>
-        <p className="browseIntro">{t("browse.intro", { count: String(products.length) })}</p>
+        <p className="browseIntro">{t("browse.intro", { count: String(available.length) })}</p>
 
-        <Link className="browseAllRow" href="/">
-          <span>{t("browse.everything")}</span>
-          <span className="browseCount">{products.length}</span>
-          <ChevronRight size={18} aria-hidden="true" />
-        </Link>
-
-        <ul className="browseList">
-          {stocked.map((category) => (
-            <li key={category}>
-              <Link href={`/?category=${encodeURIComponent(category)}`}>
-                <span>{translateValue(locale, category)}</span>
-                <span className="browseCount">{counts.get(category)}</span>
-                <ChevronRight size={18} aria-hidden="true" />
-              </Link>
-            </li>
+        <nav className="browseDepartments" aria-label={t("browse.title")}>
+          {menu.map((entry) => (
+            <Link
+              key={entry.department}
+              href={`/categories?d=${encodeURIComponent(entry.department)}`}
+              className={entry.department === active?.department ? "active" : ""}
+              aria-current={entry.department === active?.department ? "page" : undefined}
+            >
+              {translateValue(locale, entry.department)}
+            </Link>
           ))}
-        </ul>
+        </nav>
+
+        {active ? (
+          <>
+            <Link className="browseAllRow" href={browseHref({ department: active.department })}>
+              <span>{t("header.seeAllIn", { department: translateValue(locale, active.department) })}</span>
+              <span className="browseCount">{active.total}</span>
+              <ChevronRight size={18} aria-hidden="true" />
+            </Link>
+
+            <ul className="browseList">
+              {active.categories.map((entry) => (
+                <li key={entry.category}>
+                  <Link href={browseHref({ department: active.department, shopCategory: entry.category })}>
+                    <span>{translateValue(locale, entry.category)}</span>
+                    <span className="browseCount">{entry.count}</span>
+                    <ChevronRight size={18} aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
       </div>
     </main>
   );

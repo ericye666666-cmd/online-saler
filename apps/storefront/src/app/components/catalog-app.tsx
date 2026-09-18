@@ -12,20 +12,16 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   apparelConditions,
-  bagTypes,
-  categories,
-  featuredShoeBrands,
   formatPrice,
   Product,
   shoeConditionGrades,
-  shoeTypes,
-  textileTypes,
 } from "../data/products";
 import { catalogSizeOptions, filterCatalogProducts } from "../catalog-filters";
+import { stockedMenu } from "../shop-taxonomy";
 import { cardImageSrc } from "../storefront-products";
 import { ProductCollectionButton } from "./product-share-sheet";
 import { ReferralTracker } from "./referral-tracker";
-import { BrowseSelection, SiteHeader } from "./site-header";
+import { BrowseSelection, CatalogDepartment, SiteHeader } from "./site-header";
 import { optionalBrandValue, optionalDisplayValue, productDisplayTitle } from "../product-detail-commerce";
 import { readSavedCodes, subscribeToSaved, toggleSaved as toggleSavedItem } from "../saved-items";
 import { productSizeDisplay } from "../product-size-display";
@@ -33,15 +29,12 @@ import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 import type { DictionaryKey } from "../../i18n/dictionary";
 import { translateValue } from "../../i18n/dictionary";
 
-type CatalogCategory = (typeof categories)[number];
 type FilterMenu = "category" | "subcategory" | "brand" | "price" | "size" | "color" | "material" | "condition" | "store" | null;
 type PopularChoice = BrowseSelection & { label: string };
 
 const apparelConditionOptions = ["All", ...apparelConditions];
 const shoeConditionOptions = ["All", ...shoeConditionGrades];
 const priceOptions = ["All", "Under KSh 500", "KSh 500–799", "KSh 800+"];
-
-const clothingCategories: CatalogCategory[] = ["Dresses", "Tops", "Jackets", "Knitwear", "Trousers", "Skirts"];
 
 type ProductCardProps = {
   product: Product;
@@ -114,7 +107,8 @@ function OptionButton({ active, label, onClick }: { active: boolean; label: stri
 
 export function CatalogApp({
   initialProducts,
-  initialCategory = "All",
+  initialDepartment = "All",
+  initialShopCategory = "All",
   sellerRef,
   source,
   placement,
@@ -122,7 +116,8 @@ export function CatalogApp({
   feed,
 }: {
   initialProducts: Product[];
-  initialCategory?: CatalogCategory;
+  initialDepartment?: CatalogDepartment;
+  initialShopCategory?: string;
   sellerRef?: string;
   source?: string;
   placement?: string;
@@ -132,7 +127,8 @@ export function CatalogApp({
 }) {
   const { locale, t } = useStorefrontI18n();
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<CatalogCategory>(initialCategory);
+  const [department, setDepartment] = useState<CatalogDepartment>(initialDepartment);
+  const [shopCategory, setShopCategory] = useState(initialShopCategory);
   const [size, setSize] = useState("All");
   const [condition, setCondition] = useState("All");
   const [brand, setBrand] = useState("All");
@@ -140,9 +136,6 @@ export function CatalogApp({
   const [material, setMaterial] = useState("All");
   const [store, setStore] = useState("All");
   const [price, setPrice] = useState("All");
-  const [shoeType, setShoeType] = useState("All");
-  const [bagType, setBagType] = useState("All");
-  const [textileType, setTextileType] = useState("All");
   const [availableOnly, setAvailableOnly] = useState(false);
   const [sort, setSort] = useState("Newest first");
   // Seeded after mount so the server render and the hydrated markup agree.
@@ -156,7 +149,7 @@ export function CatalogApp({
     [initialProducts],
   );
   const brands = useMemo(
-    () => ["All", ...Array.from(new Set([...featuredShoeBrands, ...initialProducts.map((product) => product.brand)]))],
+    () => ["All", ...Array.from(new Set(initialProducts.map((product) => product.brand))).sort()],
     [initialProducts],
   );
   const materials = useMemo(
@@ -167,7 +160,14 @@ export function CatalogApp({
     () => ["All", ...Array.from(new Set(initialProducts.map((product) => product.store))).sort()],
     [initialProducts],
   );
-  const sizeOptions = useMemo(() => catalogSizeOptions(initialProducts, category), [initialProducts, category]);
+  const sizeOptions = useMemo(() => catalogSizeOptions(initialProducts, department, shopCategory), [initialProducts, department, shopCategory]);
+  // Only departments and categories with something in them are offered.
+  const menu = useMemo(
+    () => stockedMenu(initialProducts.filter((product) => product.status === "Available").map((product) => product.placements ?? [])),
+    [initialProducts],
+  );
+  const departmentOptions: CatalogDepartment[] = ["All", ...menu.map((entry) => entry.department)];
+  const shopCategoryOptions = ["All", ...(menu.find((entry) => entry.department === department)?.categories.map((entry) => entry.category) ?? [])];
 
   useEffect(() => {
     const sync = () => setSaved(new Set(readSavedCodes()));
@@ -205,13 +205,13 @@ export function CatalogApp({
   }, [openFilter]);
 
   const filteredProducts = useMemo(() => filterCatalogProducts(initialProducts, {
-    availableOnly, bagType, brand, category, color, condition, material, price,
-    query, shoeType, size, sort, store, textileType,
-  }), [availableOnly, bagType, brand, category, color, condition, initialProducts, material, price, query, shoeType, size, sort, store, textileType]);
+    availableOnly, brand, department, shopCategory, color, condition, material, price,
+    query, size, sort, store,
+  }), [availableOnly, brand, department, shopCategory, color, condition, initialProducts, material, price, query, size, sort, store]);
 
-  const activeFilterCount = [brand, color, material, price, shoeType, bagType, textileType, size, condition, store]
+  const activeFilterCount = [brand, color, material, price, shopCategory, size, condition, store]
     .filter((item) => item !== "All").length + (availableOnly ? 1 : 0);
-  const hasSubcategory = category === "Shoes" || category === "Bags" || category === "Home Textiles";
+  const hasSubcategory = department !== "All";
   const filterTypes: Array<Exclude<FilterMenu, null>> = [
     "category",
     ...(hasSubcategory ? ["subcategory" as const] : []),
@@ -223,36 +223,39 @@ export function CatalogApp({
     "condition",
     "store",
   ];
-  const popularChoices: PopularChoice[] = category === "Shoes"
-    ? featuredShoeBrands.slice(0, 5).map((item) => ({ label: item, category: "Shoes", brand: item }))
-    : category === "Bags"
-      ? bagTypes.slice(0, 5).map((item) => ({ label: item, category: "Bags", bagType: item }))
-      : category === "Home Textiles"
-        ? textileTypes.slice(0, 5).map((item) => ({ label: item, category: "Home Textiles", textileType: item }))
-        : clothingCategories.map((item) => ({ label: item, category: item }));
+  const popularChoices: PopularChoice[] = department === "All"
+    ? menu.map((entry) => ({ label: entry.department, department: entry.department }))
+    : shopCategoryOptions.slice(1).map((item) => ({ label: item, department, shopCategory: item }));
 
-  function updateCategoryInUrl(nextCategory: CatalogCategory) {
+  function updateSelectionInUrl(nextDepartment: CatalogDepartment, nextShopCategory = "All") {
     const params = new URLSearchParams(window.location.search);
-    if (nextCategory === "All") params.delete("category");
-    else params.set("category", nextCategory);
+    if (nextDepartment === "All") params.delete("category");
+    else params.set("category", nextDepartment);
+    if (nextDepartment === "All" || nextShopCategory === "All") params.delete("type");
+    else params.set("type", nextShopCategory);
     window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params.toString()}` : ""}`);
   }
 
-  function selectCategory(nextCategory: CatalogCategory) {
-    setCategory(nextCategory);
+  function selectDepartment(nextDepartment: CatalogDepartment) {
+    setDepartment(nextDepartment);
+    setShopCategory("All");
     setSize("All");
     setCondition("All");
     setMaterial("All");
     setStore("All");
-    setShoeType("All");
-    setBagType("All");
-    setTextileType("All");
-    if (nextCategory !== "Shoes") setBrand("All");
-    updateCategoryInUrl(nextCategory);
+    if (nextDepartment !== "Shoes") setBrand("All");
+    updateSelectionInUrl(nextDepartment);
+  }
+
+  function selectShopCategory(nextShopCategory: string) {
+    setShopCategory(nextShopCategory);
+    setSize("All");
+    updateSelectionInUrl(department, nextShopCategory);
   }
 
   function applyBrowseSelection(selection: BrowseSelection) {
-    setCategory(selection.category);
+    setDepartment(selection.department);
+    setShopCategory(selection.shopCategory ?? "All");
     setSize("All");
     setCondition("All");
     setColor("All");
@@ -260,15 +263,13 @@ export function CatalogApp({
     setStore("All");
     setPrice("All");
     setBrand(selection.brand ?? "All");
-    setShoeType(selection.shoeType ?? "All");
-    setBagType(selection.bagType ?? "All");
-    setTextileType(selection.textileType ?? "All");
-    updateCategoryInUrl(selection.category);
+    updateSelectionInUrl(selection.department, selection.shopCategory);
   }
 
   function resetFilters() {
     setQuery("");
-    setCategory("All");
+    setDepartment("All");
+    setShopCategory("All");
     setSize("All");
     setCondition("All");
     setBrand("All");
@@ -276,12 +277,9 @@ export function CatalogApp({
     setMaterial("All");
     setStore("All");
     setPrice("All");
-    setShoeType("All");
-    setBagType("All");
-    setTextileType("All");
     setAvailableOnly(false);
     setOpenFilter(null);
-    updateCategoryInUrl("All");
+    updateSelectionInUrl("All");
   }
 
   function toggleSaved(code: string) {
@@ -299,7 +297,7 @@ export function CatalogApp({
       body: JSON.stringify({
         query: normalizedQuery,
         resultCount: filteredProducts.length,
-        category: category === "All" ? undefined : category
+        category: department === "All" ? undefined : shopCategory === "All" ? department : `${department} / ${shopCategory}`
       }),
       keepalive: true
     }).catch(() => undefined);
@@ -307,10 +305,9 @@ export function CatalogApp({
 
   function filterLabel(type: Exclude<FilterMenu, null>) {
     if (type === "subcategory") {
-      const selected = category === "Shoes" ? shoeType : category === "Bags" ? bagType : textileType;
-      return selected === "All" ? t("filter.subcategory") : translateValue(locale, selected);
+      return shopCategory === "All" ? t("filter.subcategory") : translateValue(locale, shopCategory);
     }
-    const values = { category, brand, price, size, color, material, condition, store };
+    const values = { category: department, brand, price, size, color, material, condition, store };
     const selected = values[type as keyof typeof values];
     const key = `filter.${type}` as DictionaryKey;
     return selected === "All" ? t(key) : translateValue(locale, selected);
@@ -320,26 +317,16 @@ export function CatalogApp({
     if (type === "category") {
       return (
         <>
-          {categories.map((item) => <OptionButton key={item} label={translateValue(locale, item)} active={category === item} onClick={() => { selectCategory(item); setOpenFilter(null); }} />)}
-          {category === "Shoes" ? <div className="depopSubFilter"><strong>{t("filter.shoeType")}</strong>{["All", ...shoeTypes].map((item) => <OptionButton key={item} label={item} active={shoeType === item} onClick={() => setShoeType(item)} />)}</div> : null}
-          {category === "Bags" ? <div className="depopSubFilter"><strong>{t("filter.bagType")}</strong>{["All", ...bagTypes].map((item) => <OptionButton key={item} label={item} active={bagType === item} onClick={() => setBagType(item)} />)}</div> : null}
-          {category === "Home Textiles" ? <div className="depopSubFilter"><strong>{t("filter.textileType")}</strong>{["All", ...textileTypes].map((item) => <OptionButton key={item} label={item} active={textileType === item} onClick={() => setTextileType(item)} />)}</div> : null}
+          {departmentOptions.map((item) => <OptionButton key={item} label={translateValue(locale, item)} active={department === item} onClick={() => { selectDepartment(item); setOpenFilter(null); }} />)}
         </>
       );
     }
     if (type === "subcategory") {
-      const options = category === "Shoes"
-        ? ["All", ...shoeTypes]
-        : category === "Bags"
-          ? ["All", ...bagTypes]
-          : ["All", ...textileTypes];
-      const selected = category === "Shoes" ? shoeType : category === "Bags" ? bagType : textileType;
-      const setter = category === "Shoes" ? setShoeType : category === "Bags" ? setBagType : setTextileType;
-      return options.map((item) => (
-        <OptionButton key={item} label={translateValue(locale, item)} active={selected === item} onClick={() => { setter(item); setOpenFilter(null); }} />
+      return shopCategoryOptions.map((item) => (
+        <OptionButton key={item} label={translateValue(locale, item)} active={shopCategory === item} onClick={() => { selectShopCategory(item); setOpenFilter(null); }} />
       ));
     }
-    const options = type === "brand" ? brands : type === "price" ? priceOptions : type === "size" ? sizeOptions : type === "color" ? colors : type === "material" ? materials : type === "store" ? stores : (category === "Shoes" ? shoeConditionOptions : apparelConditionOptions);
+    const options = type === "brand" ? brands : type === "price" ? priceOptions : type === "size" ? sizeOptions : type === "color" ? colors : type === "material" ? materials : type === "store" ? stores : (department === "Shoes" ? shoeConditionOptions : apparelConditionOptions);
     const selected = type === "brand" ? brand : type === "price" ? price : type === "size" ? size : type === "color" ? color : type === "material" ? material : type === "store" ? store : condition;
     const setters = { brand: setBrand, price: setPrice, size: setSize, color: setColor, material: setMaterial, condition: setCondition, store: setStore };
     const setter = setters[type as keyof typeof setters];
@@ -373,29 +360,34 @@ export function CatalogApp({
         onSearchChange={setQuery}
         onSearchSubmit={recordSearch}
         sellerRef={sellerRef}
-        selectedCategory={category}
-        onSelectCategory={selectCategory}
+        selectedDepartment={department}
         onSelectBrowse={applyBrowseSelection}
       />
 
       {/* The rails are a way in, not a filter result: once someone has narrowed
           the catalogue they want the grid, so the feed steps aside. */}
-      {feed && category === "All" && !query.trim() && activeFilterCount === 0 ? feed : null}
+      {feed && department === "All" && !query.trim() && activeFilterCount === 0 ? feed : null}
 
       <section className="marketShell depopMarketShell" id="catalog">
         <div className="marketResults depopMarketResults">
           <div className="depopCatalogTitle">
-            <p><button type="button" onClick={() => applyBrowseSelection({ category: "All" })}>{t("common.home")}</button><span>/</span>{category === "All" ? t("catalog.allItems") : category}</p>
-            <h1>{category === "All" ? t("catalog.explore") : translateValue(locale, category)}</h1>
+            <p>
+              <button type="button" onClick={() => applyBrowseSelection({ department: "All" })}>{t("common.home")}</button><span>/</span>
+              {department === "All" ? t("catalog.allItems") : shopCategory === "All" ? translateValue(locale, department) : (
+                <><button type="button" onClick={() => selectDepartment(department)}>{translateValue(locale, department)}</button><span>/</span>{translateValue(locale, shopCategory)}</>
+              )}
+            </p>
+            <h1>{department === "All" ? t("catalog.explore") : translateValue(locale, shopCategory === "All" ? department : shopCategory)}</h1>
           </div>
 
-          <div className="depopPopularRow" aria-label={category === "Shoes" ? t("catalog.popularBrands") : t("catalog.popularCategories")}>
-            <strong>{category === "Shoes" ? t("catalog.popularBrands") : t("catalog.popularCategories")}</strong>
+          <div className="depopPopularRow" aria-label={t("catalog.popularCategories")}>
+            <strong>{t("catalog.popularCategories")}</strong>
             <div>
               {popularChoices.map((choice) => (
                 <button
                   type="button"
-                  key={`${choice.label}-${choice.brand ?? choice.bagType ?? choice.textileType ?? choice.category}`}
+                  key={`${choice.department}-${choice.shopCategory ?? choice.label}`}
+                  className={choice.shopCategory && choice.shopCategory === shopCategory ? "active" : ""}
                   onClick={() => applyBrowseSelection(choice)}
                 >
                   {translateValue(locale, choice.label)}
@@ -448,11 +440,9 @@ export function CatalogApp({
           </div>
 
           <div className="activeFilterRow depopActiveFilters">
-            {category !== "All" ? <button onClick={() => selectCategory("All")}>{category} <X size={13} /></button> : null}
+            {department !== "All" ? <button onClick={() => selectDepartment("All")}>{translateValue(locale, department)} <X size={13} /></button> : null}
+            {shopCategory !== "All" ? <button onClick={() => selectShopCategory("All")}>{translateValue(locale, shopCategory)} <X size={13} /></button> : null}
             {brand !== "All" ? <button onClick={() => setBrand("All")}>{brand} <X size={13} /></button> : null}
-            {shoeType !== "All" ? <button onClick={() => setShoeType("All")}>{shoeType} <X size={13} /></button> : null}
-            {bagType !== "All" ? <button onClick={() => setBagType("All")}>{bagType} <X size={13} /></button> : null}
-            {textileType !== "All" ? <button onClick={() => setTextileType("All")}>{textileType} <X size={13} /></button> : null}
             {price !== "All" ? <button onClick={() => setPrice("All")}>{price} <X size={13} /></button> : null}
             {size !== "All" ? <button onClick={() => setSize("All")}>{size} <X size={13} /></button> : null}
             {color !== "All" ? <button onClick={() => setColor("All")}>{color} <X size={13} /></button> : null}
@@ -460,7 +450,7 @@ export function CatalogApp({
             {condition !== "All" ? <button onClick={() => setCondition("All")}>{condition} <X size={13} /></button> : null}
             {store !== "All" ? <button onClick={() => setStore("All")}>{store} <X size={13} /></button> : null}
             {availableOnly ? <button onClick={() => setAvailableOnly(false)}>Available <X size={13} /></button> : null}
-            {activeFilterCount > 0 || category !== "All" ? <button className="clearAll" type="button" onClick={resetFilters}>Clear all</button> : null}
+            {activeFilterCount > 0 || department !== "All" ? <button className="clearAll" type="button" onClick={resetFilters}>Clear all</button> : null}
           </div>
 
           {filteredProducts.length > 0 ? (

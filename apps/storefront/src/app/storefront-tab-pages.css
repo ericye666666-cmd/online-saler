@@ -50,6 +50,7 @@
   list-style: none;
 }
 
+.browseAllRow > span:first-child,
 .browseList a > span:first-child,
 .accountRowText {
   flex: 1;
@@ -231,4 +232,43 @@
   cursor: pointer;
   font-size: 22px;
   line-height: 1;
+}
+
+/* Department tabs on Browse: Vestiaire's Women / Men / Kids strip. */
+.browseDepartments {
+  display: flex;
+  gap: 22px;
+  overflow-x: auto;
+  margin: 0 -18px 4px;
+  border-bottom: 1px solid #ededed;
+  padding: 0 18px;
+  scrollbar-width: none;
+}
+
+.browseDepartments::-webkit-scrollbar {
+  display: none;
+}
+
+.browseDepartments a {
+  flex: none;
+  border-bottom: 2px solid transparent;
+  color: #777;
+  padding: 12px 0 10px;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.browseDepartments a.active {
+  border-bottom-color: #111;
+  color: #111;
+  font-weight: 700;
+}
+
+.depopMegaLinks small,
+.depopMobileCategoryLink small {
+  margin-left: 4px;
+  color: #8a8a8a;
+  font-size: 12px;
+  font-weight: 400;
 }

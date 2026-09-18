@@ -1,3 +1,4 @@
+import type { Placement } from "../shop-taxonomy";
 import { supportWhatsAppUrl } from "../../support/whatsapp";
 
 export const SITE_URL =
@@ -99,6 +100,8 @@ export type Product = {
   code: string;
   title: string;
   category: string;
+  /** Where shoppers find it: department and category (see shop-taxonomy). */
+  placements?: Placement[];
   brand: string;
   shoeType?: ShoeType;
   shoeSizeSystem?: string | null;
@@ -266,19 +269,6 @@ export const seedProducts: Product[] = [
       "Medium-wash straight-leg jeans with a clean classic silhouette.",
   },
 ];
-
-export const categories = [
-  "All",
-  "Dresses",
-  "Tops",
-  "Jackets",
-  "Knitwear",
-  "Trousers",
-  "Skirts",
-  "Bags",
-  "Shoes",
-  "Home Textiles",
-] as const;
 
 export const conditions: ProductCondition[] = [...apparelConditions];
 

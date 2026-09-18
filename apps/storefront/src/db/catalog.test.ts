@@ -39,9 +39,9 @@ test("published shoe API data survives JSON loading and actual catalog shoe filt
     assert.equal(products[0]?.size, "UK 8.5");
     assert.equal(products[0]?.condition, "Good");
     assert.deepEqual(filterCatalogProducts(products, {
-      category: "Shoes", shoeType: "Sneakers", size: "UK 8.5", condition: "Good",
+      department: "Shoes", shopCategory: "Trainers", size: "UK 8.5", condition: "Good",
     }).map((product) => product.code), [shoe.barcode]);
-    assert.equal(filterCatalogProducts(products, { shoeType: "Sandals" }).length, 0);
+    assert.equal(filterCatalogProducts(products, { department: "Shoes", shopCategory: "Sandals & slides" }).length, 0);
     assert.equal(filterCatalogProducts(products, { size: "EU 42" }).length, 0);
     assert.deepEqual(catalogSizeOptions(products, "Shoes"), ["All", "UK 8.5"]);
     assert.ok(shoeConditionGrades.includes(products[0]!.condition as typeof shoeConditionGrades[number]));
@@ -105,10 +105,10 @@ test("apparel letter aliases share canonical display and size filters without in
     ...shoe, barcode: `apparel-${index}`, category: "TOP", subcategory: "TSHIRT", size,
   }));
   assert.deepEqual(products.map((product) => product.size), ["S", "S", "M", "M", "L", "XL", "XXL", "UK 12", "EU 38", "Waist 30"]);
-  assert.deepEqual(catalogSizeOptions(products, "Tops"), ["All", "S", "M", "L", "XL", "XXL", "EU 38", "UK 12", "Waist 30"]);
+  assert.deepEqual(catalogSizeOptions(products, "Men"), ["All", "S", "M", "L", "XL", "XXL", "EU 38", "UK 12", "Waist 30"]);
   assert.deepEqual(filterCatalogProducts(products, { size: "M" }).map((product) => product.code), ["apparel-2", "apparel-3"]);
-  for (const size of catalogSizeOptions(products, "Tops").slice(1)) {
-    assert.ok(filterCatalogProducts(products, { category: "Tops", size }).length > 0, `size ${size} must have a matching item`);
+  for (const size of catalogSizeOptions(products, "Men").slice(1)) {
+    assert.ok(filterCatalogProducts(products, { department: "Men", size }).length > 0, `size ${size} must have a matching item`);
   }
   assert.deepEqual(products[0]?.detail?.measurements, [{ type: "CHEST_WIDTH", valueCm: "48" }]);
 });
@@ -116,11 +116,11 @@ test("apparel letter aliases share canonical display and size filters without in
 test("size filters use actual category stock and never assign M to missing apparel sizes", () => {
   const missing = toCatalogProduct({ ...shoe, category: "TOP", subcategory: "TSHIRT", size: null });
   assert.equal(missing.size, "Size not confirmed");
-  assert.deepEqual(catalogSizeOptions([missing], "Tops"), ["All"]);
+  assert.deepEqual(catalogSizeOptions([missing], "Men"), ["All"]);
   assert.deepEqual(catalogSizeOptions([], "All"), ["All"]);
 
-  const uk = toCatalogProduct({ ...shoe, category: "DRESS", subcategory: "DRESS", size: "UK 12" });
-  assert.deepEqual(catalogSizeOptions([missing, uk, toCatalogProduct(shoe)], "Dresses"), ["All", "UK 12"]);
+  const uk = toCatalogProduct({ ...shoe, audience: "WOMEN", category: "DRESS", subcategory: "DRESS", size: "UK 12" });
+  assert.deepEqual(catalogSizeOptions([missing, uk, toCatalogProduct(shoe)], "Women", "Dresses"), ["All", "UK 12"]);
   const kids = toCatalogProduct({ ...shoe, category: "KIDS", subcategory: "KIDS_TOPS", size: null, kidsAgeRange: "8-10 years" });
   assert.equal(kids.size, "8-10 years");
 });

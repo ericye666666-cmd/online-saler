@@ -1,12 +1,13 @@
 import { CatalogApp } from "./components/catalog-app";
 import { HomeFeed } from "./components/home-feed";
-import { categories, normalizeSellerRef, normalizeTrackingParam } from "./data/products";
+import { normalizeSellerRef, normalizeTrackingParam } from "./data/products";
+import { departmentCategories, isDepartment } from "./shop-taxonomy";
 import { listPublishedProducts } from "../db/catalog";
 
 export const dynamic = "force-dynamic";
 
 type HomeProps = {
-  searchParams: Promise<{ ref?: string; category?: string; source?: string; placement?: string; campaign?: string; utm_source?: string; utm_campaign?: string }>;
+  searchParams: Promise<{ ref?: string; category?: string; type?: string; source?: string; placement?: string; campaign?: string; utm_source?: string; utm_campaign?: string }>;
 };
 
 export default async function Home({ searchParams }: HomeProps) {
@@ -14,12 +15,12 @@ export default async function Home({ searchParams }: HomeProps) {
     searchParams,
     listPublishedProducts(),
   ]);
-  const { ref, category } = query;
-  const initialCategory = categories.includes(
-    category as (typeof categories)[number],
-  )
-    ? (category as (typeof categories)[number])
-    : "All";
+  const { ref, category, type } = query;
+  // `category` is the department; links from before departments existed
+  // ("Home Textiles") still land somewhere sensible.
+  const legacy = category === "Home Textiles" ? "Home" : category;
+  const initialDepartment = isDepartment(legacy) ? legacy : "All";
+  const initialShopCategory = initialDepartment !== "All" && type && departmentCategories[initialDepartment].includes(type) ? type : "All";
 
   const sellerRef = normalizeSellerRef(ref);
   const source = normalizeTrackingParam(query.source ?? query.utm_source);
@@ -29,7 +30,8 @@ export default async function Home({ searchParams }: HomeProps) {
   return (
     <CatalogApp
       initialProducts={products}
-      initialCategory={initialCategory}
+      initialDepartment={initialDepartment}
+      initialShopCategory={initialShopCategory}
       sellerRef={sellerRef}
       source={source}
       placement={placement}

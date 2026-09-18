@@ -1,13 +1,20 @@
 import type { Product } from "./data/products";
 
 export type CatalogFilters = Partial<Record<
-  "category" | "brand" | "color" | "material" | "store" | "shoeType" | "bagType" | "textileType" | "size" | "condition" | "price" | "query" | "sort",
+  "department" | "shopCategory" | "brand" | "color" | "material" | "store" | "size" | "condition" | "price" | "query" | "sort",
   string
 >> & { availableOnly?: boolean };
 
-export function catalogSizeOptions(products: Product[], category: string): string[] {
+/** Whether a product is shelved in a department (and, if given, one of its categories). */
+export function inPlacement(product: Product, department = "All", shopCategory = "All"): boolean {
+  if (department === "All") return true;
+  return (product.placements ?? []).some((placement) =>
+    placement.department === department && (shopCategory === "All" || placement.category === shopCategory));
+}
+
+export function catalogSizeOptions(products: Product[], department: string, shopCategory = "All"): string[] {
   const sizes = products
-    .filter((product) => category === "All" || product.category === category)
+    .filter((product) => inPlacement(product, department, shopCategory))
     .map((product) => product.size)
     .filter((size) => size && size !== "Size not confirmed");
   const letterOrder = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "4XL", "5XL"];
@@ -26,16 +33,17 @@ export function filterCatalogProducts(products: Product[], filters: CatalogFilte
   const normalizedQuery = filters.query?.trim().toLowerCase();
   const matches = products.filter((product) => {
     const matchesQuery = !normalizedQuery || [
-      product.title, product.category, product.brand, product.bagType, product.textileType,
-      product.shoeType, product.size, product.material, product.color, product.code,
+      product.title, product.category, product.brand, product.shoeType, product.size, product.material, product.color, product.code,
+      ...(product.placements ?? []).map((placement) => placement.category),
     ].join(" ").toLowerCase().includes(normalizedQuery);
     const price = filters.price ?? "All";
     const matchesPrice = price === "All"
       || (price === "Under KSh 500" && product.price < 500)
       || (price === "KSh 500–799" && product.price >= 500 && product.price < 800)
       || (price === "KSh 800+" && product.price >= 800);
-    const fields = ["category", "brand", "color", "material", "store", "shoeType", "bagType", "textileType", "size", "condition"] as const;
+    const fields = ["brand", "color", "material", "store", "size", "condition"] as const;
     return matchesQuery && matchesPrice
+      && inPlacement(product, filters.department ?? "All", filters.shopCategory ?? "All")
       && fields.every((field) => !filters[field] || filters[field] === "All" || product[field] === filters[field])
       && (!filters.availableOnly || product.status === "Available");
   });

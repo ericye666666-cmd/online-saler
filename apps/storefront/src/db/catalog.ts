@@ -9,6 +9,7 @@ import {
   type PublicProduct
 } from "../app/storefront-products";
 import { shoeTypes, type Product } from "../app/data/products";
+import { classifyProduct } from "../app/shop-taxonomy";
 import { formatShoeSizeLabel, isShoeProduct } from "@online-saler/shared-types";
 import {
   formatAgeRange,
@@ -87,6 +88,7 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
       product.detail.title?.trim() || product.title?.trim() || "Second-hand item"
     ),
     category,
+    placements: classifyProduct({ ...product, isShoe }),
     ...(isShoe ? {
       shoeType: shoeTypes.find((type) => type === product.shoeType),
       shoeSizeSystem: product.shoeSizeSystem ?? null,

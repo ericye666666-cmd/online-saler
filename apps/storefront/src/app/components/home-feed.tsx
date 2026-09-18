@@ -5,6 +5,7 @@ import { translateValue } from "../../i18n/dictionary";
 import { HomeSizePicks } from "./home-size-picks";
 import { RailCard } from "./rail-card";
 import { cardImageSrc } from "../storefront-products";
+import { departments, type Department } from "../shop-taxonomy";
 
 const RAIL_LENGTH = 12;
 
@@ -12,12 +13,18 @@ export async function HomeFeed({ products }: { products: Product[] }) {
   const { locale, t } = await getStorefrontI18n();
   const available = products.filter((product) => product.status === "Available");
 
-  // One tile per stocked category, illustrated by the first item in it.
-  const categoryTiles: { category: string; image: string; count: number }[] = [];
-  for (const product of available) {
-    const existing = categoryTiles.find((tile) => tile.category === product.category);
-    if (existing) existing.count += 1;
-    else categoryTiles.push({ category: product.category, image: product.image, count: 1 });
+  // One tile per stocked department, each illustrated by a different item so
+  // unisex pieces shelved in both Women and Men do not repeat.
+  const categoryTiles: { department: Department; image: string }[] = [];
+  const used = new Set<string>();
+  for (const department of departments) {
+    const candidates = available.filter((product) => !used.has(product.code) && product.image
+      && product.placements?.some((placement) => placement.department === department));
+    // A women's-only piece says "Women" better than a unisex one.
+    const cover = candidates.find((product) => product.placements?.length === 1) ?? candidates[0];
+    if (!cover) continue;
+    used.add(cover.code);
+    categoryTiles.push({ department, image: cover.image });
   }
 
   const newest = available.slice(0, RAIL_LENGTH);
@@ -31,11 +38,11 @@ export async function HomeFeed({ products }: { products: Product[] }) {
           </div>
           <div className="homeRail homeCategoryRail">
             {categoryTiles.map((tile) => (
-              <Link className="homeCategoryTile" key={tile.category} href={`/?category=${encodeURIComponent(tile.category)}`}>
+              <Link className="homeCategoryTile" key={tile.department} href={`/?category=${encodeURIComponent(tile.department)}`}>
                 <span className="homeCategoryFrame">
                   {tile.image ? <img src={cardImageSrc(tile.image)} alt="" loading="lazy" /> : null}
                 </span>
-                <span className="homeCategoryLabel">{translateValue(locale, tile.category)}</span>
+                <span className="homeCategoryLabel">{translateValue(locale, tile.department)}</span>
               </Link>
             ))}
           </div>
