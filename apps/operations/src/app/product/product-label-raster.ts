@@ -30,7 +30,7 @@ export function renderProductLabel(payload: LabelPrintPayload): { preview: strin
   line(label.title, 40, 24, true);
   line(`${label.category} / ${label.color}`, 69, 18);
   line(`SIZE ${label.size}   ${label.condition}`, 96, 20);
-  line(t("货架 {location}", { location: label.location }), 137, 32, true);
+  line(`Shelf ${label.location}`, 137, 32, true);
   const bars = document.createElement("canvas");
   JsBarcode(bars, label.barcode_value, { format: "CODE128", displayValue: false, width: 2, height: 80, margin: 20, marginTop: 0, marginBottom: 0 });
   // Never stretch or compress bars: preserve two-dot modules and quiet zones.

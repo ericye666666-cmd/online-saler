@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   buildLabelPrintPayload,
   isDeli720Printer,
+  labelText,
   normalizeLabelSize,
   printerList,
   selectDeliPrinter,
@@ -46,6 +47,14 @@ assert.equal(payload6040.label_payload.location, "A-01-02-03");
 const payload4030 = buildLabelPrintPayload({ product, labelSize: "40x30", printerName: "deli-720" });
 assert.equal(payload4030.template_size, "40x30");
 assert.equal(payload4030.printer_name, "deli-720");
+
+// The printed label is always English, never raw codes or Chinese.
+assert.equal(labelText("LADY_TOPS"), "Lady tops");
+assert.equal(labelText("LIKE_NEW"), "Like new");
+assert.equal(labelText("Coral Orange"), "Coral Orange");
+assert.equal(payload6040.label_payload.condition, "Good");
+assert.equal(payload6040.label_payload.color, "Orange");
+assert.equal(buildLabelPrintPayload({ product: { barcode: "X1" }, labelSize: "60x40" }).label_payload.location, "Unassigned");
 
 assert.throws(() => buildLabelPrintPayload({ product: { title: "No barcode" }, labelSize: "60x40" }));
 

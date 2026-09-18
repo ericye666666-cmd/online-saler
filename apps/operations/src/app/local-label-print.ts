@@ -1,5 +1,4 @@
 import { stringValue, type JsonRecord } from "./operations-workspace-flow";
-import { t } from "@/i18n/runtime";
 
 export type LabelSize = "60x40" | "40x30";
 
@@ -85,6 +84,15 @@ export function selectDeliPrinter(printers: LocalPrinter[], fallback = DEFAULT_P
   return deli?.name ?? fallback;
 }
 
+// The printed label is read by warehouse staff in Kenya, so it is always English,
+// whatever language the screen is in. Stored codes such as LADY_TOPS or LIKE_NEW
+// become "Lady tops" / "Like new".
+export function labelText(value: string): string {
+  if (!/^[A-Z0-9_]+$/.test(value) || !/[A-Z]/.test(value)) return value;
+  const words = value.toLowerCase().split("_").filter(Boolean).join(" ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export function buildLabelPrintPayload(input: {
   product: JsonRecord;
   labelSize: LabelSize;
@@ -97,17 +105,17 @@ export function buildLabelPrintPayload(input: {
 
   const productCode = stringValue(input.product.productCode);
   const title = stringValue(input.product.title) || "Second-hand item";
-  const category = stringValue(input.product.category) || "-";
-  const color = stringValue(input.product.color) || "-";
+  const category = labelText(stringValue(input.product.category)) || "-";
+  const color = labelText(stringValue(input.product.color)) || "-";
   const size = stringValue(input.product.finalSizeLabel) || stringValue(input.product.tagSize) || "-";
-  const condition = stringValue(input.product.conditionGrade) || "-";
+  const condition = labelText(stringValue(input.product.conditionGrade)) || "-";
   const inventoryItem = input.product.inventoryItem && typeof input.product.inventoryItem === "object"
     ? input.product.inventoryItem as JsonRecord
     : {};
   const location = inventoryItem.location && typeof inventoryItem.location === "object"
     ? inventoryItem.location as JsonRecord
     : {};
-  const locationCode = stringValue(location.locationCode) || t("待分配");
+  const locationCode = stringValue(location.locationCode) || "Unassigned";
   const templateCode = `online_saler_product_${input.labelSize}`;
   const printerName = input.printerName?.trim() || DEFAULT_PRINTER_NAME;
 
