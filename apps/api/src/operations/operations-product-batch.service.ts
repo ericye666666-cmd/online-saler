@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import {
   ActorType,
+  InventoryMovementType,
+  Prisma,
   ProductBatchStatus,
   ProductStatus,
   ReviewResult,
@@ -26,7 +28,9 @@ import { buildProductBatchImagePreviews } from "./product-batch-image-preview";
 import { canGenerateOrReuseBarcode } from "./product-storage-reservation";
 import { loadConfirmedDisplayImage } from "../product/product-publication-evidence";
 import { productApprovalBlocker, productContentBlocker } from "../product/product-publication-readiness";
-import { WAREHOUSE_OCCUPYING_STATUSES } from "./warehouse-capacity";
+import { refreshWarehouseLocationStatuses, WAREHOUSE_OCCUPYING_STATUSES } from "./warehouse-capacity";
+import { BatchCancellationError, planBatchCancellation } from "./product-batch-cancellation";
+import { ProductStateMachine } from "../product/product-state-machine";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -688,6 +692,130 @@ export class OperationsProductBatchService {
     if (queue === "rejected") return { status: ProductStatus.ARCHIVED };
     if (queue === "barcode") return { status: { in: [ProductStatus.CALIBRATED, ProductStatus.BARCODE_ASSIGNED] } };
     return {};
+  }
+
+  /**
+   * Stops an intake that will not be finished. Unfinished items are archived with the reason and
+   * their shelf slots are freed; items that already went live are left untouched. Nothing is
+   * deleted, and the whole cancellation commits or rolls back as one.
+   */
+  async cancelBatch(batchId: string, input: { adminUserId?: string; employeeId?: string; reason?: string }) {
+    const session = await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
+    const employeeId = employeeIdOrDefault(input.employeeId);
+    const reason = input.reason?.trim() ?? "";
+    const stateMachine = new ProductStateMachine();
+
+    let plan: ReturnType<typeof planBatchCancellation>;
+    try {
+      plan = await prisma.$transaction(async (transaction) => {
+        const batch = await transaction.productBatch.findUnique({ where: { id: batchId } });
+        if (!batch) throw new NotFoundException("Product batch not found.");
+        const products = await transaction.product.findMany({
+          where: { batchId },
+          include: { inventoryItem: { include: { location: { select: { locationCode: true } } } } },
+          orderBy: { batchItemNumber: "asc" }
+        });
+        const cancellation = planBatchCancellation(batch, products, reason);
+
+        for (const product of cancellation.archive) {
+          const rule = stateMachine.assertCanTransition({
+            fromStatus: product.status,
+            toStatus: ProductStatus.ARCHIVED,
+            reason
+          });
+          // Conditional on the status we planned from: if anything moved the item meanwhile
+          // (e.g. it was just published), the update misses and the whole cancellation rolls back.
+          const changed = await transaction.product.updateMany({
+            where: { id: product.id, status: product.status },
+            data: { status: ProductStatus.ARCHIVED }
+          });
+          if (changed.count !== 1) {
+            throw new BatchCancellationError(`${product.productCode} changed while cancelling. Refresh the batch and try again.`);
+          }
+          await transaction.auditLog.create({
+            data: {
+              actorType: ActorType.EMPLOYEE,
+              actorId: employeeId,
+              actorAdminUserId: session.adminUser?.id ?? null,
+              sourceApp: SourceApp.OPERATIONS,
+              module: "Product",
+              entityType: "Product",
+              entityId: product.id,
+              action: rule.action,
+              beforeJson: { status: product.status },
+              afterJson: { status: ProductStatus.ARCHIVED, batchId },
+              reason: `Batch ${batch.batchCode} cancelled: ${reason}`
+            }
+          });
+        }
+
+        for (const release of cancellation.releases) {
+          await transaction.inventoryItem.update({
+            where: { id: release.inventoryItemId },
+            data: { locationId: null }
+          });
+          await transaction.inventoryMovement.create({
+            data: {
+              inventoryItemId: release.inventoryItemId,
+              productId: release.productId,
+              movementType: InventoryMovementType.ADJUST,
+              fromLocationId: release.locationId,
+              employeeId,
+              reason: `Shelf released: batch ${batch.batchCode} cancelled (${reason})`
+            }
+          });
+        }
+        await refreshWarehouseLocationStatuses(transaction, cancellation.releases.map((release) => release.locationId));
+
+        await transaction.productBatch.update({
+          where: { id: batchId },
+          data: { status: ProductBatchStatus.CANCELLED }
+        });
+        await transaction.auditLog.create({
+          data: {
+            actorType: ActorType.EMPLOYEE,
+            actorId: employeeId,
+            actorAdminUserId: session.adminUser?.id ?? null,
+            sourceApp: SourceApp.OPERATIONS,
+            module: "PRODUCT_FACTORY",
+            entityType: "ProductBatch",
+            entityId: batchId,
+            action: "PRODUCT_BATCH_CANCELLED",
+            beforeJson: { status: batch.status },
+            afterJson: {
+              status: ProductBatchStatus.CANCELLED,
+              archivedProductIds: cancellation.archive.map((product) => product.id),
+              keptProductIds: cancellation.kept.map((product) => product.id),
+              releasedShelves: cancellation.releases.map((release) => ({
+                productId: release.productId,
+                locationCode: release.locationCode,
+                physicallyShelved: release.physicallyShelved
+              }))
+            },
+            reason
+          }
+        });
+        return cancellation;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 20_000 });
+    } catch (error) {
+      if (error instanceof BatchCancellationError) throw new BadRequestException(error.message);
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new BadRequestException("The batch changed while cancelling. Refresh the batch and try again.");
+      }
+      throw error;
+    }
+
+    return {
+      batchId,
+      status: ProductBatchStatus.CANCELLED,
+      archivedCount: plan.archive.length,
+      keptCount: plan.kept.length,
+      releasedShelves: plan.releases.map((release) => ({
+        productCode: release.productCode,
+        locationCode: release.locationCode,
+        physicallyShelved: release.physicallyShelved
+      }))
+    };
   }
 
   private async requireBatch(batchId: string) {

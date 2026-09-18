@@ -113,6 +113,11 @@ export class OperationsProductBatchController {
     return this.batches.completeAndPublishBatch(id, await this.identity.employeeInput(authorization, body));
   }
 
+  @Post(":id/cancel")
+  async cancel(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: RetakeBody) {
+    return this.batches.cancelBatch(id, await this.identity.employeeInput(authorization, body));
+  }
+
   @Post("products/:id/review")
   async reviewProduct(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: ReviewBody) {
     return this.batches.reviewProduct(id, await this.identity.employeeInput(authorization, body));

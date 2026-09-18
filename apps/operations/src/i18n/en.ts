@@ -2030,5 +2030,23 @@ export const enDictionary: Record<string, string> = {
   "US 童鞋": "US kids'",
   "V领": "V-neck",
 
-  "四角": "four corners"
+  "四角": "four corners",
+  // ——— Batch cancellation ———
+  "取消批次": "Cancel batch",
+  "取消批次 {batchCode}": "Cancel batch {batchCode}",
+  "取消后批次不再出现在进行中列表，此操作不能撤销。商品和照片不会被删除，处理记录会保留。":
+    "Once cancelled, the batch leaves the in-progress list and this cannot be undone. No items or photos are deleted, and the history is kept.",
+  "{count} 件未上架商品将标记为已拒绝": "{count} unpublished items will be marked as rejected",
+  "{count} 件已上架商品保持不变": "{count} published items stay as they are",
+  "{count} 个已预留的货架位将被释放": "{count} reserved shelf locations will be freed",
+  "取消原因": "Reason for cancelling",
+  "例如：测试批次 / 录错数量 / 货品退回供应商": "For example: test batch / wrong quantity entered / goods returned to supplier",
+  "请填写取消原因。": "Enter a reason for cancelling.",
+  "取消批次失败。": "Could not cancel the batch.",
+  "返回": "Back",
+  "正在取消…": "Cancelling…",
+  "确认取消批次": "Cancel the batch",
+  "已取消批次 {batchCode}：{archived} 件标记为已拒绝，释放 {released} 个货架位。":
+    "Batch {batchCode} cancelled: {archived} items marked as rejected, {released} shelf locations freed.",
+  "以下商品已经放上货架，请把实物取下：": "These items were already put on a shelf — take them back off:"
 };

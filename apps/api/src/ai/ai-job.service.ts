@@ -25,6 +25,9 @@ export class AIJobService {
 
     const product = await prisma.product.findUnique({ where: { id: request.productId } });
     if (!product) throw new NotFoundException("Product not found");
+    if (product.status === ProductStatus.ARCHIVED) {
+      throw new BadRequestException("Archived products cannot be sent to AI recognition");
+    }
 
     const providerRequest = { ...request, categoryHint: isShoeProduct(product.category, product.subcategory) ? "SHOES" : product.category };
     if (isShoeCategory(providerRequest.categoryHint)) {
@@ -41,8 +44,10 @@ export class AIJobService {
       }
     });
 
-    await prisma.product.update({
-      where: { id: request.productId },
+    // Conditional like the failure path below: a product archived meanwhile (e.g. its batch was
+    // cancelled) must never be pulled back into the workflow by an AI job.
+    await prisma.product.updateMany({
+      where: { id: request.productId, status: { not: ProductStatus.ARCHIVED } },
       data: { status: ProductStatus.AI_PROCESSING }
     });
 
@@ -108,8 +113,8 @@ export class AIJobService {
             })
           ];
         }),
-        prisma.product.update({
-          where: { id: request.productId },
+        prisma.product.updateMany({
+          where: { id: request.productId, status: ProductStatus.AI_PROCESSING },
           data: { status: ProductStatus.CALIBRATION_PENDING }
         })
       ]);

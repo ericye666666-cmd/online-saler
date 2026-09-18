@@ -15,7 +15,8 @@ import {
   ListChecksIcon,
   PackageCheckIcon,
   PlusIcon,
-  RefreshCwIcon
+  RefreshCwIcon,
+  XCircleIcon
 } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Dialog,
@@ -101,6 +103,16 @@ type ProductBatch = {
   counts: Record<string, number>;
   products: ProductRecord[];
 };
+
+type BatchCancellationResult = {
+  batchId: string;
+  archivedCount: number;
+  keptCount: number;
+  releasedShelves: Array<{ productCode: string; locationCode: string | null; physicallyShelved: boolean }>;
+};
+
+// Mirrors the API: items that already went live stay as they are when a batch is cancelled.
+const BATCH_CANCELLATION_KEPT_STATUSES = new Set(["PUBLISHED", "UNPUBLISHED", "ARCHIVED"]);
 
 type ProductSummary = {
   employeeId: string;
@@ -370,9 +382,13 @@ export function NewBatchPage() {
 
 export function ProductBatchListPage({ completed = false }: { completed?: boolean }) {
   const ids = useOperationIds();
+  const { hasPermission } = useOperationsSession();
   const [batches, setBatches] = useState<ProductBatch[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [cancelTarget, setCancelTarget] = useState<ProductBatch | null>(null);
+  const [notice, setNotice] = useState<BatchCancellationResult & { batchCode: string } | null>(null);
+  const canCancel = !completed && hasPermission("action.product.approve");
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
@@ -401,11 +417,126 @@ export function ProductBatchListPage({ completed = false }: { completed?: boolea
         action={completed ? undefined : <Button asChild><Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />{t("新建批次")}</Link></Button>}
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+      {notice ? <BatchCancelledNotice result={notice} onDismiss={() => setNotice(null)} /> : null}
       {busy && batches.length === 0 ? <StatusMessage tone="neutral">{t("正在读取批次...")}</StatusMessage> : null}
       <div className="space-y-3">
-        {batches.map((batch) => <BatchRow key={batch.id} batch={batch} />)}
+        {batches.map((batch) => <BatchRow key={batch.id} batch={batch} onCancel={canCancel ? () => setCancelTarget(batch) : undefined} />)}
         {!busy && batches.length === 0 ? <EmptyState title={completed ? t("还没有已完成批次") : t("没有进行中的批次")} description={completed ? t("完整发布或归档的批次会显示在这里。") : t("新建批次后会显示在这里。")} /> : null}
       </div>
+      <CancelBatchDialog
+        batch={cancelTarget}
+        ids={ids}
+        onOpenChange={(open) => { if (!open) setCancelTarget(null); }}
+        onCancelled={(result, batch) => {
+          setCancelTarget(null);
+          setNotice({ ...result, batchCode: batch.batchCode });
+          void load();
+        }}
+      />
+    </div>
+  );
+}
+
+function CancelBatchDialog({
+  batch,
+  ids,
+  onOpenChange,
+  onCancelled
+}: {
+  batch: ProductBatch | null;
+  ids: ReturnType<typeof useOperationIds>;
+  onOpenChange: (open: boolean) => void;
+  onCancelled: (result: BatchCancellationResult, batch: ProductBatch) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setReason("");
+    setError("");
+  }, [batch?.id]);
+
+  const products = batch?.products ?? [];
+  const archived = products.filter((product) => !BATCH_CANCELLATION_KEPT_STATUSES.has(product.status));
+  const kept = products.length - archived.length;
+  const shelved = archived.filter((product) => Boolean(product.inventoryItem?.locationId)).length;
+
+  async function confirm() {
+    if (!batch) return;
+    if (!reason.trim()) {
+      setError(t("请填写取消原因。"));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const result = await request<BatchCancellationResult>(`/operations/product-batches/${batch.id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ ...ids, reason: reason.trim() })
+      });
+      onCancelled(result, batch);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("取消批次失败。"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={Boolean(batch)} onOpenChange={(open) => { if (!busy) onOpenChange(open); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("取消批次 {batchCode}", { batchCode: batch?.batchCode ?? "" })}</DialogTitle>
+          <DialogDescription>{t("取消后批次不再出现在进行中列表，此操作不能撤销。商品和照片不会被删除，处理记录会保留。")}</DialogDescription>
+        </DialogHeader>
+        <ul className="space-y-1.5 rounded-md border bg-muted/30 p-3 text-sm">
+          <li>{t("{count} 件未上架商品将标记为已拒绝", { count: archived.length })}</li>
+          {kept ? <li>{t("{count} 件已上架商品保持不变", { count: kept })}</li> : null}
+          {shelved ? <li>{t("{count} 个已预留的货架位将被释放", { count: shelved })}</li> : null}
+        </ul>
+        <Field>
+          <FieldLabel htmlFor="cancel-batch-reason">{t("取消原因")}</FieldLabel>
+          <Textarea
+            id="cancel-batch-reason"
+            rows={3}
+            value={reason}
+            placeholder={t("例如：测试批次 / 录错数量 / 货品退回供应商")}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </Field>
+        {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>{t("返回")}</Button>
+          <Button variant="destructive" disabled={busy || !reason.trim()} onClick={() => void confirm()}>
+            {busy ? t("正在取消…") : t("确认取消批次")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BatchCancelledNotice({ result, onDismiss }: { result: BatchCancellationResult & { batchCode: string }; onDismiss: () => void }) {
+  const toTakeDown = result.releasedShelves.filter((shelf) => shelf.physicallyShelved);
+  return (
+    <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <p>{t("已取消批次 {batchCode}：{archived} 件标记为已拒绝，释放 {released} 个货架位。", {
+          batchCode: result.batchCode,
+          archived: result.archivedCount,
+          released: result.releasedShelves.length
+        })}</p>
+        <Button size="sm" variant="ghost" onClick={onDismiss}>{t("关闭")}</Button>
+      </div>
+      {toTakeDown.length ? (
+        <div className="mt-2 text-destructive">
+          <p className="font-medium">{t("以下商品已经放上货架，请把实物取下：")}</p>
+          <ul className="mt-1 list-disc pl-5">
+            {toTakeDown.map((shelf) => <li key={shelf.productCode}>{shelf.locationCode ?? "-"} · {shelf.productCode}</li>)}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -739,7 +870,7 @@ function productImageVariantLabel(variant: string) {
   return labels[variant] ?? variant;
 }
 
-function BatchRow({ batch }: { batch: ProductBatch }) {
+function BatchRow({ batch, onCancel }: { batch: ProductBatch; onCancel?: () => void }) {
   return (
     <div className="grid gap-3 rounded-md border bg-background p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="min-w-0 space-y-2">
@@ -753,7 +884,14 @@ function BatchRow({ batch }: { batch: ProductBatch }) {
           {batch.exceptionCount ? <span className="text-destructive">{t("异常")} {batch.exceptionCount}</span> : null}
         </div>
       </div>
-      <Button asChild variant="outline" className="w-full sm:w-auto"><Link href={`/product/batches/${batch.id}`}>{t("打开批次")}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        {onCancel ? (
+          <Button variant="ghost" className="w-full text-muted-foreground hover:text-destructive sm:w-auto" onClick={onCancel}>
+            <XCircleIcon data-icon="inline-start" />{t("取消批次")}
+          </Button>
+        ) : null}
+        <Button asChild variant="outline" className="w-full sm:w-auto"><Link href={`/product/batches/${batch.id}`}>{t("打开批次")}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+      </div>
     </div>
   );
 }

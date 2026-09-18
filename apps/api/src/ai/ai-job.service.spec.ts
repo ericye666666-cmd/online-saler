@@ -13,6 +13,7 @@ const originals = {
   extractionCreate: prisma.aIExtraction.create,
   extractionUpdate: prisma.aIExtraction.update,
   fieldDecisionCreate: prisma.aIFieldDecision.create,
+  measurementUpsert: prisma.productMeasurement.upsert,
   transaction: prisma.$transaction
 };
 
@@ -24,6 +25,7 @@ afterEach(() => {
   prisma.aIExtraction.create = originals.extractionCreate;
   prisma.aIExtraction.update = originals.extractionUpdate;
   prisma.aIFieldDecision.create = originals.fieldDecisionCreate;
+  prisma.productMeasurement.upsert = originals.measurementUpsert;
   prisma.$transaction = originals.transaction;
 });
 
@@ -95,6 +97,7 @@ it("sends only latest shoe views and stores the same canonical IDs when historic
     return { id: "extraction-1" };
   }) as never;
   prisma.product.update = (async ({ data }: { data: unknown }) => data) as never;
+  prisma.product.updateMany = (async () => ({ count: 1 })) as never;
   prisma.aIExtraction.update = (async ({ data }: { data: unknown }) => data) as never;
   prisma.aIFieldDecision.create = (async ({ data }: { data: unknown }) => data) as never;
   prisma.$transaction = (async (operations: Promise<unknown>[]) => Promise.all(operations)) as never;
@@ -111,4 +114,41 @@ it("sends only latest shoe views and stores the same canonical IDs when historic
   assert.deepEqual(persistedRequest?.imageIds, expected);
   assert.deepEqual(persistedImageIds, expected);
   assert.ok(requestedIds.includes("label-old")); // Do not mutate the caller's audit input.
+});
+
+
+it("refuses to run AI recognition on an archived product", async () => {
+  prisma.product.findUnique = (async () => ({ id: "archived", category: "TOPS", status: ProductStatus.ARCHIVED })) as never;
+  let calls = 0;
+  const service = new AIJobService({ extract: async () => { calls += 1; throw new Error("Must not invoke provider"); } });
+  await assert.rejects(
+    service.submit({ productId: "archived", imageIds: ["front"], promptVersion: "test" }),
+    /Archived products cannot be sent to AI recognition/
+  );
+  assert.equal(calls, 0);
+});
+
+it("only advances a product that is still AI_PROCESSING when recognition succeeds", async () => {
+  prisma.product.findUnique = (async () => ({ id: "product-1", category: "TOPS", status: ProductStatus.PHOTOGRAPHED })) as never;
+  prisma.aIExtraction.create = (async () => ({ id: "extraction-1" })) as never;
+  prisma.aIExtraction.update = (async ({ data }: { data: unknown }) => data) as never;
+  prisma.aIFieldDecision.create = (async ({ data }: { data: unknown }) => data) as never;
+  prisma.productMeasurement.upsert = (async ({ create }: { create: unknown }) => create) as never;
+  const statusWrites: Array<Record<string, unknown>> = [];
+  prisma.product.update = (async () => { throw new Error("Status must only change through a conditional updateMany"); }) as never;
+  prisma.product.updateMany = (async (input: Record<string, unknown>) => {
+    statusWrites.push(input);
+    return { count: 1 };
+  }) as never;
+  prisma.$transaction = (async (operations: Promise<unknown>[]) => Promise.all(operations)) as never;
+  const service = new AIJobService(new MockAIProvider());
+  service.get = (async () => ({ extractionId: "extraction-1", status: "SUCCEEDED" })) as never;
+
+  await service.submit({ productId: "product-1", imageIds: ["front"], promptVersion: "test" });
+
+  // A batch cancelled mid-recognition archives the product; neither write may pull it back.
+  assert.deepEqual(statusWrites, [
+    { where: { id: "product-1", status: { not: ProductStatus.ARCHIVED } }, data: { status: ProductStatus.AI_PROCESSING } },
+    { where: { id: "product-1", status: ProductStatus.AI_PROCESSING }, data: { status: ProductStatus.CALIBRATION_PENDING } }
+  ]);
 });
