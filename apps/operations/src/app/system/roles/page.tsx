@@ -12,6 +12,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { accessRequest, adminQuery, type RoleRecord } from "../access-client";
+import { t } from "@/i18n/runtime";
 
 type RoleForm = {
   code: string;
@@ -41,7 +42,7 @@ export default function RolesPage() {
     try {
       setRoles(await accessRequest<RoleRecord[]>(`/operations/access/roles?${adminQuery(adminUserId)}`));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取角色。");
+      setError(caught instanceof Error ? caught.message : t("无法读取角色。"));
     } finally {
       setBusy("");
     }
@@ -70,7 +71,7 @@ export default function RolesPage() {
       setCreateOpen(false);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法创建角色。");
+      setError(caught instanceof Error ? caught.message : t("无法创建角色。"));
     } finally {
       setBusy("");
     }
@@ -103,7 +104,7 @@ export default function RolesPage() {
       setEditingRole(null);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法更新角色。");
+      setError(caught instanceof Error ? caught.message : t("无法更新角色。"));
     } finally {
       setBusy("");
     }
@@ -113,32 +114,35 @@ export default function RolesPage() {
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-muted-foreground text-sm">系统管理</p>
-          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">角色管理</h1>
+          <p className="text-muted-foreground text-sm">{t("系统管理")}</p>
+          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{t("角色管理")}</h1>
           <p className="mt-2 max-w-2xl text-muted-foreground text-sm">
-            角色由模块、页面和操作权限组合而成。Super Admin 可以创建角色，也可以调整已有角色权限。
+            
+            {t("角色由模块、页面和操作权限组合而成。Super Admin 可以创建角色，也可以调整已有角色权限。")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" disabled={Boolean(busy)} onClick={() => void load()}>
             <RefreshCwIcon data-icon="inline-start" />
-            刷新
+            
+            {t("刷新")}
           </Button>
           {canManage ? (
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button>
                   <PlusIcon data-icon="inline-start" />
-                  新建角色
+                  
+                  {t("新建角色")}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>创建角色</DialogTitle>
+                  <DialogTitle>{t("创建角色")}</DialogTitle>
                 </DialogHeader>
                 <RoleFormFields form={form} onChange={setForm} includeCode />
                 <DialogFooter>
-                  <Button disabled={busy === "create"} onClick={() => void createRole()}>创建角色</Button>
+                  <Button disabled={busy === "create"} onClick={() => void createRole()}>{t("创建角色")}</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -160,7 +164,8 @@ export default function RolesPage() {
                 {canManage ? (
                   <Button size="sm" variant="outline" onClick={() => openEditor(role)}>
                     <PencilIcon data-icon="inline-start" />
-                    编辑
+                    
+                    {t("编辑")}
                   </Button>
                 ) : null}
               </div>
@@ -177,12 +182,13 @@ export default function RolesPage() {
       <Dialog open={Boolean(editingRole)} onOpenChange={(open) => !open && setEditingRole(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑角色权限</DialogTitle>
+            <DialogTitle>{t("编辑角色权限")}</DialogTitle>
           </DialogHeader>
           <RoleFormFields form={editForm} onChange={setEditForm} />
           <DialogFooter>
             <Button disabled={Boolean(editingRole && busy === `edit-${editingRole.id}`)} onClick={() => void updateRole()}>
-              保存角色
+              
+              {t("保存角色")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -196,20 +202,20 @@ function RoleFormFields(props: { form: RoleForm; onChange: (next: RoleForm) => v
   return (
     <FieldGroup>
       {includeCode ? (
-        <FormField label="角色代码">
+        <FormField label={t("角色代码")}>
           <Input value={form.code} onChange={(event) => onChange({ ...form, code: event.target.value })} />
         </FormField>
       ) : null}
-      <FormField label="角色名称">
+      <FormField label={t("角色名称")}>
         <Input value={form.name} onChange={(event) => onChange({ ...form, name: event.target.value })} />
       </FormField>
-      <FormField label="说明">
+      <FormField label={t("说明")}>
         <Input value={form.description} onChange={(event) => onChange({ ...form, description: event.target.value })} />
       </FormField>
       <Field>
-        <FieldLabel>权限代码</FieldLabel>
+        <FieldLabel>{t("权限代码")}</FieldLabel>
         <Textarea rows={6} value={form.permissionCodes} onChange={(event) => onChange({ ...form, permissionCodes: event.target.value })} />
-        <FieldDescription>多个权限用英文逗号分隔，例如 module.product, page.product.digitalization, action.product.edit。</FieldDescription>
+        <FieldDescription>{t("多个权限用英文逗号分隔，例如 module.product, page.product.digitalization, action.product.edit。")}</FieldDescription>
       </Field>
     </FieldGroup>
   );

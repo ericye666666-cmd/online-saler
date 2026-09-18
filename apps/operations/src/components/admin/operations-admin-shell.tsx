@@ -75,6 +75,9 @@ import {
   SidebarTrigger
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n/runtime";
+import { useOperationsI18n } from "@/i18n/provider";
+import { OperationsLanguageSwitcher } from "./operations-language-switcher";
 
 type ModuleKey = "product" | "orders" | "affiliate" | "service" | "analytics" | "system";
 
@@ -215,10 +218,10 @@ function sectionForPath(pathname: string): string {
     Boolean(item.routePrefixes?.some((prefix) => pathname.startsWith(prefix)))
   );
   if (matchingItem) return matchingItem.label;
-  if (pathname === "/") return "今日工作";
-  if (pathname.startsWith("/control")) return "商品控制";
-  if (pathname.startsWith("/debug")) return "调试工具";
-  return "工作台";
+  if (pathname === "/") return t("今日工作");
+  if (pathname.startsWith("/control")) return t("商品控制");
+  if (pathname.startsWith("/debug")) return t("调试工具");
+  return t("工作台");
 }
 
 export function OperationsAdminShell({ children }: { children: ReactNode }) {
@@ -262,7 +265,7 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>{activeModule.label}</SidebarGroupLabel>
+            <SidebarGroupLabel>{t(activeModule.label)}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {activeModule.items.map((item) => {
@@ -271,18 +274,18 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
                   const content = (
                     <>
                       <Icon />
-                      <span>{item.label}</span>
+                      <span>{t(item.label)}</span>
                     </>
                   );
 
                   return (
                     <SidebarMenuItem key={`${activeModule.key}-${item.label}`}>
                       {item.href ? (
-                        <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                        <SidebarMenuButton asChild isActive={isActive} tooltip={t(item.label)}>
                           <Link href={item.href}>{content}</Link>
                         </SidebarMenuButton>
                       ) : (
-                        <SidebarMenuButton type="button" aria-disabled="true" className="opacity-60" tooltip={item.label}>
+                        <SidebarMenuButton type="button" aria-disabled="true" className="opacity-60" tooltip={t(item.label)}>
                           {content}
                         </SidebarMenuButton>
                       )}
@@ -296,7 +299,8 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
         </SidebarContent>
         <SidebarFooter>
           <div className="rounded-lg border bg-background p-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-            后台账号、角色和权限由系统管理统一控制。
+            
+            {t("后台账号、角色和权限由系统管理统一控制。")}
           </div>
         </SidebarFooter>
         <SidebarRail />
@@ -318,18 +322,19 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
                     <ChevronRightIcon />
                   </BreadcrumbSeparator>
                   <BreadcrumbItem>
-                    <BreadcrumbPage>{activeModule.label}</BreadcrumbPage>
+                    <BreadcrumbPage>{t(activeModule.label)}</BreadcrumbPage>
                   </BreadcrumbItem>
                   <BreadcrumbSeparator>
                     <ChevronRightIcon />
                   </BreadcrumbSeparator>
                   <BreadcrumbItem>
-                    <BreadcrumbPage>{routeSection}</BreadcrumbPage>
+                    <BreadcrumbPage>{t(routeSection)}</BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
               </Breadcrumb>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <OperationsLanguageSwitcher />
               <Badge variant="secondary" className="hidden md:inline-flex">
                 Staging
               </Badge>
@@ -352,7 +357,8 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout}>
                     <LogOutIcon />
-                    退出登录
+                    
+                    {t("退出登录")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -372,7 +378,7 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
                   onClick={() => setSelectedModule(module.key)}
                 >
                   <Icon data-icon="inline-start" />
-                  {module.label}
+                  {t(module.label)}
                 </Button>
               );
             })}
@@ -387,12 +393,14 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
 }
 
 function LoadingScreen() {
+  const { t } = useOperationsI18n();
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
       <Card className="w-full max-w-md shadow-sm">
         <CardHeader>
-          <CardTitle>正在打开 Online Saler Operations</CardTitle>
-          <CardDescription>正在读取后台账号和权限。</CardDescription>
+          <CardTitle>{t("正在打开 Online Saler Operations")}</CardTitle>
+          <CardDescription>{t("正在读取后台账号和权限。")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -405,6 +413,7 @@ function LoadingScreen() {
 }
 
 function LoginScreen() {
+  const { t } = useOperationsI18n();
   const { login, error } = useOperationsSession();
   const [loginAccount, setLoginAccount] = useState(DEFAULT_ADMIN_LOGIN);
   const [password, setPassword] = useState("");
@@ -417,7 +426,7 @@ function LoginScreen() {
     try {
       await login(loginAccount, password);
     } catch (caught) {
-      setLocalError(caught instanceof Error ? caught.message : "登录失败。");
+      setLocalError(caught instanceof Error ? caught.message : t("登录失败。"));
     } finally {
       setBusy(false);
     }
@@ -441,18 +450,20 @@ function LoginScreen() {
             <div className="max-w-xl">
               <Badge variant="secondary">Staging</Badge>
               <h1 className="mt-5 font-semibold text-4xl tracking-tight">
-                Kikuyu 二手服装运营中台
+                
+                {t("Kikuyu 二手服装运营中台")}
               </h1>
               <p className="mt-4 text-muted-foreground">
-                用一套后台完成商品数字化、订单全流程处理、推广佣金、客服和数据分析。
+                
+                {t("用一套后台完成商品数字化、订单全流程处理、推广佣金、客服和数据分析。")}
               </p>
             </div>
 
             <div className="grid gap-3">
               {[
-                ["商品中心", "批次、AI 识别、人工校准、Barcode 和发布"],
-                ["订单中心", "从付款、拣货和打包到自提、配送、售后与异常"],
-                ["系统权限", "后台账号、角色和操作权限统一控制"]
+                [t("商品中心"), t("批次、AI 识别、人工校准、Barcode 和发布")],
+                [t("订单中心"), t("从付款、拣货和打包到自提、配送、售后与异常")],
+                [t("系统权限"), t("后台账号、角色和操作权限统一控制")]
               ].map(([title, description]) => (
                 <div key={title} className="flex gap-3 rounded-xl border bg-background/70 p-4">
                   <ShieldCheckIcon className="mt-0.5 text-muted-foreground" />
@@ -466,22 +477,28 @@ function LoginScreen() {
           </div>
 
           <p className="text-muted-foreground text-xs">
-            顾客 Google 登录和后台员工登录相互独立。这里仅用于内部运营人员。
+            
+            {t("顾客 Google 登录和后台员工登录相互独立。这里仅用于内部运营人员。")}
           </p>
         </section>
 
         <section className="flex items-center justify-center p-4 md:p-10">
           <Card className="w-full max-w-md shadow-none ring-0">
             <CardHeader>
-              <div className="mb-3 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground lg:hidden">
-                <Building2Icon />
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground lg:hidden">
+                  <Building2Icon />
+                </div>
+                <div className="ml-auto">
+                  <OperationsLanguageSwitcher />
+                </div>
               </div>
-              <CardTitle className="text-2xl">后台登录</CardTitle>
-              <CardDescription>使用后台账号进入 Operations。顾客 Google 登录不适用于这里。</CardDescription>
+              <CardTitle className="text-2xl">{t("后台登录")}</CardTitle>
+              <CardDescription>{t("使用后台账号进入 Operations。顾客 Google 登录不适用于这里。")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="admin-login">登录账号或邮箱</Label>
+                <Label htmlFor="admin-login">{t("登录账号或邮箱")}</Label>
                 <Input
                   id="admin-login"
                   autoComplete="username"
@@ -490,13 +507,13 @@ function LoginScreen() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="admin-password">密码</Label>
+                <Label htmlFor="admin-password">{t("密码")}</Label>
                 <Input
                   id="admin-password"
                   type="password"
                   autoComplete="current-password"
                   value={password}
-                  placeholder="输入后台密码"
+                  placeholder={t("输入后台密码")}
                   onChange={(event) => setPassword(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") void submit();
@@ -509,15 +526,17 @@ function LoginScreen() {
                 </div>
               ) : null}
               <div className="rounded-lg border bg-muted/40 p-3 text-muted-foreground text-sm">
-                Staging 默认账号是 <span className="font-mono text-foreground">superadmin</span>。如果密码无效，需要重置 Staging Super Admin。
+                
+                {t("Staging 默认账号是")} <span className="font-mono text-foreground">superadmin</span>{t("。如果密码无效，需要重置 Staging Super Admin。")}
               </div>
             </CardContent>
             <CardFooter className="flex flex-col gap-3">
               <Button className="w-full" disabled={busy} onClick={() => void submit()}>
-                {busy ? "正在登录..." : "登录后台"}
+                {busy ? t("正在登录...") : t("登录后台")}
               </Button>
               <p className="text-center text-muted-foreground text-xs">
-                所有后台操作会按账号、角色和权限记录。
+                
+                {t("所有后台操作会按账号、角色和权限记录。")}
               </p>
             </CardFooter>
           </Card>
@@ -534,11 +553,12 @@ function AccessDenied() {
         <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
           <ShieldCheckIcon />
         </div>
-        <CardTitle>403 无权限访问</CardTitle>
-        <CardDescription>当前后台账号没有访问这个页面的权限。</CardDescription>
+        <CardTitle>{t("403 无权限访问")}</CardTitle>
+        <CardDescription>{t("当前后台账号没有访问这个页面的权限。")}</CardDescription>
       </CardHeader>
       <CardContent className="text-muted-foreground text-sm">
-        请联系 Super Admin 调整角色或权限。
+        
+        {t("请联系 Super Admin 调整角色或权限。")}
       </CardContent>
     </Card>
   );

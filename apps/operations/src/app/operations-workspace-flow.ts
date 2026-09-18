@@ -9,6 +9,7 @@ import {
   usesWaistSizing
 } from "./product/apparel-size";
 import { kidsAgeRangeCodeFor, kidsStandardSizeFromAgeRange, normalizeKidsAgeRangeCode } from "@online-saler/business-rules";
+import { t } from "@/i18n/runtime";
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -289,59 +290,59 @@ export function calibrationValidationIssues(
   input: { hasPhoto?: boolean; hasAi?: boolean } = {}
 ): CalibrationValidationIssue[] {
   const issues: CalibrationValidationIssue[] = [];
-  if (input.hasPhoto === false) issues.push({ field: "photo", label: "商品照片", message: "先上传商品照片。" });
-  if (input.hasAi === false) issues.push({ field: "ai", label: "AI 识别", message: "先完成 AI 识别。" });
+  if (input.hasPhoto === false) issues.push({ field: "photo", label: t("商品照片"), message: t("先上传商品照片。") });
+  if (input.hasAi === false) issues.push({ field: "ai", label: t("AI 识别"), message: t("先完成 AI 识别。") });
   const shoes = isShoeProduct(form.category, form.subcategory);
   const requiredFields: Array<[Exclude<keyof WorkspaceForm, "tags" | "shoePairConfirmed">, string]> = [
-    ["title", "标题"],
-    ["category", "分类"],
-    ["subcategory", "子分类"],
-    ["color", "颜色"],
-    ["audience", "适用人群"],
-    ["conditionGrade", "成色"],
-    ["material", shoes ? "材质" : "面料"],
-    ["priceKsh", "价格"]
+    ["title", t("标题")],
+    ["category", t("分类")],
+    ["subcategory", t("子分类")],
+    ["color", t("颜色")],
+    ["audience", t("适用人群")],
+    ["conditionGrade", t("成色")],
+    ["material", shoes ? t("材质") : t("面料")],
+    ["priceKsh", t("价格")]
   ];
   if (shoes) {
-    requiredFields.push(["tagSize", "原标鞋码"], ["shoeSizeSystem", "鞋码制式"], ["shoeType", "鞋款"], ["shoeConditionNotes", "鞋况检查"]);
+    requiredFields.push(["tagSize", t("原标鞋码")], ["shoeSizeSystem", t("鞋码制式")], ["shoeType", t("鞋款")], ["shoeConditionNotes", t("鞋况检查")]);
   } else if (form.category !== "BAG") {
-    requiredFields.push(["sizeLabel", "尺码"], ["fitType", "版型"], ["stretchLevel", "弹性"], ["fabricWeight", "面料厚度"]);
+    requiredFields.push(["sizeLabel", t("尺码")], ["fitType", t("版型")], ["stretchLevel", t("弹性")], ["fabricWeight", t("面料厚度")]);
   }
   for (const [field, label] of requiredFields) {
-    if (!form[field].trim()) issues.push({ field, label, message: `${label}为必填项。` });
+    if (!form[field].trim()) issues.push({ field, label, message: t("{label}为必填项。", { label: label }) });
   }
   if (!shoes && usesApparelSizing(form.category) && form.sizeLabel.trim() && !isSelectableApparelSize(form.sizeLabel, form.category, form.audience)) {
     issues.push({
       field: "sizeLabel",
-      label: "尺码",
+      label: t("尺码"),
       message: usesWaistSizing(form.category, form.audience)
-        ? "男裤／中性裤请按裤标填写 20–60 之间的腰围英寸。"
-        : `请按适用人群选择标准尺码：${apparelSizeOptions(form.category, form.audience).map((option) => option.value).join(" / ")}。`
+        ? t("男裤／中性裤请按裤标填写 20–60 之间的腰围英寸。")
+        : t("请按适用人群选择标准尺码：{v0}。", { v0: apparelSizeOptions(form.category, form.audience).map((option) => option.value).join(" / ") })
     });
   }
   if (shoes) {
     if (form.shoeSizeSystem && !(SHOE_SIZE_SYSTEMS as readonly string[]).includes(form.shoeSizeSystem)) {
-      issues.push({ field: "shoeSizeSystem", label: "鞋码制式", message: "请选择标签上的鞋码制式。" });
+      issues.push({ field: "shoeSizeSystem", label: t("鞋码制式"), message: t("请选择标签上的鞋码制式。") });
     }
     if (form.tagSize.trim() && form.shoeSizeSystem && !formatShoeSizeLabel(form.tagSize, form.shoeSizeSystem)) {
-      issues.push({ field: "tagSize", label: "原标鞋码", message: "请按鞋标填写有效鞋码，不能使用服装尺码或猜测换算。" });
+      issues.push({ field: "tagSize", label: t("原标鞋码"), message: t("请按鞋标填写有效鞋码，不能使用服装尺码或猜测换算。") });
     }
     if (form.shoeType && !(SHOE_TYPES as readonly string[]).includes(form.shoeType)) {
-      issues.push({ field: "shoeType", label: "鞋款", message: "请选择有效鞋款。" });
+      issues.push({ field: "shoeType", label: t("鞋款"), message: t("请选择有效鞋款。") });
     }
-    if (!form.shoePairConfirmed) issues.push({ field: "shoePairConfirmed", label: "成双核对", message: "请人工确认左右鞋同款、同码且成双。" });
+    if (!form.shoePairConfirmed) issues.push({ field: "shoePairConfirmed", label: t("成双核对"), message: t("请人工确认左右鞋同款、同码且成双。") });
     if (form.insoleLengthCm.trim() && !positiveNumber(form.insoleLengthCm)) {
-      issues.push({ field: "insoleLengthCm", label: "鞋垫实测长度", message: "鞋垫实测长度必须是大于 0 的厘米数，也可留空。" });
+      issues.push({ field: "insoleLengthCm", label: t("鞋垫实测长度"), message: t("鞋垫实测长度必须是大于 0 的厘米数，也可留空。") });
     }
   }
   // Kids size and age range are the same fact in the size chart, so one confirmed value covers both.
   if (!shoes && form.category !== "BAG" && form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE") {
-    issues.push({ field: "kidsAgeRange", label: "儿童年龄段", message: "儿童商品必须选择童装尺码或年龄段。" });
+    issues.push({ field: "kidsAgeRange", label: t("儿童年龄段"), message: t("儿童商品必须选择童装尺码或年龄段。") });
   }
   if (form.category === "BAG") {
-    if (!(BAG_STYLES as readonly string[]).includes(form.subcategory)) issues.push({ field: "subcategory", label: "包款式", message: "请选择包款式。" });
+    if (!(BAG_STYLES as readonly string[]).includes(form.subcategory)) issues.push({ field: "subcategory", label: t("包款式"), message: t("请选择包款式。") });
     for (const field of measurementFields(form)) {
-      if (form[field.key].trim() && !positiveNumber(form[field.key])) issues.push({ field: field.key, label: field.label, message: "实测尺寸应为大于 0 的厘米数，也可留空。" });
+      if (form[field.key].trim() && !positiveNumber(form[field.key])) issues.push({ field: field.key, label: field.label, message: t("实测尺寸应为大于 0 的厘米数，也可留空。") });
     }
   }
   for (const requirement of measurementRequirements(form)) {
@@ -349,15 +350,15 @@ export function calibrationValidationIssues(
       issues.push({
         field: requirement.key,
         label: requirement.label,
-        message: `${requirement.label}必须填写大于 0 的厘米数。`
+        message: t("{label}必须填写大于 0 的厘米数。", { label: requirement.label })
       });
     }
   }
   if (form.priceKsh.trim() && !positiveInteger(form.priceKsh)) {
-    issues.push({ field: "priceKsh", label: "价格", message: "价格必须填写大于 0 的整数 KSh。" });
+    issues.push({ field: "priceKsh", label: t("价格"), message: t("价格必须填写大于 0 的整数 KSh。") });
   }
   if (!form.defects.trim()) {
-    issues.push({ field: "defects", label: "瑕疵", message: "瑕疵必须确认；没有瑕疵请填写 None。" });
+    issues.push({ field: "defects", label: t("瑕疵"), message: t("瑕疵必须确认；没有瑕疵请填写 None。") });
   }
   return issues;
 }
@@ -412,40 +413,40 @@ export function measurementFields(
   form: Pick<WorkspaceForm, "category" | "subcategory" | "sleeveType">
 ): MeasurementRequirement[] {
   if (form.category === "BAG") return [
-    { key: "bagWidthCm", type: "BAG_WIDTH", label: "宽", required: false },
-    { key: "bagHeightCm", type: "BAG_HEIGHT", label: "高（不含提手）", required: false },
-    { key: "bagDepthCm", type: "BAG_DEPTH", label: "厚", required: false }
+    { key: "bagWidthCm", type: "BAG_WIDTH", label: t("宽"), required: false },
+    { key: "bagHeightCm", type: "BAG_HEIGHT", label: t("高（不含提手）"), required: false },
+    { key: "bagDepthCm", type: "BAG_DEPTH", label: t("厚"), required: false }
   ];
-  if (isShoeProduct(form.category, form.subcategory)) return [{ key: "insoleLengthCm", type: "INSOLE_LENGTH", label: "鞋垫实测长度", required: false }];
+  if (isShoeProduct(form.category, form.subcategory)) return [{ key: "insoleLengthCm", type: "INSOLE_LENGTH", label: t("鞋垫实测长度"), required: false }];
   const requiredTypes = new Set<string>();
   const isPants = form.category === "PANTS" || form.category === "SHORT" ||
     (form.category === "KIDS" && form.subcategory === "KIDS_PANTS");
   if (isPants) {
     return [
-      { key: "lengthCm", type: "OUTSEAM", label: "裤长", required: requiredTypes.has("OUTSEAM") },
-      { key: "waistCm", type: "WAIST", label: "腰宽", required: requiredTypes.has("WAIST") },
-      { key: "hipCm", type: "HIP", label: "臀宽", required: requiredTypes.has("HIP") },
-      { key: "thighWidthCm", type: "THIGH_WIDTH", label: "大腿宽", required: requiredTypes.has("THIGH_WIDTH") },
-      { key: "legOpeningCm", type: "LEG_OPENING", label: "裤脚宽", required: requiredTypes.has("LEG_OPENING") },
-      { key: "inseamCm", type: "INSEAM", label: "内长", required: false }
+      { key: "lengthCm", type: "OUTSEAM", label: t("裤长"), required: requiredTypes.has("OUTSEAM") },
+      { key: "waistCm", type: "WAIST", label: t("腰宽"), required: requiredTypes.has("WAIST") },
+      { key: "hipCm", type: "HIP", label: t("臀宽"), required: requiredTypes.has("HIP") },
+      { key: "thighWidthCm", type: "THIGH_WIDTH", label: t("大腿宽"), required: requiredTypes.has("THIGH_WIDTH") },
+      { key: "legOpeningCm", type: "LEG_OPENING", label: t("裤脚宽"), required: requiredTypes.has("LEG_OPENING") },
+      { key: "inseamCm", type: "INSEAM", label: t("内长"), required: false }
     ];
   }
 
   if (["SHOES", "BAG", "OTHERS", "TEXTILE", "OTHER"].includes(form.category)) return [];
 
   const upperBody: MeasurementRequirement[] = [
-    { key: "lengthCm", type: "LENGTH", label: "衣长", required: requiredTypes.has("LENGTH") },
-    { key: "chestWidthCm", type: "CHEST_WIDTH", label: "胸宽", required: requiredTypes.has("CHEST_WIDTH") },
-    { key: "shoulderWidthCm", type: "SHOULDER_WIDTH", label: "肩宽", required: requiredTypes.has("SHOULDER_WIDTH") },
-    { key: "sleeveLengthCm", type: "SLEEVE_LENGTH", label: "袖长", required: requiredTypes.has("SLEEVE_LENGTH") }
+    { key: "lengthCm", type: "LENGTH", label: t("衣长"), required: requiredTypes.has("LENGTH") },
+    { key: "chestWidthCm", type: "CHEST_WIDTH", label: t("胸宽"), required: requiredTypes.has("CHEST_WIDTH") },
+    { key: "shoulderWidthCm", type: "SHOULDER_WIDTH", label: t("肩宽"), required: requiredTypes.has("SHOULDER_WIDTH") },
+    { key: "sleeveLengthCm", type: "SLEEVE_LENGTH", label: t("袖长"), required: requiredTypes.has("SLEEVE_LENGTH") }
   ];
   const isDress = form.category === "DRESSES" ||
     (form.category === "KIDS" && form.subcategory === "KIDS_DRESS");
   if (!isDress) return upperBody;
   return [
     ...upperBody,
-    { key: "waistCm", type: "WAIST", label: "腰宽", required: requiredTypes.has("WAIST") },
-    { key: "hipCm", type: "HIP", label: "臀宽", required: requiredTypes.has("HIP") }
+    { key: "waistCm", type: "WAIST", label: t("腰宽"), required: requiredTypes.has("WAIST") },
+    { key: "hipCm", type: "HIP", label: t("臀宽"), required: requiredTypes.has("HIP") }
   ];
 }
 

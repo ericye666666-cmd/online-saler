@@ -43,7 +43,7 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { BagStrapField } from "./bag-strap-field";
 import { ApparelSizeField } from "./apparel-size-field";
-import { KIDS_AGE_RANGE_LABELS } from "./apparel-size";
+import { kidsAgeRangeLabels } from "./apparel-size";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,6 +84,7 @@ import {
 } from "../product-control-flow";
 import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
 import { frontImage } from "./product-factory-upload-flow";
+import { t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 const BATCH_SIZE = 10;
@@ -224,7 +225,7 @@ export function ProductWorkbenchPage() {
     try {
       setSummary(await loadSummary(ids));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取商品工作台。");
+      setError(caught instanceof Error ? caught.message : t("无法读取商品工作台。"));
     } finally {
       setBusy("");
     }
@@ -241,7 +242,7 @@ export function ProductWorkbenchPage() {
       await createProductBatch(ids);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法创建批次。");
+      setError(caught instanceof Error ? caught.message : t("无法创建批次。"));
     } finally {
       setBusy("");
     }
@@ -250,27 +251,28 @@ export function ProductWorkbenchPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="商品中心"
-        title="商品工作台"
-        description="按 10 件一批连续处理：拍照、上传、AI 识别、人工校准、Barcode、打印、入库。"
+        eyebrow={t("商品中心")}
+        title={t("商品工作台")}
+        description={t("按 10 件一批连续处理：拍照、上传、AI 识别、人工校准、Barcode、打印、入库。")}
         action={
           <Button disabled={Boolean(busy) || !canCreate} onClick={() => void createBatch()}>
             <PlusIcon data-icon="inline-start" />
-            新建 10 件批次
+            
+            {t("新建 10 件批次")}
           </Button>
         }
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       <section className="grid gap-4 md:grid-cols-4">
-        <Metric title="待上传" value={summary?.queues.waitingUpload ?? 0} />
-        <Metric title="待 AI 识别" value={summary?.queues.waitingAi ?? 0} />
-        <Metric title="待人工校准" value={summary?.queues.waitingCalibration ?? 0} />
-        <Metric title="待审核" value={summary?.queues.waitingReview ?? 0} />
+        <Metric title={t("待上传")} value={summary?.queues.waitingUpload ?? 0} />
+        <Metric title={t("待 AI 识别")} value={summary?.queues.waitingAi ?? 0} />
+        <Metric title={t("待人工校准")} value={summary?.queues.waitingCalibration ?? 0} />
+        <Metric title={t("待审核")} value={summary?.queues.waitingReview ?? 0} />
       </section>
       <Card>
         <CardHeader>
-          <CardTitle>当前批次</CardTitle>
-          <CardDescription>每个批次可自定义商品数量。员工按批次完成照片、AI、校准、贴码和入库。</CardDescription>
+          <CardTitle>{t("当前批次")}</CardTitle>
+          <CardDescription>{t("每个批次可自定义商品数量。员工按批次完成照片、AI、校准、贴码和入库。")}</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <BatchTable batches={summary?.activeBatches ?? []} ids={ids} canEdit={canEdit} onChanged={load} />
@@ -278,11 +280,11 @@ export function ProductWorkbenchPage() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>员工操作顺序</CardTitle>
-          <CardDescription>这条顺序不能改变，正式 Barcode 只能在人工校准后生成。</CardDescription>
+          <CardTitle>{t("员工操作顺序")}</CardTitle>
+          <CardDescription>{t("这条顺序不能改变，正式 Barcode 只能在人工校准后生成。")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-4">
-          {["先拍照并上传", "批量 AI 识别", "逐件人工校准", "生成 Barcode 并贴码", "审核通过", "分配库位并入库"].map((step) => (
+          {[t("先拍照并上传"), t("批量 AI 识别"), t("逐件人工校准"), t("生成 Barcode 并贴码"), t("审核通过"), t("分配库位并入库")].map((step) => (
             <div key={step} className="rounded-lg border p-3 text-sm">{step}</div>
           ))}
         </CardContent>
@@ -306,7 +308,7 @@ export function NewBatchPage() {
     try {
       setSummary(await loadSummary(ids));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取批次。");
+      setError(caught instanceof Error ? caught.message : t("无法读取批次。"));
     } finally {
       setBusy("");
     }
@@ -323,7 +325,7 @@ export function NewBatchPage() {
       await createProductBatch(ids);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法创建批次。");
+      setError(caught instanceof Error ? caught.message : t("无法创建批次。"));
     } finally {
       setBusy("");
     }
@@ -332,21 +334,22 @@ export function NewBatchPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="商品中心"
-        title="新建批次"
-        description="一次创建 10 件商品壳，用于员工连续拍照和上传。"
+        eyebrow={t("商品中心")}
+        title={t("新建批次")}
+        description={t("一次创建 10 件商品壳，用于员工连续拍照和上传。")}
         action={
           <Button disabled={Boolean(busy) || !canCreate} onClick={() => void createBatch()}>
             <PlusIcon data-icon="inline-start" />
-            创建 10 件商品
+            
+            {t("创建 10 件商品")}
           </Button>
         }
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       <Card>
         <CardHeader>
-          <CardTitle>开放批次</CardTitle>
-          <CardDescription>批量上传照片、批量 AI、批量 Barcode 和批量入库都从这里执行。</CardDescription>
+          <CardTitle>{t("开放批次")}</CardTitle>
+          <CardDescription>{t("批量上传照片、批量 AI、批量 Barcode 和批量入库都从这里执行。")}</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <BatchTable batches={summary?.activeBatches ?? []} ids={ids} canEdit onChanged={load} />
@@ -397,7 +400,7 @@ export function ProductQueuePage({ queue, title, description, management = false
       if (includeTestData) query.set("includeTestData", "true");
       setProducts(await request<JsonRecord[]>(`/operations/product-batches/products?${query.toString()}`));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取商品列表。");
+      setError(caught instanceof Error ? caught.message : t("无法读取商品列表。"));
     } finally {
       setBusy("");
     }
@@ -414,7 +417,7 @@ export function ProductQueuePage({ queue, title, description, management = false
       await action();
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "操作失败。");
+      setError(caught instanceof Error ? caught.message : t("操作失败。"));
     } finally {
       setBusy("");
     }
@@ -445,58 +448,60 @@ export function ProductQueuePage({ queue, title, description, management = false
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="商品中心"
+        eyebrow={t("商品中心")}
         title={title}
         description={description}
         action={
           <Button variant="outline" onClick={exportCsv}>
             <DownloadIcon data-icon="inline-start" />
-            导出
+            
+            {t("导出")}
           </Button>
         }
       />
       <Card>
         <CardHeader>
-          <CardTitle>筛选</CardTitle>
-          <CardDescription>支持搜索、批次、状态、分类、员工和日期筛选。</CardDescription>
+          <CardTitle>{t("筛选")}</CardTitle>
+          <CardDescription>{t("支持搜索、批次、状态、分类、员工和日期筛选。")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Input placeholder="搜索商品/Barcode/标题" value={search} onChange={(event) => setSearch(event.target.value)} />
-          <Input placeholder="批次 ID" value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} />
+          <Input placeholder={t("搜索商品/Barcode/标题")} value={search} onChange={(event) => setSearch(event.target.value)} />
+          <Input placeholder={t("批次 ID")} value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} />
           <NativeSelect value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <NativeSelectOption value="">全部状态</NativeSelectOption>
+            <NativeSelectOption value="">{t("全部状态")}</NativeSelectOption>
             {PRODUCT_STATUS_OPTIONS.map((status) => <NativeSelectOption key={status} value={status}>{productStatusLabel(status)}</NativeSelectOption>)}
           </NativeSelect>
           <NativeSelect value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
-            <NativeSelectOption value="">全部分类</NativeSelectOption>
+            <NativeSelectOption value="">{t("全部分类")}</NativeSelectOption>
             {PRODUCT_CATEGORY_OPTIONS.map((category) => <NativeSelectOption key={category} value={category}>{optionLabel(category)}</NativeSelectOption>)}
           </NativeSelect>
-          <Input placeholder="员工 ID" value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)} />
+          <Input placeholder={t("员工 ID")} value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)} />
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
           <label className="flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm">
             <Checkbox checked={includeTestData} onCheckedChange={(checked) => setIncludeTestData(checked === true)} />
-            显示部署与 E2E 测试数据
+            
+            {t("显示部署与 E2E 测试数据")}
           </label>
         </CardContent>
       </Card>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       <Card>
         <CardHeader>
-          <CardTitle>商品列表</CardTitle>
-          <CardDescription>{products.length} 件商品{products.length === 200 ? " · 当前显示前 200 件，请用搜索或筛选缩小范围" : ""}{management ? " · 修改详情前请先下架，完成详情审核后重新上架" : ""}</CardDescription>
+          <CardTitle>{t("商品列表")}</CardTitle>
+          <CardDescription>{products.length}  {t("件商品")}{products.length === 200 ? t(" · 当前显示前 200 件，请用搜索或筛选缩小范围") : ""}{management ? t(" · 修改详情前请先下架，完成详情审核后重新上架") : ""}</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>商品</TableHead>
-                <TableHead>批次</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>分类</TableHead>
+                <TableHead>{t("商品")}</TableHead>
+                <TableHead>{t("批次")}</TableHead>
+                <TableHead>{t("状态")}</TableHead>
+                <TableHead>{t("分类")}</TableHead>
                 <TableHead>Barcode</TableHead>
-                {management ? <TableHead>尺码 / 售价 / 货架</TableHead> : null}
-                <TableHead className="text-right">操作</TableHead>
+                {management ? <TableHead>{t("尺码 / 售价 / 货架")}</TableHead> : null}
+                <TableHead className="text-right">{t("操作")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -515,7 +520,7 @@ export function ProductQueuePage({ queue, title, description, management = false
                   <TableCell><StatusBadge status={stringValue(product.status)} /></TableCell>
                   <TableCell>{stringValue(product.category) || "-"}</TableCell>
                   <TableCell className="font-mono text-xs">{stringValue(product.barcode) || "-"}</TableCell>
-                  {management ? <TableCell><div>{stringValue(product.finalSizeLabel) || "未填尺码"}</div><div>{product.priceKsh ? `${product.priceKsh} KSh` : "未定价"}</div><div className="text-muted-foreground text-xs">{productControlLocationCode(product) || "未归位"}</div></TableCell> : null}
+                  {management ? <TableCell><div>{stringValue(product.finalSizeLabel) || t("未填尺码")}</div><div>{product.priceKsh ? `${product.priceKsh} KSh` : t("未定价")}</div><div className="text-muted-foreground text-xs">{productControlLocationCode(product) || t("未归位")}</div></TableCell> : null}
                   <TableCell className="text-right">
                     <div className="flex flex-wrap justify-end gap-2">
                       {management ? <ProductManagementActions product={product} canEdit={canEdit} canPublish={canPublish} canEditDetails={canEdit && hasPermission("page.product.details")} busy={busy} ids={ids} run={run} onPrice={() => setPricingProduct(product)} /> : null}
@@ -528,14 +533,16 @@ export function ProductQueuePage({ queue, title, description, management = false
                       ) : null}
                       {queue === "calibration" ? (
                         <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => setEditingProduct(product)}>
-                          校准
+                          
+                          {t("校准")}
                         </Button>
                       ) : null}
                       {queue === "review" ? <ReviewButtons product={product} ids={ids} canApprove={canApprove} busy={busy} run={run} /> : null}
                       {queue === "barcode" ? (
                         <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy) || stringValue(product.status) !== "CALIBRATED"} onClick={() => run(`barcode-${product.id}`, () => generateBarcode(product, ids))}>
                           <ScanBarcodeIcon data-icon="inline-start" />
-                          生成
+                          
+                          {t("生成")}
                         </Button>
                       ) : null}
                       {["review", "barcode", "published"].includes(queue) ? (
@@ -553,7 +560,7 @@ export function ProductQueuePage({ queue, title, description, management = false
                   </TableCell>
                 </TableRow>
               ))}
-              {products.length === 0 ? <TableRow><TableCell colSpan={management ? 7 : 6} className="py-10 text-center text-muted-foreground">{busy === "load" ? "正在读取商品…" : "没有符合条件的商品。"}</TableCell></TableRow> : null}
+              {products.length === 0 ? <TableRow><TableCell colSpan={management ? 7 : 6} className="py-10 text-center text-muted-foreground">{busy === "load" ? t("正在读取商品…") : t("没有符合条件的商品。")}</TableCell></TableRow> : null}
             </TableBody>
           </Table>
         </CardContent>
@@ -567,17 +574,17 @@ export function ProductQueuePage({ queue, title, description, management = false
 export function TaxonomyPage() {
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="商品中心" title="分类与属性" description="当前商品属性来自共享类型，供 AI 和人工校准共同使用。" />
+      <PageHeader eyebrow={t("商品中心")} title={t("分类与属性")} description={t("当前商品属性来自共享类型，供 AI 和人工校准共同使用。")} />
       <Tabs defaultValue="categories">
         <TabsList>
-          <TabsTrigger value="categories">分类</TabsTrigger>
-          <TabsTrigger value="attributes">属性</TabsTrigger>
+          <TabsTrigger value="categories">{t("分类")}</TabsTrigger>
+          <TabsTrigger value="attributes">{t("属性")}</TabsTrigger>
         </TabsList>
         <TabsContent value="categories" className="pt-4">
           <Card>
             <CardHeader>
-              <CardTitle>分类</CardTitle>
-              <CardDescription>后续如需调整分类，必须同步 AI、Storefront 筛选和商品发布校验。</CardDescription>
+              <CardTitle>{t("分类")}</CardTitle>
+              <CardDescription>{t("后续如需调整分类，必须同步 AI、Storefront 筛选和商品发布校验。")}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-3">
               {PRODUCT_CATEGORY_OPTIONS.map((category) => (
@@ -594,16 +601,16 @@ export function TaxonomyPage() {
         <TabsContent value="attributes" className="pt-4">
           <Card>
             <CardHeader>
-              <CardTitle>属性</CardTitle>
-              <CardDescription>AI 可建议这些字段，但价格、Barcode、发布必须由人工或审核流程决定。</CardDescription>
+              <CardTitle>{t("属性")}</CardTitle>
+              <CardDescription>{t("AI 可建议这些字段，但价格、Barcode、发布必须由人工或审核流程决定。")}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-3">
-              <AttributeGroup title="颜色" values={AI_COLORS} />
-              <AttributeGroup title="图案" values={AI_PATTERNS} />
-              <AttributeGroup title="袖型" values={AI_SLEEVE_TYPES} />
-              <AttributeGroup title="人群" values={AI_AUDIENCES} />
-              <AttributeGroup title="儿童年龄" values={AI_KIDS_AGE_RANGES} />
-              <AttributeGroup title="成色" values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} />
+              <AttributeGroup title={t("颜色")} values={AI_COLORS} />
+              <AttributeGroup title={t("图案")} values={AI_PATTERNS} />
+              <AttributeGroup title={t("袖型")} values={AI_SLEEVE_TYPES} />
+              <AttributeGroup title={t("人群")} values={AI_AUDIENCES} />
+              <AttributeGroup title={t("儿童年龄")} values={AI_KIDS_AGE_RANGES} />
+              <AttributeGroup title={t("成色")} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -624,7 +631,7 @@ function BatchTable(props: { batches: ProductBatch[]; ids: ReturnType<typeof use
       await action();
       onChanged();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "批次操作失败。");
+      setError(caught instanceof Error ? caught.message : t("批次操作失败。"));
     } finally {
       setBusy("");
     }
@@ -636,10 +643,10 @@ function BatchTable(props: { batches: ProductBatch[]; ids: ReturnType<typeof use
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>批次</TableHead>
-            <TableHead>进度</TableHead>
-            <TableHead>状态分布</TableHead>
-            <TableHead className="text-right">批量操作</TableHead>
+            <TableHead>{t("批次")}</TableHead>
+            <TableHead>{t("进度")}</TableHead>
+            <TableHead>{t("状态分布")}</TableHead>
+            <TableHead className="text-right">{t("批量操作")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -657,19 +664,23 @@ function BatchTable(props: { batches: ProductBatch[]; ids: ReturnType<typeof use
                   <BulkUploadButton batch={batch} ids={ids} disabled={!canEdit || Boolean(busy)} onDone={onChanged} />
                   <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => run(`ai-${batch.id}`, async () => { await batchAction(batch.id, "run-ai", ids); })}>
                     <PlayIcon data-icon="inline-start" />
-                    批量 AI
+                    
+                    {t("批量 AI")}
                   </Button>
                   <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => run(`barcode-${batch.id}`, async () => { await batchAction(batch.id, "generate-barcodes", ids); })}>
                     <ScanBarcodeIcon data-icon="inline-start" />
-                    批量 Barcode
+                    
+                    {t("批量 Barcode")}
                   </Button>
                   <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => run(`printed-${batch.id}`, async () => { await printBatchLabels(batch, ids); })}>
                     <PrinterIcon data-icon="inline-start" />
-                    批量打印
+                    
+                    {t("批量打印")}
                   </Button>
                   <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy)} onClick={() => run(`stock-${batch.id}`, async () => { await batchAction(batch.id, "stock-in", ids); })}>
                     <PackageCheckIcon data-icon="inline-start" />
-                    批量入库
+                    
+                    {t("批量入库")}
                   </Button>
                 </div>
               </TableCell>
@@ -696,7 +707,7 @@ function BulkUploadButton(props: { batch: ProductBatch; ids: ReturnType<typeof u
       }
       props.onDone();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "图片处理失败，原图已保留。请进入校准页重试。");
+      setError(caught instanceof Error ? caught.message : t("图片处理失败，原图已保留。请进入校准页重试。"));
       props.onDone();
     } finally {
       setBusy(false);
@@ -707,7 +718,8 @@ function BulkUploadButton(props: { batch: ProductBatch; ids: ReturnType<typeof u
       <Button asChild size="sm" variant="outline" disabled={props.disabled || busy || waiting.length === 0}>
         <label className="cursor-pointer">
           <UploadIcon data-icon="inline-start" />
-          批量上传
+          
+          {t("批量上传")}
           <Input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={props.disabled || busy || waiting.length === 0} onChange={(event) => void upload(event.target.files)} />
         </label>
       </Button>
@@ -727,7 +739,7 @@ function UploadButton(props: { product: JsonRecord; ids: ReturnType<typeof useOp
       await uploadProductImage(stringValue(props.product.id), props.ids.employeeId, props.ids.adminUserId, file);
       props.onDone();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "图片处理失败，原图已保留。请进入校准页重试。");
+      setError(caught instanceof Error ? caught.message : t("图片处理失败，原图已保留。请进入校准页重试。"));
       props.onDone();
     } finally {
       setBusy(false);
@@ -738,7 +750,8 @@ function UploadButton(props: { product: JsonRecord; ids: ReturnType<typeof useOp
       <Button asChild size="sm" variant="outline" disabled={props.disabled || busy}>
         <label className="cursor-pointer">
           <UploadIcon data-icon="inline-start" />
-          上传
+          
+          {t("上传")}
           <Input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={props.disabled || busy} onChange={(event) => void upload(event.target.files?.[0] ?? null)} />
         </label>
       </Button>
@@ -769,7 +782,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
 
   useEffect(() => {
     if (!props.open) return;
-    void loadComparison().catch((caught) => setError(caught instanceof Error ? caught.message : "无法读取图片版本。"));
+    void loadComparison().catch((caught) => setError(caught instanceof Error ? caught.message : t("无法读取图片版本。")));
   }, [loadComparison, props.open]);
 
   useEffect(() => {
@@ -818,7 +831,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
   async function generateAiDisplayMain() {
     const sourceId = comparison?.original?.imageId;
     if (!sourceId) {
-      setError(shoes ? "请先上传整双原图。" : "请先上传正面原图。");
+      setError(shoes ? t("请先上传整双原图。") : t("请先上传正面原图。"));
       return;
     }
     setImageBusy("ai-display");
@@ -832,20 +845,20 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       );
       await loadComparison();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "白底展示图生成失败。");
+      setError(caught instanceof Error ? caught.message : t("白底展示图生成失败。"));
     } finally {
       setImageBusy("");
     }
   }
 
   async function selectMain(imageId: string) {
-    if (imageId === comparison?.aiDisplayMain?.imageId && !window.confirm("这是生成式 白底展示图。你是否已经对照原图确认所有商品细节和瑕疵完全一致？")) return;
+    if (imageId === comparison?.aiDisplayMain?.imageId && !window.confirm(t("这是生成式 白底展示图。你是否已经对照原图确认所有商品细节和瑕疵完全一致？"))) return;
     setImageBusy(`select-${imageId}`);
     setError("");
     try {
       setComparison(await selectProductMainImage(productId, imageId, props.ids.adminUserId));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法选择商城主图。");
+      setError(caught instanceof Error ? caught.message : t("无法选择商城主图。"));
     } finally {
       setImageBusy("");
     }
@@ -858,7 +871,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       return;
     }
     if (!comparison?.original?.imageId) {
-      setError("请先上传正面原图。");
+      setError(t("请先上传正面原图。"));
       return;
     }
     setBusy(true);
@@ -875,7 +888,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
       if (draftKey) localStorage.removeItem(draftKey);
       props.onSaved();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法保存校准。");
+      setError(caught instanceof Error ? caught.message : t("无法保存校准。"));
     } finally {
       setBusy(false);
     }
@@ -885,53 +898,53 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="max-h-[96vh] overflow-y-auto sm:max-w-[min(96vw,1400px)]">
         <DialogHeader>
-          <DialogTitle>图片与商品信息校准 {productId ? batchProgressLabel(props.product) : ""}</DialogTitle>
+          <DialogTitle>{t("图片与商品信息校准")} {productId ? batchProgressLabel(props.product) : ""}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,.95fr)]">
-          <section className="flex min-w-0 flex-col gap-3" aria-label="商品图片处理">
+          <section className="flex min-w-0 flex-col gap-3" aria-label={t("商品图片处理")}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="font-medium">图片版本</h3>
-                <p className="text-xs text-muted-foreground">人工确认商品信息和尺码后，直接用原图生成白底展示图。</p>
+                <h3 className="font-medium">{t("图片版本")}</h3>
+                <p className="text-xs text-muted-foreground">{t("人工确认商品信息和尺码后，直接用原图生成白底展示图。")}</p>
               </div>
               <div className="flex flex-wrap gap-2">
 
                 <Button size="sm" variant="outline" disabled={Boolean(imageBusy) || !comparison?.original?.imageId || !["CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED", "UNPUBLISHED", "ARCHIVED"].includes(stringValue(props.product?.status))} onClick={() => void generateAiDisplayMain()}>
                   <WandSparklesIcon data-icon="inline-start" />
-                  {imageBusy === "ai-display" ? "生成中" : "生成 白底展示图"}
+                  {imageBusy === "ai-display" ? t("生成中") : t("生成 白底展示图")}
                 </Button>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {shoes ? (
                 <>
-                  <ImageVariantTile label="整双原图" asset={comparison?.original ?? null} busy={Boolean(imageBusy)} />
+                  <ImageVariantTile label={t("整双原图")} asset={comparison?.original ?? null} busy={Boolean(imageBusy)} />
                   {shoeSupportingImages(props.product).map(({ label, asset }) => <ImageVariantTile key={asset.imageId} label={label} asset={asset} busy={Boolean(imageBusy)} />)}
                 </>
               ) : <>
-                <ImageVariantTile label="正面原图" asset={comparison?.original ?? null} busy={Boolean(imageBusy)} />
-                <ImageVariantTile label="背面原图" asset={comparison?.backOriginal ?? null} busy={Boolean(imageBusy)} />
+                <ImageVariantTile label={t("正面原图")} asset={comparison?.original ?? null} busy={Boolean(imageBusy)} />
+                <ImageVariantTile label={t("背面原图")} asset={comparison?.backOriginal ?? null} busy={Boolean(imageBusy)} />
               </>}
-              <ImageVariantTile label="白底展示图" asset={comparison?.aiDisplayMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
+              <ImageVariantTile label={t("白底展示图")} asset={comparison?.aiDisplayMain ?? null} selectable onSelect={selectMain} busy={Boolean(imageBusy)} />
             </div>
 
-            {latestExtraction ? <AiPreview job={latestExtraction} /> : <StatusMessage tone="neutral">等待 AI 识别。</StatusMessage>}
+            {latestExtraction ? <AiPreview job={latestExtraction} /> : <StatusMessage tone="neutral">{t("等待 AI 识别。")}</StatusMessage>}
           </section>
 
           <FieldGroup>
-            <RequiredInput label="标题" value={form.title} invalid={!form.title.trim()} onChange={(value) => updateForm("title", value)} />
+            <RequiredInput label={t("标题")} value={form.title} invalid={!form.title.trim()} onChange={(value) => updateForm("title", value)} />
             <div className="grid gap-4 sm:grid-cols-2">
-              <RequiredSelect label="分类" value={form.category} invalid={!form.category.trim()} values={PRODUCT_CATEGORY_OPTIONS} onChange={(value) => updateForm("category", value)} />
-              {form.category === "BAG" ? <Field><FieldLabel>包款式 *</FieldLabel><NativeSelect value={form.subcategory} onChange={(event) => updateForm("subcategory", event.target.value)}><NativeSelectOption value="">请选择款式</NativeSelectOption>{BAG_STYLES.map((style) => <NativeSelectOption key={style} value={style}>{BAG_STYLE_LABELS[style]}</NativeSelectOption>)}</NativeSelect></Field> : <RequiredSelect label="子分类" value={form.subcategory} invalid={!form.subcategory.trim()} values={subcategoriesFor(form.category, form.subcategory)} onChange={(value) => updateForm("subcategory", value)} />}
-              <RequiredSelect label="适用人群" value={form.audience} invalid={!form.audience.trim()} values={AI_AUDIENCES} onChange={(value) => updateForm("audience", value)} />
-              {!shoes && form.category !== "BAG" ? <RequiredSelect label="儿童年龄段" value={form.kidsAgeRange} invalid={form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE"} values={AI_KIDS_AGE_RANGES} labels={KIDS_AGE_RANGE_LABELS} disabled={form.audience !== "KIDS"} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
-              <RequiredSelect label="颜色" value={form.color} invalid={!form.color.trim()} values={AI_COLORS} onChange={(value) => updateForm("color", value)} />
-              <FormField label="品牌"><Input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} /></FormField>
+              <RequiredSelect label={t("分类")} value={form.category} invalid={!form.category.trim()} values={PRODUCT_CATEGORY_OPTIONS} onChange={(value) => updateForm("category", value)} />
+              {form.category === "BAG" ? <Field><FieldLabel>{t("包款式 *")}</FieldLabel><NativeSelect value={form.subcategory} onChange={(event) => updateForm("subcategory", event.target.value)}><NativeSelectOption value="">{t("请选择款式")}</NativeSelectOption>{BAG_STYLES.map((style) => <NativeSelectOption key={style} value={style}>{BAG_STYLE_LABELS[style]}</NativeSelectOption>)}</NativeSelect></Field> : <RequiredSelect label={t("子分类")} value={form.subcategory} invalid={!form.subcategory.trim()} values={subcategoriesFor(form.category, form.subcategory)} onChange={(value) => updateForm("subcategory", value)} />}
+              <RequiredSelect label={t("适用人群")} value={form.audience} invalid={!form.audience.trim()} values={AI_AUDIENCES} onChange={(value) => updateForm("audience", value)} />
+              {!shoes && form.category !== "BAG" ? <RequiredSelect label={t("儿童年龄段")} value={form.kidsAgeRange} invalid={form.audience === "KIDS" && form.kidsAgeRange === "NOT_APPLICABLE"} values={AI_KIDS_AGE_RANGES} labels={kidsAgeRangeLabels()} disabled={form.audience !== "KIDS"} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
+              <RequiredSelect label={t("颜色")} value={form.color} invalid={!form.color.trim()} values={AI_COLORS} onChange={(value) => updateForm("color", value)} />
+              <FormField label={t("品牌")}><Input value={form.brand} onChange={(event) => updateForm("brand", event.target.value)} /></FormField>
               {!shoes && form.category !== "BAG" ? <ApparelSizeField category={form.category} audience={form.audience} value={form.sizeLabel} onChange={(value) => updateForm("sizeLabel", value)} /> : null}
-              <RequiredSelect label="图案" value={form.pattern} invalid={!form.pattern.trim()} values={AI_PATTERNS} onChange={(value) => updateForm("pattern", value)} />
-              {!shoes && form.category !== "BAG" ? <RequiredSelect label="袖型" value={form.sleeveType} invalid={!form.sleeveType.trim()} values={AI_SLEEVE_TYPES} onChange={(value) => updateForm("sleeveType", value)} /> : null}
-              <RequiredSelect label="成色" value={form.conditionGrade} invalid={!form.conditionGrade.trim()} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} onChange={(value) => updateForm("conditionGrade", value)} />
-              <RequiredInput label="价格 KSh" value={form.priceKsh} invalid={!positiveInteger(form.priceKsh)} onChange={(value) => updateForm("priceKsh", value)} />
+              <RequiredSelect label={t("图案")} value={form.pattern} invalid={!form.pattern.trim()} values={AI_PATTERNS} onChange={(value) => updateForm("pattern", value)} />
+              {!shoes && form.category !== "BAG" ? <RequiredSelect label={t("袖型")} value={form.sleeveType} invalid={!form.sleeveType.trim()} values={AI_SLEEVE_TYPES} onChange={(value) => updateForm("sleeveType", value)} /> : null}
+              <RequiredSelect label={t("成色")} value={form.conditionGrade} invalid={!form.conditionGrade.trim()} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} onChange={(value) => updateForm("conditionGrade", value)} />
+              <RequiredInput label={t("价格 KSh")} value={form.priceKsh} invalid={!positiveInteger(form.priceKsh)} onChange={(value) => updateForm("priceKsh", value)} />
             </div>
             {form.category === "BAG" ? <BagStrapField tags={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} /> : null}
             <Separator />
@@ -947,18 +960,19 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
               </FieldGroup>
             )}
             <Field data-invalid={!form.defects.trim()}>
-              <FieldLabel>瑕疵确认 *</FieldLabel>
+              <FieldLabel>{t("瑕疵确认 *")}</FieldLabel>
               <Textarea aria-invalid={!form.defects.trim()} rows={3} value={form.defects} onChange={(event) => updateForm("defects", event.target.value)} />
-              <FieldDescription>没有瑕疵请填写 None。这里必须由人工确认。</FieldDescription>
+              <FieldDescription>{t("没有瑕疵请填写 None。这里必须由人工确认。")}</FieldDescription>
             </Field>
-            {error || reasons.length ? <StatusMessage tone="danger">{error || reasons.join(" ")}</StatusMessage> : <StatusMessage tone="neutral">快捷键：Ctrl + Enter 保存。</StatusMessage>}
+            {error || reasons.length ? <StatusMessage tone="danger">{error || reasons.join(" ")}</StatusMessage> : <StatusMessage tone="neutral">{t("快捷键：Ctrl + Enter 保存。")}</StatusMessage>}
           </FieldGroup>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => props.onOpenChange(false)}>取消</Button>
+          <Button variant="outline" onClick={() => props.onOpenChange(false)}>{t("取消")}</Button>
           <Button disabled={busy || Boolean(imageBusy) || reasons.length > 0 || (!comparison?.original?.imageId)} onClick={() => void save()}>
             <SaveIcon data-icon="inline-start" />
-            保存并下一件
+            
+            {t("保存并下一件")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -968,7 +982,7 @@ function CalibrationDialog(props: { product: JsonRecord | null; ids: ReturnType<
 
 function shoeSupportingImages(product: JsonRecord | null): Array<{ label: string; asset: ProductImageVariantRecord }> {
   const images = Array.isArray(product?.images) ? product.images.map(objectRecord) : [];
-  const labels: Record<string, string> = { BACK: "侧面原图", DETAIL: "鞋底原图", LABEL: "尺码标原图", DEFECT: "瑕疵原图" };
+  const labels: Record<string, string> = { BACK: t("侧面原图"), DETAIL: t("鞋底原图"), LABEL: t("尺码标原图"), DEFECT: t("瑕疵原图") };
   return Object.entries(labels).flatMap(([type, label]) => {
     const image = images.find((item) => item?.type === type && (!item.variant || item.variant === "ORIGINAL"));
     if (!image?.publicUrl) return [];
@@ -993,7 +1007,7 @@ function ImageVariantTile(props: {
     <div className="overflow-hidden rounded-lg border bg-background">
       <div className="flex h-9 items-center justify-between border-b px-3 text-xs font-medium">
         <span>{props.label}</span>
-        {props.asset?.selectedAsMain ? <Badge>商城主图</Badge> : null}
+        {props.asset?.selectedAsMain ? <Badge>{t("商城主图")}</Badge> : null}
       </div>
       <div className={`flex aspect-square items-center justify-center overflow-hidden ${props.transparent ? "bg-muted" : "bg-white"}`}>
         <SafeProductImage src={url} alt={props.label} className="size-full object-contain" />
@@ -1001,7 +1015,7 @@ function ImageVariantTile(props: {
       {props.selectable && props.asset ? (
         <div className="border-t p-2">
           <Button className="w-full" size="sm" variant={props.asset.selectedAsMain ? "secondary" : "outline"} disabled={props.busy || props.asset.selectedAsMain} onClick={() => void props.onSelect?.(props.asset!.imageId)}>
-            {props.asset.selectedAsMain ? "已选择" : "设为商城主图"}
+            {props.asset.selectedAsMain ? t("已选择") : t("设为商城主图")}
           </Button>
         </div>
       ) : null}
@@ -1012,7 +1026,7 @@ function ImageVariantTile(props: {
 function ReviewButtons(props: { product: JsonRecord; ids: ReturnType<typeof useOperationIds>; canApprove: boolean; busy: string; run: (label: string, action: () => Promise<void>) => Promise<void> }) {
   const id = stringValue(props.product.id);
   async function review(result: "APPROVED" | "REWORK_REQUIRED" | "REJECTED") {
-    const reason = result === "APPROVED" ? "" : window.prompt("填写审核意见") ?? "";
+    const reason = result === "APPROVED" ? "" : window.prompt(t("填写审核意见")) ?? "";
     await request(`/operations/product-batches/products/${id}/review`, {
       method: "POST",
       body: JSON.stringify({ adminUserId: props.ids.adminUserId, employeeId: props.ids.employeeId, result, reason })
@@ -1022,14 +1036,17 @@ function ReviewButtons(props: { product: JsonRecord; ids: ReturnType<typeof useO
     <>
       <Button size="sm" variant="outline" disabled={!props.canApprove || Boolean(props.busy)} onClick={() => props.run(`approve-${id}`, () => review("APPROVED"))}>
         <CheckCircle2Icon data-icon="inline-start" />
-        通过
+        
+        {t("通过")}
       </Button>
       <Button size="sm" variant="outline" disabled={!props.canApprove || Boolean(props.busy)} onClick={() => props.run(`rework-${id}`, () => review("REWORK_REQUIRED"))}>
-        退回
+        
+        {t("退回")}
       </Button>
       <Button size="sm" variant="outline" disabled={!props.canApprove || Boolean(props.busy)} onClick={() => props.run(`reject-${id}`, () => review("REJECTED"))}>
         <XCircleIcon data-icon="inline-start" />
-        拒绝
+        
+        {t("拒绝")}
       </Button>
     </>
   );
@@ -1051,14 +1068,14 @@ function ProductManagementActions(props: {
   const profileId = stringValue(profile?.id);
   const canEditDetails = props.canEditDetails && profileId && profile?.status !== "OUTDATED" && status !== "PUBLISHED";
   return <>
-    <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy)} onClick={props.onPrice}>改价</Button>
+    <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy)} onClick={props.onPrice}>{t("改价")}</Button>
     {canEditDetails ? (
-      <Button size="sm" variant="outline" asChild><Link href={`/product/details/${encodeURIComponent(profileId)}?mode=edit`}>编辑商品详情</Link></Button>
-    ) : <Button size="sm" variant="outline" disabled title={status === "PUBLISHED" ? "请先下架再编辑详情" : "需生成有效详情，并具有详情编辑权限"}>编辑商品详情</Button>}
-    {profileId && props.canEditDetails ? <Button size="sm" variant="ghost" asChild><Link href={`/product/details/${encodeURIComponent(profileId)}`}>预览 / 审核</Link></Button> : null}
-    <Button size="sm" disabled={!props.canPublish || Boolean(props.busy) || !canPublishProduct(props.product)} onClick={() => props.run(`publish-${id}`, () => publishProduct(props.product, props.ids))}>上架</Button>
-    <Button size="sm" variant="outline" disabled={!props.canPublish || Boolean(props.busy) || !canUnpublishProduct(props.product)} onClick={() => props.run(`unpublish-${id}`, () => unpublishProduct(props.product, props.ids))}>下架</Button>
-    {props.product.batchId ? <Button size="sm" variant="ghost" asChild><Link href={`/product/batches/${encodeURIComponent(stringValue(props.product.batchId))}`}>批次</Link></Button> : null}
+      <Button size="sm" variant="outline" asChild><Link href={`/product/details/${encodeURIComponent(profileId)}?mode=edit`}>{t("编辑商品详情")}</Link></Button>
+    ) : <Button size="sm" variant="outline" disabled title={status === "PUBLISHED" ? t("请先下架再编辑详情") : t("需生成有效详情，并具有详情编辑权限")}>{t("编辑商品详情")}</Button>}
+    {profileId && props.canEditDetails ? <Button size="sm" variant="ghost" asChild><Link href={`/product/details/${encodeURIComponent(profileId)}`}>{t("预览 / 审核")}</Link></Button> : null}
+    <Button size="sm" disabled={!props.canPublish || Boolean(props.busy) || !canPublishProduct(props.product)} onClick={() => props.run(`publish-${id}`, () => publishProduct(props.product, props.ids))}>{t("上架")}</Button>
+    <Button size="sm" variant="outline" disabled={!props.canPublish || Boolean(props.busy) || !canUnpublishProduct(props.product)} onClick={() => props.run(`unpublish-${id}`, () => unpublishProduct(props.product, props.ids))}>{t("下架")}</Button>
+    {props.product.batchId ? <Button size="sm" variant="ghost" asChild><Link href={`/product/batches/${encodeURIComponent(stringValue(props.product.batchId))}`}>{t("批次")}</Link></Button> : null}
   </>;
 }
 
@@ -1084,16 +1101,16 @@ function ProductPriceDialog(props: {
       });
       props.onSaved();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "保存价格失败。");
+      setError(caught instanceof Error ? caught.message : t("保存价格失败。"));
     } finally { setSaving(false); }
   }
   return <Dialog open={Boolean(props.product)} onOpenChange={(open) => { if (!open && !saving) props.onClose(); }}>
     <DialogContent>
-      <DialogHeader><DialogTitle>修改商品售价</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>{t("修改商品售价")}</DialogTitle></DialogHeader>
       <p className="text-sm">{stringValue(props.product?.title) || stringValue(props.product?.productCode)}</p>
-      <Field><FieldLabel htmlFor="management-price">售价（KSh）</FieldLabel><Input id="management-price" type="number" min={1} step={1} value={price} disabled={saving} onChange={(event) => setPrice(event.target.value)} /><FieldDescription>输入大于 0 的整数。保存后应用于后续购买。</FieldDescription></Field>
+      <Field><FieldLabel htmlFor="management-price">{t("售价（KSh）")}</FieldLabel><Input id="management-price" type="number" min={1} step={1} value={price} disabled={saving} onChange={(event) => setPrice(event.target.value)} /><FieldDescription>{t("输入大于 0 的整数。保存后应用于后续购买。")}</FieldDescription></Field>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
-      <DialogFooter><Button variant="outline" disabled={saving} onClick={props.onClose}>取消</Button><Button disabled={saving || !valid} onClick={() => void save()}>{saving ? "保存中…" : "保存价格"}</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" disabled={saving} onClick={props.onClose}>{t("取消")}</Button><Button disabled={saving || !valid} onClick={() => void save()}>{saving ? t("保存中…") : t("保存价格")}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }
@@ -1114,28 +1131,32 @@ function ProductControlActions(props: {
   const canPrepareStorage = status === "APPROVED";
 
   if (batchId) {
-    return <Button size="sm" variant="outline" asChild><Link href={`/product/review?batchId=${encodeURIComponent(batchId)}`}>打开批次流程</Link></Button>;
+    return <Button size="sm" variant="outline" asChild><Link href={`/product/review?batchId=${encodeURIComponent(batchId)}`}>{t("打开批次流程")}</Link></Button>;
   }
 
   return (
     <>
       <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy) || status === "PUBLISHED"} onClick={() => props.run(`price-${id}`, () => setProductPrice(props.product, props.ids))}>
         <CircleDollarSignIcon data-icon="inline-start" />
-        {price > 0 ? `${price} KSh` : "定价"}
+        {price > 0 ? `${price} KSh` : t("定价")}
       </Button>
       <Button size="sm" variant="outline" disabled={!props.canApprove || Boolean(props.busy) || !canPrepareStorage || price <= 0} onClick={() => props.run(`storage-${id}`, () => prepareProductStorage(props.product, props.ids))}>
         <PackageCheckIcon data-icon="inline-start" />
-        入库准备
+        
+        {t("入库准备")}
       </Button>
       <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy) || !canAssignProductLocation(props.product)} onClick={() => props.run(`placed-${id}`, () => confirmProductPlaced(props.product, props.ids))}>
-        入库
+        
+        {t("入库")}
       </Button>
       <Button size="sm" disabled={!props.canPublish || Boolean(props.busy) || !canPublishProduct(props.product)} onClick={() => props.run(`publish-${id}`, () => publishProduct(props.product, props.ids))}>
         <CheckCircle2Icon data-icon="inline-start" />
-        发布
+        
+        {t("发布")}
       </Button>
       <Button size="sm" variant="outline" disabled={!props.canPublish || Boolean(props.busy) || !canUnpublishProduct(props.product)} onClick={() => props.run(`unpublish-${id}`, () => unpublishProduct(props.product, props.ids))}>
-        下架
+        
+        {t("下架")}
       </Button>
     </>
   );
@@ -1170,15 +1191,15 @@ async function batchAction(batchId: string, action: string, ids: ReturnType<type
 
 async function printBatchLabels(batch: ProductBatch, ids: ReturnType<typeof useOperationIds>) {
   const products = batch.products.filter((product) => stringValue(product.barcode));
-  if (products.length === 0) throw new Error("先生成 Barcode，再批量打印。");
+  if (products.length === 0) throw new Error(t("先生成 Barcode，再批量打印。"));
 
   let healthResponse: Response;
   try {
     healthResponse = await fetch(`${DEFAULT_PRINT_AGENT_URL}/health`, { method: "GET" });
   } catch {
-    throw new Error("请先启动本机打印代理，再批量打印。");
+    throw new Error(t("请先启动本机打印代理，再批量打印。"));
   }
-  if (!healthResponse.ok) throw new Error("本机打印代理未就绪。");
+  if (!healthResponse.ok) throw new Error(t("本机打印代理未就绪。"));
 
   const printersResponse = await fetch(`${DEFAULT_PRINT_AGENT_URL}/printers`, { method: "GET" });
   const printersBody = (await printersResponse.json()) as JsonRecord;
@@ -1191,7 +1212,7 @@ async function printBatchLabels(batch: ProductBatch, ids: ReturnType<typeof useO
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!response.ok) throw new Error(`无法打印 ${stringValue(product.barcode)}。`);
+    if (!response.ok) throw new Error(t("无法打印 {v0}。", { v0: stringValue(product.barcode) }));
   }
 
   await request("/operations/product-control/labels/printed", {
@@ -1207,7 +1228,7 @@ async function printBatchLabels(batch: ProductBatch, ids: ReturnType<typeof useO
 async function runSingleAi(product: JsonRecord, ids: ReturnType<typeof useOperationIds>) {
   const images = Array.isArray(product.images) ? product.images.filter((image): image is JsonRecord => Boolean(image && typeof image === "object")) : [];
   const imageIds = images.map((image) => stringValue(image.id)).filter(Boolean);
-  if (!imageIds.length) throw new Error("先上传照片。");
+  if (!imageIds.length) throw new Error(t("先上传照片。"));
   await request("/ai-jobs", {
     method: "POST",
     body: JSON.stringify({
@@ -1228,10 +1249,10 @@ async function generateBarcode(product: JsonRecord, ids: ReturnType<typeof useOp
 
 async function setProductPrice(product: JsonRecord, ids: ReturnType<typeof useOperationIds>) {
   const currentPrice = typeof product.priceKsh === "number" ? String(product.priceKsh) : "";
-  const nextPrice = window.prompt("输入商品价格（KSh）", currentPrice);
+  const nextPrice = window.prompt(t("输入商品价格（KSh）"), currentPrice);
   if (nextPrice === null) return;
   const priceKsh = Number(nextPrice);
-  if (!Number.isInteger(priceKsh) || priceKsh <= 0) throw new Error("请输入大于 0 的整数价格。");
+  if (!Number.isInteger(priceKsh) || priceKsh <= 0) throw new Error(t("请输入大于 0 的整数价格。"));
   await request(`/operations/product-control/products/${stringValue(product.id)}/price`, {
     method: "PATCH",
     body: JSON.stringify({ adminUserId: ids.adminUserId, employeeId: ids.employeeId, priceKsh })
@@ -1260,7 +1281,7 @@ async function publishProduct(product: JsonRecord, ids: ReturnType<typeof useOpe
 }
 
 async function unpublishProduct(product: JsonRecord, ids: ReturnType<typeof useOperationIds>) {
-  const reason = window.prompt("下架原因", "Operations product center");
+  const reason = window.prompt(t("下架原因"), "Operations product center");
   if (reason === null) return;
   await request(`/operations/product-control/products/${stringValue(product.id)}/unpublish`, {
     method: "POST",
@@ -1325,7 +1346,7 @@ function SafeProductImage(props: { src: string; alt: string; className: string; 
     return (
       <div className="flex size-full flex-col items-center justify-center gap-1 bg-muted text-muted-foreground">
         <ImageIcon className={props.compact ? "size-4" : "size-7"} />
-        {!props.compact ? <span className="text-xs">图片缺失</span> : null}
+        {!props.compact ? <span className="text-xs">{t("图片缺失")}</span> : null}
       </div>
     );
   }
@@ -1336,13 +1357,13 @@ function SafeProductImage(props: { src: string; alt: string; className: string; 
 function AiPreview({ job }: { job: JsonRecord }) {
   const output = normalizedAiOutput(job);
   const fields = [
-    ["title", "标题"],
-    ["category", "分类"],
-    ["primaryColor", "颜色"],
-    ["pattern", "图案"],
-    ["sleeveType", "袖型"],
-    ["brandLabel", "品牌"],
-    ["sizeLabel", "标签尺码"]
+    ["title", t("标题")],
+    ["category", t("分类")],
+    ["primaryColor", t("颜色")],
+    ["pattern", t("图案")],
+    ["sleeveType", t("袖型")],
+    ["brandLabel", t("品牌")],
+    ["sizeLabel", t("标签尺码")]
   ] as const;
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
@@ -1375,7 +1396,7 @@ function RequiredInput(props: { label: string; value: string; invalid: boolean; 
     <Field data-invalid={props.invalid}>
       <FieldLabel>{props.label} *</FieldLabel>
       <Input aria-invalid={props.invalid} inputMode={props.label.includes("cm") ? "decimal" : undefined} value={props.value} onChange={(event) => props.onChange(event.target.value)} />
-      {props.invalid ? <FieldDescription>必填</FieldDescription> : null}
+      {props.invalid ? <FieldDescription>{t("必填")}</FieldDescription> : null}
     </Field>
   );
 }
@@ -1385,9 +1406,9 @@ function RequiredSelect(props: { label: string; value: string; values: readonly 
     <Field data-invalid={props.invalid} data-disabled={props.disabled}>
       <FieldLabel>{props.label} *</FieldLabel>
       <NativeSelect className="w-full" aria-invalid={props.invalid} disabled={props.disabled} value={props.value} onChange={(event) => props.onChange(event.target.value)}>
-        {props.values.map((value) => <NativeSelectOption key={value} value={value}>{props.labels?.[value] ?? optionLabel(value)}</NativeSelectOption>)}
+        {props.values.map((value) => <NativeSelectOption key={value} value={value}>{props.labels?.[value] ? t(props.labels[value]) : optionLabel(value)}</NativeSelectOption>)}
       </NativeSelect>
-      {props.invalid ? <FieldDescription>必填</FieldDescription> : null}
+      {props.invalid ? <FieldDescription>{t("必填")}</FieldDescription> : null}
     </Field>
   );
 }

@@ -41,6 +41,7 @@ import {
   productDetailAssetProxyUrl,
   sortDetailBatches
 } from "./product-detail-page-plan";
+import { operationsFormatLocale, t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 const ASSET_LABELS: Record<string, string> = {
@@ -206,7 +207,7 @@ async function generateAiDisplayImage(
     { method: "POST", body: JSON.stringify({}) }
   );
   if (completed.status !== "SUCCEEDED" || !completed.outputImageId) {
-    throw new Error(completed.errorMessage || "白底展示图生成失败。");
+    throw new Error(completed.errorMessage || t("白底展示图生成失败。"));
   }
   return completed;
 }
@@ -270,7 +271,7 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
     const key = `${batch.id}-generate`;
     setBusy(key);
     setError("");
-    setNotice("第一步正在批量生成 AI 陈列主图并设为默认主图，随后继续生成详情。");
+    setNotice(t("第一步正在批量生成 AI 陈列主图并设为默认主图，随后继续生成详情。"));
     try {
       await request(`/operations/product-batches/${batch.id}/detail-generation-jobs`, ids.adminUserId, {
         method: "POST",
@@ -284,10 +285,10 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
       await load();
       const failed = result.results.filter((item) => item.status === "FAILED");
       if (failed.length) {
-        setError(`${failed.length} 件处理失败：${failed.map((item) => item.error).filter(Boolean).join("；")}`);
-        setNotice(`本批已处理 ${result.processed} 件，成功 ${result.processed - failed.length} 件；失败项可直接重试。`);
+        setError(t("{length} 件处理失败：{v1}", { length: failed.length, v1: failed.map((item) => item.error).filter(Boolean).join("；") }));
+        setNotice(t("本批已处理 {processed} 件，成功 {v1} 件；失败项可直接重试。", { processed: result.processed, v1: result.processed - failed.length }));
       } else {
-        setNotice(`本批已处理 ${result.processed} 件；AI 陈列主图已作为默认主图，并已继续生成详情。`);
+        setNotice(t("本批已处理 {processed} 件；AI 陈列主图已作为默认主图，并已继续生成详情。", { processed: result.processed }));
       }
     } catch (caught) {
       setError(errorMessage(caught));
@@ -300,26 +301,26 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-10">
       <header className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">商品中心</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-normal">详情生成</h1>
-          <p className="mt-1 text-sm text-muted-foreground">按批次生成销售详情草稿，再按顾客购买顺序检查并批准。</p>
+          <p className="text-sm text-muted-foreground">{t("商品中心")}</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-normal">{t("详情生成")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("按批次生成销售详情草稿，再按顾客购买顺序检查并批准。")}</p>
         </div>
         <Button variant="outline" size="sm" disabled={Boolean(busy)} onClick={() => void load()}>
-          <RefreshCwIcon data-icon="inline-start" />刷新
+          <RefreshCwIcon data-icon="inline-start" />{t("刷新")}
         </Button>
       </header>
 
       {error ? <Status tone="danger">{error}</Status> : null}
       {notice ? <Status tone="neutral">{notice}</Status> : null}
-      {!batches.length ? <Status tone="neutral">暂无已完成校准的批次。</Status> : null}
+      {!batches.length ? <Status tone="neutral">{t("暂无已完成校准的批次。")}</Status> : null}
 
       {batches.length ? (
         <section className="grid gap-4 border-y py-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.55fr)] md:items-end">
           <div className="space-y-2">
-            <label className="text-sm font-medium">选择批次</label>
+            <label className="text-sm font-medium">{t("选择批次")}</label>
             <Select value={selectedBatchId || undefined} onValueChange={selectBatch}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择要统一生成详情的批次" />
+                <SelectValue placeholder={t("选择要统一生成详情的批次")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -333,13 +334,13 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
             </Select>
           </div>
           <div className="flex flex-col gap-1 md:items-end">
-            <span className="text-xs text-muted-foreground">可处理批次</span>
+            <span className="text-xs text-muted-foreground">{t("可处理批次")}</span>
             <span className="text-lg font-semibold">{orderedBatches.length}</span>
           </div>
         </section>
       ) : null}
 
-      {batches.length && !selectedBatch ? <Status tone="neutral">请选择一个批次。</Status> : null}
+      {batches.length && !selectedBatch ? <Status tone="neutral">{t("请选择一个批次。")}</Status> : null}
 
       <div className="flex flex-col gap-4">
         {selectedBatch ? [selectedBatch].map((batch) => {
@@ -350,39 +351,41 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-semibold">{batch.batchCode}</h2>
-                    <Badge variant="outline">校准 {batch.calibrated}/{batch.targetCount}</Badge>
+                    <Badge variant="outline">{t("校准")} {batch.calibrated}/{batch.targetCount}</Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{new Date(batch.createdAt).toLocaleString("zh-CN")}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{new Date(batch.createdAt).toLocaleString(operationsFormatLocale())}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" disabled={actionBusy || !batch.generationReady || batch.pending === 0} onClick={() => void generateBatch(batch)}>
                     {busy === `${batch.id}-generate` ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                    {batch.generationReady && batch.pending > 0 ? `第一步 · 批量生成 AI 主图并处理 ${batch.pending} 件详情` : detailGenerationButtonLabel(batch)}
+                    {batch.generationReady && batch.pending > 0 ? t("第一步 · 批量生成 AI 主图并处理 {pending} 件详情", { pending: batch.pending }) : detailGenerationButtonLabel(batch)}
                     {batch.generationReady && batch.pending > 0 ? <ArrowRightIcon data-icon="inline-end" /> : null}
                   </Button>
-                  <Button size="sm" variant="outline" disabled={actionBusy || batch.failed === 0} onClick={() => void run(`${batch.id}-failed`, `/operations/product-batches/${batch.id}/detail-generation/retry-failed`, "失败任务已重试。") }>
-                    重试失败
+                  <Button size="sm" variant="outline" disabled={actionBusy || batch.failed === 0} onClick={() => void run(`${batch.id}-failed`, `/operations/product-batches/${batch.id}/detail-generation/retry-failed`, t("失败任务已重试。")) }>
+                    
+                    {t("重试失败")}
                   </Button>
-                  <Button size="sm" variant="outline" disabled={actionBusy || batch.outdated === 0} onClick={() => void run(`${batch.id}-outdated`, `/operations/product-batches/${batch.id}/detail-generation/regenerate-outdated`, "过期详情已重新生成。") }>
-                    重生成过期项
+                  <Button size="sm" variant="outline" disabled={actionBusy || batch.outdated === 0} onClick={() => void run(`${batch.id}-outdated`, `/operations/product-batches/${batch.id}/detail-generation/regenerate-outdated`, t("过期详情已重新生成。")) }>
+                    
+                    {t("重生成过期项")}
                   </Button>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-px border-b bg-border sm:grid-cols-4 lg:grid-cols-8">
-                <Metric label="等待校准" value={batch.awaitingCalibration} />
-                <Metric label="待生成" value={batch.pending} />
-                <Metric label="生成中" value={batch.generating} />
-                <Metric label="成功" value={batch.succeeded} />
-                <Metric label="失败" value={batch.failed} />
-                <Metric label="已过期" value={batch.outdated} />
-                <Metric label="已批准" value={batch.approved} />
-                <Metric label="总数" value={batch.targetCount} />
+                <Metric label={t("等待校准")} value={batch.awaitingCalibration} />
+                <Metric label={t("待生成")} value={batch.pending} />
+                <Metric label={t("生成中")} value={batch.generating} />
+                <Metric label={t("成功")} value={batch.succeeded} />
+                <Metric label={t("失败")} value={batch.failed} />
+                <Metric label={t("已过期")} value={batch.outdated} />
+                <Metric label={t("已批准")} value={batch.approved} />
+                <Metric label={t("总数")} value={batch.targetCount} />
               </div>
 
               <div className="border-b px-4 py-3">
-                <p className="text-sm font-medium">人工校准、填写尺码后，直接使用原图批量生成白底展示图；销售详情使用已确认的信息和人工尺码。</p>
-                <p className="mt-1 text-xs text-muted-foreground">员工仍需在详情审核中对照原图确认 Logo、图案、结构、磨损和瑕疵；Model View 占位页不会恢复。</p>
+                <p className="text-sm font-medium">{t("人工校准、填写尺码后，直接使用原图批量生成白底展示图；销售详情使用已确认的信息和人工尺码。")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t("员工仍需在详情审核中对照原图确认 Logo、图案、结构、磨损和瑕疵；Model View 占位页不会恢复。")}</p>
               </div>
 
               <div className="divide-y">
@@ -395,11 +398,11 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs text-muted-foreground">第 {product.batchItemNumber ?? "-"} 件</span>
+                          <span className="text-xs text-muted-foreground">{t("第")} {product.batchItemNumber ?? "-"}  {t("件")}</span>
                           <Badge variant="outline">{statusLabel(productStage)}</Badge>
                         </div>
                         <div className="mt-1 truncate font-medium">{product.title || product.productCode}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">{labelValue(product.category) || "分类待确认"} · {product.finalSizeLabel || "尺码待确认"} · {product.productCode}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{labelValue(product.category) || t("分类待确认")} · {product.finalSizeLabel || t("尺码待确认")} · {product.productCode}</div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {product.assets
                             .filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type) && (asset.status === "READY" || asset.status === "APPROVED"))
@@ -408,7 +411,7 @@ export function ProductDetailGenerationPage({ batchId }: { batchId?: string } = 
                       </div>
                       {product.profileId ? (
                         <Button asChild size="sm" variant="outline" className="w-full sm:w-auto">
-                          <Link href={`/product/details/${product.profileId}`}><EyeIcon data-icon="inline-start" />发布预览</Link>
+                          <Link href={`/product/details/${product.profileId}`}><EyeIcon data-icon="inline-start" />{t("发布预览")}</Link>
                         </Button>
                       ) : <Button size="sm" variant="outline" disabled className="w-full sm:w-auto">{statusLabel(productStage)}</Button>}
                     </div>
@@ -496,7 +499,7 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
         })
       });
       await load();
-      setNotice("详情文案和固定素材已更新。");
+      setNotice(t("详情文案和固定素材已更新。"));
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -506,7 +509,7 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
 
   async function chooseStorefrontMain(choice: DetailMainImageChoice) {
     if (!profile || !choice.selectable || !choice.image) return;
-    if (choice.generated && !window.confirm("请对照原图确认 白底展示图没有改变 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损或瑕疵。确认一致后继续。")) return;
+    if (choice.generated && !window.confirm(t("请对照原图确认 白底展示图没有改变 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损或瑕疵。确认一致后继续。"))) return;
     setBusy(`main-${choice.image.imageId}`);
     setError("");
     setNotice("");
@@ -517,7 +520,7 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
       });
       await load();
       setActiveMainImage(choice.key);
-      setNotice(`${choice.label}已设为商城主图，发布预览素材已同步更新，请重新确认后批准。`);
+      setNotice(t("{label}已设为商城主图，发布预览素材已同步更新，请重新确认后批准。", { label: choice.label }));
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -527,7 +530,7 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
 
   async function generateDisplayImage() {
     if (!profile || !comparison?.original?.imageId) {
-      setError("请先上传正面原图，再生成白底展示图。");
+      setError(t("请先上传正面原图，再生成白底展示图。"));
       return;
     }
     setBusy("ai-display");
@@ -541,7 +544,7 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
       });
       await load();
       setActiveMainImage("ai-display");
-      setNotice("白底展示图已重新生成并设为默认商城主图，请对照原图人工确认。");
+      setNotice(t("白底展示图已重新生成并设为默认商城主图，请对照原图人工确认。"));
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -549,7 +552,7 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
     }
   }
 
-  if (!profile) return <Status tone={error ? "danger" : "neutral"}>{error || "正在读取商品详情…"}</Status>;
+  if (!profile) return <Status tone={error ? "danger" : "neutral"}>{error || t("正在读取商品详情…")}</Status>;
   const assets = profile.assets
     .filter((asset) => CURRENT_DETAIL_ASSET_TYPES.has(asset.type) && (asset.status === "READY" || asset.status === "APPROVED"))
     .sort((left, right) => assetOrder(left.type) - assetOrder(right.type));
@@ -564,27 +567,27 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-12">
       <header className="border-b pb-4">
-        <Link href="/product/details" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-4" />返回详情生成</Link>
+        <Link href="/product/details" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeftIcon className="size-4" />{t("返回详情生成")}</Link>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-normal">{profile.product.productCode}</h1>
               <Badge variant="outline">{statusLabel(profile.status)}</Badge>
-              <Badge variant="outline">源数据 v{profile.sourceDataVersion}</Badge>
-              <Badge variant="outline">文案 v{profile.contentVersion}</Badge>
+              <Badge variant="outline">{t("源数据 v")}{profile.sourceDataVersion}</Badge>
+              <Badge variant="outline">{t("文案 v")}{profile.contentVersion}</Badge>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">第 {profile.product.batchItemNumber ?? "-"} 件 · {labelValue(profile.product.category)} · {profile.product.finalSizeLabel || "尺码未确认"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("第")} {profile.product.batchItemNumber ?? "-"}  {t("件 ·")} {labelValue(profile.product.category)} · {profile.product.finalSizeLabel || t("尺码未确认")}</p>
           </div>
           <div className="inline-flex w-full rounded-md border p-1 sm:w-auto">
-            <Button size="sm" variant={viewMode === "preview" ? "default" : "ghost"} className="flex-1 sm:flex-none" onClick={() => setViewMode("preview")}><EyeIcon data-icon="inline-start" />发布预览</Button>
-            <Button size="sm" variant={viewMode === "edit" ? "default" : "ghost"} className="flex-1 sm:flex-none" onClick={() => setViewMode("edit")}><PencilLineIcon data-icon="inline-start" />编辑与素材</Button>
+            <Button size="sm" variant={viewMode === "preview" ? "default" : "ghost"} className="flex-1 sm:flex-none" onClick={() => setViewMode("preview")}><EyeIcon data-icon="inline-start" />{t("发布预览")}</Button>
+            <Button size="sm" variant={viewMode === "edit" ? "default" : "ghost"} className="flex-1 sm:flex-none" onClick={() => setViewMode("edit")}><PencilLineIcon data-icon="inline-start" />{t("编辑与素材")}</Button>
           </div>
         </div>
       </header>
 
       {error ? <Status tone="danger">{error}</Status> : null}
       {notice ? <Status tone="neutral">{notice}</Status> : null}
-      {profile.sourceDataVersion !== profile.product.detailSourceVersion ? <Status tone="danger">商品事实已经变化，此详情版本不可批准。</Status> : null}
+      {profile.sourceDataVersion !== profile.product.detailSourceVersion ? <Status tone="danger">{t("商品事实已经变化，此详情版本不可批准。")}</Status> : null}
 
       {viewMode === "preview" ? (
         <ProductPublishPreview
@@ -592,21 +595,21 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
           copy={copy}
           assets={assets}
           busy={Boolean(busy)}
-          approvalBlockedReason={aiConfirmationRequired ? "请先进入“编辑与素材”，对照原图并人工确认 AI 主图。" : null}
-          onApprove={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId })}
+          approvalBlockedReason={aiConfirmationRequired ? t("请先进入“编辑与素材”，对照原图并人工确认 AI 主图。") : null}
+          onApprove={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, t("该商品详情已批准。"), { employeeId: ids.employeeId })}
           onEdit={() => setViewMode("edit")}
         />
       ) : <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,.95fr)]">
         <div className="min-w-0 space-y-6">
-          <section className="min-w-0 space-y-3" aria-label="商城主图确认">
+          <section className="min-w-0 space-y-3" aria-label={t("商城主图确认")}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="font-semibold">商城主图</h2>
-                <p className="mt-1 text-xs text-muted-foreground">人工确认商品信息后，直接使用原图生成白底展示图并作为主图候选；请在这里对照原图审核。</p>
+                <h2 className="font-semibold">{t("商城主图")}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{t("人工确认商品信息后，直接使用原图生成白底展示图并作为主图候选；请在这里对照原图审核。")}</p>
               </div>
               <Button size="sm" variant="outline" disabled={Boolean(busy) || !comparison?.original?.imageId} onClick={() => void generateDisplayImage()}>
                 {busy === "ai-display" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                {comparison?.aiDisplayMain ? "重新生成 白底展示图" : "生成 白底展示图"}
+                {comparison?.aiDisplayMain ? t("重新生成 白底展示图") : t("生成 白底展示图")}
               </Button>
             </div>
 
@@ -620,7 +623,7 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
                   disabled={!choice.image}
                   onClick={() => setActiveMainImage(choice.key)}
                 >
-                  {choice.label}{choice.image?.selectedAsMain ? " · 主图" : ""}
+                  {choice.label}{choice.image?.selectedAsMain ? t(" · 主图") : ""}
                 </Button>
               ))}
             </div>
@@ -631,16 +634,16 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
 
             {currentMainImage?.generated ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-                <p className="font-semibold">生成式陈列图必须人工核对</p>
-                <p className="mt-1 text-xs">重点检查 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵。任何商品事实改变都不能确认。</p>
+                <p className="font-semibold">{t("生成式陈列图必须人工核对")}</p>
+                <p className="mt-1 text-xs">{t("重点检查 Logo、图案、口袋、纽扣、拉链、抽绳、面料纹理、磨损和瑕疵。任何商品事实改变都不能确认。")}</p>
               </div>
             ) : null}
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className={cn("text-xs", hasSelectedMainImage ? "text-emerald-700" : "font-medium text-amber-700")}>
                 {aiConfirmationRequired
-                  ? "白底展示图已默认设为主图；批准前请点击“人工确认 AI 主图”完成核对。"
-                  : hasSelectedMainImage ? "商城主图已人工选择。换图后会同步重建发布预览。" : "尚未选择商城主图；商品发布时仍会执行正式主图与准备度规则。"}
+                  ? t("白底展示图已默认设为主图；批准前请点击“人工确认 AI 主图”完成核对。")
+                  : hasSelectedMainImage ? t("商城主图已人工选择。换图后会同步重建发布预览。") : t("尚未选择商城主图；商品发布时仍会执行正式主图与准备度规则。")}
               </p>
               {currentMainImage?.selectable && currentMainImage.image ? (
                 <Button
@@ -649,29 +652,29 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
                   onClick={() => void chooseStorefrontMain(currentMainImage)}
                 >
                   {currentMainImage.generated && currentMainImage.image.selectedAsMain
-                    ? "人工确认 AI 主图"
-                    : currentMainImage.image.selectedAsMain ? "已是商城主图" : "设为商城主图"}
+                    ? t("人工确认 AI 主图")
+                    : currentMainImage.image.selectedAsMain ? t("已是商城主图") : t("设为商城主图")}
                 </Button>
               ) : null}
             </div>
           </section>
 
-          <section className="min-w-0 border-t pt-5" aria-label="详情素材">
-            <h2 className="mb-3 font-semibold">详情素材</h2>
+          <section className="min-w-0 border-t pt-5" aria-label={t("详情素材")}>
+            <h2 className="mb-3 font-semibold">{t("详情素材")}</h2>
           <div className="flex gap-2 overflow-x-auto pb-2">
             {assets.map((asset) => (
               <Button key={asset.id} size="sm" variant={activeAsset === asset.type ? "default" : "outline"} className="shrink-0" onClick={() => setActiveAsset(asset.type)}>
-                {ASSET_LABELS[asset.type] ?? labelValue(asset.type)}
+                {t(ASSET_LABELS[asset.type] ?? labelValue(asset.type))}
               </Button>
             ))}
           </div>
           <div className="flex aspect-square min-h-80 items-center justify-center overflow-hidden rounded-md border bg-muted/20">
-            {selectedAsset ? <SafeImage src={assetUrl(selectedAsset)} alt={ASSET_LABELS[selectedAsset.type] ?? selectedAsset.type} /> : <EmptyImage />}
+            {selectedAsset ? <SafeImage src={assetUrl(selectedAsset)} alt={t(ASSET_LABELS[selectedAsset.type] ?? selectedAsset.type)} /> : <EmptyImage />}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {assets.map((asset) => (
               <button key={asset.id} type="button" className={cn("rounded-md border p-2 text-left text-xs", activeAsset === asset.type && "border-foreground bg-muted/50")} onClick={() => setActiveAsset(asset.type)}>
-                <span className="font-medium">{ASSET_LABELS[asset.type] ?? asset.type}</span>
+                <span className="font-medium">{t(ASSET_LABELS[asset.type] ?? asset.type)}</span>
                 <span className="mt-1 block text-muted-foreground">{statusLabel(asset.status)}</span>
               </button>
             ))}
@@ -681,23 +684,23 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
 
         <div className="flex min-w-0 flex-col gap-5">
           <section className="rounded-md border p-4">
-            <h2 className="font-semibold">商品事实</h2>
+            <h2 className="font-semibold">{t("商品事实")}</h2>
             <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <Fact label="分类" value={labelValue(profile.product.category)} />
-              <Fact label="子分类" value={labelValue(profile.product.subcategory)} />
-              <Fact label="适用人群" value={labelValue(profile.product.gender)} />
-              <Fact label="平台尺码" value={profile.product.finalSizeLabel} />
-              <Fact label="版型" value={labelValue(profile.fitType)} />
-              <Fact label="弹性" value={labelValue(profile.stretchLevel)} />
-              <Fact label="面料厚度" value={labelValue(profile.fabricWeight)} />
-              <Fact label="成色" value={labelValue(profile.product.conditionGrade)} />
-              <Fact label="价格" value={profile.product.priceKsh ? `KSh ${profile.product.priceKsh}` : null} />
+              <Fact label={t("分类")} value={labelValue(profile.product.category)} />
+              <Fact label={t("子分类")} value={labelValue(profile.product.subcategory)} />
+              <Fact label={t("适用人群")} value={labelValue(profile.product.gender)} />
+              <Fact label={t("平台尺码")} value={profile.product.finalSizeLabel} />
+              <Fact label={t("版型")} value={labelValue(profile.fitType)} />
+              <Fact label={t("弹性")} value={labelValue(profile.stretchLevel)} />
+              <Fact label={t("面料厚度")} value={labelValue(profile.fabricWeight)} />
+              <Fact label={t("成色")} value={labelValue(profile.product.conditionGrade)} />
+              <Fact label={t("价格")} value={profile.product.priceKsh ? `KSh ${profile.product.priceKsh}` : null} />
             </div>
           </section>
 
           <section className="rounded-md border p-4">
-            <h2 className="font-semibold">平铺实测</h2>
-            <p className="mt-1 text-xs text-muted-foreground">只展示员工确认的衣物厘米数，不推断身高、体重、年龄或身体围度。</p>
+            <h2 className="font-semibold">{t("平铺实测")}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{t("只展示员工确认的衣物厘米数，不推断身高、体重、年龄或身体围度。")}</p>
             <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               {profile.product.measurements.map((item) => <Fact key={item.measurementType} label={measurementLabel(item.measurementType)} value={measurementValue(item.finalValueCm)} />)}
             </div>
@@ -705,31 +708,31 @@ export function ProductDetailReviewPage({ profileId, initialMode = "preview" }: 
 
           <section className="rounded-md border p-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">AI 商品文案</h2>
-              <span className="text-xs text-muted-foreground">{latestJob?.model || "未调用"}</span>
+              <h2 className="font-semibold">{t("AI 商品文案")}</h2>
+              <span className="text-xs text-muted-foreground">{latestJob?.model || t("未调用")}</span>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">商品描述由 AI 在详情生成阶段起草，员工确认或修改后，批准的版本才会成为商城展示描述。</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("商品描述由 AI 在详情生成阶段起草，员工确认或修改后，批准的版本才会成为商城展示描述。")}</p>
             <div className="mt-3 space-y-3">
-              <Field label="标题"><Input value={copy.title} maxLength={120} onChange={(event) => setCopy((current) => ({ ...current, title: event.target.value }))} /></Field>
-              {copy.sellingPoints.map((point, index) => <Field key={index} label={`卖点 ${index + 1}`}><Input value={point} maxLength={160} onChange={(event) => setCopy((current) => ({ ...current, sellingPoints: current.sellingPoints.map((item, itemIndex) => itemIndex === index ? event.target.value : item) as EditableCopy["sellingPoints"] }))} /></Field>)}
-              <Field label="商品描述"><Textarea rows={4} value={copy.shortDescription} onChange={(event) => setCopy((current) => ({ ...current, shortDescription: event.target.value }))} /></Field>
-              <Field label="版型摘要"><Textarea rows={2} value={copy.fitSummary} onChange={(event) => setCopy((current) => ({ ...current, fitSummary: event.target.value }))} /></Field>
-              <Field label="成色摘要"><Textarea rows={2} value={copy.conditionSummary} onChange={(event) => setCopy((current) => ({ ...current, conditionSummary: event.target.value }))} /></Field>
-              <Field label="审核提醒（每行一条）"><Textarea rows={2} value={copy.warnings} onChange={(event) => setCopy((current) => ({ ...current, warnings: event.target.value }))} /></Field>
-              <Button className="w-full sm:w-auto" disabled={Boolean(busy)} onClick={() => void saveCopy()}>{busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <FileTextIcon data-icon="inline-start" />}保存文案并重生成素材</Button>
+              <Field label={t("标题")}><Input value={copy.title} maxLength={120} onChange={(event) => setCopy((current) => ({ ...current, title: event.target.value }))} /></Field>
+              {copy.sellingPoints.map((point, index) => <Field key={index} label={t("卖点 {v0}", { v0: index + 1 })}><Input value={point} maxLength={160} onChange={(event) => setCopy((current) => ({ ...current, sellingPoints: current.sellingPoints.map((item, itemIndex) => itemIndex === index ? event.target.value : item) as EditableCopy["sellingPoints"] }))} /></Field>)}
+              <Field label={t("商品描述")}><Textarea rows={4} value={copy.shortDescription} onChange={(event) => setCopy((current) => ({ ...current, shortDescription: event.target.value }))} /></Field>
+              <Field label={t("版型摘要")}><Textarea rows={2} value={copy.fitSummary} onChange={(event) => setCopy((current) => ({ ...current, fitSummary: event.target.value }))} /></Field>
+              <Field label={t("成色摘要")}><Textarea rows={2} value={copy.conditionSummary} onChange={(event) => setCopy((current) => ({ ...current, conditionSummary: event.target.value }))} /></Field>
+              <Field label={t("审核提醒（每行一条）")}><Textarea rows={2} value={copy.warnings} onChange={(event) => setCopy((current) => ({ ...current, warnings: event.target.value }))} /></Field>
+              <Button className="w-full sm:w-auto" disabled={Boolean(busy)} onClick={() => void saveCopy()}>{busy === "save" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <FileTextIcon data-icon="inline-start" />}{t("保存文案并重生成素材")}</Button>
             </div>
           </section>
 
           <section className="rounded-md border p-4">
-            <h2 className="font-semibold">详情操作</h2>
+            <h2 className="font-semibold">{t("详情操作")}</h2>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("assets", `/product-detail-profiles/${profile.id}/assets/generate`, "固定详情素材已重新生成。") }><RefreshCwIcon data-icon="inline-start" />重生成素材</Button>
-              <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("openai", `/product-detail-profiles/${profile.id}/regenerate-openai`, "OpenAI 文案和详情素材已重新生成。") }><SparklesIcon data-icon="inline-start" />重新调用 OpenAI</Button>
-              <Button disabled={Boolean(busy) || profile.status === "APPROVED"} onClick={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, "该商品详情已批准。", { employeeId: ids.employeeId }) }><CheckCircle2Icon data-icon="inline-start" />批准现有详情</Button>
+              <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("assets", `/product-detail-profiles/${profile.id}/assets/generate`, t("固定详情素材已重新生成。")) }><RefreshCwIcon data-icon="inline-start" />{t("重生成素材")}</Button>
+              <Button variant="outline" disabled={Boolean(busy)} onClick={() => void run("openai", `/product-detail-profiles/${profile.id}/regenerate-openai`, t("OpenAI 文案和详情素材已重新生成。")) }><SparklesIcon data-icon="inline-start" />{t("重新调用 OpenAI")}</Button>
+              <Button disabled={Boolean(busy) || profile.status === "APPROVED"} onClick={() => void run("approve", `/product-detail-profiles/${profile.id}/approve`, t("该商品详情已批准。"), { employeeId: ids.employeeId }) }><CheckCircle2Icon data-icon="inline-start" />{t("批准现有详情")}</Button>
             </div>
             <div className="mt-4 border-t pt-4">
-              <Field label="退回校准原因"><Textarea rows={2} placeholder="说明需要员工重新确认的商品事实。" value={recalibrationReason} onChange={(event) => setRecalibrationReason(event.target.value)} /></Field>
-              <Button className="mt-2" variant="outline" disabled={Boolean(busy) || !recalibrationReason.trim()} onClick={() => void run("recalibration", `/operations/product-batches/products/${profile.product.id}/recalibration`, "商品已退回人工校准。", { employeeId: ids.employeeId, reason: recalibrationReason }) }><RotateCcwIcon data-icon="inline-start" />标记重新校准</Button>
+              <Field label={t("退回校准原因")}><Textarea rows={2} placeholder={t("说明需要员工重新确认的商品事实。")} value={recalibrationReason} onChange={(event) => setRecalibrationReason(event.target.value)} /></Field>
+              <Button className="mt-2" variant="outline" disabled={Boolean(busy) || !recalibrationReason.trim()} onClick={() => void run("recalibration", `/operations/product-batches/products/${profile.product.id}/recalibration`, t("商品已退回人工校准。"), { employeeId: ids.employeeId, reason: recalibrationReason }) }><RotateCcwIcon data-icon="inline-start" />{t("标记重新校准")}</Button>
             </div>
           </section>
         </div>
@@ -768,41 +771,41 @@ function ProductPublishPreview({
     <div className="overflow-hidden rounded-md border bg-background">
       <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2"><Badge>发布预览</Badge><span className="text-sm font-medium">顾客视角 · 尚未发布</span></div>
-          <p className="mt-1 text-xs text-muted-foreground">按顾客购买顺序核对图片、标题、价格、尺码、版型、成色、瑕疵和配送说明。批准只确认详情草稿，不会发布商品。</p>
+          <div className="flex items-center gap-2"><Badge>{t("发布预览")}</Badge><span className="text-sm font-medium">{t("顾客视角 · 尚未发布")}</span></div>
+          <p className="mt-1 text-xs text-muted-foreground">{t("按顾客购买顺序核对图片、标题、价格、尺码、版型、成色、瑕疵和配送说明。批准只确认详情草稿，不会发布商品。")}</p>
         </div>
-        <Button size="sm" variant="outline" onClick={onEdit}><PencilLineIcon data-icon="inline-start" />编辑内容</Button>
+        <Button size="sm" variant="outline" onClick={onEdit}><PencilLineIcon data-icon="inline-start" />{t("编辑内容")}</Button>
       </div>
 
       <section className="grid border-b lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,.9fr)]">
         <div className="flex min-h-[420px] items-center justify-center border-b bg-muted/10 p-4 lg:border-r lg:border-b-0">
-          {main ? <SafeImage src={assetUrl(main)} alt={`${copy.title || profile.product.productCode} 主图`} /> : <EmptyImage />}
+          {main ? <SafeImage src={assetUrl(main)} alt={t("{v0} 主图", { v0: copy.title || profile.product.productCode })} /> : <EmptyImage />}
         </div>
         <div className="p-5 sm:p-7">
           <h2 className="text-2xl font-semibold tracking-normal">{normalizedProductTitle(copy.title || profile.product.title || "", profile.product.brand) || profile.product.productCode}</h2>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <span className="text-xl font-semibold">{priceLabel(profile.product.priceKsh)}</span>
-            <Badge variant="outline">一物一件</Badge>
+            <Badge variant="outline">{t("一物一件")}</Badge>
           </div>
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{shortDescription || "商品描述尚未生成，请进入编辑与素材补充。"}</p>
+          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{shortDescription || t("商品描述尚未生成，请进入编辑与素材补充。")}</p>
           {sellingPoints.length ? <ul className="mt-4 space-y-2 text-sm">{sellingPoints.map((point) => <li key={point} className="border-l-2 pl-3">{point}</li>)}</ul> : null}
           <dl className="mt-6 grid grid-cols-2 gap-x-5 gap-y-3 border-t pt-4 text-sm">
-            <OptionalPreviewFact label="尺码" value={profile.product.finalSizeLabel} />
-            <OptionalPreviewFact label="分类" value={labelValue(profile.product.subcategory || profile.product.category)} />
-            <OptionalPreviewFact label="适用人群" value={labelValue(profile.product.gender)} />
-            <OptionalPreviewFact label="面料" value={profile.product.material} />
-            <OptionalPreviewFact label="颜色" value={profile.product.color} />
-            <OptionalPreviewFact label="成色" value={labelValue(profile.product.conditionGrade)} />
+            <OptionalPreviewFact label={t("尺码")} value={profile.product.finalSizeLabel} />
+            <OptionalPreviewFact label={t("分类")} value={labelValue(profile.product.subcategory || profile.product.category)} />
+            <OptionalPreviewFact label={t("适用人群")} value={labelValue(profile.product.gender)} />
+            <OptionalPreviewFact label={t("面料")} value={profile.product.material} />
+            <OptionalPreviewFact label={t("颜色")} value={profile.product.color} />
+            <OptionalPreviewFact label={t("成色")} value={labelValue(profile.product.conditionGrade)} />
           </dl>
         </div>
       </section>
 
       {back || evidence.length ? (
         <section className="border-b px-4 py-5 sm:px-6">
-          <h2 className="text-lg font-semibold">可用商品图片</h2>
-          <p className="mt-1 text-xs text-muted-foreground">仅显示实际存在的背面、细节和瑕疵照片；缺少的图片不会生成占位卡。</p>
+          <h2 className="text-lg font-semibold">{t("可用商品图片")}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{t("仅显示实际存在的背面、细节和瑕疵照片；缺少的图片不会生成占位卡。")}</p>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {back ? <figure className="overflow-hidden rounded-md border"><div className="aspect-square bg-white"><SafeImage src={assetUrl(back)} alt="背面实物" /></div><figcaption className="border-t px-3 py-2 text-xs">背面实物</figcaption></figure> : null}
+            {back ? <figure className="overflow-hidden rounded-md border"><div className="aspect-square bg-white"><SafeImage src={assetUrl(back)} alt={t("背面实物")} /></div><figcaption className="border-t px-3 py-2 text-xs">{t("背面实物")}</figcaption></figure> : null}
             {evidence.map((image) => <figure key={image.id} className="overflow-hidden rounded-md border"><div className="aspect-square bg-white"><SafeImage src={sourceImageUrl(profile.product.id, image)} alt={sourceImageLabel(image.type)} /></div><figcaption className="border-t px-3 py-2 text-xs">{sourceImageLabel(image.type)}</figcaption></figure>)}
           </div>
         </section>
@@ -810,15 +813,15 @@ function ProductPublishPreview({
 
       <section className="grid border-b md:grid-cols-2">
         <div className="border-b p-5 md:border-r md:border-b-0">
-          <h3 className="font-semibold">平铺实测尺寸</h3>
-          {measurementGuide ? <div className="mt-4 aspect-square overflow-hidden rounded-md border bg-white"><SafeImage src={assetUrl(measurementGuide)} alt="尺码指南" /></div> : null}
-          {measurementGuide?.templateCode ? <p className="mt-2 text-xs text-muted-foreground">模板 {measurementGuide.templateCode} · {measurementGuide.templateVersion}</p> : null}
+          <h3 className="font-semibold">{t("平铺实测尺寸")}</h3>
+          {measurementGuide ? <div className="mt-4 aspect-square overflow-hidden rounded-md border bg-white"><SafeImage src={assetUrl(measurementGuide)} alt={t("尺码指南")} /></div> : null}
+          {measurementGuide?.templateCode ? <p className="mt-2 text-xs text-muted-foreground">{t("模板")} {measurementGuide.templateCode} · {measurementGuide.templateVersion}</p> : null}
           <dl className="mt-4 space-y-2 text-sm">{profile.product.measurements.filter((item) => item.finalValueCm != null).map((item) => <PreviewFact key={item.measurementType} label={measurementLabel(item.measurementType)} value={measurementValue(item.finalValueCm)} row />)}</dl>
           <p className="mt-4 text-xs text-muted-foreground">Flat garment measurements in centimetres. Compare with a similar item you own.</p>
         </div>
         <div className="p-5">
-          <h3 className="font-semibold">成色与瑕疵</h3>
-          <OptionalPreviewFact label="成色" value={labelValue(profile.product.conditionGrade)} />
+          <h3 className="font-semibold">{t("成色与瑕疵")}</h3>
+          <OptionalPreviewFact label={t("成色")} value={labelValue(profile.product.conditionGrade)} />
           {conditionSummary ? <p className="mt-3 text-sm text-muted-foreground">{conditionSummary}</p> : null}
           {profile.product.defects.length ? <ul className="mt-4 space-y-2 text-sm">{profile.product.defects.map((defect) => <li key={`${defect.defectType}-${defect.description}`} className="border-l-2 pl-3">{defect.customerSafeDescription || defect.description}</li>)}</ul> : null}
         </div>
@@ -826,17 +829,17 @@ function ProductPublishPreview({
 
       <section className="grid border-b md:grid-cols-2">
         <div className="border-b p-5 md:border-r md:border-b-0">
-          <h3 className="font-semibold">版型建议</h3>
+          <h3 className="font-semibold">{t("版型建议")}</h3>
           <dl className="mt-3 grid grid-cols-3 gap-3 text-sm">
-            <OptionalPreviewFact label="版型" value={labelValue(profile.fitType)} />
-            <OptionalPreviewFact label="弹性" value={labelValue(profile.stretchLevel)} />
-            <OptionalPreviewFact label="面料厚度" value={labelValue(profile.fabricWeight)} />
+            <OptionalPreviewFact label={t("版型")} value={labelValue(profile.fitType)} />
+            <OptionalPreviewFact label={t("弹性")} value={labelValue(profile.stretchLevel)} />
+            <OptionalPreviewFact label={t("面料厚度")} value={labelValue(profile.fabricWeight)} />
           </dl>
           {copy.fitSummary ? <p className="mt-4 text-sm text-muted-foreground">{copy.fitSummary}</p> : null}
           <p className="mt-4 text-xs text-muted-foreground">Fit recommendations are approximate. Please compare the garment measurements with an item that fits you well.</p>
         </div>
         <div className="p-5">
-          <h3 className="font-semibold">配送与支持</h3>
+          <h3 className="font-semibold">{t("配送与支持")}</h3>
           <div className="mt-3 space-y-4 text-sm">
             <div><p className="font-medium">Collection</p><p className="mt-1 text-muted-foreground">Pickup available in Kikuyu. Exact collection details are confirmed after order.</p></div>
             <div><p className="font-medium">Local delivery</p><p className="mt-1 text-muted-foreground">Delivery options and fees are shown at checkout based on your area.</p></div>
@@ -846,8 +849,8 @@ function ProductPublishPreview({
       </section>
 
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className={cn("text-xs", approvalBlockedReason ? "font-medium text-amber-700" : "text-muted-foreground")}>{approvalBlockedReason || "详情批准只确认当前草稿；商品发布仍由价格、库存、状态和商品控制规则共同决定。"}</p>
-        <Button disabled={busy || Boolean(approvalBlockedReason) || profile.status === "APPROVED"} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? "详情已批准" : "批准现有详情"}</Button>
+        <p className={cn("text-xs", approvalBlockedReason ? "font-medium text-amber-700" : "text-muted-foreground")}>{approvalBlockedReason || t("详情批准只确认当前草稿；商品发布仍由价格、库存、状态和商品控制规则共同决定。")}</p>
+        <Button disabled={busy || Boolean(approvalBlockedReason) || profile.status === "APPROVED"} onClick={onApprove}><CheckCircle2Icon data-icon="inline-start" />{profile.status === "APPROVED" ? t("详情已批准") : t("批准现有详情")}</Button>
       </div>
     </div>
   );
@@ -887,9 +890,9 @@ function SafeImage({ src, alt }: { src: string; alt: string }) {
 
 function detailMainImageChoices(comparison: ProductImageComparisonResponse | null): DetailMainImageChoice[] {
   return [
-    { key: "white", label: "正面原图", image: comparison?.original ?? null, selectable: false, generated: false },
-    { key: "back-white", label: "背面原图", image: comparison?.backOriginal ?? null, selectable: false, generated: false },
-    { key: "ai-display", label: "白底展示图", image: comparison?.aiDisplayMain ?? null, selectable: true, generated: true }
+    { key: "white", label: t("正面原图"), image: comparison?.original ?? null, selectable: false, generated: false },
+    { key: "back-white", label: t("背面原图"), image: comparison?.backOriginal ?? null, selectable: false, generated: false },
+    { key: "ai-display", label: t("白底展示图"), image: comparison?.aiDisplayMain ?? null, selectable: true, generated: true }
   ];
 }
 
@@ -899,7 +902,7 @@ function variantImageUrl(image: ProductImageVariantRecord) {
 }
 
 function EmptyImage({ compact = false }: { compact?: boolean } = {}) {
-  return <div className="flex size-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground"><ImageOffIcon className={compact ? "size-4" : "size-6"} />{compact ? null : "素材尚未生成"}</div>;
+  return <div className="flex size-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground"><ImageOffIcon className={compact ? "size-4" : "size-6"} />{compact ? null : t("素材尚未生成")}</div>;
 }
 
 function assetUrl(asset: DetailAsset) {
@@ -913,11 +916,11 @@ function sourceImageUrl(productId: string, image: { id: string; publicUrl?: stri
 }
 
 function sourceImageLabel(type: string) {
-  return ({ LABEL: "标签原图", DETAIL: "细节原图", DEFECT: "瑕疵原图" } as Record<string, string>)[type] ?? labelValue(type);
+  return ({ LABEL: t("标签原图"), DETAIL: t("细节原图"), DEFECT: t("瑕疵原图") } as Record<string, string>)[type] ?? labelValue(type);
 }
 
 function priceLabel(value?: number | null) {
-  return value == null ? "价格待确认" : `KSh ${new Intl.NumberFormat("en-KE").format(value)}`;
+  return value == null ? t("价格待确认") : `KSh ${new Intl.NumberFormat("en-KE").format(value)}`;
 }
 
 function copyFromJson(value: unknown, fallbackTitle: string, confirmedDefectCount = 0): EditableCopy {
@@ -942,7 +945,7 @@ function lines(value: string, separator = "\n") {
 }
 
 function statusLabel(value?: string | null) {
-  return ({ AWAITING_CALIBRATION: "等待校准", AWAITING_BATCH: "等待本批其他商品", PENDING: "待生成", GENERATING: "生成中", READY: "待批准", FAILED: "失败", OUTDATED: "已过期", APPROVED: "已批准" } as Record<string, string>)[value ?? ""] ?? labelValue(value);
+  return ({ AWAITING_CALIBRATION: t("等待校准"), AWAITING_BATCH: t("等待本批其他商品"), PENDING: t("待生成"), GENERATING: t("生成中"), READY: t("待批准"), FAILED: t("失败"), OUTDATED: t("已过期"), APPROVED: t("已批准") } as Record<string, string>)[value ?? ""] ?? labelValue(value);
 }
 
 function assetOrder(type: string) {
@@ -950,7 +953,8 @@ function assetOrder(type: string) {
 }
 
 function assetShortTitle(type: string) {
-  return PRODUCT_DETAIL_ASSET_PLAN.find((asset) => asset.type === type)?.shortTitle ?? labelValue(type);
+  const planned = PRODUCT_DETAIL_ASSET_PLAN.find((asset) => asset.type === type)?.shortTitle;
+  return planned ? t(planned) : labelValue(type);
 }
 
 function normalizedProductTitle(title: string, brand?: string | null) {
@@ -970,6 +974,6 @@ function labelValue(value: unknown) { return typeof value === "string" ? value.r
 function stringValue(value: unknown) { return typeof value === "string" ? value : ""; }
 function stringArray(value: unknown) { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
-function errorMessage(value: unknown) { return value instanceof Error ? value.message : "操作失败。"; }
+function errorMessage(value: unknown) { return value instanceof Error ? value.message : t("操作失败。"); }
 function measurementValue(value: unknown) { return value == null ? null : `${Number(value)} cm`; }
-function measurementLabel(value: string) { return ({ LENGTH: "衣长", CHEST_WIDTH: "胸宽", SHOULDER_WIDTH: "肩宽", SLEEVE_LENGTH: "袖长", WAIST: "腰宽", HIP: "臀宽", INSEAM: "内长", OUTSEAM: "裤长", LEG_OPENING: "裤脚宽", THIGH_WIDTH: "大腿宽" } as Record<string, string>)[value] ?? labelValue(value); }
+function measurementLabel(value: string) { return ({ LENGTH: t("衣长"), CHEST_WIDTH: t("胸宽"), SHOULDER_WIDTH: t("肩宽"), SLEEVE_LENGTH: t("袖长"), WAIST: t("腰宽"), HIP: t("臀宽"), INSEAM: t("内长"), OUTSEAM: t("裤长"), LEG_OPENING: t("裤脚宽"), THIGH_WIDTH: t("大腿宽") } as Record<string, string>)[value] ?? labelValue(value); }

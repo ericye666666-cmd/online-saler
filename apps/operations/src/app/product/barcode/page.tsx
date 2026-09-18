@@ -1,5 +1,6 @@
 import { ProductQueuePage } from "../product-center-client";
 import { ProductBatchBarcodePage } from "../product-batch-barcode-client";
+import { t } from "@/i18n/runtime";
 
 export default async function BarcodePage({ searchParams }: { searchParams: Promise<{ batchId?: string }> }) {
   const { batchId } = await searchParams;
@@ -8,7 +9,7 @@ export default async function BarcodePage({ searchParams }: { searchParams: Prom
     <ProductQueuePage
       queue="barcode"
       title="Barcode"
-      description="校准完成后批量生成正式 Barcode，打印、贴码，再扫码入库。"
+      description={t("校准完成后批量生成正式 Barcode，打印、贴码，再扫码入库。")}
     />
   );
 }

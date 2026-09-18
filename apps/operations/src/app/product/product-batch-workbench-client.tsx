@@ -47,6 +47,7 @@ import {
   DEFAULT_PRODUCT_BATCH_SIZE,
   isAllowedProductBatchSize
 } from "./product-factory-batch-size";
+import { operationsFormatLocale, t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -169,7 +170,7 @@ export function ProductWorkbenchPage() {
     try {
       setSummary(await loadSummary(ids));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取今日工作。 ");
+      setError(caught instanceof Error ? caught.message : t("无法读取今日工作。 "));
     } finally {
       setBusy(false);
     }
@@ -188,28 +189,28 @@ export function ProductWorkbenchPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="商品工厂"
-        title="今日工作"
-        description="三段完成上品：批量采集、商品信息识别、异常确认并发布。"
+        eyebrow={t("商品工厂")}
+        title={t("今日工作")}
+        description={t("三段完成上品：批量采集、商品信息识别、异常确认并发布。")}
         action={
           <Button asChild disabled={!hasPermission("action.product.create")}>
-            <Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />新建批次</Link>
+            <Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />{t("新建批次")}</Link>
           </Button>
         }
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
-      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4" aria-label="今日指标">
-        <Metric title="今日新建批次" value={metrics?.todayNewBatches ?? 0} />
-        <Metric title="今日完成商品" value={metrics?.todayCompletedProducts ?? 0} />
-        <Metric title="进行中批次" value={metrics?.activeBatchCount ?? 0} />
-        <Metric title="待处理异常" value={metrics?.exceptionCount ?? 0} tone={metrics?.exceptionCount ? "danger" : "default"} />
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4" aria-label={t("今日指标")}>
+        <Metric title={t("今日新建批次")} value={metrics?.todayNewBatches ?? 0} />
+        <Metric title={t("今日完成商品")} value={metrics?.todayCompletedProducts ?? 0} />
+        <Metric title={t("进行中批次")} value={metrics?.activeBatchCount ?? 0} />
+        <Metric title={t("待处理异常")} value={metrics?.exceptionCount ?? 0} tone={metrics?.exceptionCount ? "danger" : "default"} />
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,.6fr)]">
         <Card>
           <CardHeader>
-            <CardTitle>继续工作</CardTitle>
-            <CardDescription>系统只显示当前批次此刻允许执行的下一步。</CardDescription>
+            <CardTitle>{t("继续工作")}</CardTitle>
+            <CardDescription>{t("系统只显示当前批次此刻允许执行的下一步。")}</CardDescription>
           </CardHeader>
           <CardContent>
             {continueBatch ? (
@@ -217,48 +218,49 @@ export function ProductWorkbenchPage() {
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-semibold">{continueBatch.batchCode}</span>
-                    <StageBadge stage={continueBatch.stage} label={PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[continueWorkflowStage]} />
+                    <StageBadge stage={continueBatch.stage} label={t(PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[continueWorkflowStage])} />
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    当前阶段 {Math.min(continueWorkflowIndex + 1, 3)}/3，当前任务：{continueBatch.nextActionLabel}
+                    
+                    {t("当前阶段")} {Math.min(continueWorkflowIndex + 1, 3)}{t("/3，当前任务：")}{continueBatch.nextActionLabel}
                   </p>
                   <ProgressBar value={Math.min(continueWorkflowIndex + 1, 3)} max={3} />
                 </div>
                 <Button asChild className="w-full shrink-0 sm:w-auto">
-                  <Link href={`/product/batches/${continueBatch.id}`}>继续本批次<ArrowRightIcon data-icon="inline-end" /></Link>
+                  <Link href={`/product/batches/${continueBatch.id}`}>{t("继续本批次")}<ArrowRightIcon data-icon="inline-end" /></Link>
                 </Button>
               </div>
             ) : (
-              <EmptyState title="没有进行中的批次" description="新建批次后，下一步会出现在这里。" action={<Button asChild><Link href="/product/new-batch">新建批次</Link></Button>} />
+              <EmptyState title={t("没有进行中的批次")} description={t("新建批次后，下一步会出现在这里。")} action={<Button asChild><Link href="/product/new-batch">{t("新建批次")}</Link></Button>} />
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>待处理异常</CardTitle>
-            <CardDescription>退回返工和处理失败的商品集中在这里。</CardDescription>
+            <CardTitle>{t("待处理异常")}</CardTitle>
+            <CardDescription>{t("退回返工和处理失败的商品集中在这里。")}</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <div>
               <div className="text-3xl font-semibold tabular-nums">{metrics?.exceptionCount ?? 0}</div>
-              <p className="text-sm text-muted-foreground">件需要处理</p>
+              <p className="text-sm text-muted-foreground">{t("件需要处理")}</p>
             </div>
-            <Button asChild variant="outline"><Link href="/product/exceptions">查看异常</Link></Button>
+            <Button asChild variant="outline"><Link href="/product/exceptions">{t("查看异常")}</Link></Button>
           </CardContent>
         </Card>
       </section>
 
       <Card>
         <CardHeader>
-          <CardTitle>今日任务</CardTitle>
-          <CardDescription>员工只需要跟随 3 个阶段；内部子步骤由系统自动衔接。</CardDescription>
+          <CardTitle>{t("今日任务")}</CardTitle>
+          <CardDescription>{t("员工只需要跟随 3 个阶段；内部子步骤由系统自动衔接。")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-3">
-          <TaskRow label="1. 批量采集" value={tasks?.upload ?? 0} href="/product/waiting-upload" />
-          <TaskRow label="2. 商品信息识别" value={tasks?.aiImage ?? 0} href="/product/waiting-ai" />
+          <TaskRow label={t("1. 批量采集")} value={tasks?.upload ?? 0} href="/product/waiting-upload" />
+          <TaskRow label={t("2. 商品信息识别")} value={tasks?.aiImage ?? 0} href="/product/waiting-ai" />
           <TaskRow
-            label="3. 异常确认并发布"
+            label={t("3. 异常确认并发布")}
             value={(tasks?.calibration ?? 0) + (tasks?.labelApply ?? 0) + (tasks?.review ?? 0) + (tasks?.storage ?? 0)}
             href="/product/batches"
           />
@@ -274,7 +276,7 @@ export function NewBatchPage() {
   const { hasPermission } = useOperationsSession();
   const [note, setNote] = useState("");
   const [intakeCategory, setIntakeCategory] = useState<"" | "SHOES">("");
-  const unit = intakeCategory === "SHOES" ? "双" : "件";
+  const unit = intakeCategory === "SHOES" ? t("双") : t("件");
   const [quantity, setQuantity] = useState(String(DEFAULT_PRODUCT_BATCH_SIZE));
   const targetCount = Number(quantity);
   const validCount = /^\d+$/.test(quantity) && isAllowedProductBatchSize(targetCount);
@@ -283,7 +285,7 @@ export function NewBatchPage() {
 
   async function createBatch() {
     if (!validCount) {
-      setError("请输入大于 0 的整数数量。");
+      setError(t("请输入大于 0 的整数数量。"));
       return;
     }
     setBusy(true);
@@ -295,7 +297,7 @@ export function NewBatchPage() {
       });
       router.push(`/product/batches/${batch.id}`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法创建批次。 ");
+      setError(caught instanceof Error ? caught.message : t("无法创建批次。 "));
     } finally {
       setBusy(false);
     }
@@ -304,29 +306,29 @@ export function NewBatchPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <PageHeader
-        eyebrow="商品工厂"
-        title="新建批次"
-        description="输入本批商品数量。先集中拍照，再坐下批量上传。"
+        eyebrow={t("商品工厂")}
+        title={t("新建批次")}
+        description={t("输入本批商品数量。先集中拍照，再坐下批量上传。")}
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       <Card>
         <CardHeader>
-          <CardTitle>{validCount ? `${targetCount} ${unit}` : ""}{intakeCategory === "SHOES" ? "鞋类" : "商品"}批次</CardTitle>
-          <CardDescription>系统会按填写的数量生成有顺序的商品位置，正式 Barcode 在全部校准完成后生成。</CardDescription>
+          <CardTitle>{validCount ? `${targetCount} ${unit}` : ""}{intakeCategory === "SHOES" ? t("鞋类") : t("商品")}{t("批次")}</CardTitle>
+          <CardDescription>{t("系统会按填写的数量生成有顺序的商品位置，正式 Barcode 在全部校准完成后生成。")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="batch-intake-category">本批录入类型</FieldLabel>
+              <FieldLabel htmlFor="batch-intake-category">{t("本批录入类型")}</FieldLabel>
               <NativeSelect id="batch-intake-category" value={intakeCategory} disabled={busy} onChange={(event) => setIntakeCategory(event.target.value === "SHOES" ? "SHOES" : "")}>
-                <NativeSelectOption value="">服装 / 其他商品</NativeSelectOption>
-                <NativeSelectOption value="SHOES">鞋类 · 一双一个商品</NativeSelectOption>
+                <NativeSelectOption value="">{t("服装 / 其他商品")}</NativeSelectOption>
+                <NativeSelectOption value="SHOES">{t("鞋类 · 一双一个商品")}</NativeSelectOption>
               </NativeSelect>
-              <FieldDescription>{intakeCategory === "SHOES" ? "保持左右鞋配对，按顺序编号。每双拍整双、侧面、鞋底和尺码标签，瑕疵另补图。" : "按顺序编号摆放，在干净背景上拍清楚整件服装即可，无需测量板；尺码稍后人工填写。"}</FieldDescription>
+              <FieldDescription>{intakeCategory === "SHOES" ? t("保持左右鞋配对，按顺序编号。每双拍整双、侧面、鞋底和尺码标签，瑕疵另补图。") : t("按顺序编号摆放，在干净背景上拍清楚整件服装即可，无需测量板；尺码稍后人工填写。")}</FieldDescription>
             </Field>
           </FieldGroup>
           <Field>
-            <FieldLabel htmlFor="batch-quantity">批次数量（{unit}）</FieldLabel>
+            <FieldLabel htmlFor="batch-quantity">{t("批次数量（")}{unit}）</FieldLabel>
             <Input
               id="batch-quantity"
               type="number"
@@ -340,23 +342,24 @@ export function NewBatchPage() {
               onChange={(event) => setQuantity(event.target.value)}
             />
             <FieldDescription id="batch-quantity-help">
-              {validCount ? "输入本批实际上传的商品数量，至少 1 件；鞋类一双计一个商品。" : "请输入大于 0 的整数数量。"}
+              {validCount ? t("输入本批实际上传的商品数量，至少 1 件；鞋类一双计一个商品。") : t("请输入大于 0 的整数数量。")}
             </FieldDescription>
           </Field>
           <label className="block space-y-2 text-sm font-medium">
-            批次备注（可选）
+            
+            {t("批次备注（可选）")}
             <textarea
               className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={note}
               maxLength={200}
-              placeholder={intakeCategory === "SHOES" ? "例如：上午成人鞋选货" : "例如：上午女装选货"}
+              placeholder={intakeCategory === "SHOES" ? t("例如：上午成人鞋选货") : t("例如：上午女装选货")}
               onChange={(event) => setNote(event.target.value)}
             />
           </label>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button asChild variant="outline"><Link href="/">取消</Link></Button>
+            <Button asChild variant="outline"><Link href="/">{t("取消")}</Link></Button>
             <Button disabled={busy || !validCount || !hasPermission("action.product.create")} onClick={() => void createBatch()}>
-              <PlusIcon data-icon="inline-start" />{busy ? "创建中" : "创建并开始上传"}
+              <PlusIcon data-icon="inline-start" />{busy ? t("创建中") : t("创建并开始上传")}
             </Button>
           </div>
         </CardContent>
@@ -379,7 +382,7 @@ export function ProductBatchListPage({ completed = false }: { completed?: boolea
       const query = new URLSearchParams({ ...ids, status: completed ? "COMPLETED" : "OPEN" });
       setBatches(await request<ProductBatch[]>(`/operations/product-batches?${query.toString()}`));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取批次。 ");
+      setError(caught instanceof Error ? caught.message : t("无法读取批次。 "));
     } finally {
       setBusy(false);
     }
@@ -392,16 +395,16 @@ export function ProductBatchListPage({ completed = false }: { completed?: boolea
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="商品工厂"
-        title={completed ? "已完成" : "进行中批次"}
-        description={completed ? "查询已完成的商品批次。" : "从批次进入当前合法步骤，不在列表页暴露跨阶段操作。"}
-        action={completed ? undefined : <Button asChild><Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />新建批次</Link></Button>}
+        eyebrow={t("商品工厂")}
+        title={completed ? t("已完成") : t("进行中批次")}
+        description={completed ? t("查询已完成的商品批次。") : t("从批次进入当前合法步骤，不在列表页暴露跨阶段操作。")}
+        action={completed ? undefined : <Button asChild><Link href="/product/new-batch"><PlusIcon data-icon="inline-start" />{t("新建批次")}</Link></Button>}
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
-      {busy && batches.length === 0 ? <StatusMessage tone="neutral">正在读取批次...</StatusMessage> : null}
+      {busy && batches.length === 0 ? <StatusMessage tone="neutral">{t("正在读取批次...")}</StatusMessage> : null}
       <div className="space-y-3">
         {batches.map((batch) => <BatchRow key={batch.id} batch={batch} />)}
-        {!busy && batches.length === 0 ? <EmptyState title={completed ? "还没有已完成批次" : "没有进行中的批次"} description={completed ? "完整发布或归档的批次会显示在这里。" : "新建批次后会显示在这里。"} /> : null}
+        {!busy && batches.length === 0 ? <EmptyState title={completed ? t("还没有已完成批次") : t("没有进行中的批次")} description={completed ? t("完整发布或归档的批次会显示在这里。") : t("新建批次后会显示在这里。")} /> : null}
       </div>
     </div>
   );
@@ -423,7 +426,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
       const query = new URLSearchParams({ adminUserId: ids.adminUserId });
       setBatch(await request<ProductBatch>(`/operations/product-batches/${encodeURIComponent(batchId)}?${query.toString()}`));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取批次详情。 ");
+      setError(caught instanceof Error ? caught.message : t("无法读取批次详情。 "));
     } finally {
       setBusy(false);
     }
@@ -434,40 +437,40 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
   }, [load]);
 
   if (!batch) {
-    return <div className="flex flex-col gap-4">{error ? <StatusMessage tone="danger">{error}</StatusMessage> : <StatusMessage tone="neutral">正在读取批次...</StatusMessage>}</div>;
+    return <div className="flex flex-col gap-4">{error ? <StatusMessage tone="danger">{error}</StatusMessage> : <StatusMessage tone="neutral">{t("正在读取批次...")}</StatusMessage>}</div>;
   }
 
   const nextHref = batchNextActionHref(batch.id, batch.nextAction);
   const workflowStage = productFactoryWorkflowStage(batch.stage);
   const workflowStageIndex = productFactoryWorkflowStageIndex(batch.stage);
-  const workflowStageLabel = PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[workflowStage];
+  const workflowStageLabel = t(PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[workflowStage]);
   const canReviewDetails = hasPermission("page.product.details");
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="商品工厂 / 批次详情"
+        eyebrow={t("商品工厂 / 批次详情")}
         title={batch.batchCode}
-        description={`${batch.intakeCategory === "SHOES" ? "鞋类 · 一双一个商品 · " : ""}创建于 ${formatDateTime(batch.createdAt)} · 操作员工 ${batch.createdByEmployeeId || "未记录"}`}
-        action={<Button variant="outline" size="icon" title="刷新" disabled={busy} onClick={() => void load()}><RefreshCwIcon /></Button>}
+        description={t("{v0}创建于 {v1} · 操作员工 {v2}", { v0: batch.intakeCategory === "SHOES" ? t("鞋类 · 一双一个商品 · ") : "", v1: formatDateTime(batch.createdAt), v2: batch.createdByEmployeeId || t("未记录") })}
+        action={<Button variant="outline" size="icon" title={t("刷新")} disabled={busy} onClick={() => void load()}><RefreshCwIcon /></Button>}
       />
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric title="批次商品" value={batch.targetCount} />
-        <Metric title="当前阶段" value={Math.min(workflowStageIndex + 1, 3)} suffix="/ 3" />
-        <Metric title="已发布/归档" value={batch.completedCount} suffix={`/ ${batch.targetCount}`} />
-        <Metric title="异常" value={batch.exceptionCount} tone={batch.exceptionCount ? "danger" : "default"} />
+        <Metric title={t("批次商品")} value={batch.targetCount} />
+        <Metric title={t("当前阶段")} value={Math.min(workflowStageIndex + 1, 3)} suffix="/ 3" />
+        <Metric title={t("已发布/归档")} value={batch.completedCount} suffix={`/ ${batch.targetCount}`} />
+        <Metric title={t("异常")} value={batch.exceptionCount} tone={batch.exceptionCount ? "danger" : "default"} />
       </section>
 
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>第 {Math.min(workflowStageIndex + 1, 3)}/3 阶段：{workflowStageLabel}</CardTitle>
+              <CardTitle>{t("第")} {Math.min(workflowStageIndex + 1, 3)}{t("/3 阶段：")}{workflowStageLabel}</CardTitle>
               <CardDescription className="mt-1 space-y-1">
-                <span className="block">当前系统任务：{batch.stageLabel}</span>
-                <span className="block">正常商品自动前进；只有异常和最终实物确认需要员工处理。</span>
+                <span className="block">{t("当前系统任务：")}{batch.stageLabel}</span>
+                <span className="block">{t("正常商品自动前进；只有异常和最终实物确认需要员工处理。")}</span>
               </CardDescription>
             </div>
             <Button asChild className="w-full sm:w-auto"><Link href={nextHref}>{batch.nextActionLabel}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
@@ -483,34 +486,35 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <CardTitle>AI 销售素材</CardTitle>
+                <CardTitle>{t("AI 销售素材")}</CardTitle>
                 <CardDescription className="mt-1">
-                  最后一件完成确认后自动生成 AI 陈列主图、销售文案和尺码模板；旧商品与旧资产不会回填或重生成。
+                  
+                  {t("最后一件完成确认后自动生成 AI 陈列主图、销售文案和尺码模板；旧商品与旧资产不会回填或重生成。")}
                 </CardDescription>
               </div>
               {canReviewDetails ? (
                 <Button asChild variant="outline" size="sm">
-                  <Link href={`/product/details?batchId=${encodeURIComponent(batch.id)}`}>检查生成异常<ArrowRightIcon data-icon="inline-end" /></Link>
+                  <Link href={`/product/details?batchId=${encodeURIComponent(batch.id)}`}>{t("检查生成异常")}<ArrowRightIcon data-icon="inline-end" /></Link>
                 </Button>
               ) : null}
             </div>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-            <Metric title="待生成" value={batch.detailGeneration.pendingCount} />
-            <Metric title="生成中" value={batch.detailGeneration.generatingCount} />
-            <Metric title="待批准" value={batch.detailGeneration.readyCount} />
-            <Metric title="生成失败" value={batch.detailGeneration.failedCount} tone={batch.detailGeneration.failedCount ? "danger" : "default"} />
-            <Metric title="已过期" value={batch.detailGeneration.outdatedCount} tone={batch.detailGeneration.outdatedCount ? "danger" : "default"} />
-            <Metric title="已批准" value={batch.detailGeneration.approvedCount} suffix={`/ ${batch.targetCount}`} />
-            <Metric title="已进入详情" value={batch.detailGeneration.eligibleCount} suffix={`/ ${batch.targetCount}`} />
+            <Metric title={t("待生成")} value={batch.detailGeneration.pendingCount} />
+            <Metric title={t("生成中")} value={batch.detailGeneration.generatingCount} />
+            <Metric title={t("待批准")} value={batch.detailGeneration.readyCount} />
+            <Metric title={t("生成失败")} value={batch.detailGeneration.failedCount} tone={batch.detailGeneration.failedCount ? "danger" : "default"} />
+            <Metric title={t("已过期")} value={batch.detailGeneration.outdatedCount} tone={batch.detailGeneration.outdatedCount ? "danger" : "default"} />
+            <Metric title={t("已批准")} value={batch.detailGeneration.approvedCount} suffix={`/ ${batch.targetCount}`} />
+            <Metric title={t("已进入详情")} value={batch.detailGeneration.eligibleCount} suffix={`/ ${batch.targetCount}`} />
           </CardContent>
         </Card>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>{batch.targetCount} 件商品</CardTitle>
-          <CardDescription>点击商品图片可查看原图和系统生成的各个图片版本。</CardDescription>
+          <CardTitle>{batch.targetCount}  {t("件商品")}</CardTitle>
+          <CardDescription>{t("点击商品图片可查看原图和系统生成的各个图片版本。")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           {batch.products.map((product) => (
@@ -525,7 +529,7 @@ export function ProductBatchDetailPage({ batchId }: { batchId: string }) {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>状态分布</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("状态分布")}</CardTitle></CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           {Object.entries(batch.counts).map(([status, count]) => <Badge key={status} variant="secondary">{productStatusLabel(status)} {count}</Badge>)}
         </CardContent>
@@ -555,9 +559,9 @@ function BatchStageStepper({ batch }: { batch: ProductBatch }) {
               {complete ? <CheckCircle2Icon className="size-4 shrink-0 text-emerald-600" /> : current ? <CircleDotIcon className="size-4 shrink-0 text-primary" /> : <Clock3Icon className="size-4 shrink-0 text-muted-foreground" />}
               <span className="text-xs text-muted-foreground">{index + 1}</span>
             </div>
-            <div className="mt-2 text-sm font-medium leading-snug">{PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[stage]}</div>
+            <div className="mt-2 text-sm font-medium leading-snug">{t(PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS[stage])}</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {stage === "CAPTURE" ? "按顺序上传正面图，可补充背面与瑕疵图。" : stage === "AUTOMATION" ? "直接用原图识别商品信息。" : stage === "CALIBRATION" ? "核对商品信息，人工填写尺码。" : stage === "DISPLAY_REVIEW" ? "原图生成白底图，逐件核对；不满意可重新生成。" : "图片全部确认后，打印贴码、归位并发布。"}
+              {stage === "CAPTURE" ? t("按顺序上传正面图，可补充背面与瑕疵图。") : stage === "AUTOMATION" ? t("直接用原图识别商品信息。") : stage === "CALIBRATION" ? t("核对商品信息，人工填写尺码。") : stage === "DISPLAY_REVIEW" ? t("原图生成白底图，逐件核对；不满意可重新生成。") : t("图片全部确认后，打印贴码、归位并发布。")}
             </div>
           </li>
         );
@@ -576,23 +580,23 @@ function BatchProductItem({
   onPreview: () => void;
 }) {
   const missing: string[] = [];
-  if (!product.images?.length) missing.push("缺正面图");
-  if (["PHOTOGRAPHED", "AI_PROCESSING"].includes(product.status) && product.aiExtractions?.[0]?.status === "FAILED") missing.push("AI 失败");
-  if (product.status === "REWORK_REQUIRED") missing.push("需返工");
+  if (!product.images?.length) missing.push(t("缺正面图"));
+  if (["PHOTOGRAPHED", "AI_PROCESSING"].includes(product.status) && product.aiExtractions?.[0]?.status === "FAILED") missing.push(t("AI 失败"));
+  if (product.status === "REWORK_REQUIRED") missing.push(t("需返工"));
   const preview = product.imagePreviews?.[0] ?? null;
   return (
     <div className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] gap-3 rounded-md border p-2 transition-colors hover:border-foreground/30 hover:bg-muted/40">
       <button
         type="button"
         className="flex h-[4.5rem] w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`查看第 ${product.batchItemNumber ?? "-"} 件商品图片`}
-        title="查看原图和处理后的图片"
+        aria-label={t("查看第 {v0} 件商品图片", { v0: product.batchItemNumber ?? "-" })}
+        title={t("查看原图和处理后的图片")}
         onClick={onPreview}
       >
         {preview ? (
           <img
             src={productImagePreviewUrl(preview.publicUrl)}
-            alt={`第 ${product.batchItemNumber ?? "-"} 件商品缩略图`}
+            alt={t("第 {v0} 件商品缩略图", { v0: product.batchItemNumber ?? "-" })}
             className="size-full object-contain"
             loading="lazy"
           />
@@ -603,10 +607,10 @@ function BatchProductItem({
       <Link
         href={batchProductCalibrationHref(batchId, product.id)}
         className="min-w-0 rounded-sm py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`校准第 ${product.batchItemNumber ?? "-"} 件商品`}
+        aria-label={t("校准第 {v0} 件商品", { v0: product.batchItemNumber ?? "-" })}
       >
         <div className="flex min-w-0 items-center justify-between gap-2">
-          <span className="shrink-0 text-sm font-semibold tabular-nums">第 {product.batchItemNumber ?? "-"} 件</span>
+          <span className="shrink-0 text-sm font-semibold tabular-nums">{t("第")} {product.batchItemNumber ?? "-"}  {t("件")}</span>
           <span className="flex min-w-0 items-center gap-1">
             <Badge variant="secondary" className="max-w-24 truncate">{productStatusLabel(product.status)}</Badge>
             <ArrowRightIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -614,7 +618,7 @@ function BatchProductItem({
         </div>
         <div className="mt-1 truncate text-xs text-muted-foreground">{product.productCode}</div>
         <div className="mt-2 min-h-5 text-xs">
-          {missing.length ? <span className="text-destructive">{missing.join(" · ")}</span> : <span className="text-emerald-700">资料正常</span>}
+          {missing.length ? <span className="text-destructive">{missing.join(" · ")}</span> : <span className="text-emerald-700">{t("资料正常")}</span>}
         </div>
       </Link>
     </div>
@@ -644,8 +648,8 @@ function BatchProductPreviewDialog({
     <Dialog open={Boolean(product)} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>第 {product?.batchItemNumber ?? "-"} 件商品图片</DialogTitle>
-          <DialogDescription>{product?.productCode} · 选择下方小图查看系统生成的不同版本。</DialogDescription>
+          <DialogTitle>{t("第")} {product?.batchItemNumber ?? "-"}  {t("件商品图片")}</DialogTitle>
+          <DialogDescription>{product?.productCode}  {t("· 选择下方小图查看系统生成的不同版本。")}</DialogDescription>
         </DialogHeader>
 
         {activePreview ? (
@@ -654,18 +658,18 @@ function BatchProductPreviewDialog({
             target="_blank"
             rel="noreferrer"
             className="flex min-h-72 items-center justify-center overflow-hidden rounded-md border bg-white p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-[32rem]"
-            title="点击打开大图"
+            title={t("点击打开大图")}
           >
             <img
               src={activeUrl}
-              alt={`${product?.productCode ?? "商品"} ${productImageVariantLabel(activePreview.variant)}`}
+              alt={t("{v0} {v1}", { v0: product?.productCode ?? t("商品"), v1: productImageVariantLabel(activePreview.variant) })}
               className="max-h-full max-w-full object-contain"
             />
           </a>
         ) : (
           <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-md border bg-muted/30 text-muted-foreground">
             <ImageIcon className="size-8" aria-hidden="true" />
-            <span>这件商品还没有可查看的正面图片</span>
+            <span>{t("这件商品还没有可查看的正面图片")}</span>
           </div>
         )}
 
@@ -691,7 +695,7 @@ function BatchProductPreviewDialog({
                 </span>
                 <span className="mt-1.5 flex min-w-0 items-center gap-1">
                   <span className="truncate text-xs font-medium">{productImageVariantLabel(preview.variant)}</span>
-                  {preview.selectedAsMain ? <Badge className="shrink-0 px-1 py-0 text-[10px]">主图</Badge> : null}
+                  {preview.selectedAsMain ? <Badge className="shrink-0 px-1 py-0 text-[10px]">{t("主图")}</Badge> : null}
                 </span>
               </button>
             ))}
@@ -702,13 +706,14 @@ function BatchProductPreviewDialog({
           {activePreview ? (
             <Button asChild variant="outline">
               <a href={activeUrl} target="_blank" rel="noreferrer">
-                <ExternalLinkIcon data-icon="inline-start" />打开大图
+                <ExternalLinkIcon data-icon="inline-start" />{t("打开大图")}
               </a>
             </Button>
           ) : null}
           <Button asChild>
             <Link href={product ? batchProductCalibrationHref(batchId, product.id) : `/product/calibration?batchId=${encodeURIComponent(batchId)}`}>
-              进入本件校准<ArrowRightIcon data-icon="inline-end" />
+              
+              {t("进入本件校准")}<ArrowRightIcon data-icon="inline-end" />
             </Link>
           </Button>
         </DialogFooter>
@@ -724,12 +729,12 @@ function productImagePreviewUrl(publicUrl: string) {
 
 function productImageVariantLabel(variant: string) {
   const labels: Record<string, string> = {
-    ORIGINAL: "原图",
-    CUTOUT_TRANSPARENT: "透明抠图",
-    CUTOUT_WHITE: "白底图",
-    OPTIMIZED_MAIN: "优化主图",
-    OPTIMIZED_BALANCED_MAIN: "均整版",
-    AI_DISPLAY_MAIN: "AI 陈列图"
+    ORIGINAL: t("原图"),
+    CUTOUT_TRANSPARENT: t("透明抠图"),
+    CUTOUT_WHITE: t("白底图"),
+    OPTIMIZED_MAIN: t("优化主图"),
+    OPTIMIZED_BALANCED_MAIN: t("均整版"),
+    AI_DISPLAY_MAIN: t("AI 陈列图")
   };
   return labels[variant] ?? variant;
 }
@@ -743,12 +748,12 @@ function BatchRow({ batch }: { batch: ProductBatch }) {
           <StageBadge stage={batch.stage} label={batch.stageLabel} />
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>当前步骤 {batch.stageCompletedCount}/{batch.targetCount}</span>
-          <span>更新于 {formatDateTime(batch.updatedAt)}</span>
-          {batch.exceptionCount ? <span className="text-destructive">异常 {batch.exceptionCount}</span> : null}
+          <span>{t("当前步骤")} {batch.stageCompletedCount}/{batch.targetCount}</span>
+          <span>{t("更新于")} {formatDateTime(batch.updatedAt)}</span>
+          {batch.exceptionCount ? <span className="text-destructive">{t("异常")} {batch.exceptionCount}</span> : null}
         </div>
       </div>
-      <Button asChild variant="outline" className="w-full sm:w-auto"><Link href={`/product/batches/${batch.id}`}>打开批次<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+      <Button asChild variant="outline" className="w-full sm:w-auto"><Link href={`/product/batches/${batch.id}`}>{t("打开批次")}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
     </div>
   );
 }
@@ -811,7 +816,7 @@ function EmptyState({ title, description, action }: { title: string; description
 function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(operationsFormatLocale(), {
     timeZone: "Africa/Nairobi",
     month: "2-digit",
     day: "2-digit",

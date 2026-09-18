@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -260,7 +261,7 @@ export function AffiliateCenterPage({
       ]);
       setSummary(nextSummary);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取推广佣金数据。");
+      setError(caught instanceof Error ? caught.message : t("无法读取推广佣金数据。"));
     } finally {
       setBusy(false);
     }
@@ -297,10 +298,10 @@ export function AffiliateCenterPage({
         })
       });
       setAffiliateForm(emptyAffiliateForm);
-      setMessage("推广者已创建。");
+      setMessage(t("推广者已创建。"));
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "创建推广者失败。");
+      setError(caught instanceof Error ? caught.message : t("创建推广者失败。"));
     } finally {
       setBusy(false);
     }
@@ -337,7 +338,7 @@ export function AffiliateCenterPage({
           email: customer.email
         })
       });
-      setMessage("推广者权限已开通。顾客重新打开商城后会看到推广者中台。");
+      setMessage(t("推广者权限已开通。顾客重新打开商城后会看到推广者中台。"));
       await Promise.all([searchCustomerAccounts(), load()]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not enable seller access.");
@@ -350,7 +351,7 @@ export function AffiliateCenterPage({
     await action(`/operations/affiliate/affiliates/${affiliate.id}`, {
       method: "PATCH",
       body: JSON.stringify({ adminUserId, status })
-    }, status === "ACTIVE" ? "推广者已启用。" : "推广者已停用。");
+    }, status === "ACTIVE" ? t("推广者已启用。") : t("推广者已停用。"));
   }
 
   async function createLink() {
@@ -371,10 +372,10 @@ export function AffiliateCenterPage({
         })
       });
       setLinkForm(emptyLinkForm);
-      setMessage("推广链接已生成。");
+      setMessage(t("推广链接已生成。"));
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "创建推广链接失败。");
+      setError(caught instanceof Error ? caught.message : t("创建推广链接失败。"));
     } finally {
       setBusy(false);
     }
@@ -382,13 +383,13 @@ export function AffiliateCenterPage({
 
   async function commissionAction(commission: CommissionRow, actionName: "confirm" | "reject" | "paid") {
     const note = actionName === "confirm" ? undefined : window.prompt(actionName === "reject"
-      ? "请输入驳回原因："
-      : "确认已在外部完成付款后，填写已核实的付款凭证或交易参考号。此操作仅记录付款，不会转账：");
+      ? t("请输入驳回原因：")
+      : t("确认已在外部完成付款后，填写已核实的付款凭证或交易参考号。此操作仅记录付款，不会转账："));
     if (actionName !== "confirm" && !note?.trim()) return;
     await action(`/operations/affiliate/commissions/${commission.id}/${actionName}`, {
       method: "POST",
       body: JSON.stringify({ adminUserId, note })
-    }, actionName === "confirm" ? "佣金已确认。" : actionName === "reject" ? "佣金已驳回。" : "已保存外部付款记录及凭证说明。");
+    }, actionName === "confirm" ? t("佣金已确认。") : actionName === "reject" ? t("佣金已驳回。") : t("已保存外部付款记录及凭证说明。"));
   }
 
   async function exportPayouts() {
@@ -397,9 +398,9 @@ export function AffiliateCenterPage({
       const rows = await request<Array<Record<string, unknown>>>("/operations/affiliate/payout-export", { query: { adminUserId } });
       const csv = toCsv(rows);
       await navigator.clipboard.writeText(csv);
-      setMessage("付款清单已复制到剪贴板。");
+      setMessage(t("付款清单已复制到剪贴板。"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "导出付款清单失败。");
+      setError(caught instanceof Error ? caught.message : t("导出付款清单失败。"));
     }
   }
 
@@ -419,37 +420,39 @@ export function AffiliateCenterPage({
       setMessage(success);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "操作失败。");
+      setError(caught instanceof Error ? caught.message : t("操作失败。"));
     } finally {
       setBusy(false);
     }
   }
 
   const metrics = useMemo(() => [
-    { label: "活跃推广者", value: String(summary?.activeAffiliates ?? 0) },
-    { label: "点击记录", value: String(summary?.clicks ?? 0) },
-    { label: "归因订单", value: String(summary?.attributedOrders ?? 0) },
-    { label: "归因销售额", value: money(summary?.attributedSalesKsh ?? 0) },
-    { label: "待确认佣金", value: String(summary?.pendingCommissions ?? 0) },
-    { label: "佣金总额", value: money(summary?.totalCommissionKsh ?? 0) }
+    { label: t("活跃推广者"), value: String(summary?.activeAffiliates ?? 0) },
+    { label: t("点击记录"), value: String(summary?.clicks ?? 0) },
+    { label: t("归因订单"), value: String(summary?.attributedOrders ?? 0) },
+    { label: t("归因销售额"), value: money(summary?.attributedSalesKsh ?? 0) },
+    { label: t("待确认佣金"), value: String(summary?.pendingCommissions ?? 0) },
+    { label: t("佣金总额"), value: money(summary?.totalCommissionKsh ?? 0) }
   ], [summary]);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="推广佣金"
+        eyebrow={t("推广佣金")}
         title={meta.title}
         description={meta.description}
         action={
           <div className="flex gap-2">
             {canExport ? (
               <Button variant="outline" onClick={() => void exportPayouts()}>
-                导出付款清单
+                
+                {t("导出付款清单")}
               </Button>
             ) : null}
             <Button variant="outline" disabled={busy} onClick={() => void load()}>
               <RefreshCwIcon data-icon="inline-start" />
-              刷新
+              
+              {t("刷新")}
             </Button>
           </div>
         }
@@ -544,8 +547,8 @@ function AffiliatesView({
       {canEdit ? (
         <Card>
           <CardHeader>
-            <CardTitle>从顾客账号开通推广者</CardTitle>
-            <CardDescription>搜索已用 Google 登录过的顾客账号，直接开通推广者权限。开通后，该顾客前台右上角会从 Join seller 变成推广者中台。</CardDescription>
+            <CardTitle>{t("从顾客账号开通推广者")}</CardTitle>
+            <CardDescription>{t("搜索已用 Google 登录过的顾客账号，直接开通推广者权限。开通后，该顾客前台右上角会从 Join seller 变成推广者中台。")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col gap-2 md:flex-row">
@@ -558,27 +561,28 @@ function AffiliatesView({
                     onSearchCustomers();
                   }
                 }}
-                placeholder="搜索 Google 邮箱、姓名或手机号"
+                placeholder={t("搜索 Google 邮箱、姓名或手机号")}
               />
               <Button disabled={busy || customerSearch.trim().length < 2} onClick={onSearchCustomers}>
                 <SearchIcon data-icon="inline-start" />
-                搜索账号
+                
+                {t("搜索账号")}
               </Button>
             </div>
             <div className="overflow-x-auto rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>顾客账号</TableHead>
-                    <TableHead>手机号</TableHead>
-                    <TableHead>订单数</TableHead>
-                    <TableHead>推广者状态</TableHead>
-                    <TableHead>操作</TableHead>
+                    <TableHead>{t("顾客账号")}</TableHead>
+                    <TableHead>{t("手机号")}</TableHead>
+                    <TableHead>{t("订单数")}</TableHead>
+                    <TableHead>{t("推广者状态")}</TableHead>
+                    <TableHead>{t("操作")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {customerRows.length === 0 ? (
-                    <EmptyRow colSpan={5} text="输入至少2个字符后搜索顾客账号。" />
+                    <EmptyRow colSpan={5} text={t("输入至少2个字符后搜索顾客账号。")} />
                   ) : customerRows.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell>
@@ -594,7 +598,7 @@ function AffiliatesView({
                             <div className="mt-1 font-mono text-muted-foreground text-xs">{customer.affiliateProfile.affiliateCode}</div>
                           </div>
                         ) : (
-                          <Badge variant="outline">未开通</Badge>
+                          <Badge variant="outline">{t("未开通")}</Badge>
                         )}
                       </TableCell>
                       <TableCell>
@@ -605,7 +609,7 @@ function AffiliatesView({
                           onClick={() => void onEnableCustomer(customer)}
                         >
                           <UserPlusIcon data-icon="inline-start" />
-                          {customer.affiliateProfile?.status === "ACTIVE" ? "重新启用" : "开通推广者"}
+                          {customer.affiliateProfile?.status === "ACTIVE" ? t("重新启用") : t("开通推广者")}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -620,32 +624,32 @@ function AffiliatesView({
       {canEdit ? (
         <Card>
           <CardHeader>
-            <CardTitle>开通推广者</CardTitle>
-            <CardDescription>每个推广者会获得唯一 Affiliate ID。默认佣金比例使用配置项，可单独覆盖。</CardDescription>
+            <CardTitle>{t("开通推广者")}</CardTitle>
+            <CardDescription>{t("每个推广者会获得唯一 Affiliate ID。默认佣金比例使用配置项，可单独覆盖。")}</CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup className="grid gap-4 md:grid-cols-5">
               <Field>
-                <FieldLabel>姓名 / 昵称</FieldLabel>
+                <FieldLabel>{t("姓名 / 昵称")}</FieldLabel>
                 <Input value={form.displayName} onChange={(event) => onFormChange({ ...form, displayName: event.target.value })} />
               </Field>
               <Field>
                 <FieldLabel>Affiliate ID</FieldLabel>
-                <Input placeholder="可留空自动生成" value={form.affiliateCode} onChange={(event) => onFormChange({ ...form, affiliateCode: event.target.value })} />
+                <Input placeholder={t("可留空自动生成")} value={form.affiliateCode} onChange={(event) => onFormChange({ ...form, affiliateCode: event.target.value })} />
               </Field>
               <Field>
-                <FieldLabel>手机号</FieldLabel>
+                <FieldLabel>{t("手机号")}</FieldLabel>
                 <Input value={form.phone} onChange={(event) => onFormChange({ ...form, phone: event.target.value })} />
               </Field>
               <Field>
-                <FieldLabel>邮箱</FieldLabel>
+                <FieldLabel>{t("邮箱")}</FieldLabel>
                 <Input value={form.email} onChange={(event) => onFormChange({ ...form, email: event.target.value })} />
               </Field>
               <Field>
-                <FieldLabel>佣金 bps</FieldLabel>
+                <FieldLabel>{t("佣金 bps")}</FieldLabel>
                 <div className="flex gap-2">
-                  <Input aria-label="当前推广佣金比例" value="10%（当前统一比例）" disabled />
-                  <Button disabled={busy || !form.displayName.trim()} onClick={onCreate}>创建</Button>
+                  <Input aria-label={t("当前推广佣金比例")} value={t("10%（当前统一比例）")} disabled />
+                  <Button disabled={busy || !form.displayName.trim()} onClick={onCreate}>{t("创建")}</Button>
                 </div>
               </Field>
             </FieldGroup>
@@ -658,18 +662,18 @@ function AffiliatesView({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>推广者</TableHead>
+                <TableHead>{t("推广者")}</TableHead>
                 <TableHead>Affiliate ID</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>佣金比例</TableHead>
-                <TableHead>数据</TableHead>
-                <TableHead>商城分享链接</TableHead>
-                <TableHead>操作</TableHead>
+                <TableHead>{t("状态")}</TableHead>
+                <TableHead>{t("佣金比例")}</TableHead>
+                <TableHead>{t("数据")}</TableHead>
+                <TableHead>{t("商城分享链接")}</TableHead>
+                <TableHead>{t("操作")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {affiliates.length === 0 ? (
-                <EmptyRow colSpan={7} text="还没有推广者。" />
+                <EmptyRow colSpan={7} text={t("还没有推广者。")} />
               ) : affiliates.map((affiliate) => (
                 <TableRow key={affiliate.id}>
                   <TableCell>
@@ -680,7 +684,8 @@ function AffiliatesView({
                   <TableCell><StatusBadge status={affiliate.status} /></TableCell>
                   <TableCell>{"10%"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    点击 {affiliate._count.clicks} / 订单 {affiliate._count.orders} / 佣金 {affiliate._count.commissions}
+                    
+                    {t("点击")} {affiliate._count.clicks}  {t("/ 订单")} {affiliate._count.orders}  {t("/ 佣金")} {affiliate._count.commissions}
                   </TableCell>
                   <TableCell>
                     <div className="flex min-w-64 items-center gap-2">
@@ -699,7 +704,7 @@ function AffiliatesView({
                         size="sm"
                         onClick={() => void onStatus(affiliate, affiliate.status === "ACTIVE" ? "DISABLED" : "ACTIVE")}
                       >
-                        {affiliate.status === "ACTIVE" ? "停用" : "启用"}
+                        {affiliate.status === "ACTIVE" ? t("停用") : t("启用")}
                       </Button>
                     ) : "-"}
                   </TableCell>
@@ -737,8 +742,8 @@ function LinksView({
       {canEdit ? (
         <Card>
           <CardHeader>
-            <CardTitle>生成推广链接</CardTitle>
-            <CardDescription>支持商品链接、商城链接和 TikTok / Facebook campaign 参数。</CardDescription>
+            <CardTitle>{t("生成推广链接")}</CardTitle>
+            <CardDescription>{t("支持商品链接、商城链接和 TikTok / Facebook campaign 参数。")}</CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
@@ -747,14 +752,14 @@ function LinksView({
                 <Input value={form.affiliateCode} onChange={(event) => onFormChange({ ...form, affiliateCode: event.target.value })} />
               </Field>
               <Field>
-                <FieldLabel>类型</FieldLabel>
+                <FieldLabel>{t("类型")}</FieldLabel>
                 <NativeSelect value={form.type} onChange={(event) => onFormChange({ ...form, type: event.target.value as LinkForm["type"] })}>
-                  <NativeSelectOption value="STORE">商城分享</NativeSelectOption>
-                  <NativeSelectOption value="PRODUCT">商品分享</NativeSelectOption>
+                  <NativeSelectOption value="STORE">{t("商城分享")}</NativeSelectOption>
+                  <NativeSelectOption value="PRODUCT">{t("商品分享")}</NativeSelectOption>
                 </NativeSelect>
               </Field>
               <Field>
-                <FieldLabel>商品 code</FieldLabel>
+                <FieldLabel>{t("商品 code")}</FieldLabel>
                 <Input disabled={form.type === "STORE"} value={form.productCode} onChange={(event) => onFormChange({ ...form, productCode: event.target.value })} />
               </Field>
               <Field>
@@ -769,7 +774,7 @@ function LinksView({
                 <FieldLabel>Landing Path</FieldLabel>
                 <div className="flex gap-2">
                   <Input value={form.landingPath} onChange={(event) => onFormChange({ ...form, landingPath: event.target.value })} />
-                  <Button disabled={busy || !form.affiliateCode.trim()} onClick={onCreate}>生成</Button>
+                  <Button disabled={busy || !form.affiliateCode.trim()} onClick={onCreate}>{t("生成")}</Button>
                 </div>
               </Field>
             </FieldGroup>
@@ -782,17 +787,17 @@ function LinksView({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>推广者</TableHead>
-                <TableHead>类型</TableHead>
+                <TableHead>{t("推广者")}</TableHead>
+                <TableHead>{t("类型")}</TableHead>
                 <TableHead>Source / Campaign</TableHead>
-                <TableHead>商品</TableHead>
-                <TableHead>点击</TableHead>
-                <TableHead>分享链接</TableHead>
+                <TableHead>{t("商品")}</TableHead>
+                <TableHead>{t("点击")}</TableHead>
+                <TableHead>{t("分享链接")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {links.length === 0 ? (
-                <EmptyRow colSpan={6} text="还没有推广链接。" />
+                <EmptyRow colSpan={6} text={t("还没有推广链接。")} />
               ) : links.map((link) => (
                 <TableRow key={link.id}>
                   <TableCell>
@@ -801,7 +806,7 @@ function LinksView({
                   </TableCell>
                   <TableCell><Badge variant="secondary">{link.type}</Badge></TableCell>
                   <TableCell>{link.source || "-"} / {link.campaign || "-"}</TableCell>
-                  <TableCell>{link.product?.title ?? link.product?.productCode ?? "商城首页"}</TableCell>
+                  <TableCell>{link.product?.title ?? link.product?.productCode ?? t("商城首页")}</TableCell>
                   <TableCell>{link._count.clicks}</TableCell>
                   <TableCell>
                     <div className="flex min-w-72 items-center gap-2">
@@ -828,7 +833,7 @@ function LinksView({
 
 function ClicksView({ clicks, busy }: { clicks: ClickRow[]; busy: boolean }) {
   return (
-    <DataCard empty={busy ? "正在读取点击记录..." : "还没有点击记录。"} colSpan={6} headers={["时间", "推广者", "商品", "Source", "Campaign", "有效期"]}>
+    <DataCard empty={busy ? t("正在读取点击记录...") : t("还没有点击记录。")} colSpan={6} headers={[t("时间"), t("推广者"), t("商品"), "Source", "Campaign", t("有效期")]}>
       {clicks.map((click) => (
         <TableRow key={click.id}>
           <TableCell>{dateTime(click.clickedAt)}</TableCell>
@@ -845,7 +850,7 @@ function ClicksView({ clicks, busy }: { clicks: ClickRow[]; busy: boolean }) {
 
 function OrdersView({ orders, busy }: { orders: AttributedOrderRow[]; busy: boolean }) {
   return (
-    <DataCard empty={busy ? "正在读取归因订单..." : "还没有归因订单。"} colSpan={7} headers={["订单", "推广者", "顾客", "商品", "状态", "金额", "佣金"]}>
+    <DataCard empty={busy ? t("正在读取归因订单...") : t("还没有归因订单。")} colSpan={7} headers={[t("订单"), t("推广者"), t("顾客"), t("商品"), t("状态"), t("金额"), t("佣金")]}>
       {orders.map((order) => (
         <TableRow key={order.id}>
           <TableCell className="font-mono text-xs">{order.orderNumber}</TableCell>
@@ -854,7 +859,7 @@ function OrdersView({ orders, busy }: { orders: AttributedOrderRow[]; busy: bool
           <TableCell>{order.items[0]?.snapshot?.title ?? "-"}</TableCell>
           <TableCell><StatusBadge status={order.status} /></TableCell>
           <TableCell>{money(order.itemSubtotalKsh)}</TableCell>
-          <TableCell>{order.commission ? `${order.commission.status} / ${money(order.commission.commissionAmountKsh)}` : "未生成"}</TableCell>
+          <TableCell>{order.commission ? `${order.commission.status} / ${money(order.commission.commissionAmountKsh)}` : t("未生成")}</TableCell>
         </TableRow>
       ))}
     </DataCard>
@@ -873,7 +878,7 @@ function CommissionsView({
   onAction: (commission: CommissionRow, actionName: "confirm" | "reject" | "paid") => void;
 }) {
   return (
-    <DataCard empty={busy ? "正在读取佣金..." : "当前没有佣金。"} colSpan={8} headers={["佣金", "推广者", "订单", "顾客", "状态", "来源", "备注", "操作"]}>
+    <DataCard empty={busy ? t("正在读取佣金...") : t("当前没有佣金。")} colSpan={8} headers={[t("佣金"), t("推广者"), t("订单"), t("顾客"), t("状态"), t("来源"), t("备注"), t("操作")]}>
       {commissions.map((commission) => (
         <TableRow key={commission.id}>
           <TableCell>
@@ -889,9 +894,9 @@ function CommissionsView({
           <TableCell>
             {canApprove ? (
               <div className="flex flex-wrap gap-2">
-                {commission.status === "PENDING" ? <Button size="sm" disabled={busy || Boolean(commission.eligibility?.blockingReason)} onClick={() => void onAction(commission, "confirm")}>确认</Button> : null}
-                {["PENDING", "CONFIRMED"].includes(commission.status) ? <Button size="sm" disabled={busy} variant="outline" onClick={() => void onAction(commission, "reject")}>驳回</Button> : null}
-                {commission.status === "CONFIRMED" && !commission.holdReason ? <Button size="sm" disabled={busy || Boolean(commission.eligibility?.blockingReason) || commission.commissionAmountKsh === 0} onClick={() => void onAction(commission, "paid")}>记录已付款</Button> : null}
+                {commission.status === "PENDING" ? <Button size="sm" disabled={busy || Boolean(commission.eligibility?.blockingReason)} onClick={() => void onAction(commission, "confirm")}>{t("确认")}</Button> : null}
+                {["PENDING", "CONFIRMED"].includes(commission.status) ? <Button size="sm" disabled={busy} variant="outline" onClick={() => void onAction(commission, "reject")}>{t("驳回")}</Button> : null}
+                {commission.status === "CONFIRMED" && !commission.holdReason ? <Button size="sm" disabled={busy || Boolean(commission.eligibility?.blockingReason) || commission.commissionAmountKsh === 0} onClick={() => void onAction(commission, "paid")}>{t("记录已付款")}</Button> : null}
               </div>
             ) : "-"}
           </TableCell>
@@ -997,19 +1002,19 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function pageMeta(view: AffiliateView, queue?: CommissionQueueKey) {
-  if (view === "links") return { title: "推广链接", description: "生成商城、商品和社媒 campaign 链接。" };
-  if (view === "clicks") return { title: "点击记录", description: "查看 ref/source/campaign 带来的访问点击。" };
-  if (view === "orders") return { title: "归因订单", description: "查看已保存 Affiliate ID 的订单。" };
+  if (view === "links") return { title: t("推广链接"), description: t("生成商城、商品和社媒 campaign 链接。") };
+  if (view === "clicks") return { title: t("点击记录"), description: t("查看 ref/source/campaign 带来的访问点击。") };
+  if (view === "orders") return { title: t("归因订单"), description: t("查看已保存 Affiliate ID 的订单。") };
   if (view === "commissions") {
     const labels: Record<CommissionQueueKey, string> = {
-      pending: "待确认佣金",
-      confirmed: "已确认佣金",
-      paid: "已支付佣金",
-      exceptions: "异常佣金"
+      pending: t("待确认佣金"),
+      confirmed: t("已确认佣金"),
+      paid: t("已支付佣金"),
+      exceptions: t("异常佣金")
     };
-    return { title: labels[queue ?? "pending"], description: "佣金只在订单支付成功后生成，支付前订单不会产生有效佣金。" };
+    return { title: labels[queue ?? "pending"], description: t("佣金只在订单支付成功后生成，支付前订单不会产生有效佣金。") };
   }
-  return { title: "推广者列表", description: "开通、停用小B推广者，并管理唯一 Affiliate ID。" };
+  return { title: t("推广者列表"), description: t("开通、停用小B推广者，并管理唯一 Affiliate ID。") };
 }
 
 async function apiRequest<T>(path: string, options?: RequestOptions): Promise<T> {
@@ -1040,7 +1045,7 @@ function money(value: number): string {
 }
 
 function rateLabel(value?: number | null): string {
-  if (value === null || value === undefined) return "默认配置";
+  if (value === null || value === undefined) return t("默认配置");
   return `${(value / 100).toFixed(2)}%`;
 }
 

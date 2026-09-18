@@ -12,6 +12,7 @@ import {
   usesApparelSizing,
   usesWaistSizing
 } from "./apparel-size";
+import { t } from "@/i18n/runtime";
 
 export function ApparelSizeField({ value, category, audience, disabled, onChange }: {
   value: string;
@@ -24,7 +25,7 @@ export function ApparelSizeField({ value, category, audience, disabled, onChange
 
   if (!usesApparelSizing(category)) {
     return <Field data-field-key="sizeLabel" data-invalid={!value.trim()} data-disabled={disabled}>
-      <FieldLabel htmlFor={`${id}-size`}>尺寸／规格 *</FieldLabel>
+      <FieldLabel htmlFor={`${id}-size`}>{t("尺寸／规格 *")}</FieldLabel>
       <Input id={`${id}-size`} value={value} disabled={disabled} aria-invalid={!value.trim()} onChange={(event) => onChange(event.target.value)} />
     </Field>;
   }
@@ -35,12 +36,12 @@ export function ApparelSizeField({ value, category, audience, disabled, onChange
   if (usesWaistSizing(category, audience)) {
     return (
       <Field className="sm:col-span-2" data-field-key="sizeLabel" data-invalid={!valid} data-disabled={disabled}>
-        <FieldLabel htmlFor={`${id}-size`}>腰围（英寸，按裤标） *</FieldLabel>
+        <FieldLabel htmlFor={`${id}-size`}>{t("腰围（英寸，按裤标） *")}</FieldLabel>
         <Input id={`${id}-size`} inputMode="numeric" maxLength={2} disabled={disabled} aria-invalid={!valid}
-          placeholder="例如 32" value={value.trim().replace(/^(UK\s*)?W?/i, "")}
+          placeholder={t("例如 32")} value={value.trim().replace(/^(UK\s*)?W?/i, "")}
           onChange={(event) => onChange(`W${event.target.value.replace(/\D/g, "").slice(0, 2)}`)} />
         <FieldDescription>
-          {summary || "男裤／中性裤按裤标腰围英寸填写 30–38 一类的数字。"} 腰围英寸不是 UK 尺码，系统不会换算成字母码。
+          {summary || t("男裤／中性裤按裤标腰围英寸填写 30–38 一类的数字。")}  {t("腰围英寸不是 UK 尺码，系统不会换算成字母码。")}
         </FieldDescription>
       </Field>
     );
@@ -52,15 +53,15 @@ export function ApparelSizeField({ value, category, audience, disabled, onChange
 
   return (
     <Field className="sm:col-span-2" data-field-key="sizeLabel" data-invalid={!valid} data-disabled={disabled}>
-      <FieldLabel htmlFor={`${id}-size`}>标准尺码 *</FieldLabel>
+      <FieldLabel htmlFor={`${id}-size`}>{t("标准尺码 *")}</FieldLabel>
       <NativeSelect id={`${id}-size`} className="w-full" value={legacy ? "" : normalized} disabled={disabled} aria-invalid={!valid}
         onChange={(event) => onChange(event.target.value)}>
-        <NativeSelectOption value="">请选择尺码</NativeSelectOption>
-        {legacy ? <NativeSelectOption value="" disabled>{value}（原值，请重新选择）</NativeSelectOption> : null}
+        <NativeSelectOption value="">{t("请选择尺码")}</NativeSelectOption>
+        {legacy ? <NativeSelectOption value="" disabled>{value}{t("（原值，请重新选择）")}</NativeSelectOption> : null}
         {options.map((option) => <NativeSelectOption key={option.value} value={option.value}>{option.label}</NativeSelectOption>)}
       </NativeSelect>
       <FieldDescription>
-        {summary || "先确认适用人群，再按实物选择标准尺码。"} UK 码、建议身高体重与儿童年龄由系统按尺码表推出，不需要手填。
+        {summary || t("先确认适用人群，再按实物选择标准尺码。")}  {t("UK 码、建议身高体重与儿童年龄由系统按尺码表推出，不需要手填。")}
       </FieldDescription>
     </Field>
   );

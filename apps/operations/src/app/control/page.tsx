@@ -57,6 +57,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
+import { t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -271,35 +272,37 @@ export default function ProductControlPage() {
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-muted-foreground text-sm">商品中心</p>
-          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">商品控制</h1>
+          <p className="text-muted-foreground text-sm">{t("商品中心")}</p>
+          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{t("商品控制")}</h1>
           <p className="mt-2 max-w-2xl text-muted-foreground text-sm">
-            处理审核、价格、随机库位、标签打印、发布和下架。
+            
+            {t("处理审核、价格、随机库位、标签打印、发布和下架。")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline">
-            <a href="/">商品数字化</a>
+            <a href="/">{t("商品数字化")}</a>
           </Button>
           <Button type="button" variant="outline" disabled={Boolean(busy)} onClick={() => run("load", load)}>
             <RefreshCwIcon data-icon="inline-start" />
-            刷新
+            
+            {t("刷新")}
           </Button>
         </div>
       </section>
 
       <section className="grid gap-3 md:grid-cols-5">
-        <Metric title="待定价" value={summary?.readyForPrice ?? 0} icon={<PackageCheckIcon />} />
-        <Metric title="待入仓" value={summary?.readyForStorage ?? 0} icon={<BoxesIcon />} />
-        <Metric title="待摆放" value={summary?.pendingStockIn ?? 0} icon={<BoxesIcon />} />
-        <Metric title="待发布" value={summary?.readyToPublish ?? 0} icon={<CheckCircle2Icon />} />
-        <Metric title="已发布" value={summary?.published ?? 0} icon={<PackageCheckIcon />} strong />
+        <Metric title={t("待定价")} value={summary?.readyForPrice ?? 0} icon={<PackageCheckIcon />} />
+        <Metric title={t("待入仓")} value={summary?.readyForStorage ?? 0} icon={<BoxesIcon />} />
+        <Metric title={t("待摆放")} value={summary?.pendingStockIn ?? 0} icon={<BoxesIcon />} />
+        <Metric title={t("待发布")} value={summary?.readyToPublish ?? 0} icon={<CheckCircle2Icon />} />
+        <Metric title={t("已发布")} value={summary?.published ?? 0} icon={<PackageCheckIcon />} strong />
       </section>
 
       <Card>
         <CardHeader>
-          <CardTitle>筛选和批量操作</CardTitle>
-          <CardDescription>选择商品后可以批量打印 Barcode 标签。</CardDescription>
+          <CardTitle>{t("筛选和批量操作")}</CardTitle>
+          <CardDescription>{t("选择商品后可以批量打印 Barcode 标签。")}</CardDescription>
         </CardHeader>
         <CardContent>
           <FieldGroup className="md:grid md:grid-cols-[minmax(180px,1fr)_minmax(160px,0.7fr)_auto_auto] md:items-end">

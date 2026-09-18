@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -181,7 +182,7 @@ export function AnalyticsWorkbenchPage({ view }: { view: AnalyticsView }) {
         }
       }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取数据看板。");
+      setError(caught instanceof Error ? caught.message : t("无法读取数据看板。"));
     } finally {
       setBusy(false);
     }
@@ -199,13 +200,14 @@ export function AnalyticsWorkbenchPage({ view }: { view: AnalyticsView }) {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="数据分析"
-        title={meta.title}
-        description={meta.description}
+        eyebrow={t("数据分析")}
+        title={t(meta.title)}
+        description={t(meta.description)}
         action={
           <Button variant="outline" disabled={busy} onClick={() => void load()}>
             <RefreshCwIcon data-icon="inline-start" />
-            刷新
+            
+            {t("刷新")}
           </Button>
         }
       />
@@ -223,8 +225,8 @@ export function AnalyticsWorkbenchPage({ view }: { view: AnalyticsView }) {
       {dashboard?.noDataNotes.length ? (
         <Card>
           <CardHeader>
-            <CardTitle>暂无数据说明</CardTitle>
-            <CardDescription>这些位置不会展示虚构 Demo 数据。</CardDescription>
+            <CardTitle>{t("暂无数据说明")}</CardTitle>
+            <CardDescription>{t("这些位置不会展示虚构 Demo 数据。")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-muted-foreground text-sm">
             {dashboard.noDataNotes.map((note) => <p key={note}>{note}</p>)}
@@ -259,38 +261,39 @@ function FilterPanel({
       <CardContent className="pt-6">
         <FieldGroup className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           <Field>
-            <FieldLabel>开始日期</FieldLabel>
+            <FieldLabel>{t("开始日期")}</FieldLabel>
             <Input type="date" value={filters.dateFrom} onChange={(event) => onChange({ ...filters, dateFrom: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>结束日期</FieldLabel>
+            <FieldLabel>{t("结束日期")}</FieldLabel>
             <Input type="date" value={filters.dateTo} onChange={(event) => onChange({ ...filters, dateTo: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>品类</FieldLabel>
+            <FieldLabel>{t("品类")}</FieldLabel>
             <Input value={filters.category} placeholder="DRESS / SHIRT" onChange={(event) => onChange({ ...filters, category: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>员工 ID</FieldLabel>
+            <FieldLabel>{t("员工 ID")}</FieldLabel>
             <Input value={filters.employeeId} onChange={(event) => onChange({ ...filters, employeeId: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>推广者 ID</FieldLabel>
+            <FieldLabel>{t("推广者 ID")}</FieldLabel>
             <Input value={filters.affiliateId} onChange={(event) => onChange({ ...filters, affiliateId: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>履约方式</FieldLabel>
+            <FieldLabel>{t("履约方式")}</FieldLabel>
             <div className="flex gap-2">
               <NativeSelect
                 value={filters.fulfillmentMethod}
                 onChange={(event) => onChange({ ...filters, fulfillmentMethod: event.target.value as Filters["fulfillmentMethod"] })}
               >
-                <NativeSelectOption value="">全部</NativeSelectOption>
-                <NativeSelectOption value="PICKUP">自提</NativeSelectOption>
-                <NativeSelectOption value="KIKUYU_LOCAL_DELIVERY">Kikuyu配送</NativeSelectOption>
+                <NativeSelectOption value="">{t("全部")}</NativeSelectOption>
+                <NativeSelectOption value="PICKUP">{t("自提")}</NativeSelectOption>
+                <NativeSelectOption value="KIKUYU_LOCAL_DELIVERY">{t("Kikuyu配送")}</NativeSelectOption>
               </NativeSelect>
               <Button type="button" disabled={busy} onClick={() => void onApply()}>
-                应用
+                
+                {t("应用")}
               </Button>
             </div>
           </Field>
@@ -307,7 +310,7 @@ function MetricCard({ metric }: { metric: Metric }) {
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardDescription>{metric.label}</CardDescription>
-          <Badge variant={unavailable ? "outline" : "secondary"}>{unavailable ? "暂无数据源" : "真实数据"}</Badge>
+          <Badge variant={unavailable ? "outline" : "secondary"}>{unavailable ? t("暂无数据源") : t("真实数据")}</Badge>
         </div>
         <CardTitle className="text-2xl">{formatMetric(metric)}</CardTitle>
         <CardDescription>{metric.source}</CardDescription>
@@ -320,17 +323,17 @@ function MetricDefinitions({ metrics }: { metrics: Metric[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>指标定义</CardTitle>
-        <CardDescription>所有指标直接来自后端聚合，不展示虚构 Demo 数据。</CardDescription>
+        <CardTitle>{t("指标定义")}</CardTitle>
+        <CardDescription>{t("所有指标直接来自后端聚合，不展示虚构 Demo 数据。")}</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto p-0">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>指标</TableHead>
-              <TableHead>定义</TableHead>
-              <TableHead>数据来源</TableHead>
-              <TableHead>状态</TableHead>
+              <TableHead>{t("指标")}</TableHead>
+              <TableHead>{t("定义")}</TableHead>
+              <TableHead>{t("数据来源")}</TableHead>
+              <TableHead>{t("状态")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -339,7 +342,7 @@ function MetricDefinitions({ metrics }: { metrics: Metric[] }) {
                 <TableCell>{metric.label}</TableCell>
                 <TableCell>{metric.definition}{metric.note ? <div className="text-muted-foreground text-xs">{metric.note}</div> : null}</TableCell>
                 <TableCell>{metric.source}</TableCell>
-                <TableCell><Badge variant={metric.status === "NO_SOURCE" ? "outline" : "secondary"}>{metric.status === "NO_SOURCE" ? "暂无数据" : "可用"}</Badge></TableCell>
+                <TableCell><Badge variant={metric.status === "NO_SOURCE" ? "outline" : "secondary"}>{metric.status === "NO_SOURCE" ? t("暂无数据") : t("可用")}</Badge></TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -351,7 +354,7 @@ function MetricDefinitions({ metrics }: { metrics: Metric[] }) {
 
 function CategoryTable({ rows }: { rows: Dashboard["tables"]["categoryPerformance"] }) {
   return (
-    <DataTableCard title="分类表现" empty="当前没有分类数据。" headers={["分类", "创建商品", "已发布", "已付款订单"]}>
+    <DataTableCard title={t("分类表现")} empty={t("当前没有分类数据。")} headers={[t("分类"), t("创建商品"), t("已发布"), t("已付款订单")]}>
       {rows.map((row) => (
         <TableRow key={row.category}>
           <TableCell>{row.category}</TableCell>
@@ -366,7 +369,7 @@ function CategoryTable({ rows }: { rows: Dashboard["tables"]["categoryPerformanc
 
 function AffiliateTable({ rows }: { rows: Dashboard["tables"]["affiliatePerformance"] }) {
   return (
-    <DataTableCard title="推广者表现" empty="当前没有推广者数据。" headers={["推广者", "点击", "已付款订单", "归因销售额", "佣金"]}>
+    <DataTableCard title={t("推广者表现")} empty={t("当前没有推广者数据。")} headers={[t("推广者"), t("点击"), t("已付款订单"), t("归因销售额"), t("佣金")]}>
       {rows.map((row) => (
         <TableRow key={row.affiliateId}>
           <TableCell>
@@ -385,12 +388,12 @@ function AffiliateTable({ rows }: { rows: Dashboard["tables"]["affiliatePerforma
 
 function ExceptionPanel({ data }: { data?: Dashboard["tables"]["returnsAndExceptions"] }) {
   const rows = [
-    { label: "已退款订单", value: data?.refunded ?? 0 },
-    { label: "已取消订单", value: data?.cancelled ?? 0 },
-    { label: "支付异常", value: data?.paymentExceptions ?? 0 },
-    { label: "履约异常", value: data?.fulfillmentExceptions ?? 0 },
-    { label: "驳回佣金", value: data?.rejectedCommissions ?? 0 },
-    { label: "未结案客服", value: data?.openServiceCases ?? 0 }
+    { label: t("已退款订单"), value: data?.refunded ?? 0 },
+    { label: t("已取消订单"), value: data?.cancelled ?? 0 },
+    { label: t("支付异常"), value: data?.paymentExceptions ?? 0 },
+    { label: t("履约异常"), value: data?.fulfillmentExceptions ?? 0 },
+    { label: t("驳回佣金"), value: data?.rejectedCommissions ?? 0 },
+    { label: t("未结案客服"), value: data?.openServiceCases ?? 0 }
   ];
   return (
     <section className="grid gap-4 md:grid-cols-3">
@@ -408,7 +411,7 @@ function ExceptionPanel({ data }: { data?: Dashboard["tables"]["returnsAndExcept
 
 function EmployeeTable({ rows }: { rows: Dashboard["tables"]["employeeEfficiency"] }) {
   return (
-    <DataTableCard title="员工效率" empty="当前没有员工操作数据。" headers={["员工", "创建商品", "审核商品", "履约操作"]}>
+    <DataTableCard title={t("员工效率")} empty={t("当前没有员工操作数据。")} headers={[t("员工"), t("创建商品"), t("审核商品"), t("履约操作")]}>
       {rows.map((row) => (
         <TableRow key={row.employeeId}>
           <TableCell>{row.name}</TableCell>
@@ -496,7 +499,7 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
 }
 
 function formatMetric(metric: Metric): string {
-  if (metric.value === null) return "暂无";
+  if (metric.value === null) return t("暂无");
   if (metric.unit === "percent") return `${metric.value.toFixed(1)}%`;
   if (metric.unit === "hours") return `${metric.value.toLocaleString("en-KE")} h`;
   if (metric.unit === "ksh") return money(metric.value);

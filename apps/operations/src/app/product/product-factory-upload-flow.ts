@@ -1,4 +1,5 @@
 import { SHOE_REQUIRED_IMAGE_TYPES, isShoeProduct } from "@online-saler/shared-types";
+import { t } from "@/i18n/runtime";
 
 export const PRODUCT_FACTORY_IMAGE_TYPES = ["FRONT", "BACK", "LABEL", "DEFECT", "DETAIL"] as const;
 export type ProductFactoryImageType = (typeof PRODUCT_FACTORY_IMAGE_TYPES)[number];
@@ -50,13 +51,13 @@ export function rotateProductImage(
 
 export function imageUploadIssue(file: Pick<File, "type" | "size">): string | null {
   if (["image/heic", "image/heif"].includes(file.type.toLowerCase())) {
-    return "暂不支持 HEIC。请在 iPhone 设置中选择“相机 > 格式 > 兼容性最佳”，或先转换为 JPEG。";
+    return t("暂不支持 HEIC。请在 iPhone 设置中选择“相机 > 格式 > 兼容性最佳”，或先转换为 JPEG。");
   }
   if (!SUPPORTED_IMAGE_TYPES.has(file.type.toLowerCase())) {
-    return "只支持 JPEG、PNG 或 WEBP 图片。";
+    return t("只支持 JPEG、PNG 或 WEBP 图片。");
   }
   if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
-    return "单张图片必须小于 10 MB。";
+    return t("单张图片必须小于 10 MB。");
   }
   return null;
 }

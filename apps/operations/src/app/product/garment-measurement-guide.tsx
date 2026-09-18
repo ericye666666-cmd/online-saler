@@ -10,6 +10,7 @@ import {
   type MeasurementGuideLine
 } from "./garment-measurement-geometry";
 import type { ManualMeasurementLine } from "./manual-measurement-lines";
+import { t } from "@/i18n/runtime";
 
 type GuideMeasurement = {
   key: string;
@@ -106,18 +107,18 @@ export function GarmentMeasurementGuide(props: {
     <div className="rounded-md border bg-muted/20 p-3">
       <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h4 className="text-sm font-semibold">尺寸位置示意</h4>
-          <p className="text-xs text-muted-foreground">虚线根据当前服装轮廓定位。可直接填软尺实测值；需要时打开测量板校正四角，并连接尺寸起点和终点。</p>
+          <h4 className="text-sm font-semibold">{t("尺寸位置示意")}</h4>
+          <p className="text-xs text-muted-foreground">{t("虚线根据当前服装轮廓定位。可直接填软尺实测值；需要时打开测量板校正四角，并连接尺寸起点和终点。")}</p>
         </div>
         {props.onManualCalibrate ? (
           <Button type="button" size="sm" variant="outline" className="shrink-0" disabled={props.manualCalibrateDisabled} onClick={props.onManualCalibrate}>
-            <MousePointer2Icon data-icon="inline-start" />{props.manualCalibrateLabel ?? "手动连线校准"}
+            <MousePointer2Icon data-icon="inline-start" />{props.manualCalibrateLabel ?? t("手动连线校准")}
           </Button>
-        ) : <span className="shrink-0 text-[11px] font-medium text-blue-700">虚线 = 测量线</span>}
+        ) : <span className="shrink-0 text-[11px] font-medium text-blue-700">{t("虚线 = 测量线")}</span>}
       </div>
       <div className="relative mx-auto aspect-square w-full max-w-[320px] overflow-hidden rounded border bg-white">
-        {props.imageUrl ? <img src={props.imageUrl} alt="尺寸位置参考商品图" className="absolute inset-0 size-full object-contain opacity-65" /> : null}
-        <svg viewBox="0 0 100 100" className="absolute inset-0 size-full" role="img" aria-label="服装平铺尺寸测量位置示意">
+        {props.imageUrl ? <img src={props.imageUrl} alt={t("尺寸位置参考商品图")} className="absolute inset-0 size-full object-contain opacity-65" /> : null}
+        <svg viewBox="0 0 100 100" className="absolute inset-0 size-full" role="img" aria-label={t("服装平铺尺寸测量位置示意")}>
           {lines.map((line) => {
             const measurement = values.get(line.key);
             const value = measurement?.value || measurement?.aiValue || "?";
@@ -143,12 +144,12 @@ export function GarmentMeasurementGuide(props: {
             <span className="text-muted-foreground">
               {measurement.label}
               {manualLines.has(measurement.key)
-                ? <span className="ml-1 text-green-700">人工连线</span>
+                ? <span className="ml-1 text-green-700">{t("人工连线")}</span>
                 : aiLines.has(measurement.key)
-                  ? <span className="ml-1 text-blue-700">AI定位</span>
+                  ? <span className="ml-1 text-blue-700">{t("AI定位")}</span>
                   : null}
             </span>
-            <span className="font-medium tabular-nums">{measurement.value || measurement.aiValue || "待确认"}{measurement.value || measurement.aiValue ? " cm" : ""}</span>
+            <span className="font-medium tabular-nums">{measurement.value || measurement.aiValue || t("待确认")}{measurement.value || measurement.aiValue ? " cm" : ""}</span>
           </div>
         ))}
       </div>

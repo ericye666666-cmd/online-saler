@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { accessRequest, adminQuery, type PermissionRecord } from "../access-client";
+import { t } from "@/i18n/runtime";
 
 export default function PermissionsPage() {
   const { session } = useOperationsSession();
@@ -24,7 +25,7 @@ export default function PermissionsPage() {
     try {
       setPermissions(await accessRequest<PermissionRecord[]>(`/operations/access/permissions?${adminQuery(adminUserId)}`));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取权限。");
+      setError(caught instanceof Error ? caught.message : t("无法读取权限。"));
     } finally {
       setBusy("");
     }
@@ -40,15 +41,17 @@ export default function PermissionsPage() {
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-muted-foreground text-sm">系统管理</p>
-          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">权限管理</h1>
+          <p className="text-muted-foreground text-sm">{t("系统管理")}</p>
+          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{t("权限管理")}</h1>
           <p className="mt-2 max-w-2xl text-muted-foreground text-sm">
-            权限分为模块、页面和操作三层。前端只显示有权限的菜单，后端接口也会独立校验权限。
+            
+            {t("权限分为模块、页面和操作三层。前端只显示有权限的菜单，后端接口也会独立校验权限。")}
           </p>
         </div>
         <Button variant="outline" disabled={Boolean(busy)} onClick={() => void load()}>
           <RefreshCwIcon data-icon="inline-start" />
-          刷新
+          
+          {t("刷新")}
         </Button>
       </section>
       {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-destructive text-sm">{error}</div> : null}
@@ -57,17 +60,17 @@ export default function PermissionsPage() {
           <Card key={module}>
             <CardHeader>
               <CardTitle>{module}</CardTitle>
-              <CardDescription>模块级、页面级和操作级权限。</CardDescription>
+              <CardDescription>{t("模块级、页面级和操作级权限。")}</CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>代码</TableHead>
-                    <TableHead>粒度</TableHead>
-                    <TableHead>页面</TableHead>
-                    <TableHead>操作</TableHead>
-                    <TableHead>说明</TableHead>
+                    <TableHead>{t("代码")}</TableHead>
+                    <TableHead>{t("粒度")}</TableHead>
+                    <TableHead>{t("页面")}</TableHead>
+                    <TableHead>{t("操作")}</TableHead>
+                    <TableHead>{t("说明")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

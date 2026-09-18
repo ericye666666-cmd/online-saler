@@ -1,5 +1,6 @@
 import JsBarcode from "jsbarcode";
 import type { LabelPrintPayload } from "../local-label-print";
+import { t } from "@/i18n/runtime";
 
 export type LabelRaster = { width: 480; height: 320; data: string };
 // TSPL BITMAP is packed MSB first, one bit per printer dot (1 = black).
@@ -17,7 +18,7 @@ export function renderProductLabel(payload: LabelPrintPayload): { preview: strin
   const canvas = document.createElement("canvas");
   canvas.width = 480; canvas.height = 320;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("浏览器无法生成标签预览，请使用电脑端 Chrome 或 Edge。");
+  if (!ctx) throw new Error(t("浏览器无法生成标签预览，请使用电脑端 Chrome 或 Edge。"));
   ctx.fillStyle = "white"; ctx.fillRect(0, 0, 480, 320); ctx.fillStyle = "black";
   const label = payload.label_payload;
   function line(text: string, y: number, size: number, bold = false) {
@@ -29,11 +30,11 @@ export function renderProductLabel(payload: LabelPrintPayload): { preview: strin
   line(label.title, 40, 24, true);
   line(`${label.category} / ${label.color}`, 69, 18);
   line(`SIZE ${label.size}   ${label.condition}`, 96, 20);
-  line(`货架 ${label.location}`, 137, 32, true);
+  line(t("货架 {location}", { location: label.location }), 137, 32, true);
   const bars = document.createElement("canvas");
   JsBarcode(bars, label.barcode_value, { format: "CODE128", displayValue: false, width: 2, height: 80, margin: 20, marginTop: 0, marginBottom: 0 });
   // Never stretch or compress bars: preserve two-dot modules and quiet zones.
-  if (bars.width > 480) throw new Error("条码过长，无法在 60×40 标签上清晰打印。请联系管理员检查条码规则。");
+  if (bars.width > 480) throw new Error(t("条码过长，无法在 60×40 标签上清晰打印。请联系管理员检查条码规则。"));
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(bars, Math.floor((480 - bars.width) / 2), 155);
   line(label.barcode_value, 260, 20);

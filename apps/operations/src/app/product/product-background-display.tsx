@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { operationsFetch } from "@/lib/operations-api";
 import type { ImageProcessingJobRecord, ProductImageComparisonResponse } from "@online-saler/shared-types";
 import { completedCaptureCount } from "./product-factory-upload-flow";
+import { t } from "@/i18n/runtime";
 
 type Item = { id: string; status: string; category?: string | null; subcategory?: string | null; images?: Array<{ id: string; type: string; createdAt?: string }> };
 type Batch = { id: string; targetCount: number; products: Item[] };
@@ -15,7 +16,7 @@ const LIMIT = 2;
 async function request<T>(path: string): Promise<T> {
   const response = await operationsFetch(`/api-proxy${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   const body = await response.json();
-  if (!response.ok) throw new Error(body.message || "白底图生成请求失败");
+  if (!response.ok) throw new Error(body.message || t("白底图生成请求失败"));
   return body as T;
 }
 
@@ -43,7 +44,7 @@ export function startBatchDisplayWork(batch: Batch) {
     waiting.push(async () => {
       try {
         const response = await operationsFetch(`/api-proxy/products/${product.id}/image-comparison`);
-        if (!response.ok) throw new Error("读取白底图进度失败");
+        if (!response.ok) throw new Error(t("读取白底图进度失败"));
         const comparison = await response.json() as ProductImageComparisonResponse;
         if (comparison.aiDisplayMain) return;
         let job = await request<ImageProcessingJobRecord>(`/products/${product.id}/images/${source.id}/ensure-display`);
@@ -74,7 +75,7 @@ export function BatchDisplayProgress({ batch }: { batch: Batch }) {
       try {
         const comparisons = await Promise.all(batch.products.map(async (product) => {
           const response = await operationsFetch(`/api-proxy/products/${product.id}/image-comparison`);
-          if (!response.ok) throw new Error("进度暂不可用");
+          if (!response.ok) throw new Error(t("进度暂不可用"));
           return response.json() as Promise<ProductImageComparisonResponse>;
         }));
         if (!stopped) setProgress({
@@ -88,6 +89,7 @@ export function BatchDisplayProgress({ batch }: { batch: Batch }) {
     return () => { stopped = true; clearTimeout(timer); };
   }, [batch]);
   return <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm" role="status">
-    白底展示图后台生成：{progress ? `已完成 ${progress.ready}/${batch.targetCount} 件${progress.failed ? `，${progress.failed} 件失败，可在审核页重试` : ""}` : "正在读取进度"}。你可以继续填写商品信息，切换商品不会中断生成。
+    
+    {t("白底展示图后台生成：")}{progress ? t("已完成 {ready}/{targetCount} 件{v2}", { ready: progress.ready, targetCount: batch.targetCount, v2: progress.failed ? t("，{failed} 件失败，可在审核页重试", { failed: progress.failed }) : "" }) : t("正在读取进度")}{t("。你可以继续填写商品信息，切换商品不会中断生成。")}
   </div>;
 }

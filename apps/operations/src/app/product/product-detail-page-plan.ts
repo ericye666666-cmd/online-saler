@@ -1,3 +1,4 @@
+import { t } from "@/i18n/runtime";
 export const PRODUCT_DETAIL_ASSET_PLAN = [
   { type: "FRONT_MAIN", title: "正面主图", shortTitle: "主图", optional: false },
   { type: "BACK_MAIN", title: "背面实物", shortTitle: "背面", optional: true },
@@ -19,9 +20,9 @@ export function detailGenerationButtonLabel(batch: {
   targetCount: number;
   pending: number;
 }) {
-  if (!batch.generationReady) return `等待校准（${batch.calibrated}/${batch.targetCount}）`;
-  if (batch.pending === 0) return "没有待生成详情";
-  return `生成 ${batch.pending} 件详情草稿`;
+  if (!batch.generationReady) return t("等待校准（{calibrated}/{targetCount}）", { calibrated: batch.calibrated, targetCount: batch.targetCount });
+  if (batch.pending === 0) return t("没有待生成详情");
+  return t("生成 {pending} 件详情草稿", { pending: batch.pending });
 }
 
 export function detailProductStage(product: {
@@ -50,14 +51,14 @@ export type DetailBatchSelectionSummary = {
 };
 
 export function detailBatchStageLabel(batch: DetailBatchSelectionSummary) {
-  if (!batch.generationReady) return `等待校准 ${batch.calibrated}/${batch.targetCount}`;
-  if (batch.generating > 0) return `生成中 ${batch.generating}/${batch.targetCount}`;
-  if (batch.pending > 0) return `待生成 ${batch.pending} 件`;
-  if (batch.failed > 0) return `失败 ${batch.failed} 件`;
-  if (batch.outdated > 0) return `待重生成 ${batch.outdated} 件`;
-  if (batch.approved >= batch.targetCount) return "详情已批准";
-  if (batch.succeeded > 0) return `待检查 ${batch.succeeded} 件`;
-  return "等待生成";
+  if (!batch.generationReady) return t("等待校准 {calibrated}/{targetCount}", { calibrated: batch.calibrated, targetCount: batch.targetCount });
+  if (batch.generating > 0) return t("生成中 {generating}/{targetCount}", { generating: batch.generating, targetCount: batch.targetCount });
+  if (batch.pending > 0) return t("待生成 {pending} 件", { pending: batch.pending });
+  if (batch.failed > 0) return t("失败 {failed} 件", { failed: batch.failed });
+  if (batch.outdated > 0) return t("待重生成 {outdated} 件", { outdated: batch.outdated });
+  if (batch.approved >= batch.targetCount) return t("详情已批准");
+  if (batch.succeeded > 0) return t("待检查 {succeeded} 件", { succeeded: batch.succeeded });
+  return t("等待生成");
 }
 
 export function sortDetailBatches<T extends DetailBatchSelectionSummary>(batches: T[]) {

@@ -49,6 +49,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ORDER_STATUS_TABS, type OrderStatusTab } from "./order-center-routes";
 import { AfterSalesPanel } from "./after-sales-panel";
+import { operationsFormatLocale, t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -252,7 +253,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
       setCounts(nextCounts);
       setEmployees(nextEmployees);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取订单中心。 ");
+      setError(caught instanceof Error ? caught.message : t("无法读取订单中心。 "));
     } finally {
       setBusy(false);
     }
@@ -271,7 +272,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
       });
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "订单操作失败。");
+      setError(caught instanceof Error ? caught.message : t("订单操作失败。"));
     } finally {
       setBusy(false);
     }
@@ -285,9 +286,9 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={meta.title} description={meta.description}>
+      <PageHeader title={t(meta.title)} description={t(meta.description)}>
         <Button variant="outline" disabled={busy} onClick={() => void load()}>
-          <RefreshCwIcon data-icon="inline-start" />刷新
+          <RefreshCwIcon data-icon="inline-start" />{t("刷新")}
         </Button>
       </PageHeader>
 
@@ -296,7 +297,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
           <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
             {ORDER_STATUS_TABS.map(([value, label]) => (
               <TabsTrigger key={value} value={value} className="shrink-0">
-                {label}<Badge variant="secondary">{counts[value] ?? 0}</Badge>
+                {t(label)}<Badge variant="secondary">{counts[value] ?? 0}</Badge>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -315,7 +316,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
       {error ? (
         <Alert variant="destructive">
           <AlertTriangleIcon />
-          <AlertTitle>订单中心操作失败</AlertTitle>
+          <AlertTitle>{t("订单中心操作失败")}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
@@ -334,10 +335,10 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
           <Empty className="min-h-64 border">
             <EmptyHeader>
               <EmptyMedia variant="icon"><ClipboardCheckIcon /></EmptyMedia>
-              <EmptyTitle>{busy ? "正在读取订单" : "当前筛选下没有订单"}</EmptyTitle>
-              <EmptyDescription>{busy ? "订单、员工和状态数量正在同步。" : "可以重置筛选，或切换其他状态查看。"}</EmptyDescription>
+              <EmptyTitle>{busy ? t("正在读取订单") : t("当前筛选下没有订单")}</EmptyTitle>
+              <EmptyDescription>{busy ? t("订单、员工和状态数量正在同步。") : t("可以重置筛选，或切换其他状态查看。")}</EmptyDescription>
             </EmptyHeader>
-            {!busy ? <EmptyContent><Button variant="outline" onClick={resetFilters}><RotateCcwIcon data-icon="inline-start" />重置筛选</Button></EmptyContent> : null}
+            {!busy ? <EmptyContent><Button variant="outline" onClick={resetFilters}><RotateCcwIcon data-icon="inline-start" />{t("重置筛选")}</Button></EmptyContent> : null}
           </Empty>
         )}
       </div>
@@ -374,7 +375,7 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
       setOrder(detail);
       setEmployees(people);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取订单详情。");
+      setError(caught instanceof Error ? caught.message : t("无法读取订单详情。"));
     } finally { setBusy(false); }
   }, [accessToken, orderId]);
 
@@ -389,23 +390,23 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
         body: JSON.stringify(body ?? {})
       });
       await load();
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "订单操作失败。"); }
+    } catch (caught) { setError(caught instanceof Error ? caught.message : t("订单操作失败。")); }
     finally { setBusy(false); }
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={order?.orderNumber ?? "订单详情"} description="完整商品清单、员工关联、配送信息与状态时间线。">
-        <Button variant="outline" asChild><Link href="/orders/all">返回全部订单</Link></Button>
+      <PageHeader title={order?.orderNumber ?? t("订单详情")} description={t("完整商品清单、员工关联、配送信息与状态时间线。")}>
+        <Button variant="outline" asChild><Link href="/orders/all">{t("返回全部订单")}</Link></Button>
       </PageHeader>
-      {error ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>无法打开订单</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
+      {error ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{t("无法打开订单")}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
       {order ? (
         <>
           <OrderCard order={order} session={session} busy={busy} showTimeline onDialog={setDialog} onDirect={directAction} />
           <AfterSalesPanel key={order.id} order={order} session={session} onOrderChanged={load} />
         </>
       ) : (
-        <Empty className="min-h-64 border"><EmptyHeader><EmptyTitle>{busy ? "正在读取" : "订单不存在"}</EmptyTitle></EmptyHeader></Empty>
+        <Empty className="min-h-64 border"><EmptyHeader><EmptyTitle>{busy ? t("正在读取") : t("订单不存在")}</EmptyTitle></EmptyHeader></Empty>
       )}
       <OrderActionDialog
         state={dialog}
@@ -422,7 +423,7 @@ function PageHeader({ title, description, children }: { title: string; descripti
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div className="flex flex-col gap-1">
-        <p className="text-muted-foreground text-sm">订单中心</p>
+        <p className="text-muted-foreground text-sm">{t("订单中心")}</p>
         <h1 className="font-semibold text-2xl tracking-tight">{title}</h1>
         <p className="max-w-3xl text-muted-foreground text-sm">{description}</p>
       </div>
@@ -444,51 +445,51 @@ function OrderFilters(props: {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>统一筛选</CardTitle>
-        <CardDescription>先选时间，再按订单、顾客、商品、员工或配送信息缩小范围。</CardDescription>
+        <CardTitle>{t("统一筛选")}</CardTitle>
+        <CardDescription>{t("先选时间，再按订单、顾客、商品、员工或配送信息缩小范围。")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => onChange(dateShortcut(filters, 0, 0))}>今天</Button>
-          <Button size="sm" variant="outline" onClick={() => onChange(dateShortcut(filters, 1, 1))}>昨天</Button>
-          <Button size="sm" variant="outline" onClick={() => onChange(dateShortcut(filters, 6, 0))}>最近7天</Button>
-          <Button size="sm" variant="outline" onClick={() => onChange(dateShortcut(filters, 29, 0))}>最近30天</Button>
+          <Button size="sm" variant="outline" onClick={() => onChange(dateShortcut(filters, 0, 0))}>{t("今天")}</Button>
+          <Button size="sm" variant="outline" onClick={() => onChange(dateShortcut(filters, 1, 1))}>{t("昨天")}</Button>
+          <Button size="sm" variant="outline" onClick={() => onChange(dateShortcut(filters, 6, 0))}>{t("最近7天")}</Button>
+          <Button size="sm" variant="outline" onClick={() => onChange(dateShortcut(filters, 29, 0))}>{t("最近30天")}</Button>
         </div>
         <FieldGroup className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <TextFilter label="开始日期" type="date" value={filters.dateFrom} onChange={(value) => update("dateFrom", value)} />
-          <TextFilter label="结束日期" type="date" value={filters.dateTo} onChange={(value) => update("dateTo", value)} />
-          <TextFilter label="订单号" value={filters.orderNumber} onChange={(value) => update("orderNumber", value)} />
-          <TextFilter label="顾客姓名" value={filters.customerName} onChange={(value) => update("customerName", value)} />
-          <TextFilter label="本单付款手机号" value={filters.customerPhone} onChange={(value) => update("customerPhone", value)} />
-          <TextFilter label="商品名称" value={filters.productName} onChange={(value) => update("productName", value)} />
+          <TextFilter label={t("开始日期")} type="date" value={filters.dateFrom} onChange={(value) => update("dateFrom", value)} />
+          <TextFilter label={t("结束日期")} type="date" value={filters.dateTo} onChange={(value) => update("dateTo", value)} />
+          <TextFilter label={t("订单号")} value={filters.orderNumber} onChange={(value) => update("orderNumber", value)} />
+          <TextFilter label={t("顾客姓名")} value={filters.customerName} onChange={(value) => update("customerName", value)} />
+          <TextFilter label={t("本单付款手机号")} value={filters.customerPhone} onChange={(value) => update("customerPhone", value)} />
+          <TextFilter label={t("商品名称")} value={filters.productName} onChange={(value) => update("productName", value)} />
           <TextFilter label="Barcode" value={filters.barcode} onChange={(value) => update("barcode", value)} />
-          <TextFilter label="配送员" value={filters.rider} onChange={(value) => update("rider", value)} />
+          <TextFilter label={t("配送员")} value={filters.rider} onChange={(value) => update("rider", value)} />
           <TextFilter label="Affiliate" value={filters.affiliate} onChange={(value) => update("affiliate", value)} />
-          <SelectFilter label="自提或配送" value={filters.fulfillmentMethod} onChange={(value) => update("fulfillmentMethod", value)} options={[["PICKUP", "自提"], ["KIKUYU_LOCAL_DELIVERY", "配送"]]} />
-          <SelectFilter label="支付状态" value={filters.paymentStatus} onChange={(value) => update("paymentStatus", value)} options={PAYMENT_OPTIONS} />
-          <SelectFilter label="订单状态" value={filters.orderStatus} onChange={(value) => update("orderStatus", value)} options={ORDER_OPTIONS} />
-          <EmployeeFilter label="拣货员工" value={filters.pickerEmployeeId} employees={employees} onChange={(value) => update("pickerEmployeeId", value)} />
-          <EmployeeFilter label="打包员工" value={filters.packerEmployeeId} employees={employees} onChange={(value) => update("packerEmployeeId", value)} />
+          <SelectFilter label={t("自提或配送")} value={filters.fulfillmentMethod} onChange={(value) => update("fulfillmentMethod", value)} options={[["PICKUP", t("自提")], ["KIKUYU_LOCAL_DELIVERY", t("配送")]]} />
+          <SelectFilter label={t("支付状态")} value={filters.paymentStatus} onChange={(value) => update("paymentStatus", value)} options={PAYMENT_OPTIONS} />
+          <SelectFilter label={t("订单状态")} value={filters.orderStatus} onChange={(value) => update("orderStatus", value)} options={ORDER_OPTIONS} />
+          <EmployeeFilter label={t("拣货员工")} value={filters.pickerEmployeeId} employees={employees} onChange={(value) => update("pickerEmployeeId", value)} />
+          <EmployeeFilter label={t("打包员工")} value={filters.packerEmployeeId} employees={employees} onChange={(value) => update("packerEmployeeId", value)} />
         </FieldGroup>
       </CardContent>
       <CardFooter className="justify-end gap-2">
-        <Button variant="outline" disabled={busy} onClick={onReset}><RotateCcwIcon data-icon="inline-start" />重置</Button>
-        <Button disabled={busy} onClick={onApply}><SearchIcon data-icon="inline-start" />应用筛选</Button>
+        <Button variant="outline" disabled={busy} onClick={onReset}><RotateCcwIcon data-icon="inline-start" />{t("重置")}</Button>
+        <Button disabled={busy} onClick={onApply}><SearchIcon data-icon="inline-start" />{t("应用筛选")}</Button>
       </CardFooter>
     </Card>
   );
 }
 
 function TextFilter({ label, value, type = "text", onChange }: { label: string; value: string; type?: string; onChange: (value: string) => void }) {
-  return <Field><FieldLabel>{label}</FieldLabel><Input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></Field>;
+  return <Field><FieldLabel>{t(label)}</FieldLabel><Input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></Field>;
 }
 
 function SelectFilter({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<readonly [string, string]>; onChange: (value: string) => void }) {
   return (
-    <Field><FieldLabel>{label}</FieldLabel>
+    <Field><FieldLabel>{t(label)}</FieldLabel>
       <Select value={value || "ALL"} onValueChange={(next) => onChange(next === "ALL" ? "" : next)}>
-        <SelectTrigger className="w-full"><SelectValue placeholder="全部" /></SelectTrigger>
-        <SelectContent><SelectGroup><SelectItem value="ALL">全部</SelectItem>{options.map(([key, text]) => <SelectItem key={key} value={key}>{text}</SelectItem>)}</SelectGroup></SelectContent>
+        <SelectTrigger className="w-full"><SelectValue placeholder={t("全部")} /></SelectTrigger>
+        <SelectContent><SelectGroup><SelectItem value="ALL">{t("全部")}</SelectItem>{options.map(([key, text]) => <SelectItem key={key} value={key}>{t(text)}</SelectItem>)}</SelectGroup></SelectContent>
       </Select>
     </Field>
   );
@@ -522,32 +523,32 @@ function OrderCard(props: {
               <StatusBadge status={payment?.status ?? "NO_PAYMENT"} />
             </div>
             <CardDescription>{formatDate(order.createdAt)} · {order.customer.displayName ?? order.customer.email}</CardDescription>
-            <CardDescription>本单付款号码：{payment?.phone ?? "暂无付款号码"}</CardDescription>
-            <CardDescription>顾客当前联系方式：{order.customer.phone ?? "未留手机号"}</CardDescription>
+            <CardDescription>{t("本单付款号码：")}{payment?.phone ?? t("暂无付款号码")}</CardDescription>
+            <CardDescription>{t("顾客当前联系方式：")}{order.customer.phone ?? t("未留手机号")}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{order.fulfillmentMethod === "PICKUP" ? "自提" : "配送"}</Badge>
+            <Badge variant="outline">{order.fulfillmentMethod === "PICKUP" ? t("自提") : t("配送")}</Badge>
             <span className="font-semibold">{money(order.totalKsh)}</span>
-            {!showTimeline ? <Button size="sm" variant="outline" asChild><Link href={`/orders/${order.id}`}>查看详情与历史</Link></Button> : null}
+            {!showTimeline ? <Button size="sm" variant="outline" asChild><Link href={`/orders/${order.id}`}>{t("查看详情与历史")}</Link></Button> : null}
           </div>
         </div>
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <Assignment label="拣货员工" value={fulfillment?.assignedPicker?.name} />
-          <Assignment label="打包员工" value={fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name} />
-          <Assignment label="出库确认" value={fulfillment?.dispatchedBy?.name} />
-          <Assignment label="配送员" value={fulfillment?.deliveryRider?.name} />
-          <Assignment label="自提确认" value={fulfillment?.pickupConfirmedBy?.name} />
-          <Assignment label="售后负责人" value={fulfillment?.afterSaleOwner?.name} />
+          <Assignment label={t("拣货员工")} value={fulfillment?.assignedPicker?.name} />
+          <Assignment label={t("打包员工")} value={fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name} />
+          <Assignment label={t("出库确认")} value={fulfillment?.dispatchedBy?.name} />
+          <Assignment label={t("配送员")} value={fulfillment?.deliveryRider?.name} />
+          <Assignment label={t("自提确认")} value={fulfillment?.pickupConfirmedBy?.name} />
+          <Assignment label={t("售后负责人")} value={fulfillment?.afterSaleOwner?.name} />
           <Assignment label="Affiliate" value={order.affiliate ? `${order.affiliate.displayName} · ${order.affiliate.affiliateCode}` : undefined} />
-          <Assignment label="包装" value={fulfillment?.packagingMethod ? `${fulfillment.packagingMethod} · ${fulfillment.packageCount ?? 1}件` : undefined} />
+          <Assignment label={t("包装")} value={fulfillment?.packagingMethod ? t("{packagingMethod} · {v1}件", { packagingMethod: fulfillment.packagingMethod, v1: fulfillment.packageCount ?? 1 }) : undefined} />
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" ? <div className="rounded-lg border p-3 text-sm space-y-2">
-          <p className="font-medium">配送地址</p>
-          <p className="whitespace-pre-wrap break-words">{delivery.address || "未填写"}</p>
-          {delivery.point ? <a className="underline" href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">打开 Google Maps 配送位置 ↗</a> : null}
-          {order.deliveryNote ? <p className="whitespace-pre-wrap">配送备注：{order.deliveryNote}</p> : null}
+          <p className="font-medium">{t("配送地址")}</p>
+          <p className="whitespace-pre-wrap break-words">{delivery.address || t("未填写")}</p>
+          {delivery.point ? <a className="underline" href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">{t("打开 Google Maps 配送位置 ↗")}</a> : null}
+          {order.deliveryNote ? <p className="whitespace-pre-wrap">{t("配送备注：")}{order.deliveryNote}</p> : null}
         </div> : null}
         <Separator />
         <div className="flex flex-col gap-3">
@@ -556,20 +557,20 @@ function OrderCard(props: {
             return (
               <div key={item.id} className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[112px_1fr_auto] sm:items-center">
                 <div className="flex h-32 w-28 items-center justify-center overflow-hidden rounded-md border bg-white">
-                  <OrderItemImage src={item.displayImageUrl ?? item.snapshot?.imageUrl} alt={item.snapshot?.title ?? "商品图片"} />
+                  <OrderItemImage src={item.displayImageUrl ?? item.snapshot?.imageUrl} alt={item.snapshot?.title ?? t("商品图片")} />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-medium">{index + 1}. {item.snapshot?.title ?? "未命名商品"}</p>
+                  <p className="font-medium">{index + 1}. {item.snapshot?.title ?? t("未命名商品")}</p>
                   <div className="mt-1 grid gap-x-4 gap-y-1 text-muted-foreground text-sm md:grid-cols-3">
-                    <span>Barcode: <strong className="text-foreground">{scan?.expectedBarcode ?? item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? "缺失"}</strong></span>
-                    <span>货架位: <strong className="text-foreground">{item.inventoryItem?.location?.locationCode ?? "未分配"}</strong></span>
-                    <span>价格: <strong className="text-foreground">{money(item.unitPriceKsh)}</strong></span>
+                    <span>Barcode: <strong className="text-foreground">{scan?.expectedBarcode ?? item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? t("缺失")}</strong></span>
+                    <span>{t("货架位:")} <strong className="text-foreground">{item.inventoryItem?.location?.locationCode ?? t("未分配")}</strong></span>
+                    <span>{t("价格:")} <strong className="text-foreground">{money(item.unitPriceKsh)}</strong></span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 sm:flex-col sm:items-end">
-                  <Badge variant={scan?.status === "VERIFIED" ? "secondary" : "outline"}>{scan?.status === "VERIFIED" ? "已核对" : "未核对"}</Badge>
+                  <Badge variant={scan?.status === "VERIFIED" ? "secondary" : "outline"}>{scan?.status === "VERIFIED" ? t("已核对") : t("未核对")}</Badge>
                   {fulfillment?.status === "PICKING" && scan?.status !== "VERIFIED" && hasPermission(session, "orders.pick") ? (
-                    <Button size="sm" disabled={busy} onClick={() => onDialog({ kind: "scan", order, item })}><ScanBarcodeIcon data-icon="inline-start" />扫码核对</Button>
+                    <Button size="sm" disabled={busy} onClick={() => onDialog({ kind: "scan", order, item })}><ScanBarcodeIcon data-icon="inline-start" />{t("扫码核对")}</Button>
                   ) : null}
                 </div>
               </div>
@@ -579,7 +580,7 @@ function OrderCard(props: {
 
         {afterSales.length ? <AfterSaleSummary cases={afterSales} /> : null}
         {fulfillment?.status === "EXCEPTION" ? (
-          <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{statusLabel(fulfillment.exceptionReason ?? "OTHER")}</AlertTitle><AlertDescription>{fulfillment.exceptionNote ?? "尚未填写异常说明。"}</AlertDescription></Alert>
+          <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{statusLabel(fulfillment.exceptionReason ?? "OTHER")}</AlertTitle><AlertDescription>{fulfillment.exceptionNote ?? t("尚未填写异常说明。")}</AlertDescription></Alert>
         ) : null}
         {showTimeline ? <OrderTimeline events={fulfillment?.events ?? []} /> : null}
       </CardContent>
@@ -597,7 +598,7 @@ function OrderItemImage({ src, alt }: { src?: string | null; alt: string }) {
     return (
       <div className="flex flex-col items-center gap-2 px-2 text-center text-muted-foreground text-xs">
         <PackageCheckIcon className="size-7" />
-        <span>暂无商品图</span>
+        <span>{t("暂无商品图")}</span>
       </div>
     );
   }
@@ -613,19 +614,19 @@ function OrderActions({ order, session, busy, onDialog, onDirect }: {
 }) {
   const status = order.fulfillment?.status;
   const actions: ReactNode[] = [];
-  if (status === "PAID" && hasPermission(session, "orders.assign-picker")) actions.push(<Button key="assign" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-picker", order })}><UserRoundCheckIcon data-icon="inline-start" />分配拣货员</Button>);
-  if (status === "PAID" && hasPermission(session, "orders.pick")) actions.push(<Button key="claim" disabled={busy} onClick={() => void onDirect(order, "claim-picking")}><ClipboardCheckIcon data-icon="inline-start" />领取拣货任务</Button>);
-  if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && !order.fulfillment?.packingStartedAt) actions.push(<Button key="start-pack" disabled={busy} onClick={() => onDialog({ kind: "start-packing", order })}><BoxIcon data-icon="inline-start" />开始打包</Button>);
-  if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && order.fulfillment?.packingStartedAt) actions.push(<Button key="pack" disabled={busy} onClick={() => onDialog({ kind: "complete-packing", order })}><PackageCheckIcon data-icon="inline-start" />完成打包</Button>);
-  if (status === "PACKED" && order.fulfillmentMethod === "PICKUP" && hasPermission(session, "orders.pack")) actions.push(<Button key="pickup-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-pickup")}><ClipboardCheckIcon data-icon="inline-start" />设为待自提</Button>);
-  if (status === "PACKED" && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="dispatch-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-dispatch")}><TruckIcon data-icon="inline-start" />设为待发货</Button>);
-  if (status === "READY_FOR_DISPATCH" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="rider" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-rider", order })}><TruckIcon data-icon="inline-start" />分配配送员</Button>);
-  if (status === "READY_FOR_DISPATCH" && order.fulfillment?.deliveryRiderId && hasPermission(session, "orders.dispatch")) actions.push(<Button key="dispatch" disabled={busy} onClick={() => void onDirect(order, "dispatch")}><TruckIcon data-icon="inline-start" />已交给配送员</Button>);
-  if (status === "READY_FOR_PICKUP" && hasPermission(session, "orders.complete")) actions.push(<Button key="pickup" disabled={busy} onClick={() => onDialog({ kind: "confirm-pickup", order })}><CheckCircle2Icon data-icon="inline-start" />确认已取货</Button>);
-  if (status === "OUT_FOR_DELIVERY" && hasPermission(session, "orders.complete")) actions.push(<Button key="delivered" disabled={busy} onClick={() => void onDirect(order, "complete-delivery")}><CheckCircle2Icon data-icon="inline-start" />确认送达</Button>);
-  if (order.customerServiceCases.some((item) => item.issueType === "AFTER_SALE") && hasPermission(session, "orders.after-sale")) actions.push(<Button key="after-sale" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-after-sale", order })}>处理售后</Button>);
-  if (status && !["COMPLETED", "EXCEPTION"].includes(status) && ["orders.pick", "orders.pack", "orders.dispatch"].some((permission) => hasPermission(session, permission))) actions.push(<Button key="exception" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "exception", order })}><AlertTriangleIcon data-icon="inline-start" />提交异常事实</Button>);
-  if (!["COMPLETED", "CANCELLED", "EXPIRED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.cancel")) actions.push(<Button key="cancel" variant="destructive" disabled={busy} onClick={() => onDialog({ kind: "cancel", order })}>取消订单</Button>);
+  if (status === "PAID" && hasPermission(session, "orders.assign-picker")) actions.push(<Button key="assign" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-picker", order })}><UserRoundCheckIcon data-icon="inline-start" />{t("分配拣货员")}</Button>);
+  if (status === "PAID" && hasPermission(session, "orders.pick")) actions.push(<Button key="claim" disabled={busy} onClick={() => void onDirect(order, "claim-picking")}><ClipboardCheckIcon data-icon="inline-start" />{t("领取拣货任务")}</Button>);
+  if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && !order.fulfillment?.packingStartedAt) actions.push(<Button key="start-pack" disabled={busy} onClick={() => onDialog({ kind: "start-packing", order })}><BoxIcon data-icon="inline-start" />{t("开始打包")}</Button>);
+  if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && order.fulfillment?.packingStartedAt) actions.push(<Button key="pack" disabled={busy} onClick={() => onDialog({ kind: "complete-packing", order })}><PackageCheckIcon data-icon="inline-start" />{t("完成打包")}</Button>);
+  if (status === "PACKED" && order.fulfillmentMethod === "PICKUP" && hasPermission(session, "orders.pack")) actions.push(<Button key="pickup-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-pickup")}><ClipboardCheckIcon data-icon="inline-start" />{t("设为待自提")}</Button>);
+  if (status === "PACKED" && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="dispatch-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-dispatch")}><TruckIcon data-icon="inline-start" />{t("设为待发货")}</Button>);
+  if (status === "READY_FOR_DISPATCH" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="rider" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-rider", order })}><TruckIcon data-icon="inline-start" />{t("分配配送员")}</Button>);
+  if (status === "READY_FOR_DISPATCH" && order.fulfillment?.deliveryRiderId && hasPermission(session, "orders.dispatch")) actions.push(<Button key="dispatch" disabled={busy} onClick={() => void onDirect(order, "dispatch")}><TruckIcon data-icon="inline-start" />{t("已交给配送员")}</Button>);
+  if (status === "READY_FOR_PICKUP" && hasPermission(session, "orders.complete")) actions.push(<Button key="pickup" disabled={busy} onClick={() => onDialog({ kind: "confirm-pickup", order })}><CheckCircle2Icon data-icon="inline-start" />{t("确认已取货")}</Button>);
+  if (status === "OUT_FOR_DELIVERY" && hasPermission(session, "orders.complete")) actions.push(<Button key="delivered" disabled={busy} onClick={() => void onDirect(order, "complete-delivery")}><CheckCircle2Icon data-icon="inline-start" />{t("确认送达")}</Button>);
+  if (order.customerServiceCases.some((item) => item.issueType === "AFTER_SALE") && hasPermission(session, "orders.after-sale")) actions.push(<Button key="after-sale" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-after-sale", order })}>{t("处理售后")}</Button>);
+  if (status && !["COMPLETED", "EXCEPTION"].includes(status) && ["orders.pick", "orders.pack", "orders.dispatch"].some((permission) => hasPermission(session, permission))) actions.push(<Button key="exception" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "exception", order })}><AlertTriangleIcon data-icon="inline-start" />{t("提交异常事实")}</Button>);
+  if (!["COMPLETED", "CANCELLED", "EXPIRED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.cancel")) actions.push(<Button key="cancel" variant="destructive" disabled={busy} onClick={() => onDialog({ kind: "cancel", order })}>{t("取消订单")}</Button>);
   return actions;
 }
 
@@ -709,7 +710,7 @@ function OrderActionDialog(props: {
       });
       await onDone();
     } catch (caught) {
-      setError(caught instanceof ApiRequestError ? caught : new ApiRequestError(caught instanceof Error ? caught.message : "订单操作失败。"));
+      setError(caught instanceof ApiRequestError ? caught : new ApiRequestError(caught instanceof Error ? caught.message : t("订单操作失败。")));
     } finally { setBusy(false); }
   }
 
@@ -720,8 +721,8 @@ function OrderActionDialog(props: {
     <Dialog open={Boolean(state)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{state ? dialogTitle(state.kind) : "订单操作"}</DialogTitle>
-          <DialogDescription>{state ? `${state.order.orderNumber} · 所有动作都会写入状态时间线。` : ""}</DialogDescription>
+          <DialogTitle>{state ? dialogTitle(state.kind) : t("订单操作")}</DialogTitle>
+          <DialogDescription>{state ? t("{orderNumber} · 所有动作都会写入状态时间线。", { orderNumber: state.order.orderNumber }) : ""}</DialogDescription>
         </DialogHeader>
         {state ? (
           <FieldGroup>
@@ -730,37 +731,37 @@ function OrderActionDialog(props: {
             ) : null}
             {state.kind === "scan" ? (
               <>
-                <Alert><ScanBarcodeIcon /><AlertTitle>{state.item?.snapshot?.title}</AlertTitle><AlertDescription>预期 Barcode: {expectedBarcode(state.order, state.item!)} · 正确货架位: {state.item?.inventoryItem?.location?.locationCode ?? "未分配"}</AlertDescription></Alert>
-                <TextFilter label="实际扫描 Barcode" value={barcode} onChange={setBarcode} />
+                <Alert><ScanBarcodeIcon /><AlertTitle>{state.item?.snapshot?.title}</AlertTitle><AlertDescription>{t("预期 Barcode:")} {expectedBarcode(state.order, state.item!)}  {t("· 正确货架位:")} {state.item?.inventoryItem?.location?.locationCode ?? t("未分配")}</AlertDescription></Alert>
+                <TextFilter label={t("实际扫描 Barcode")} value={barcode} onChange={setBarcode} />
               </>
             ) : null}
             {state.kind === "complete-packing" ? (
               <>
-                <Alert><PackageCheckIcon /><AlertTitle>已核对商品 {state.order.fulfillment?.items.filter((item) => item.status === "VERIFIED").length ?? 0} 件</AlertTitle><AlertDescription>{state.order.items.map((item) => item.snapshot?.title ?? "未命名商品").join("、")}</AlertDescription></Alert>
-                <SelectFilter label="包装方式" value={packagingMethod} onChange={setPackagingMethod} options={[["BAG", "Bag"], ["BOX", "Box"], ["OTHER", "Other"]]} />
-                <TextFilter label="包裹数量" type="number" value={packageCount} onChange={setPackageCount} />
+                <Alert><PackageCheckIcon /><AlertTitle>{t("已核对商品")} {state.order.fulfillment?.items.filter((item) => item.status === "VERIFIED").length ?? 0}  {t("件")}</AlertTitle><AlertDescription>{state.order.items.map((item) => item.snapshot?.title ?? t("未命名商品")).join("、")}</AlertDescription></Alert>
+                <SelectFilter label={t("包装方式")} value={packagingMethod} onChange={setPackagingMethod} options={[["BAG", "Bag"], ["BOX", "Box"], ["OTHER", "Other"]]} />
+                <TextFilter label={t("包裹数量")} type="number" value={packageCount} onChange={setPackageCount} />
               </>
             ) : null}
             {state.kind === "assign-rider" ? (
               <>
-                <SelectFilter label="配送员类型" value={riderType} onChange={setRiderType} options={[["INTERNAL", "内部员工"], ["EXTERNAL", "外部配送员"]]} />
-                {riderType === "EXTERNAL" ? <><TextFilter label="姓名" value={name} onChange={setName} /><TextFilter label="手机号" value={phone} onChange={setPhone} /><TextFilter label="配送公司（可选）" value={company} onChange={setCompany} /><TextFilter label="车辆信息（可选）" value={vehicle} onChange={setVehicle} /></> : null}
-                <TextFilter label="预计配送时间" type="datetime-local" value={estimatedDeliveryAt} onChange={setEstimatedDeliveryAt} />
+                <SelectFilter label={t("配送员类型")} value={riderType} onChange={setRiderType} options={[["INTERNAL", t("内部员工")], ["EXTERNAL", t("外部配送员")]]} />
+                {riderType === "EXTERNAL" ? <><TextFilter label={t("姓名")} value={name} onChange={setName} /><TextFilter label={t("手机号")} value={phone} onChange={setPhone} /><TextFilter label={t("配送公司（可选）")} value={company} onChange={setCompany} /><TextFilter label={t("车辆信息（可选）")} value={vehicle} onChange={setVehicle} /></> : null}
+                <TextFilter label={t("预计配送时间")} type="datetime-local" value={estimatedDeliveryAt} onChange={setEstimatedDeliveryAt} />
               </>
             ) : null}
-            {state.kind === "confirm-pickup" ? <><SelectFilter label="核对方式" value={verificationMethod} onChange={setVerificationMethod} options={[["ORDER_NUMBER", "订单号"], ["PHONE", "手机号"], ["PICKUP_CODE", "自提码"]]} /><TextFilter label="核对值" value={verificationValue} onChange={setVerificationValue} /></> : null}
-            {state.kind === "exception" ? <SelectFilter label="异常类型" value={exceptionReason} onChange={setExceptionReason} options={EXCEPTION_OPTIONS} /> : null}
-            {state.kind === "assign-after-sale" && !managedAfterSale ? <><TextFilter label="售后原因" value={afterSaleReason} onChange={setAfterSaleReason} /><TextFilter label="顾客要求" value={customerRequest} onChange={setCustomerRequest} /><SelectFilter label="当前售后状态" value={afterSaleStatus} onChange={setAfterSaleStatus} options={[["OPEN", "待处理"], ["IN_PROGRESS", "处理中"], ["RESOLVED", "已解决"], ["CLOSED", "已关闭"]]} /><SelectFilter label="是否需要退货" value={requiresReturn} onChange={setRequiresReturn} options={[["false", "不需要"], ["true", "需要"]]} /><SelectFilter label="是否需要退款" value={requiresRefund} onChange={setRequiresRefund} options={[["false", "不需要"], ["true", "需要"]]} /><SelectFilter label="是否影响 Affiliate 佣金" value={affectsAffiliateCommission} onChange={setAffectsAffiliateCommission} options={[["false", "否"], ["true", "是"]]} /></> : null}
-            {state.kind === "assign-after-sale" && managedAfterSale ? <p className="text-muted-foreground text-sm">此处仅分配售后负责人。审批、验收、退款和入库请在订单详情的“退货与退款”区域处理。</p> : null}
-            {state.kind === "cancel" ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>确认取消这张订单？</AlertTitle><AlertDescription>取消会写入状态事件；已经完成或退款的订单不能在此取消。</AlertDescription></Alert> : null}
-            {state.kind !== "scan" ? <Field><FieldLabel>备注（可选）</FieldLabel><Textarea value={note} onChange={(event) => setNote(event.target.value)} /></Field> : null}
+            {state.kind === "confirm-pickup" ? <><SelectFilter label={t("核对方式")} value={verificationMethod} onChange={setVerificationMethod} options={[["ORDER_NUMBER", t("订单号")], ["PHONE", t("手机号")], ["PICKUP_CODE", t("自提码")]]} /><TextFilter label={t("核对值")} value={verificationValue} onChange={setVerificationValue} /></> : null}
+            {state.kind === "exception" ? <SelectFilter label={t("异常类型")} value={exceptionReason} onChange={setExceptionReason} options={EXCEPTION_OPTIONS} /> : null}
+            {state.kind === "assign-after-sale" && !managedAfterSale ? <><TextFilter label={t("售后原因")} value={afterSaleReason} onChange={setAfterSaleReason} /><TextFilter label={t("顾客要求")} value={customerRequest} onChange={setCustomerRequest} /><SelectFilter label={t("当前售后状态")} value={afterSaleStatus} onChange={setAfterSaleStatus} options={[["OPEN", t("待处理")], ["IN_PROGRESS", t("处理中")], ["RESOLVED", t("已解决")], ["CLOSED", t("已关闭")]]} /><SelectFilter label={t("是否需要退货")} value={requiresReturn} onChange={setRequiresReturn} options={[["false", t("不需要")], ["true", t("需要")]]} /><SelectFilter label={t("是否需要退款")} value={requiresRefund} onChange={setRequiresRefund} options={[["false", t("不需要")], ["true", t("需要")]]} /><SelectFilter label={t("是否影响 Affiliate 佣金")} value={affectsAffiliateCommission} onChange={setAffectsAffiliateCommission} options={[["false", t("否")], ["true", t("是")]]} /></> : null}
+            {state.kind === "assign-after-sale" && managedAfterSale ? <p className="text-muted-foreground text-sm">{t("此处仅分配售后负责人。审批、验收、退款和入库请在订单详情的“退货与退款”区域处理。")}</p> : null}
+            {state.kind === "cancel" ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{t("确认取消这张订单？")}</AlertTitle><AlertDescription>{t("取消会写入状态事件；已经完成或退款的订单不能在此取消。")}</AlertDescription></Alert> : null}
+            {state.kind !== "scan" ? <Field><FieldLabel>{t("备注（可选）")}</FieldLabel><Textarea value={note} onChange={(event) => setNote(event.target.value)} /></Field> : null}
           </FieldGroup>
         ) : null}
         {error ? (
           <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{error.message}</AlertTitle><AlertDescription>{barcodeErrorDescription(error.details)}</AlertDescription></Alert>
         ) : null}
         <DialogFooter showCloseButton>
-          <Button disabled={busy} onClick={() => void submit()}>{busy ? "正在保存..." : "确认"}</Button>
+          <Button disabled={busy} onClick={() => void submit()}>{busy ? t("正在保存...") : t("确认")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -768,18 +769,18 @@ function OrderActionDialog(props: {
 }
 
 function Assignment({ label, value }: { label: string; value?: string | null }) {
-  return <div className="rounded-md bg-muted/40 px-3 py-2"><span className="text-muted-foreground">{label}</span><p className="mt-0.5 font-medium">{value || "未分配"}</p></div>;
+  return <div className="rounded-md bg-muted/40 px-3 py-2"><span className="text-muted-foreground">{label}</span><p className="mt-0.5 font-medium">{value || t("未分配")}</p></div>;
 }
 
 function AfterSaleSummary({ cases }: { cases: OrderRow["customerServiceCases"] }) {
-  return <div className="flex flex-col gap-2 rounded-lg border p-3"><p className="font-medium">售后信息</p>{cases.map((item) => <div key={item.id} className="grid gap-1 text-sm md:grid-cols-2"><span>原因：{item.afterSaleReason ?? item.title}</span><span>顾客要求：{item.customerRequest ?? "未填写"}</span><span>负责人：{item.assignedEmployee?.name ?? "未分配"}</span><span>状态：{statusLabel(item.status)}</span><span>退货：{item.requiresReturn ? "需要" : "不需要"}</span><span>退款：{item.requiresRefund ? "需要" : "不需要"}</span><span>影响 Affiliate 佣金：{item.affectsAffiliateCommission ? "是" : "否"}</span></div>)}</div>;
+  return <div className="flex flex-col gap-2 rounded-lg border p-3"><p className="font-medium">{t("售后信息")}</p>{cases.map((item) => <div key={item.id} className="grid gap-1 text-sm md:grid-cols-2"><span>{t("原因：")}{item.afterSaleReason ?? item.title}</span><span>{t("顾客要求：")}{item.customerRequest ?? t("未填写")}</span><span>{t("负责人：")}{item.assignedEmployee?.name ?? t("未分配")}</span><span>{t("状态：")}{statusLabel(item.status)}</span><span>{t("退货：")}{item.requiresReturn ? t("需要") : t("不需要")}</span><span>{t("退款：")}{item.requiresRefund ? t("需要") : t("不需要")}</span><span>{t("影响 Affiliate 佣金：")}{item.affectsAffiliateCommission ? t("是") : t("否")}</span></div>)}</div>;
 }
 
 function OrderTimeline({ events }: { events: FulfillmentEvent[] }) {
   return (
     <div className="flex flex-col gap-3">
-      <div><h2 className="font-semibold">状态时间线</h2><p className="text-muted-foreground text-sm">当前状态不会覆盖历史事件。</p></div>
-      {events.length ? <ol className="flex flex-col gap-3 border-l pl-4">{events.map((event) => <li key={event.id} className="relative"><span className="absolute top-1.5 -left-[21px] size-2 rounded-full bg-primary" /><div className="flex flex-wrap items-center gap-2"><strong>{actionLabel(event.action)}</strong><StatusBadge status={event.newStatus} /><span className="text-muted-foreground text-xs">{formatDate(event.createdAt)}</span></div><p className="text-muted-foreground text-sm">操作人：{event.actorAdminUser?.name ?? event.actorEmployee?.name ?? "系统"}{event.relatedEmployee ? ` · 关联员工：${event.relatedEmployee.name}` : ""}{event.deliveryRider ? ` · 配送员：${event.deliveryRider.name}` : ""}</p>{event.note ? <p className="text-sm">{event.note}</p> : null}{event.scannedBarcode ? <p className="text-sm">扫描：{event.scannedBarcode}{event.expectedBarcode ? ` · 预期：${event.expectedBarcode}` : ""}</p> : null}</li>)}</ol> : <p className="text-muted-foreground text-sm">尚无状态事件。</p>}
+      <div><h2 className="font-semibold">{t("状态时间线")}</h2><p className="text-muted-foreground text-sm">{t("当前状态不会覆盖历史事件。")}</p></div>
+      {events.length ? <ol className="flex flex-col gap-3 border-l pl-4">{events.map((event) => <li key={event.id} className="relative"><span className="absolute top-1.5 -left-[21px] size-2 rounded-full bg-primary" /><div className="flex flex-wrap items-center gap-2"><strong>{actionLabel(event.action)}</strong><StatusBadge status={event.newStatus} /><span className="text-muted-foreground text-xs">{formatDate(event.createdAt)}</span></div><p className="text-muted-foreground text-sm">{t("操作人：")}{event.actorAdminUser?.name ?? event.actorEmployee?.name ?? t("系统")}{event.relatedEmployee ? t(" · 关联员工：{name}", { name: event.relatedEmployee.name }) : ""}{event.deliveryRider ? t(" · 配送员：{name}", { name: event.deliveryRider.name }) : ""}</p>{event.note ? <p className="text-sm">{event.note}</p> : null}{event.scannedBarcode ? <p className="text-sm">{t("扫描：")}{event.scannedBarcode}{event.expectedBarcode ? t(" · 预期：{expectedBarcode}", { expectedBarcode: event.expectedBarcode }) : ""}</p> : null}</li>)}</ol> : <p className="text-muted-foreground text-sm">{t("尚无状态事件。")}</p>}
     </div>
   );
 }
@@ -811,35 +812,35 @@ function localDate(date: Date) {
 }
 
 function expectedBarcode(order: OrderRow, item: OrderRow["items"][number]) {
-  return order.fulfillment?.items.find((candidate) => candidate.orderItemId === item.id)?.expectedBarcode ?? item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? "缺失";
+  return order.fulfillment?.items.find((candidate) => candidate.orderItemId === item.id)?.expectedBarcode ?? item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? t("缺失");
 }
 
 function barcodeErrorDescription(details?: Record<string, unknown>) {
-  if (!details?.expectedBarcode && !details?.actualBarcode) return "请检查输入后重试。";
-  return `预期 Barcode: ${String(details.expectedBarcode ?? "缺失")}；实际扫描: ${String(details.actualBarcode ?? "空")}；商品: ${String(details.productName ?? "未知")}；正确货架位: ${String(details.locationCode ?? "未分配")}`;
+  if (!details?.expectedBarcode && !details?.actualBarcode) return t("请检查输入后重试。");
+  return t("预期 Barcode: {v0}；实际扫描: {v1}；商品: {v2}；正确货架位: {v3}", { v0: String(details.expectedBarcode ?? t("缺失")), v1: String(details.actualBarcode ?? t("空")), v2: String(details.productName ?? t("未知")), v3: String(details.locationCode ?? t("未分配")) });
 }
 
 function dialogTitle(kind: DialogKind) {
-  return ({ "assign-picker": "分配拣货员工", scan: "逐件 Barcode 核对", "start-packing": "开始打包", "complete-packing": "完成打包", "assign-rider": "分配配送员", "confirm-pickup": "确认顾客已取货", exception: "提交异常事实", "assign-after-sale": "处理售后订单", cancel: "取消订单" } as Record<DialogKind, string>)[kind];
+  return ({ "assign-picker": t("分配拣货员工"), scan: t("逐件 Barcode 核对"), "start-packing": t("开始打包"), "complete-packing": t("完成打包"), "assign-rider": t("分配配送员"), "confirm-pickup": t("确认顾客已取货"), exception: t("提交异常事实"), "assign-after-sale": t("处理售后订单"), cancel: t("取消订单") } as Record<DialogKind, string>)[kind];
 }
 
 function employeeLabel(kind: DialogKind) {
-  if (kind === "assign-picker") return "拣货员工";
-  if (kind === "start-packing") return "打包员工";
-  if (kind === "complete-packing") return "打包员工";
-  if (kind === "assign-rider") return "内部配送员工";
-  return "售后负责人";
+  if (kind === "assign-picker") return t("拣货员工");
+  if (kind === "start-packing") return t("打包员工");
+  if (kind === "complete-packing") return t("打包员工");
+  if (kind === "assign-rider") return t("内部配送员工");
+  return t("售后负责人");
 }
 
 function actionLabel(action: string) {
-  return ({ PAYMENT_CONFIRMED_PICK_TASK_CREATED: "支付成功并生成拣货任务", ASSIGN_PICKER: "分配拣货员", CLAIM_PICKING_TASK: "领取拣货任务", START_PICKING: "开始拣货", ITEM_BARCODE_VERIFIED: "商品 Barcode 核对成功", BARCODE_REJECTED: "Barcode 核对失败", COMPLETE_PICKING: "完成拣货", START_PACKING: "开始打包", COMPLETE_PACKING: "完成打包", READY_FOR_PICKUP: "等待顾客自提", READY_FOR_DISPATCH: "等待发货", ASSIGN_DELIVERY_RIDER: "分配配送员", HAND_TO_DELIVERY_RIDER: "已交给配送员", CONFIRM_DELIVERY: "确认送达", CONFIRM_CUSTOMER_PICKUP: "确认已取货", SUBMIT_EXCEPTION_FACT: "提交异常事实", ASSIGN_AFTER_SALE_OWNER: "分配售后负责人", UPDATE_AFTER_SALE_CASE: "更新售后处理", CANCEL_ORDER: "取消订单" } as Record<string, string>)[action] ?? action;
+  return ({ PAYMENT_CONFIRMED_PICK_TASK_CREATED: t("支付成功并生成拣货任务"), ASSIGN_PICKER: t("分配拣货员"), CLAIM_PICKING_TASK: t("领取拣货任务"), START_PICKING: t("开始拣货"), ITEM_BARCODE_VERIFIED: t("商品 Barcode 核对成功"), BARCODE_REJECTED: t("Barcode 核对失败"), COMPLETE_PICKING: t("完成拣货"), START_PACKING: t("开始打包"), COMPLETE_PACKING: t("完成打包"), READY_FOR_PICKUP: t("等待顾客自提"), READY_FOR_DISPATCH: t("等待发货"), ASSIGN_DELIVERY_RIDER: t("分配配送员"), HAND_TO_DELIVERY_RIDER: t("已交给配送员"), CONFIRM_DELIVERY: t("确认送达"), CONFIRM_CUSTOMER_PICKUP: t("确认已取货"), SUBMIT_EXCEPTION_FACT: t("提交异常事实"), ASSIGN_AFTER_SALE_OWNER: t("分配售后负责人"), UPDATE_AFTER_SALE_CASE: t("更新售后处理"), CANCEL_ORDER: t("取消订单") } as Record<string, string>)[action] ?? action;
 }
 
 function statusLabel(status: string) {
-  return ({ DRAFT: "草稿", PENDING_PAYMENT: "待付款", PAYMENT_PROCESSING: "支付处理中", PAID: "待拣货", PICKING: "拣货中", READY_TO_PACK: "待打包", PACKED: "已打包", READY_FOR_PICKUP: "待自提", READY_FOR_DISPATCH: "待发货", OUT_FOR_DELIVERY: "配送中", COMPLETED: "已完成", AFTER_SALE: "售后中", CANCELLED: "已取消", EXPIRED: "已取消", REFUNDED: "已退款", SUCCESS: "支付成功", FAILED: "支付失败", MANUAL_REVIEW: "人工复核", NO_PAYMENT: "无支付", EXCEPTION: "异常", ITEM_NOT_FOUND: "商品找不到", BARCODE_MISMATCH: "Barcode 不匹配", ITEM_DAMAGED: "商品损坏", DELIVERY_FAILED: "配送失败", CUSTOMER_CANCELLED: "顾客取消", OTHER: "其他异常", OPEN: "待处理", IN_PROGRESS: "处理中", RESOLVED: "已解决", CLOSED: "已关闭" } as Record<string, string>)[status] ?? status;
+  return ({ DRAFT: t("草稿"), PENDING_PAYMENT: t("待付款"), PAYMENT_PROCESSING: t("支付处理中"), PAID: t("待拣货"), PICKING: t("拣货中"), READY_TO_PACK: t("待打包"), PACKED: t("已打包"), READY_FOR_PICKUP: t("待自提"), READY_FOR_DISPATCH: t("待发货"), OUT_FOR_DELIVERY: t("配送中"), COMPLETED: t("已完成"), AFTER_SALE: t("售后中"), CANCELLED: t("已取消"), EXPIRED: t("已取消"), REFUNDED: t("已退款"), SUCCESS: t("支付成功"), FAILED: t("支付失败"), MANUAL_REVIEW: t("人工复核"), NO_PAYMENT: t("无支付"), EXCEPTION: t("异常"), ITEM_NOT_FOUND: t("商品找不到"), BARCODE_MISMATCH: t("Barcode 不匹配"), ITEM_DAMAGED: t("商品损坏"), DELIVERY_FAILED: t("配送失败"), CUSTOMER_CANCELLED: t("顾客取消"), OTHER: t("其他异常"), OPEN: t("待处理"), IN_PROGRESS: t("处理中"), RESOLVED: t("已解决"), CLOSED: t("已关闭") } as Record<string, string>)[status] ?? status;
 }
 
-function formatDate(value: string) { return new Date(value).toLocaleString("zh-CN", { hour12: false }); }
+function formatDate(value: string) { return new Date(value).toLocaleString(operationsFormatLocale(), { hour12: false }); }
 function money(value: number) { return `${value.toLocaleString("en-KE")} KSh`; }
 
 const PAYMENT_OPTIONS = [["PENDING", "待处理"], ["SUCCESS", "支付成功"], ["FAILED", "支付失败"], ["CANCELLED", "已取消"], ["TIMEOUT", "超时"], ["EXPIRED", "过期"], ["MANUAL_REVIEW", "人工复核"]] as const;

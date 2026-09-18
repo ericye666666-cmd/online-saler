@@ -53,6 +53,7 @@ import {
   type ProductImageRotation,
   type ProductImageRotationDirection
 } from "./product-factory-upload-flow";
+import { t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 const IMAGE_TYPE_ORDER = new Map(PRODUCT_FACTORY_IMAGE_TYPES.map((type, index) => [type, index]));
@@ -157,18 +158,18 @@ async function uploadOriginalImage(
   });
   const text = await response.text();
   const body = text ? JSON.parse(text) as ProductImage & { message?: string } : null;
-  if (!response.ok || !body) throw new Error(body?.message || `上传失败：${response.status}`);
+  if (!response.ok || !body) throw new Error(body?.message || t("上传失败：{status}", { status: response.status }));
   return body;
 }
 
 async function runProductAi(product: ProductRecord, ids: ReturnType<typeof useOperationIds>) {
   if (hasSucceededAi(product)) return;
   const missing = missingCaptureImageTypes(product);
-  if (missing.length) throw new Error("请先补齐商品原图，再识别商品信息。");
+  if (missing.length) throw new Error(t("请先补齐商品原图，再识别商品信息。"));
   const imageIds = [...(product.images ?? [])]
     .sort((left, right) => (IMAGE_TYPE_ORDER.get(left.type) ?? 99) - (IMAGE_TYPE_ORDER.get(right.type) ?? 99))
     .map((image) => image.id);
-  if (imageIds.length === 0) throw new Error("缺少可供 AI 识别的图片");
+  if (imageIds.length === 0) throw new Error(t("缺少可供 AI 识别的图片"));
   await request("/ai-jobs", {
     method: "POST",
     body: JSON.stringify({
@@ -205,7 +206,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
   }, [batchId, ids.adminUserId, initialProductId]);
 
   useEffect(() => {
-    void load().catch((caught) => setError(errorMessage(caught, "无法读取批次。")));
+    void load().catch((caught) => setError(errorMessage(caught, t("无法读取批次。"))));
   }, [load]);
 
   const product = batch?.products[currentIndex] ?? null;
@@ -239,7 +240,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
     const remainingProducts = batch.products.filter((item) => !newestImageOfType(item, "FRONT"));
     if (selectedFiles.length > remainingProducts.length) {
       setNotice("");
-      setError(`本批只剩 ${remainingProducts.length} 件需要正面图，请按商品顺序重新选择。`);
+      setError(t("本批只剩 {length} 件需要正面图，请按商品顺序重新选择。", { length: remainingProducts.length }));
       return;
     }
     for (const file of selectedFiles) {
@@ -259,8 +260,8 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
     setCurrentIndex(batch.products.findIndex((item) => item.id === assignments[0]?.productId));
     setError("");
     setNotice(selectedFiles.length === remainingProducts.length
-      ? `已按顺序分配本批剩余 ${selectedFiles.length} 件正面图。`
-      : `已按顺序分配 ${selectedFiles.length} 件正面图；本批仍有 ${remainingProducts.length - selectedFiles.length} 件待选择。`);
+      ? t("已按顺序分配本批剩余 {length} 件正面图。", { length: selectedFiles.length })
+      : t("已按顺序分配 {length} 件正面图；本批仍有 {v1} 件待选择。", { length: selectedFiles.length, v1: remainingProducts.length - selectedFiles.length }));
   }
 
   function rotatePendingImage(type: ProductFactoryImageType, direction: ProductImageRotationDirection) {
@@ -290,7 +291,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       !newestImageOfType(product, type) && !files[type] && !(type === "FRONT" && batchFrontFiles[product.id])
     );
     if (missing.length) {
-      setError(`请先拍摄或选择：${missing.map((type) => imageLabels[type]).join("、")}。`);
+      setError(t("请先拍摄或选择：{v0}。", { v0: missing.map((type) => t(imageLabels[type])).join("、") }));
       return;
     }
     const selected = PRODUCT_FACTORY_IMAGE_TYPES.filter((type) => files[type]);
@@ -313,11 +314,11 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         return selection ? [{ productId: item.id, selection }] : [];
       });
       let uploadedAssignments = 0;
-      setBulkUploadingProgress(`正在批量上传正面图 0/${bulkAssignments.length}`);
+      setBulkUploadingProgress(t("正在批量上传正面图 0/{length}", { length: bulkAssignments.length }));
       await runWithConcurrency(bulkAssignments, PRODUCT_UPLOAD_BATCH_CONCURRENCY, async (assignment) => {
         await uploadOriginalImage(assignment.productId, "FRONT", assignment.selection, ids);
         uploadedAssignments += 1;
-        setBulkUploadingProgress(`正在批量上传正面图 ${uploadedAssignments}/${bulkAssignments.length}`);
+        setBulkUploadingProgress(t("正在批量上传正面图 {uploadedAssignments}/{length}", { uploadedAssignments: uploadedAssignments, length: bulkAssignments.length }));
         setBatchFrontFiles((current) => {
           const next = { ...current };
           delete next[assignment.productId];
@@ -342,7 +343,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         setCurrentIndex(firstProductMissingCapture(updated.products));
       }
     } catch (caught) {
-      setError(errorMessage(caught, "图片上传失败，请重试。"));
+      setError(errorMessage(caught, t("图片上传失败，请重试。")));
       const refreshed = await loadBatch(batchId, ids.adminUserId).catch(() => null);
       if (refreshed) setBatch(refreshed);
     } finally {
@@ -353,14 +354,14 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
   }
 
   if (!batch || !product) {
-    return <StatusMessage tone={error ? "danger" : "neutral"}>{error || "正在读取批次..."}</StatusMessage>;
+    return <StatusMessage tone={error ? "danger" : "neutral"}>{error || t("正在读取批次...")}</StatusMessage>;
   }
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <FlowHeader
-        title={`${batch.batchCode} · 第 1 步：批量上传`}
-        description={`第 ${currentIndex + 1}/${batch.targetCount} ${shoes ? "双" : "件"} · 已完成必需照片 ${frontCount}/${batch.targetCount}`}
+        title={t("{batchCode} · 第 1 步：批量上传", { batchCode: batch.batchCode })}
+        description={t("第 {v0}/{targetCount} {v2} · 已完成必需照片 {frontCount}/{targetCount2}", { v0: currentIndex + 1, targetCount: batch.targetCount, v2: shoes ? t("双") : t("件"), frontCount: frontCount, targetCount2: batch.targetCount })}
         batchId={batch.id}
       />
       <ProgressBar value={frontCount} max={batch.targetCount} />
@@ -372,12 +373,13 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
           <span className="font-medium">{product.productCode}</span>
           <span className="ml-2 text-muted-foreground">{productStatusLabel(product.status)}</span>
           <p className="mt-1 text-xs text-muted-foreground">
-            批量入口接收{imageLabels.FRONT}，按商品 1 到 {batch.targetCount} 的顺序分配。
-            {pendingBatchFrontCount ? ` 已分配 ${pendingBatchFrontCount} 件。` : ""}
+            
+            {t("批量入口接收")}{t(imageLabels.FRONT)}{t("，按商品 1 到")} {batch.targetCount}  {t("的顺序分配。")}
+            {pendingBatchFrontCount ? t(" 已分配 {pendingBatchFrontCount} 件。", { pendingBatchFrontCount: pendingBatchFrontCount }) : ""}
           </p>
         </div>
         <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium">
-          <UploadIcon className="size-4" />批量选择{imageLabels.FRONT}
+          <UploadIcon className="size-4" />{t("批量选择")}{t(imageLabels.FRONT)}
           <input
             className="sr-only"
             type="file"
@@ -392,7 +394,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         </label>
       </div>
 
-      {shoes ? <p className="text-sm text-muted-foreground">一双一个商品。整双主图同时拍到左右鞋；侧面和鞋底需展示两只鞋，标签需能核对左右尺码。按编号集中拍完，再坐下上传；有瑕疵补特写。</p> : null}
+      {shoes ? <p className="text-sm text-muted-foreground">{t("一双一个商品。整双主图同时拍到左右鞋；侧面和鞋底需展示两只鞋，标签需能核对左右尺码。按编号集中拍完，再坐下上传；有瑕疵补特写。")}</p> : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {PRODUCT_FACTORY_IMAGE_TYPES.map((type) => (
@@ -400,7 +402,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
             key={type}
             type={type}
             required={requiredCaptureImageTypes(product.category, product.subcategory).includes(type)}
-            label={imageLabels[type]}
+            label={t(imageLabels[type])}
             existing={newestImageOfType(product, type)}
             selection={type === "FRONT" ? batchFrontFiles[product.id] ?? files.FRONT : files[type]}
             busy={busy}
@@ -422,7 +424,8 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
       </section>
 
       <p className="text-xs text-muted-foreground">
-        支持 JPEG、PNG、WEBP，单张不超过 10 MB。保存前请用图片下方按钮调整方向，预览方向就是实际上传和 AI 识别方向。iPhone 请使用“兼容性最佳”格式；HEIC 需先转换。原图会永久保留，用于商品识别和并行生成白底展示图。
+        
+        {t("支持 JPEG、PNG、WEBP，单张不超过 10 MB。保存前请用图片下方按钮调整方向，预览方向就是实际上传和 AI 识别方向。iPhone 请使用“兼容性最佳”格式；HEIC 需先转换。原图会永久保留，用于商品识别和并行生成白底展示图。")}
       </p>
 
       <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t bg-background/95 py-3 backdrop-blur sm:flex-row sm:justify-between">
@@ -431,15 +434,15 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
           disabled={busy || currentIndex === 0}
           onClick={() => { setFiles({}); setCurrentIndex((index) => Math.max(0, index - 1)); }}
         >
-          <ArrowLeftIcon data-icon="inline-start" />上一件
+          <ArrowLeftIcon data-icon="inline-start" />{t("上一件")}
         </Button>
         <Button disabled={busy} onClick={() => void saveAndContinue()}>
           {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <UploadIcon data-icon="inline-start" />}
           {bulkUploadingProgress || (uploadingType
-            ? `正在上传${imageLabels[uploadingType]}`
+            ? t("正在上传{v0}", { v0: t(imageLabels[uploadingType]) })
             : pendingBatchFrontCount
-              ? `上传已分配的 ${pendingBatchFrontCount} 件正面图`
-              : currentIndex === batch.targetCount - 1 ? "保存并开始处理" : "保存并下一件")}
+              ? t("上传已分配的 {pendingBatchFrontCount} 件正面图", { pendingBatchFrontCount: pendingBatchFrontCount })
+              : currentIndex === batch.targetCount - 1 ? t("保存并开始处理") : t("保存并下一件"))}
           {!busy ? <ArrowRightIcon data-icon="inline-end" /> : null}
         </Button>
       </div>
@@ -462,16 +465,16 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
   }, [batchId, ids.adminUserId]);
 
   useEffect(() => {
-    void load().catch((caught) => setError(errorMessage(caught, "无法读取处理进度。")));
+    void load().catch((caught) => setError(errorMessage(caught, t("无法读取处理进度。"))));
   }, [load]);
 
   async function processOne(product: ProductRecord) {
-    setStates((current) => ({ ...current, [product.id]: { status: "RUNNING", message: "正在使用原图识别商品信息" } }));
+    setStates((current) => ({ ...current, [product.id]: { status: "RUNNING", message: t("正在使用原图识别商品信息") } }));
     try {
       await runProductAi(product, ids);
-      setStates((current) => ({ ...current, [product.id]: { status: "SUCCEEDED", message: "商品识别完成，待人工校准、填写尺码" } }));
+      setStates((current) => ({ ...current, [product.id]: { status: "SUCCEEDED", message: t("商品识别完成，待人工校准、填写尺码") } }));
     } catch (caught) {
-      setStates((current) => ({ ...current, [product.id]: { status: "FAILED", message: errorMessage(caught, "商品识别失败") } }));
+      setStates((current) => ({ ...current, [product.id]: { status: "FAILED", message: errorMessage(caught, t("商品识别失败")) } }));
     }
   }
 
@@ -484,7 +487,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
       await runWithConcurrency(pending, PRODUCT_AI_BATCH_CONCURRENCY, processOne);
       await load();
     } catch (caught) {
-      setError(errorMessage(caught, "无法刷新识别结果。"));
+      setError(errorMessage(caught, t("无法刷新识别结果。")));
     } finally {
       setBusy(false);
     }
@@ -497,7 +500,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
   }
 
   if (!batch) {
-    return <StatusMessage tone={error ? "danger" : "neutral"}>{error || "正在读取批次..."}</StatusMessage>;
+    return <StatusMessage tone={error ? "danger" : "neutral"}>{error || t("正在读取批次...")}</StatusMessage>;
   }
 
   const shoesBatch = batch.intakeCategory === "SHOES";
@@ -507,8 +510,8 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <FlowHeader
-        title={`${batch.batchCode} · 第 2 步：识别商品信息`}
-        description={`已完成 ${completed}/${batch.targetCount}${failed ? ` · 失败 ${failed}` : ""}`}
+        title={t("{batchCode} · 第 2 步：识别商品信息", { batchCode: batch.batchCode })}
+        description={t("已完成 {completed}/{targetCount}{v2}", { completed: completed, targetCount: batch.targetCount, v2: failed ? t(" · 失败 {failed}", { failed: failed }) : "" })}
         batchId={batch.id}
       />
       <BatchDisplayProgress batch={batch} />
@@ -519,16 +522,16 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>整批识别 {batch.targetCount} {shoesBatch ? "双鞋" : "件商品"}</CardTitle>
-              <CardDescription>系统直接使用上传原图识别分类、外观、名称和品牌。人工校准并填写尺码后，再直接由原图生成白底展示图。</CardDescription>
+              <CardTitle>{t("整批识别")} {batch.targetCount} {shoesBatch ? t("双鞋") : t("件商品")}</CardTitle>
+              <CardDescription>{t("系统直接使用上传原图识别分类、外观、名称和品牌。人工校准并填写尺码后，再直接由原图生成白底展示图。")}</CardDescription>
             </div>
             {completed < batch.targetCount ? (
               <Button disabled={busy} onClick={() => void processAll()}>
                 {busy ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
-                {busy ? "正在批量识别商品信息" : failed ? "重试未完成商品" : `识别本批 ${batch.targetCount} 件`}
+                {busy ? t("正在批量识别商品信息") : failed ? t("重试未完成商品") : t("识别本批 {targetCount} 件", { targetCount: batch.targetCount })}
               </Button>
             ) : (
-              <Button asChild><Link href={`/product/calibration?batchId=${encodeURIComponent(batch.id)}`}>人工校准、填写尺码<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+              <Button asChild><Link href={`/product/calibration?batchId=${encodeURIComponent(batch.id)}`}>{t("人工校准、填写尺码")}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
             )}
           </div>
         </CardHeader>
@@ -538,7 +541,7 @@ export function ProductBatchProcessingPage({ batchId }: { batchId: string }) {
               key={product.id}
               batchId={batch.id}
               product={product}
-              state={states[product.id] ?? { status: "PENDING", message: "等待处理" }}
+              state={states[product.id] ?? { status: "PENDING", message: t("等待处理") }}
               disabled={busy}
               onRetry={() => void retryRecognition(product)}
             />
@@ -582,7 +585,7 @@ function ImageInputCard(props: {
     <div className="min-w-0 rounded-md border bg-background p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{props.label}{props.required ? " *" : ""}</span>
-        {props.selection ? <Badge>待上传</Badge> : props.existing ? <Badge variant="secondary">已上传</Badge> : <Badge variant="outline">{props.required ? "待补充" : "可选"}</Badge>}
+        {props.selection ? <Badge>{t("待上传")}</Badge> : props.existing ? <Badge variant="secondary">{t("已上传")}</Badge> : <Badge variant="outline">{props.required ? t("待补充") : t("可选")}</Badge>}
       </div>
       <label
         className="flex aspect-[4/5] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-md border border-dashed bg-muted/20 text-center"
@@ -602,7 +605,8 @@ function ImageInputCard(props: {
         ) : (
           <span className="flex flex-col items-center gap-2 px-3 text-xs text-muted-foreground">
             {props.type === "FRONT" ? <CameraIcon className="size-5" /> : <ImageIcon className="size-5" />}
-            点击拍摄或拖入图片
+            
+            {t("点击拍摄或拖入图片")}
           </span>
         )}
         <input
@@ -618,11 +622,11 @@ function ImageInputCard(props: {
         <div className="mt-2 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-xs text-muted-foreground">{props.selection.file.name}</span>
-            <button type="button" className="text-xs text-destructive" disabled={props.busy} onClick={props.onClear}>移除</button>
+            <button type="button" className="text-xs text-destructive" disabled={props.busy} onClick={props.onClear}>{t("移除")}</button>
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">
-              {props.selection.rotation === 0 ? "方向未调整" : `已旋转 ${props.selection.rotation}°`}
+              {props.selection.rotation === 0 ? t("方向未调整") : t("已旋转 {rotation}°", { rotation: props.selection.rotation })}
             </span>
             <div className="flex items-center gap-1">
               <Button
@@ -630,8 +634,8 @@ function ImageInputCard(props: {
                 size="icon-sm"
                 variant="outline"
                 disabled={props.busy}
-                aria-label="向左旋转 90 度"
-                title="向左旋转 90 度"
+                aria-label={t("向左旋转 90 度")}
+                title={t("向左旋转 90 度")}
                 onClick={() => props.onRotate("LEFT")}
               >
                 <RotateCcwIcon />
@@ -641,8 +645,8 @@ function ImageInputCard(props: {
                 size="icon-sm"
                 variant="outline"
                 disabled={props.busy}
-                aria-label="向右旋转 90 度"
-                title="向右旋转 90 度"
+                aria-label={t("向右旋转 90 度")}
+                title={t("向右旋转 90 度")}
                 onClick={() => props.onRotate("RIGHT")}
               >
                 <RotateCwIcon />
@@ -665,7 +669,7 @@ function ProcessingRow(props: {
   return (
     <div className="grid gap-3 rounded-md border p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] md:items-center">
       <div className="min-w-0">
-        <div className="font-medium">第 {props.product.batchItemNumber ?? "-"} 件</div>
+        <div className="font-medium">{t("第")} {props.product.batchItemNumber ?? "-"}  {t("件")}</div>
         <div className="truncate text-xs text-muted-foreground">{props.product.productCode}</div>
       </div>
       <div className="min-w-0 text-sm">
@@ -676,7 +680,7 @@ function ProcessingRow(props: {
       </div>
       {props.state.status === "FAILED" ? (
         <Button size="sm" variant="outline" disabled={props.disabled} onClick={props.onRetry}>
-          <RotateCcwIcon data-icon="inline-start" />重试商品识别
+          <RotateCcwIcon data-icon="inline-start" />{t("重试商品识别")}
         </Button>
       ) : <span />}
     </div>
@@ -695,7 +699,7 @@ function FlowHeader(props: { title: string; description: string; batchId: string
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         <Link href={`/product/batches/${encodeURIComponent(props.batchId)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeftIcon className="size-3" />返回批次
+          <ArrowLeftIcon className="size-3" />{t("返回批次")}
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-normal">{props.title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{props.description}</p>
@@ -744,13 +748,13 @@ function hasSucceededAi(product: ProductRecord) {
 }
 
 function stateFromProduct(product: ProductRecord): ProcessingState {
-  if (missingCaptureImageTypes(product).length) return { status: "FAILED", message: "请补齐商品原图" };
+  if (missingCaptureImageTypes(product).length) return { status: "FAILED", message: t("请补齐商品原图") };
   if (hasSucceededAi(product) || ["CALIBRATION_PENDING", "CALIBRATED", "BARCODE_ASSIGNED", "REVIEW_PENDING", "APPROVED", "READY_FOR_STORAGE", "PUBLISHED"].includes(product.status)) {
-    return { status: "SUCCEEDED", message: "商品识别完成，待人工校准、填写尺码" };
+    return { status: "SUCCEEDED", message: t("商品识别完成，待人工校准、填写尺码") };
   }
   const extraction = product.aiExtractions?.[0];
-  if (extraction?.status === "FAILED") return { status: "FAILED", message: extraction.errorMessage || "商品识别失败" };
-  return { status: "PENDING", message: "等待原图识别商品信息" };
+  if (extraction?.status === "FAILED") return { status: "FAILED", message: extraction.errorMessage || t("商品识别失败") };
+  return { status: "PENDING", message: t("等待原图识别商品信息") };
 }
 
 function errorMessage(value: unknown, fallback: string) {

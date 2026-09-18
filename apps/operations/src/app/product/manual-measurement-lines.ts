@@ -7,6 +7,7 @@ import {
   type MeasurementBoardCalibration,
   type MeasurementPoint
 } from "@online-saler/business-rules";
+import { t } from "@/i18n/runtime";
 
 export {
   measurementLengthCm,
@@ -84,14 +85,14 @@ export function manualMeasurementLineIssue(
   if (key !== "shoulderWidthCm") return null;
   const boardStart = measurementPointOnBoardCm(calibration, start);
   const boardEnd = measurementPointOnBoardCm(calibration, end);
-  if (!boardStart || !boardEnd) return "无法按测量板坐标确认肩宽线。";
+  if (!boardStart || !boardEnd) return t("无法按测量板坐标确认肩宽线。");
   const left = Math.min(boardStart.x, boardEnd.x);
   const right = Math.max(boardStart.x, boardEnd.x);
   if (left >= MEASUREMENT_BOARD_WIDTH_CM / 2 || right <= MEASUREMENT_BOARD_WIDTH_CM / 2) {
-    return "肩宽必须从左侧肩袖接缝横跨衣服中心连接到右侧肩袖接缝，不能从领口量到单侧肩。";
+    return t("肩宽必须从左侧肩袖接缝横跨衣服中心连接到右侧肩袖接缝，不能从领口量到单侧肩。");
   }
   if (Math.abs(boardStart.y - boardEnd.y) > 20) {
-    return "肩宽两端应位于左右肩袖接缝，当前两点高低差过大，请重新连接。";
+    return t("肩宽两端应位于左右肩袖接缝，当前两点高低差过大，请重新连接。");
   }
   return null;
 }

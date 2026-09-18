@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { accessRequest, adminQuery, type AdminUserAccount, type RoleRecord } from "../access-client";
+import { t } from "@/i18n/runtime";
 
 type AdminStatus = "ACTIVE" | "DISABLED" | "LOCKED";
 
@@ -55,7 +56,7 @@ export default function AccountsPage() {
         )
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取账号。");
+      setError(caught instanceof Error ? caught.message : t("无法读取账号。"));
     } finally {
       setBusy("");
     }
@@ -95,7 +96,7 @@ export default function AccountsPage() {
       });
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法创建账号。");
+      setError(caught instanceof Error ? caught.message : t("无法创建账号。"));
     } finally {
       setBusy("");
     }
@@ -112,7 +113,7 @@ export default function AccountsPage() {
       });
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法更新账号状态。");
+      setError(caught instanceof Error ? caught.message : t("无法更新账号状态。"));
     } finally {
       setBusy("");
     }
@@ -131,7 +132,7 @@ export default function AccountsPage() {
       });
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法更新账号角色。");
+      setError(caught instanceof Error ? caught.message : t("无法更新账号角色。"));
     } finally {
       setBusy("");
     }
@@ -141,46 +142,49 @@ export default function AccountsPage() {
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-muted-foreground text-sm">系统管理</p>
-          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">账号管理</h1>
+          <p className="text-muted-foreground text-sm">{t("系统管理")}</p>
+          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{t("账号管理")}</h1>
           <p className="mt-2 max-w-2xl text-muted-foreground text-sm">
-            管理后台账号、账号状态和角色。顾客 Google 登录不在这里管理。
+            
+            {t("管理后台账号、账号状态和角色。顾客 Google 登录不在这里管理。")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" disabled={Boolean(busy)} onClick={() => void load()}>
             <RefreshCwIcon data-icon="inline-start" />
-            刷新
+            
+            {t("刷新")}
           </Button>
           {canManage ? (
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
                 <Button>
                   <PlusIcon data-icon="inline-start" />
-                  新建账号
+                  
+                  {t("新建账号")}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>创建后台账号</DialogTitle>
+                  <DialogTitle>{t("创建后台账号")}</DialogTitle>
                 </DialogHeader>
                 <FieldGroup>
-                  <FormField label="姓名">
+                  <FormField label={t("姓名")}>
                     <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
                   </FormField>
-                  <FormField label="登录账号">
+                  <FormField label={t("登录账号")}>
                     <Input value={form.loginAccount} onChange={(event) => setForm((current) => ({ ...current, loginAccount: event.target.value }))} />
                   </FormField>
-                  <FormField label="邮箱">
+                  <FormField label={t("邮箱")}>
                     <Input value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
                   </FormField>
-                  <FormField label="手机号">
+                  <FormField label={t("手机号")}>
                     <Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
                   </FormField>
-                  <FormField label="初始密码">
+                  <FormField label={t("初始密码")}>
                     <Input type="password" value={form.initialPassword} onChange={(event) => setForm((current) => ({ ...current, initialPassword: event.target.value }))} />
                   </FormField>
-                  <FormField label="角色">
+                  <FormField label={t("角色")}>
                     <NativeSelect className="w-full" value={form.roleCode} onChange={(event) => setForm((current) => ({ ...current, roleCode: event.target.value }))}>
                       {roleOptions.map((roleCode) => <NativeSelectOption key={roleCode} value={roleCode}>{roleCode}</NativeSelectOption>)}
                     </NativeSelect>
@@ -188,7 +192,8 @@ export default function AccountsPage() {
                 </FieldGroup>
                 <DialogFooter>
                   <Button disabled={busy === "create"} onClick={() => void createAccount()}>
-                    创建账号
+                    
+                    {t("创建账号")}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -201,19 +206,19 @@ export default function AccountsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>后台账号</CardTitle>
-          <CardDescription>账号状态支持 ACTIVE、DISABLED 和 LOCKED。</CardDescription>
+          <CardTitle>{t("后台账号")}</CardTitle>
+          <CardDescription>{t("账号状态支持 ACTIVE、DISABLED 和 LOCKED。")}</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>姓名</TableHead>
-                <TableHead>账号</TableHead>
-                <TableHead>角色</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>关联员工</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead>{t("姓名")}</TableHead>
+                <TableHead>{t("账号")}</TableHead>
+                <TableHead>{t("角色")}</TableHead>
+                <TableHead>{t("状态")}</TableHead>
+                <TableHead>{t("关联员工")}</TableHead>
+                <TableHead className="text-right">{t("操作")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -235,7 +240,8 @@ export default function AccountsPage() {
                             {roleOptions.map((roleCode) => <NativeSelectOption key={roleCode} value={roleCode}>{roleCode}</NativeSelectOption>)}
                           </NativeSelect>
                           <Button size="sm" variant="outline" disabled={busy === `role-${adminUser.id}`} onClick={() => void saveRole(adminUser.id)}>
-                            保存
+                            
+                            {t("保存")}
                           </Button>
                         </div>
                       ) : (
@@ -247,9 +253,9 @@ export default function AccountsPage() {
                     <TableCell className="text-right">
                       {canManage ? (
                         <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" disabled={busy === adminUser.id} onClick={() => void setStatus(adminUser.id, "ACTIVE")}>解锁</Button>
-                          <Button size="sm" variant="outline" disabled={busy === adminUser.id} onClick={() => void setStatus(adminUser.id, "LOCKED")}>锁定</Button>
-                          <Button size="sm" variant="outline" disabled={busy === adminUser.id} onClick={() => void setStatus(adminUser.id, "DISABLED")}>停用</Button>
+                          <Button size="sm" variant="outline" disabled={busy === adminUser.id} onClick={() => void setStatus(adminUser.id, "ACTIVE")}>{t("解锁")}</Button>
+                          <Button size="sm" variant="outline" disabled={busy === adminUser.id} onClick={() => void setStatus(adminUser.id, "LOCKED")}>{t("锁定")}</Button>
+                          <Button size="sm" variant="outline" disabled={busy === adminUser.id} onClick={() => void setStatus(adminUser.id, "DISABLED")}>{t("停用")}</Button>
                         </div>
                       ) : (
                         <ShieldCheckIcon className="ml-auto text-muted-foreground" />

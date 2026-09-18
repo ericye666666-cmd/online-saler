@@ -1,3 +1,4 @@
+import { t } from "@/i18n/runtime";
 export const PRODUCT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "待上传",
   PHOTOGRAPHED: "待 AI 识别",
@@ -28,9 +29,12 @@ export const IMAGE_ISSUE_LABELS: Record<string, string> = {
 };
 
 export function productStatusLabel(status: string): string {
-  return PRODUCT_STATUS_LABELS[status] ?? (status || "未知状态");
+  const label = PRODUCT_STATUS_LABELS[status];
+  if (label) return t(label);
+  return status || t("未知状态");
 }
 
 export function imageIssueLabel(issue: string): string {
-  return IMAGE_ISSUE_LABELS[issue] ?? issue;
+  const label = IMAGE_ISSUE_LABELS[issue];
+  return label ? t(label) : issue;
 }

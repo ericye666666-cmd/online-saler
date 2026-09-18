@@ -16,6 +16,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 
@@ -230,7 +231,7 @@ export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceVi
       ]);
       setSummary(nextSummary);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法读取客服工作台。");
+      setError(caught instanceof Error ? caught.message : t("无法读取客服工作台。"));
     } finally {
       setBusy(false);
     }
@@ -273,10 +274,10 @@ export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceVi
         body: JSON.stringify({ adminUserId, ...caseForm })
       });
       setCaseForm({ ...emptyCaseForm, issueType: meta.issueType ?? "OTHER" });
-      setMessage("客服记录已创建。");
+      setMessage(t("客服记录已创建。"));
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "创建客服记录失败。");
+      setError(caught instanceof Error ? caught.message : t("创建客服记录失败。"));
     } finally {
       setBusy(false);
     }
@@ -293,10 +294,10 @@ export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceVi
         body: JSON.stringify({ adminUserId, ...noteForm })
       });
       setNoteForm(emptyNoteForm);
-      setMessage("备注已保存。");
+      setMessage(t("备注已保存。"));
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "保存备注失败。");
+      setError(caught instanceof Error ? caught.message : t("保存备注失败。"));
     } finally {
       setBusy(false);
     }
@@ -312,34 +313,35 @@ export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceVi
         method: "PATCH",
         body: JSON.stringify({ adminUserId, status })
       });
-      setMessage("客服记录状态已更新。");
+      setMessage(t("客服记录状态已更新。"));
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "更新客服记录失败。");
+      setError(caught instanceof Error ? caught.message : t("更新客服记录失败。"));
     } finally {
       setBusy(false);
     }
   }
 
   const metrics = [
-    { label: "顾客档案", value: summary?.customers ?? 0 },
-    { label: "未结案", value: summary?.openCases ?? 0 },
-    { label: "支付问题", value: summary?.paymentCases ?? 0 },
-    { label: "自提问题", value: summary?.pickupCases ?? 0 },
-    { label: "配送问题", value: summary?.deliveryCases ?? 0 },
-    { label: "售后记录", value: summary?.afterSaleCases ?? 0 }
+    { label: t("顾客档案"), value: summary?.customers ?? 0 },
+    { label: t("未结案"), value: summary?.openCases ?? 0 },
+    { label: t("支付问题"), value: summary?.paymentCases ?? 0 },
+    { label: t("自提问题"), value: summary?.pickupCases ?? 0 },
+    { label: t("配送问题"), value: summary?.deliveryCases ?? 0 },
+    { label: t("售后记录"), value: summary?.afterSaleCases ?? 0 }
   ];
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="客户服务"
-        title={meta.title}
-        description={meta.description}
+        eyebrow={t("客户服务")}
+        title={t(meta.title)}
+        description={t(meta.description)}
         action={
           <Button variant="outline" disabled={busy} onClick={() => void load()}>
             <RefreshCwIcon data-icon="inline-start" />
-            刷新
+            
+            {t("刷新")}
           </Button>
         }
       />
@@ -359,12 +361,13 @@ export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceVi
         <CardContent className="pt-6">
           <FieldGroup>
             <Field>
-              <FieldLabel>搜索</FieldLabel>
+              <FieldLabel>{t("搜索")}</FieldLabel>
               <div className="flex gap-2">
-                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="姓名、手机号、邮箱、订单号或商品" />
+                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("姓名、手机号、邮箱、订单号或商品")} />
                 <Button type="button" disabled={busy} onClick={() => void load()}>
                   <SearchIcon data-icon="inline-start" />
-                  搜索
+                  
+                  {t("搜索")}
                 </Button>
               </div>
             </Field>
@@ -394,16 +397,16 @@ export function CustomerServiceWorkbenchPage({ view }: { view: CustomerServiceVi
 
 function CustomersTable({ rows }: { rows: CustomerRow[] }) {
   return (
-    <DataTableCard title="顾客搜索结果" empty="没有找到顾客。" headers={["顾客", "电话", "订单", "客服记录", "最近订单"]}>
+    <DataTableCard title={t("顾客搜索结果")} empty={t("没有找到顾客。")} headers={[t("顾客"), t("电话"), t("订单"), t("客服记录"), t("最近订单")]}>
       {rows.map((customer) => (
         <TableRow key={customer.id}>
           <TableCell>
             <div className="font-medium">{customer.displayName || customer.email}</div>
             <div className="text-muted-foreground text-xs">{customer.email}</div>
           </TableCell>
-          <TableCell>{customer.phone || "未填写"}</TableCell>
+          <TableCell>{customer.phone || t("未填写")}</TableCell>
           <TableCell>{customer._count.orders}</TableCell>
-          <TableCell>{customer._count.customerServiceCases} / 备注 {customer._count.customerServiceNotes}</TableCell>
+          <TableCell>{customer._count.customerServiceCases}  {t("/ 备注")} {customer._count.customerServiceNotes}</TableCell>
           <TableCell>
             <div className="flex flex-col gap-1">
               {customer.orders.map((order) => (
@@ -419,20 +422,20 @@ function CustomersTable({ rows }: { rows: CustomerRow[] }) {
 
 function OrdersTable({ rows }: { rows: OrderRow[] }) {
   return (
-    <DataTableCard title="订单查询结果" empty="没有找到订单。" headers={["订单", "顾客", "商品", "支付", "履约", "金额", "客服记录"]}>
+    <DataTableCard title={t("订单查询结果")} empty={t("没有找到订单。")} headers={[t("订单"), t("顾客"), t("商品"), t("支付"), t("履约"), t("金额"), t("客服记录")]}>
       {rows.map((order) => (
         <TableRow key={order.id}>
           <TableCell className="font-mono text-xs">{order.orderNumber}</TableCell>
           <TableCell>
             <div>{order.customer.displayName || order.customer.email}</div>
-            <div className="text-muted-foreground text-xs">{order.customer.phone || "未填写电话"}</div>
+            <div className="text-muted-foreground text-xs">{order.customer.phone || t("未填写电话")}</div>
           </TableCell>
           <TableCell>
             <div className="flex min-w-60 flex-col gap-1">
               {order.items.map((item, index) => (
                 <span key={`${order.id}-${index}`} className="text-sm">
-                  {item.snapshot?.title ?? "未命名商品"}
-                  <span className="text-muted-foreground"> · {item.snapshot?.barcode ?? "无Barcode"}</span>
+                  {item.snapshot?.title ?? t("未命名商品")}
+                  <span className="text-muted-foreground"> · {item.snapshot?.barcode ?? t("无Barcode")}</span>
                 </span>
               ))}
             </div>
@@ -449,7 +452,7 @@ function OrdersTable({ rows }: { rows: OrderRow[] }) {
           </TableCell>
           <TableCell>
             <Badge variant="outline">{methodLabel(order.fulfillmentMethod)}</Badge>
-            <div className="mt-1 text-muted-foreground text-xs">{order.fulfillment?.status ?? "未进入履约"}</div>
+            <div className="mt-1 text-muted-foreground text-xs">{order.fulfillment?.status ?? t("未进入履约")}</div>
           </TableCell>
           <TableCell>{money(order.totalKsh)}</TableCell>
           <TableCell>{order.customerServiceCases.length}</TableCell>
@@ -461,7 +464,7 @@ function OrdersTable({ rows }: { rows: OrderRow[] }) {
 
 function CasesPanel({ cases, canEdit, onStatus }: { cases: CaseRow[]; canEdit: boolean; onStatus: (caseId: string, status: "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED") => void }) {
   return (
-    <DataTableCard title="客服记录" empty="当前没有客服记录。" headers={["标题", "类型", "状态", "顾客/订单", "标签", "备注", "操作"]}>
+    <DataTableCard title={t("客服记录")} empty={t("当前没有客服记录。")} headers={[t("标题"), t("类型"), t("状态"), t("顾客/订单"), t("标签"), t("备注"), t("操作")]}>
       {cases.map((serviceCase) => (
         <TableRow key={serviceCase.id}>
           <TableCell>
@@ -483,11 +486,11 @@ function CasesPanel({ cases, canEdit, onStatus }: { cases: CaseRow[]; canEdit: b
             </div>
           </TableCell>
           <TableCell>
-            {serviceCase.afterSaleReturn && serviceCase.order ? <Button size="sm" variant="outline" asChild><Link href={`/orders/${serviceCase.order.id}`}>打开退货与退款</Link></Button> : canEdit ? (
+            {serviceCase.afterSaleReturn && serviceCase.order ? <Button size="sm" variant="outline" asChild><Link href={`/orders/${serviceCase.order.id}`}>{t("打开退货与退款")}</Link></Button> : canEdit ? (
               <div className="flex flex-wrap gap-2">
-                {serviceCase.status === "OPEN" ? <Button size="sm" variant="outline" onClick={() => onStatus(serviceCase.id, "IN_PROGRESS")}>处理中</Button> : null}
-                {serviceCase.status !== "RESOLVED" && serviceCase.status !== "CLOSED" ? <Button size="sm" onClick={() => onStatus(serviceCase.id, "RESOLVED")}>解决</Button> : null}
-                {serviceCase.status === "RESOLVED" ? <Button size="sm" variant="outline" onClick={() => onStatus(serviceCase.id, "CLOSED")}>关闭</Button> : null}
+                {serviceCase.status === "OPEN" ? <Button size="sm" variant="outline" onClick={() => onStatus(serviceCase.id, "IN_PROGRESS")}>{t("处理中")}</Button> : null}
+                {serviceCase.status !== "RESOLVED" && serviceCase.status !== "CLOSED" ? <Button size="sm" onClick={() => onStatus(serviceCase.id, "RESOLVED")}>{t("解决")}</Button> : null}
+                {serviceCase.status === "RESOLVED" ? <Button size="sm" variant="outline" onClick={() => onStatus(serviceCase.id, "CLOSED")}>{t("关闭")}</Button> : null}
               </div>
             ) : "-"}
           </TableCell>
@@ -499,7 +502,7 @@ function CasesPanel({ cases, canEdit, onStatus }: { cases: CaseRow[]; canEdit: b
 
 function NotesTable({ rows }: { rows: NoteRow[] }) {
   return (
-    <DataTableCard title="备注与标签" empty="当前没有备注。" headers={["备注", "顾客", "订单", "客服记录", "标签", "作者"]}>
+    <DataTableCard title={t("备注与标签")} empty={t("当前没有备注。")} headers={[t("备注"), t("顾客"), t("订单"), t("客服记录"), t("标签"), t("作者")]}>
       {rows.map((note) => (
         <TableRow key={note.id}>
           <TableCell className="max-w-lg">{note.body}</TableCell>
@@ -518,44 +521,45 @@ function CreateCaseCard({ form, busy, onChange, onSubmit }: { form: CaseForm; bu
   return (
     <Card>
       <CardHeader>
-        <CardTitle>新增客服记录</CardTitle>
-        <CardDescription>只记录问题和跟进，不修改价格或库存。</CardDescription>
+        <CardTitle>{t("新增客服记录")}</CardTitle>
+        <CardDescription>{t("只记录问题和跟进，不修改价格或库存。")}</CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>
           <Field>
-            <FieldLabel>问题类型</FieldLabel>
+            <FieldLabel>{t("问题类型")}</FieldLabel>
             <NativeSelect value={form.issueType} onChange={(event) => onChange({ ...form, issueType: event.target.value as CaseForm["issueType"] })}>
-              <NativeSelectOption value="PAYMENT">支付问题</NativeSelectOption>
-              <NativeSelectOption value="PICKUP">自提问题</NativeSelectOption>
-              <NativeSelectOption value="DELIVERY">配送问题</NativeSelectOption>
-              <NativeSelectOption value="AFTER_SALE">售后记录</NativeSelectOption>
-              <NativeSelectOption value="ORDER">订单问题</NativeSelectOption>
-              <NativeSelectOption value="OTHER">其他</NativeSelectOption>
+              <NativeSelectOption value="PAYMENT">{t("支付问题")}</NativeSelectOption>
+              <NativeSelectOption value="PICKUP">{t("自提问题")}</NativeSelectOption>
+              <NativeSelectOption value="DELIVERY">{t("配送问题")}</NativeSelectOption>
+              <NativeSelectOption value="AFTER_SALE">{t("售后记录")}</NativeSelectOption>
+              <NativeSelectOption value="ORDER">{t("订单问题")}</NativeSelectOption>
+              <NativeSelectOption value="OTHER">{t("其他")}</NativeSelectOption>
             </NativeSelect>
           </Field>
           <Field>
-            <FieldLabel>标题</FieldLabel>
+            <FieldLabel>{t("标题")}</FieldLabel>
             <Input value={form.title} onChange={(event) => onChange({ ...form, title: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>顾客 ID</FieldLabel>
+            <FieldLabel>{t("顾客 ID")}</FieldLabel>
             <Input value={form.customerId} onChange={(event) => onChange({ ...form, customerId: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>订单 ID</FieldLabel>
+            <FieldLabel>{t("订单 ID")}</FieldLabel>
             <Input value={form.orderId} onChange={(event) => onChange({ ...form, orderId: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>说明</FieldLabel>
+            <FieldLabel>{t("说明")}</FieldLabel>
             <Textarea value={form.description} onChange={(event) => onChange({ ...form, description: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>标签</FieldLabel>
+            <FieldLabel>{t("标签")}</FieldLabel>
             <div className="flex gap-2">
               <Input value={form.tags} placeholder="urgent, mpesa" onChange={(event) => onChange({ ...form, tags: event.target.value })} />
               <Button type="button" disabled={busy || !form.title.trim()} onClick={() => void onSubmit()}>
-                创建
+                
+                {t("创建")}
               </Button>
             </div>
           </Field>
@@ -569,8 +573,8 @@ function CreateNoteCard({ form, busy, onChange, onSubmit }: { form: NoteForm; bu
   return (
     <Card>
       <CardHeader>
-        <CardTitle>新增备注</CardTitle>
-        <CardDescription>备注可以挂到 Case、顾客或订单，便于客服回溯。</CardDescription>
+        <CardTitle>{t("新增备注")}</CardTitle>
+        <CardDescription>{t("备注可以挂到 Case、顾客或订单，便于客服回溯。")}</CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>
@@ -579,23 +583,24 @@ function CreateNoteCard({ form, busy, onChange, onSubmit }: { form: NoteForm; bu
             <Input value={form.caseId} onChange={(event) => onChange({ ...form, caseId: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>顾客 ID</FieldLabel>
+            <FieldLabel>{t("顾客 ID")}</FieldLabel>
             <Input value={form.customerId} onChange={(event) => onChange({ ...form, customerId: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>订单 ID</FieldLabel>
+            <FieldLabel>{t("订单 ID")}</FieldLabel>
             <Input value={form.orderId} onChange={(event) => onChange({ ...form, orderId: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>备注</FieldLabel>
+            <FieldLabel>{t("备注")}</FieldLabel>
             <Textarea value={form.body} onChange={(event) => onChange({ ...form, body: event.target.value })} />
           </Field>
           <Field>
-            <FieldLabel>标签</FieldLabel>
+            <FieldLabel>{t("标签")}</FieldLabel>
             <div className="flex gap-2">
               <Input value={form.tags} placeholder="delivery, follow-up" onChange={(event) => onChange({ ...form, tags: event.target.value })} />
               <Button type="button" disabled={busy || !form.body.trim()} onClick={() => void onSubmit()}>
-                保存
+                
+                {t("保存")}
               </Button>
             </div>
           </Field>
@@ -697,36 +702,36 @@ async function apiRequest<T>(path: string, options?: RequestOptions): Promise<T>
 
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
-    OPEN: "未处理",
-    IN_PROGRESS: "处理中",
-    RESOLVED: "已解决",
-    CLOSED: "已关闭",
-    PENDING_PAYMENT: "待付款",
-    PAYMENT_PROCESSING: "支付处理中",
-    PAID: "已付款",
-    CANCELLED: "已取消",
-    EXPIRED: "已过期",
-    FULFILLING: "履约中",
-    COMPLETED: "已完成",
-    REFUNDED: "已退款"
+    OPEN: t("未处理"),
+    IN_PROGRESS: t("处理中"),
+    RESOLVED: t("已解决"),
+    CLOSED: t("已关闭"),
+    PENDING_PAYMENT: t("待付款"),
+    PAYMENT_PROCESSING: t("支付处理中"),
+    PAID: t("已付款"),
+    CANCELLED: t("已取消"),
+    EXPIRED: t("已过期"),
+    FULFILLING: t("履约中"),
+    COMPLETED: t("已完成"),
+    REFUNDED: t("已退款")
   };
   return labels[status] ?? status;
 }
 
 function issueLabel(issueType: string): string {
   const labels: Record<string, string> = {
-    PAYMENT: "支付问题",
-    PICKUP: "自提问题",
-    DELIVERY: "配送问题",
-    AFTER_SALE: "售后记录",
-    ORDER: "订单问题",
-    OTHER: "其他"
+    PAYMENT: t("支付问题"),
+    PICKUP: t("自提问题"),
+    DELIVERY: t("配送问题"),
+    AFTER_SALE: t("售后记录"),
+    ORDER: t("订单问题"),
+    OTHER: t("其他")
   };
   return labels[issueType] ?? issueType;
 }
 
 function methodLabel(method: string): string {
-  return method === "KIKUYU_LOCAL_DELIVERY" ? "Kikuyu配送" : "仓库自提";
+  return method === "KIKUYU_LOCAL_DELIVERY" ? t("Kikuyu配送") : t("仓库自提");
 }
 
 function money(value: number): string {

@@ -22,6 +22,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n/runtime";
 
 export type GuidedCutoutPoint = { x: number; y: number };
 type EditorMode = "outline" | "refine";
@@ -113,7 +114,7 @@ export function ManualCutoutEditor(props: {
         originalCanvas.width = width;
         originalCanvas.height = height;
         const originalContext = originalCanvas.getContext("2d");
-        if (!originalContext) throw new Error("浏览器无法读取原图。");
+        if (!originalContext) throw new Error(t("浏览器无法读取原图。"));
         originalContext.drawImage(original, 0, 0, width, height);
         originalCanvasRef.current = originalCanvas;
 
@@ -121,7 +122,7 @@ export function ManualCutoutEditor(props: {
         workingCanvas.width = width;
         workingCanvas.height = height;
         const workingContext = workingCanvas.getContext("2d", { willReadFrequently: true });
-        if (!workingContext) throw new Error("浏览器无法打开图片编辑画布。");
+        if (!workingContext) throw new Error(t("浏览器无法打开图片编辑画布。"));
         workingContext.clearRect(0, 0, width, height);
         workingContext.drawImage(cutout, 0, 0, width, height);
         workingCanvasRef.current = workingCanvas;
@@ -133,7 +134,7 @@ export function ManualCutoutEditor(props: {
         displayContext?.clearRect(0, 0, width, height);
         displayContext?.drawImage(originalCanvas, 0, 0);
       })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "无法打开修边工具。"))
+      .catch((caught) => setError(caught instanceof Error ? caught.message : t("无法打开修边工具。")))
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -234,14 +235,14 @@ export function ManualCutoutEditor(props: {
 
   async function runGuidedCutout() {
     if (points.length < 6) {
-      setError("请沿衣服外轮廓至少点击 6 个点，建议点击肩部、袖口和下摆转角。");
+      setError(t("请沿衣服外轮廓至少点击 6 个点，建议点击肩部、袖口和下摆转角。"));
       return;
     }
     setError("");
     try {
       await props.onGuidedCutout(points);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "按轮廓自动抠图失败，请调整轮廓后重试。");
+      setError(caught instanceof Error ? caught.message : t("按轮廓自动抠图失败，请调整轮廓后重试。"));
     }
   }
 
@@ -251,13 +252,13 @@ export function ManualCutoutEditor(props: {
     setError("");
     const blob = await canvasBlob(working);
     if (!blob) {
-      setError("无法导出修正版图片。");
+      setError(t("无法导出修正版图片。"));
       return;
     }
     try {
       await props.onSave(blob);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法保存修正版抠图。");
+      setError(caught instanceof Error ? caught.message : t("无法保存修正版抠图。"));
     }
   }
 
@@ -265,36 +266,37 @@ export function ManualCutoutEditor(props: {
     <Dialog open={props.open} onOpenChange={(open) => !props.saving && props.onOpenChange(open)}>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
-          <DialogTitle>手动抠图</DialogTitle>
-          <DialogDescription>默认在原图上沿衣服外轮廓依次点选，系统会在轮廓内自动识别衣服。只调整透明边界，不生成或重画商品。</DialogDescription>
+          <DialogTitle>{t("手动抠图")}</DialogTitle>
+          <DialogDescription>{t("默认在原图上沿衣服外轮廓依次点选，系统会在轮廓内自动识别衣服。只调整透明边界，不生成或重画商品。")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" variant={mode === "outline" ? "default" : "outline"} onClick={() => setMode("outline")}>
-            <MousePointer2Icon data-icon="inline-start" />点选轮廓
+            <MousePointer2Icon data-icon="inline-start" />{t("点选轮廓")}
           </Button>
           <Button type="button" size="sm" variant={mode === "refine" ? "default" : "outline"} onClick={() => setMode("refine")}>
-            <PaintbrushIcon data-icon="inline-start" />边缘细修
+            <PaintbrushIcon data-icon="inline-start" />{t("边缘细修")}
           </Button>
           {mode === "outline" ? (
-            <span className="text-xs text-muted-foreground">已选 {points.length} 个点，建议 8–16 个</span>
+            <span className="text-xs text-muted-foreground">{t("已选")} {points.length}  {t("个点，建议 8–16 个")}</span>
           ) : (
             <>
               <Button type="button" size="sm" variant={tool === "erase" ? "default" : "outline"} onClick={() => setTool("erase")}>
-                <EraserIcon data-icon="inline-start" />擦除残留
+                <EraserIcon data-icon="inline-start" />{t("擦除残留")}
               </Button>
               <Button type="button" size="sm" variant={tool === "restore" ? "default" : "outline"} onClick={() => setTool("restore")}>
-                <PaintbrushIcon data-icon="inline-start" />恢复衣服
+                <PaintbrushIcon data-icon="inline-start" />{t("恢复衣服")}
               </Button>
               <label className="flex min-w-44 flex-1 items-center gap-2 text-xs text-muted-foreground">
-                笔刷
+                
+                {t("笔刷")}
                 <input className="min-w-24 flex-1" type="range" min="12" max="160" step="4" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
               </label>
             </>
           )}
-          <Button type="button" size="sm" variant="outline" disabled={mode === "outline" ? !points.length : !historyCount} onClick={undo}><Undo2Icon data-icon="inline-start" />撤销</Button>
-          <Button type="button" size="sm" variant="outline" onClick={reset}><RotateCcwIcon data-icon="inline-start" />重置</Button>
-          {mode === "refine" ? <Button type="button" size="sm" variant="outline" onClick={() => setWhitePreview((value) => !value)}>{whitePreview ? "查看透明底" : "查看白底"}</Button> : null}
+          <Button type="button" size="sm" variant="outline" disabled={mode === "outline" ? !points.length : !historyCount} onClick={undo}><Undo2Icon data-icon="inline-start" />{t("撤销")}</Button>
+          <Button type="button" size="sm" variant="outline" onClick={reset}><RotateCcwIcon data-icon="inline-start" />{t("重置")}</Button>
+          {mode === "refine" ? <Button type="button" size="sm" variant="outline" onClick={() => setWhitePreview((value) => !value)}>{whitePreview ? t("查看透明底") : t("查看白底")}</Button> : null}
         </div>
 
         <div className={cn("relative flex min-h-72 items-center justify-center overflow-hidden rounded-md border", mode === "refine" && !whitePreview ? "bg-muted" : "bg-white")}>
@@ -306,27 +308,29 @@ export function ManualCutoutEditor(props: {
             onPointerMove={paint}
             onPointerUp={stopDrawing}
             onPointerCancel={stopDrawing}
-            aria-label={mode === "outline" ? "衣服轮廓点选画布" : "抠图修边画布"}
+            aria-label={mode === "outline" ? t("衣服轮廓点选画布") : t("抠图修边画布")}
           />
         </div>
         <p className="text-xs text-muted-foreground">
           {mode === "outline"
-            ? "沿衣服外边缘顺时针点击：领口或帽子、两侧肩部、袖口、下摆转角。蓝色区域应只包住衣服，不要包住四周刻度尺。"
-            : "自动抠图后仍有少量残留时，用擦除或恢复笔刷细修。保存后会重新生成白底图和两版优化主图。"}
+            ? t("沿衣服外边缘顺时针点击：领口或帽子、两侧肩部、袖口、下摆转角。蓝色区域应只包住衣服，不要包住四周刻度尺。")
+            : t("自动抠图后仍有少量残留时，用擦除或恢复笔刷细修。保存后会重新生成白底图和两版优化主图。")}
         </p>
         {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p> : null}
 
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={props.saving} onClick={() => props.onOpenChange(false)}>取消</Button>
+          <Button type="button" variant="outline" disabled={props.saving} onClick={() => props.onOpenChange(false)}>{t("取消")}</Button>
           {mode === "outline" ? (
             <Button type="button" disabled={loading || props.saving || points.length < 6} onClick={() => void runGuidedCutout()}>
               {props.saving ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <ScissorsIcon data-icon="inline-start" />}
-              按轮廓自动抠图
+              
+              {t("按轮廓自动抠图")}
             </Button>
           ) : (
             <Button type="button" disabled={loading || props.saving} onClick={() => void save()}>
               {props.saving ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
-              保存细修版
+              
+              {t("保存细修版")}
             </Button>
           )}
         </DialogFooter>
@@ -343,7 +347,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("图片读取失败，请刷新页面后重试。"));
+    image.onerror = () => reject(new Error(t("图片读取失败，请刷新页面后重试。")));
     image.src = url;
   });
 }

@@ -66,9 +66,10 @@ import {
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { BagStrapField } from "./bag-strap-field";
 import { ApparelSizeField } from "./apparel-size-field";
-import { KIDS_AGE_RANGE_LABELS } from "./apparel-size";
+import { kidsAgeRangeLabels } from "./apparel-size";
 import { resolveCalibrationProductIndex } from "./product-factory-batch-display";
 import { productStatusLabel } from "./product-factory-display";
+import { t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
 const CALIBRATION_COMPLETE_STATUSES = new Set([
@@ -223,7 +224,7 @@ export function ProductBatchCalibrationPage({
   }, [batchId, ids.adminUserId, initialProductId]);
 
   useEffect(() => {
-    void load().catch((caught) => setError(errorMessage(caught, "无法读取批次。")));
+    void load().catch((caught) => setError(errorMessage(caught, t("无法读取批次。"))));
   }, [load]);
 
   useEffect(() => {
@@ -269,7 +270,7 @@ export function ProductBatchCalibrationPage({
         setComparison(value);
         setActiveImage("original-FRONT");
       })
-      .catch((caught) => setError(errorMessage(caught, "无法读取图片版本。")));
+      .catch((caught) => setError(errorMessage(caught, t("无法读取图片版本。"))));
   }, [ids.adminUserId, latestExtraction, product]);
 
   useEffect(() => {
@@ -300,7 +301,7 @@ export function ProductBatchCalibrationPage({
   const readOnly = Boolean(product && isCalibrationComplete(product.status));
   const taxonomyLabels = useMemo(() => taxonomyLabelMap(taxonomy), [taxonomy]);
   const materialLabels = useMemo(
-    () => ({ ...taxonomyLabels, DENIM: taxonomyLabels.DENIM ?? "牛仔布" }),
+    () => ({ ...taxonomyLabels, DENIM: taxonomyLabels.DENIM ?? t("牛仔布") }),
     [taxonomyLabels]
   );
   const categoryOptions = activeValues(taxonomy, "CATEGORY", PRODUCT_CATEGORY_OPTIONS, form.category);
@@ -342,7 +343,7 @@ export function ProductBatchCalibrationPage({
   function saveDraft() {
     if (!draftKey) return;
     localStorage.setItem(draftKey, JSON.stringify(form));
-    setNotice("草稿已保存在本机，可稍后继续。");
+    setNotice(t("草稿已保存在本机，可稍后继续。"));
   }
 
   async function saveAndNext() {
@@ -374,19 +375,19 @@ export function ProductBatchCalibrationPage({
       else if (firstPending >= 0) setCurrentIndex(firstPending);
       else setCurrentIndex(Math.min(currentIndex, updated.products.length - 1));
       if (firstPending >= 0 || next >= 0) {
-        setNotice("已确认，进入下一件。");
+        setNotice(t("已确认，进入下一件。"));
       } else {
         // Do not await the whole batch: originals are already generating while
         // staff enter facts. Sales details now run alongside image review.
         void request(`/operations/product-batches/${batchId}/detail-generation/run`, {
           method: "POST", headers: { "X-Admin-User-Id": ids.adminUserId }, body: "{}", keepalive: true
         }).catch(() => {
-          sessionStorage.setItem(`product-factory-notice:${batchId}`, "销售详情尚未完成，可在审核页重试；白底图审核可以继续。");
+          sessionStorage.setItem(`product-factory-notice:${batchId}`, t("销售详情尚未完成，可在审核页重试；白底图审核可以继续。"));
         });
         router.push(`/product/display-review?batchId=${encodeURIComponent(batchId)}`);
       }
     } catch (caught) {
-      setError(errorMessage(caught, "无法保存校准。"));
+      setError(errorMessage(caught, t("无法保存校准。")));
     } finally {
       setBusy("");
     }
@@ -396,7 +397,7 @@ export function ProductBatchCalibrationPage({
     if (!product) return;
     const imageIds = (product.images ?? []).map((image) => image.id).filter(Boolean);
     if (!imageIds.length) {
-      setError("请先上传商品照片。");
+      setError(t("请先上传商品照片。"));
       return;
     }
     setBusy("ai-measurements");
@@ -413,9 +414,9 @@ export function ProductBatchCalibrationPage({
         })
       });
       await load();
-      setNotice(shoes ? "AI 鞋类识别已更新，请对照原图核对鞋码、鞋款和成双情况。" : "AI 商品资料已更新，尺码仍由员工填写。");
+      setNotice(shoes ? t("AI 鞋类识别已更新，请对照原图核对鞋码、鞋款和成双情况。") : t("AI 商品资料已更新，尺码仍由员工填写。"));
     } catch (caught) {
-      setError(errorMessage(caught, "AI 商品识别失败。"));
+      setError(errorMessage(caught, t("AI 商品识别失败。")));
     } finally {
       setBusy("");
     }
@@ -423,7 +424,7 @@ export function ProductBatchCalibrationPage({
 
   async function markRetake() {
     if (!product) return;
-    const reason = window.prompt("填写重拍原因", "图片模糊、裁切不完整或商品摆放不合格");
+    const reason = window.prompt(t("填写重拍原因"), t("图片模糊、裁切不完整或商品摆放不合格"));
     if (!reason?.trim()) return;
     setBusy("retake");
     setError("");
@@ -435,13 +436,13 @@ export function ProductBatchCalibrationPage({
       if (draftKey) localStorage.removeItem(draftKey);
       router.push(`/product/batches/${encodeURIComponent(batchId)}/upload?productId=${encodeURIComponent(product.id)}`);
     } catch (caught) {
-      setError(errorMessage(caught, "无法标记重拍。"));
+      setError(errorMessage(caught, t("无法标记重拍。")));
       setBusy("");
     }
   }
 
   if (!batch || !product) {
-    return <StatusMessage tone={error ? "danger" : "neutral"}>{error || "正在读取校准工作台..."}</StatusMessage>;
+    return <StatusMessage tone={error ? "danger" : "neutral"}>{error || t("正在读取校准工作台...")}</StatusMessage>;
   }
 
   const allComplete = completedCount === batch.targetCount;
@@ -452,14 +453,14 @@ export function ProductBatchCalibrationPage({
       <header className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <Link href={`/product/batches/${encodeURIComponent(batch.id)}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            <ArrowLeftIcon className="size-3" />返回批次
+            <ArrowLeftIcon className="size-3" />{t("返回批次")}
           </Link>
-          <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode} · 第 3 步：校准商品信息、填写尺码</h1>
-          <p className="mt-1 text-sm text-muted-foreground">第 {currentIndex + 1}/{batch.targetCount} {shoes ? "双" : "件"} · 已完成 {completedCount}/{batch.targetCount} · {productStatusLabel(product.status)}</p>
+          <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal">{batch.batchCode}  {t("· 第 3 步：校准商品信息、填写尺码")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("第")} {currentIndex + 1}/{batch.targetCount} {shoes ? t("双") : t("件")}  {t("· 已完成")} {completedCount}/{batch.targetCount} · {productStatusLabel(product.status)}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" title="上一件" disabled={currentIndex === 0 || Boolean(busy)} onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}><ArrowLeftIcon /></Button>
-          <Button variant="outline" size="icon" title="下一件" disabled={currentIndex === batch.products.length - 1 || Boolean(busy)} onClick={() => setCurrentIndex((index) => Math.min(batch.products.length - 1, index + 1))}><ArrowRightIcon /></Button>
+          <Button variant="outline" size="icon" title={t("上一件")} disabled={currentIndex === 0 || Boolean(busy)} onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}><ArrowLeftIcon /></Button>
+          <Button variant="outline" size="icon" title={t("下一件")} disabled={currentIndex === batch.products.length - 1 || Boolean(busy)} onClick={() => setCurrentIndex((index) => Math.min(batch.products.length - 1, index + 1))}><ArrowRightIcon /></Button>
         </div>
       </header>
 
@@ -471,19 +472,19 @@ export function ProductBatchCalibrationPage({
 
       {allComplete ? (
         <div className="flex flex-col gap-3 rounded-md border border-emerald-300 bg-emerald-50 p-4 text-emerald-950 sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />本批 {batch.targetCount} 件已完成商品信息确认</span>
-          <Button asChild><Link href={`/product/display-review?batchId=${encodeURIComponent(batch.id)}`}>继续白底展示图审核<ArrowRightIcon data-icon="inline-end" /></Link></Button>
+          <span className="flex items-center gap-2 font-medium"><CheckCircle2Icon className="size-5" />{t("本批")} {batch.targetCount}  {t("件已完成商品信息确认")}</span>
+          <Button asChild><Link href={`/product/display-review?batchId=${encodeURIComponent(batch.id)}`}>{t("继续白底展示图审核")}<ArrowRightIcon data-icon="inline-end" /></Link></Button>
         </div>
       ) : null}
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,55fr)_minmax(420px,45fr)]">
-        <section className="min-w-0 space-y-3" aria-label="商品图片校准">
+        <section className="min-w-0 space-y-3" aria-label={t("商品图片校准")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="font-semibold">图片确认</h2>
-              <p className="text-xs text-muted-foreground">{shoes ? "核对整双、侧面、鞋底和尺码标原图。整批确认后生成白底展示图，再逐双对照原图审核。" : "对照原图核对商品信息并手填尺码；整批确认后，系统直接使用原图生成白底展示图。"}</p>
+              <h2 className="font-semibold">{t("图片确认")}</h2>
+              <p className="text-xs text-muted-foreground">{shoes ? t("核对整双、侧面、鞋底和尺码标原图。整批确认后生成白底展示图，再逐双对照原图审核。") : t("对照原图核对商品信息并手填尺码；整批确认后，系统直接使用原图生成白底展示图。")}</p>
             </div>
-            <Badge variant="secondary">对照原图校准商品信息</Badge>
+            <Badge variant="secondary">{t("对照原图校准商品信息")}</Badge>
           </div>
 
           <Tabs value={activeImage} onValueChange={setActiveImage}>
@@ -500,39 +501,39 @@ export function ProductBatchCalibrationPage({
           </Tabs>
 
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />全屏</Button>
-            {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />下载</a></Button> : null}
+            <Button size="sm" variant="outline" disabled={!currentImage?.url} onClick={() => void imagePanelRef.current?.requestFullscreen()}><ExpandIcon data-icon="inline-start" />{t("全屏")}</Button>
+            {currentImage?.url ? <Button asChild size="sm" variant="outline"><a href={currentImage.url} target="_blank" rel="noreferrer" download><DownloadIcon data-icon="inline-start" />{t("下载")}</a></Button> : null}
           </div>
 
 
         </section>
 
-        <section className="min-w-0 space-y-5" aria-label="商品信息校准">
+        <section className="min-w-0 space-y-5" aria-label={t("商品信息校准")}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="font-semibold">商品信息</h2>
-              <p className="text-xs text-muted-foreground">字段中的内容是最终值；下方灰字保留 AI 建议，人工修改不会覆盖 AI 原始记录。</p>
+              <h2 className="font-semibold">{t("商品信息")}</h2>
+              <p className="text-xs text-muted-foreground">{t("字段中的内容是最终值；下方灰字保留 AI 建议，人工修改不会覆盖 AI 原始记录。")}</p>
             </div>
             {!readOnly ? (
               <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void rerunAiMeasurements()}>
                 {busy === "ai-measurements" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <WandSparklesIcon data-icon="inline-start" />}
-                {shoes ? "重新 AI 识别鞋子" : "重新 AI 识别商品"}
+                {shoes ? t("重新 AI 识别鞋子") : t("重新 AI 识别商品")}
               </Button>
             ) : null}
           </div>
 
-          <FormInput fieldKey="title" label="标题" value={form.title} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "title")} onChange={(value) => updateForm("title", value)} />
+          <FormInput fieldKey="title" label={t("标题")} value={form.title} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "title")} onChange={(value) => updateForm("title", value)} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormSelect fieldKey="category" label="分类" value={form.category} values={categoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "category")} onChange={(value) => updateForm("category", value)} />
-            <FormSelect fieldKey="subcategory" label={form.category === "BAG" ? "包款式" : "子分类"} value={form.subcategory} values={form.category === "BAG" ? BAG_STYLES : subcategoryOptions} labels={form.category === "BAG" ? BAG_STYLE_LABELS : taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
-            <FormSelect fieldKey="audience" label="适用人群" value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
-            <FormSelect fieldKey="color" label="颜色" value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
-            {!shoes && form.category !== "BAG" && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label="儿童年龄段" value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} labels={KIDS_AGE_RANGE_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
+            <FormSelect fieldKey="category" label={t("分类")} value={form.category} values={categoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "category")} onChange={(value) => updateForm("category", value)} />
+            <FormSelect fieldKey="subcategory" label={form.category === "BAG" ? t("包款式") : t("子分类")} value={form.subcategory} values={form.category === "BAG" ? BAG_STYLES : subcategoryOptions} labels={form.category === "BAG" ? BAG_STYLE_LABELS : taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
+            <FormSelect fieldKey="audience" label={t("适用人群")} value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
+            <FormSelect fieldKey="color" label={t("颜色")} value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
+            {!shoes && form.category !== "BAG" && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label={t("儿童年龄段")} value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} labels={kidsAgeRangeLabels()} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
             {!shoes && form.category !== "BAG" ? <>
               <ApparelSizeField category={form.category} audience={form.audience} value={form.sizeLabel} disabled={readOnly} onChange={(value) => updateForm("sizeLabel", value)} />
               <details className="sm:col-span-2">
-                <summary className="cursor-pointer text-sm text-muted-foreground">原标签记录（可选）</summary>
-                <div className="pt-3"><FormInput fieldKey="tagSize" label="原标尺码" value={form.tagSize} disabled={readOnly} onChange={(value) => updateForm("tagSize", value)} /></div>
+                <summary className="cursor-pointer text-sm text-muted-foreground">{t("原标签记录（可选）")}</summary>
+                <div className="pt-3"><FormInput fieldKey="tagSize" label={t("原标尺码")} value={form.tagSize} disabled={readOnly} onChange={(value) => updateForm("tagSize", value)} /></div>
               </details>
             </> : null}
           </div>
@@ -547,8 +548,8 @@ export function ProductBatchCalibrationPage({
             />
           ) : (
             <div className="border-t pt-4">
-              <h3 className="mb-3 text-sm font-semibold">人工实测尺寸（cm，可选）</h3>
-              <p className="text-xs text-muted-foreground">仅填写人工实测值，未测量可留空。包的高度不包含提手。</p>
+              <h3 className="mb-3 text-sm font-semibold">{t("人工实测尺寸（cm，可选）")}</h3>
+              <p className="text-xs text-muted-foreground">{t("仅填写人工实测值，未测量可留空。包的高度不包含提手。")}</p>
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {visibleMeasurementFields.map((field) => (
                   <FormInput
@@ -567,23 +568,23 @@ export function ProductBatchCalibrationPage({
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormSelect fieldKey="conditionGrade" label="成色" value={form.conditionGrade} values={conditionOptions} labels={taxonomyLabels} required disabled={readOnly} onChange={(value) => updateForm("conditionGrade", value)} />
-            <FormInput fieldKey="brand" label="品牌" value={form.brand} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "brandLabel")} onChange={(value) => updateForm("brand", value)} />
-            <FormInput fieldKey="priceKsh" label="价格（KSh）" value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
-            <FormSelect fieldKey="pattern" label="图案" value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
+            <FormSelect fieldKey="conditionGrade" label={t("成色")} value={form.conditionGrade} values={conditionOptions} labels={taxonomyLabels} required disabled={readOnly} onChange={(value) => updateForm("conditionGrade", value)} />
+            <FormInput fieldKey="brand" label={t("品牌")} value={form.brand} disabled={readOnly} suggestion={aiSuggestion(aiOutput, "brandLabel")} onChange={(value) => updateForm("brand", value)} />
+            <FormInput fieldKey="priceKsh" label={t("价格（KSh）")} value={form.priceKsh} required inputMode="numeric" disabled={readOnly} onChange={(value) => updateForm("priceKsh", value)} />
+            <FormSelect fieldKey="pattern" label={t("图案")} value={form.pattern} values={AI_PATTERNS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "pattern")} onChange={(value) => updateForm("pattern", value)} />
             {!shoes && form.category !== "BAG" ? <>
-              <FormSelect fieldKey="sleeveType" label="袖型" value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
-              <FormSelect fieldKey="fitType" label="版型" value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fitType")} onChange={(value) => updateForm("fitType", value)} />
-              <FormSelect fieldKey="stretchLevel" label="弹性" value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "stretchLevel")} onChange={(value) => updateForm("stretchLevel", value)} />
-              <FormSelect fieldKey="fabricWeight" label="面料厚度" value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fabricWeight")} onChange={(value) => updateForm("fabricWeight", value)} />
+              <FormSelect fieldKey="sleeveType" label={t("袖型")} value={form.sleeveType} values={AI_SLEEVE_TYPES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "sleeveType")} onChange={(value) => updateForm("sleeveType", value)} />
+              <FormSelect fieldKey="fitType" label={t("版型")} value={form.fitType} values={PRODUCT_FIT_TYPES} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fitType")} onChange={(value) => updateForm("fitType", value)} />
+              <FormSelect fieldKey="stretchLevel" label={t("弹性")} value={form.stretchLevel} values={PRODUCT_STRETCH_LEVELS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "stretchLevel")} onChange={(value) => updateForm("stretchLevel", value)} />
+              <FormSelect fieldKey="fabricWeight" label={t("面料厚度")} value={form.fabricWeight} values={PRODUCT_FABRIC_WEIGHTS} labels={FACT_LABELS} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "fabricWeight")} onChange={(value) => updateForm("fabricWeight", value)} />
             </> : null}
-            <FormSelect fieldKey="material" label={shoes ? "材质" : "面料"} value={form.material} values={materialOptions} labels={materialLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "material")} onChange={(value) => updateForm("material", value)} />
+            <FormSelect fieldKey="material" label={shoes ? t("材质") : t("面料")} value={form.material} values={materialOptions} labels={materialLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "material")} onChange={(value) => updateForm("material", value)} />
           </div>
 
           {!shoes && form.category !== "BAG" ? (
             <FormTagPicker
               fieldKey="tags"
-              label="商品标签"
+              label={t("商品标签")}
               values={tagOptions}
               selected={form.tags}
               labels={taxonomyLabels}
@@ -593,7 +594,7 @@ export function ProductBatchCalibrationPage({
             />
           ) : null}
 
-          <FormTextarea fieldKey="defects" label="瑕疵" value={form.defects} required disabled={readOnly} hint="没有瑕疵请填写 None。" onChange={(value) => updateForm("defects", value)} />
+          <FormTextarea fieldKey="defects" label={t("瑕疵")} value={form.defects} required disabled={readOnly} hint={t("没有瑕疵请填写 None。")} onChange={(value) => updateForm("defects", value)} />
           {reasons.length && !readOnly ? <StatusMessage tone="danger">{reasons.join(" ")}</StatusMessage> : null}
         </section>
       </div>
@@ -603,17 +604,17 @@ export function ProductBatchCalibrationPage({
           {!readOnly ? (
             <p className={cn("text-xs", validationIssues.length ? "font-medium text-destructive" : "text-emerald-700")}>
               {validationIssues.length
-                ? `还差：${[...new Set(validationIssues.map((issue) => issue.label))].join("、")}`
-                : finalPendingItem ? "最后一件确认后，系统将自动生成详情与 Barcode。" : "必填信息已完整，可以确认并进入下一件。"}
+                ? t("还差：{v0}", { v0: [...new Set(validationIssues.map((issue) => issue.label))].join("、") })
+                : finalPendingItem ? t("最后一件确认后，系统将自动生成详情与 Barcode。") : t("必填信息已完整，可以确认并进入下一件。")}
             </p>
           ) : <span />}
           <div className="grid grid-cols-3 gap-2 lg:flex">
-            <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />保存草稿</Button>
+            <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={saveDraft}><SaveIcon data-icon="inline-start" />{t("保存草稿")}</Button>
             <Button disabled={Boolean(busy) || readOnly} onClick={() => void saveAndNext()}>
               {busy === "save" || busy === "finalize" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <CheckCircle2Icon data-icon="inline-start" />}
-              {readOnly ? "本件已确认" : finalPendingItem ? "确认本件并自动生成" : "确认并下一件"}
+              {readOnly ? t("本件已确认") : finalPendingItem ? t("确认本件并自动生成") : t("确认并下一件")}
             </Button>
-            <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={() => void markRetake()}><RotateCcwIcon data-icon="inline-start" />标记重拍</Button>
+            <Button variant="outline" disabled={Boolean(busy) || readOnly} onClick={() => void markRetake()}><RotateCcwIcon data-icon="inline-start" />{t("标记重拍")}</Button>
           </div>
         </div>
       </div>
@@ -637,7 +638,7 @@ function FormInput(props: {
     <label className="block min-w-0 text-sm font-medium" data-field-key={props.fieldKey}>
       <span>{props.label}{props.required ? " *" : ""}</span>
       <Input className="mt-2" value={props.value} disabled={props.disabled} inputMode={props.inputMode} onChange={(event) => props.onChange(event.target.value)} />
-      {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{props.suggestionLabel ?? "AI 建议"}：{props.suggestion}</span> : null}
+      {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{props.suggestionLabel ?? t("AI 建议")}：{props.suggestion}</span> : null}
       {props.hint ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{props.hint}</span> : null}
     </label>
   );
@@ -658,10 +659,10 @@ function FormSelect(props: {
     <label className="block min-w-0 text-sm font-medium" data-field-key={props.fieldKey}>
       <span>{props.label}{props.required ? " *" : ""}</span>
       <NativeSelect className="mt-2 w-full" value={props.value} disabled={props.disabled} onChange={(event) => props.onChange(event.target.value)}>
-        {props.required ? <NativeSelectOption value="" disabled>请选择{props.label}</NativeSelectOption> : null}
-        {props.values.map((value) => <NativeSelectOption key={value} value={value}>{props.labels?.[value] ?? enumLabel(value, props.label)}</NativeSelectOption>)}
+        {props.required ? <NativeSelectOption value="" disabled>{t("请选择")}{props.label}</NativeSelectOption> : null}
+        {props.values.map((value) => <NativeSelectOption key={value} value={value}>{props.labels?.[value] ? t(props.labels[value]) : enumLabel(value, props.fieldKey)}</NativeSelectOption>)}
       </NativeSelect>
-      {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">AI 建议：{enumLabel(props.suggestion, props.label)}</span> : null}
+      {props.suggestion ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("AI 建议：")}{enumLabel(props.suggestion, props.fieldKey)}</span> : null}
     </label>
   );
 }
@@ -688,9 +689,9 @@ function FormTagPicker(props: {
 }) {
   return (
     <fieldset className="min-w-0 rounded-md border p-3" data-field-key={props.fieldKey}>
-      <legend className="px-1 text-sm font-medium">{props.label} <span className="font-normal text-muted-foreground">（最多 8 个）</span></legend>
+      <legend className="px-1 text-sm font-medium">{props.label} <span className="font-normal text-muted-foreground">{t("（最多 8 个）")}</span></legend>
       {props.suggestion?.length ? (
-        <p className="mb-3 text-xs text-muted-foreground">AI 建议：{props.suggestion.map((value) => props.labels?.[value] ?? enumLabel(value)).join("、")}</p>
+        <p className="mb-3 text-xs text-muted-foreground">{t("AI 建议：")}{props.suggestion.map((value) => (props.labels?.[value] ? t(props.labels[value]) : enumLabel(value))).join("、")}</p>
       ) : null}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {props.values.map((value) => {
@@ -699,7 +700,7 @@ function FormTagPicker(props: {
           return (
             <label key={value} className="flex min-h-9 items-center gap-2 text-sm">
               <Checkbox disabled={props.disabled || atLimit} checked={checked} onCheckedChange={(next) => props.onChange(value, next === true)} />
-              <span>{props.labels?.[value] ?? enumLabel(value)}</span>
+              <span>{props.labels?.[value] ? t(props.labels[value]) : enumLabel(value)}</span>
             </label>
           );
         })}
@@ -711,7 +712,7 @@ function FormTagPicker(props: {
 function SafeProductImage({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  if (!src || failed) return <div className="text-sm text-muted-foreground">图片缺失</div>;
+  if (!src || failed) return <div className="text-sm text-muted-foreground">{t("图片缺失")}</div>;
   return <img src={src} alt={alt} className="size-full object-contain" onError={() => setFailed(true)} />;
 }
 
@@ -721,8 +722,8 @@ function StatusMessage({ tone, children }: { tone: "danger" | "neutral"; childre
 
 function buildImageTabs(comparison: ProductImageComparisonResponse | null, product: ProductRecord | null): ImageTab[] {
   const labels: Record<string, string> = isShoeCategory(stringValue(product?.category))
-    ? { FRONT: "整双原图", BACK: "侧面原图", DETAIL: "鞋底原图", LABEL: "尺码标原图", DEFECT: "瑕疵原图" }
-    : { FRONT: "正面原图", BACK: "背面原图", LABEL: "标签原图", DETAIL: "细节原图", DEFECT: "瑕疵原图" };
+    ? { FRONT: t("整双原图"), BACK: t("侧面原图"), DETAIL: t("鞋底原图"), LABEL: t("尺码标原图"), DEFECT: t("瑕疵原图") }
+    : { FRONT: t("正面原图"), BACK: t("背面原图"), LABEL: t("标签原图"), DETAIL: t("细节原图"), DEFECT: t("瑕疵原图") };
   return Object.entries(labels).flatMap(([type, label]) => {
     const source = product?.images?.find((item) => item.type === type && (!item.variant || item.variant === "ORIGINAL"));
     if (!source?.publicUrl) return [];
@@ -848,9 +849,9 @@ const ENUM_LABELS: Record<string, string> = {
   LIKE_NEW: "近全新", EXCELLENT: "成色优秀", GOOD: "成色良好", FAIR: "有明显使用痕迹"
 };
 
-function enumLabel(value: string, fieldLabel = "") {
-  if (value === "SHORT") return fieldLabel === "袖型" ? "短袖" : "短裤";
-  return ENUM_LABELS[value] ?? value.replaceAll("_", " ");
+function enumLabel(value: string, fieldKey = "") {
+  if (value === "SHORT") return fieldKey === "sleeveType" ? t("短袖") : t("短裤");
+  return t(ENUM_LABELS[value] ?? value.replaceAll("_", " "));
 }
 
 function errorMessage(value: unknown, fallback: string) {

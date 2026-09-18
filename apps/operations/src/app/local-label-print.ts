@@ -1,4 +1,5 @@
 import { stringValue, type JsonRecord } from "./operations-workspace-flow";
+import { t } from "@/i18n/runtime";
 
 export type LabelSize = "60x40" | "40x30";
 
@@ -106,7 +107,7 @@ export function buildLabelPrintPayload(input: {
   const location = inventoryItem.location && typeof inventoryItem.location === "object"
     ? inventoryItem.location as JsonRecord
     : {};
-  const locationCode = stringValue(location.locationCode) || "待分配";
+  const locationCode = stringValue(location.locationCode) || t("待分配");
   const templateCode = `online_saler_product_${input.labelSize}`;
   const printerName = input.printerName?.trim() || DEFAULT_PRINTER_NAME;
 

@@ -14,6 +14,7 @@ import {
   womenStandardSizeFromUk,
   type SizeChartEntry
 } from "@online-saler/business-rules";
+import { t } from "@/i18n/runtime";
 
 export { usesWaistSizing };
 
@@ -84,16 +85,16 @@ export function apparelSizeSummary(sizeLabel: string, category: string, audience
   const size = normalizeApparelSize(sizeLabel, audience);
   if (usesWaistSizing(category, audience)) {
     const inches = waistInchesFrom(size);
-    return inches === null ? "" : `商城显示：Waist ${inches}（腰围英寸，不换算字母码）`;
+    return inches === null ? "" : t("商城显示：Waist {inches}（腰围英寸，不换算字母码）", { inches: inches });
   }
   const entry = sizeChartEntry(audience, size);
   if (!entry) return "";
   const age = formatAgeRange(entry);
   return [
-    `商城显示：${entry.standardSize}${entry.ukSize ? ` · ${entry.ukSize}` : ""}`,
-    age ? `年龄 ${age}` : null,
-    `身高 ${formatHeightRange(entry)}`,
-    `体重 ${formatWeightRange(entry)}`
+    t("商城显示：{standardSize}{v1}", { standardSize: entry.standardSize, v1: entry.ukSize ? ` · ${entry.ukSize}` : "" }),
+    age ? t("年龄 {age}", { age: age }) : null,
+    t("身高 {v0}", { v0: formatHeightRange(entry) }),
+    t("体重 {v0}", { v0: formatWeightRange(entry) })
   ].filter(Boolean).join(" · ");
 }
 
@@ -103,11 +104,18 @@ export function derivedUkSizeLabel(sizeLabel: string, category: string, audience
   return sizeChartEntry(audience, normalizeApparelSize(sizeLabel, audience))?.ukSize ?? undefined;
 }
 
-/** Kids age ranges read back as the size-chart row they came from. */
-export const KIDS_AGE_RANGE_LABELS: Record<string, string> = {
-  NOT_APPLICABLE: "不适用",
-  ...Object.fromEntries(KIDS_STANDARD_SIZES.map((size) => {
-    const entry = sizeChartEntry("KIDS", size)!;
-    return [entry.ageRangeCode!, `${size} · ${entry.ageMinYears}-${entry.ageMaxYears} 岁 · ${formatHeightRange(entry)}`];
-  }))
-};
+/**
+ * Kids age ranges read back as the size-chart row they came from.
+ *
+ * Built on call rather than held in a module constant: these labels are translated, and a constant
+ * would freeze whichever language happened to be active when the module first loaded.
+ */
+export function kidsAgeRangeLabels(): Record<string, string> {
+  return {
+    NOT_APPLICABLE: t("不适用"),
+    ...Object.fromEntries(KIDS_STANDARD_SIZES.map((size) => {
+      const entry = sizeChartEntry("KIDS", size)!;
+      return [entry.ageRangeCode!, t("{size} · {ageMinYears}-{ageMaxYears} 岁 · {v3}", { size: size, ageMinYears: entry.ageMinYears, ageMaxYears: entry.ageMaxYears, v3: formatHeightRange(entry) })];
+    }))
+  };
+}

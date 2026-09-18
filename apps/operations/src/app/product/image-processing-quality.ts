@@ -1,4 +1,5 @@
 import type { ImageProcessingJobRecord, ProductImageComparisonResponse } from "@online-saler/shared-types";
+import { t } from "@/i18n/runtime";
 
 const MINIMUM_LIGHTWEIGHT_QUALITY_SCORE = 0.75;
 const BLOCKING_LIGHTWEIGHT_ISSUES = new Set([
@@ -13,7 +14,7 @@ export function cutoutQualityWarning(job: ImageProcessingJobRecord): string | nu
   if (job.provider === "manual-cutout-editor") return null;
 
   if (typeof job.qualityScore === "number" && job.qualityScore < MINIMUM_LIGHTWEIGHT_QUALITY_SCORE) {
-    return automaticFailureMessage(job, `${Math.round(job.qualityScore * 100)} 分，低于 75 分`);
+    return automaticFailureMessage(job, t("{v0} 分，低于 75 分", { v0: Math.round(job.qualityScore * 100) }));
   }
 
   const blockingIssue = job.qualityIssues.find((issue) => BLOCKING_LIGHTWEIGHT_ISSUES.has(issue));
@@ -39,7 +40,7 @@ export function persistedFrontCutoutWarning(comparison: ProductImageComparisonRe
 
 function automaticFailureMessage(job: ImageProcessingJobRecord, reason: string): string {
   if (job.provider === "lightweight-opencv") {
-    return `lightweight 抠图未通过（${reason}），不能作为商城主图。请先使用 BiRefNet；仍不正确时手工修边或重拍。`;
+    return t("lightweight 抠图未通过（{reason}），不能作为商城主图。请先使用 BiRefNet；仍不正确时手工修边或重拍。", { reason: reason });
   }
-  return `自动抠图未通过（${reason}），不能作为商城主图。请手工修边；无法修复时标记重拍。`;
+  return t("自动抠图未通过（{reason}），不能作为商城主图。请手工修边；无法修复时标记重拍。", { reason: reason });
 }
