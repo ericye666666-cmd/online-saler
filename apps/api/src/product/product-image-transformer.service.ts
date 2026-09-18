@@ -172,8 +172,11 @@ export class ProductImageTransformerService {
       .extractChannel(0)
       .raw()
       .toBuffer();
+    // Settle the fade onto white here, so the resize that follows works on a
+    // plain opaque image rather than carrying an alpha channel through it.
     return sharp(region)
       .joinChannel(mask, { raw: { width, height, channels: 1 } })
+      .flatten({ background: "#ffffff" })
       .png()
       .toBuffer();
   }
