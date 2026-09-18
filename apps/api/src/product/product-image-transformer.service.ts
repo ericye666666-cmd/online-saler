@@ -18,7 +18,7 @@ const STOREFRONT_SUBJECT_SIZE = 1080;
 // Display framing: the subject fills the same share of every card, so a rail of
 // cards reads as one catalogue instead of a set of unrelated photographs.
 const DISPLAY_CANVAS_SIZE = 1200;
-const DISPLAY_SUBJECT_SIZE = 1000;
+const DISPLAY_SUBJECT_SIZE = 1060;
 // A white garment on white can trim away to nothing; below this share of the
 // original the trim is treated as a miss and the untrimmed image is framed.
 const MIN_TRIM_RETENTION = 0.2;
@@ -26,7 +26,17 @@ const MIN_TRIM_RETENTION = 0.2;
 // the faint outer edge of a soft contact shadow. Keeping this much of the
 // surrounding original, relative to the subject, lets the shadow fade out
 // naturally instead of ending in a hard line against the white padding.
-const SUBJECT_BLEED = 0.05;
+const SUBJECT_BLEED = 0.08;
+// The model's "white" is 253-254 with a wide faint halo around the garment.
+// Neutral pixels from WHITE_LIFT_FROM up are eased to pure white, reaching it at
+// WHITE_LIFT_FULL, so the background matches the 255 canvas instead of showing
+// as a faint box — most visibly on the storefront's tinted tiles, where the
+// image is multiplied into the tile colour.
+const WHITE_LIFT_FROM = 244;
+const WHITE_LIFT_FULL = 252;
+// Only near-grey pixels count as background; anything with more channel spread
+// than this is coloured fabric and is never touched.
+const NEUTRAL_SPREAD = 6;
 
 @Injectable()
 export class ProductImageTransformerService {
@@ -85,14 +95,14 @@ export class ProductImageTransformerService {
       ...generated,
       body: data,
       contentType: "image/jpeg",
-      processorVersion: `${generated.processorVersion}+framed-v2-${DISPLAY_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
+      processorVersion: `${generated.processorVersion}+framed-v4-${DISPLAY_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
       widthPx: DISPLAY_CANVAS_SIZE,
       heightPx: DISPLAY_CANVAS_SIZE
     };
   }
 
   private async trimToSubject(input: Buffer): Promise<{ data: Buffer; info: { width: number; height: number } }> {
-    const oriented = await sharp(input).rotate().toBuffer({ resolveWithObject: true });
+    const oriented = await this.liftBackgroundToWhite(input);
     const { width, height } = oriented.info;
 
     try {
@@ -110,15 +120,62 @@ export class ProductImageTransformerService {
         const padded = await sharp(oriented.data)
           .extend({ top: bleed, bottom: bleed, left: bleed, right: bleed, background: "#ffffff" })
           .toBuffer();
+        const regionWidth = subjectWidth + bleed * 2;
+        const regionHeight = subjectHeight + bleed * 2;
         const region = await sharp(padded)
-          .extract({ left, top, width: subjectWidth + bleed * 2, height: subjectHeight + bleed * 2 })
+          .extract({ left, top, width: regionWidth, height: regionHeight })
+          .removeAlpha()
           .toBuffer();
-        return this.fitSubject(region);
+        return this.fitSubject(await this.featherIntoWhite(region, regionWidth, regionHeight, bleed));
       }
     } catch {
       // sharp throws when a trim would leave nothing at all; fall through.
     }
     return this.fitSubject(oriented.data);
+  }
+
+  private async liftBackgroundToWhite(input: Buffer): Promise<{ data: Buffer; info: { width: number; height: number } }> {
+    const { data, info } = await sharp(input).rotate().removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const span = WHITE_LIFT_FULL - WHITE_LIFT_FROM;
+    for (let index = 0; index < data.length; index += 3) {
+      const r = data[index], g = data[index + 1], b = data[index + 2];
+      const low = Math.min(r, g, b);
+      if (low < WHITE_LIFT_FROM || Math.max(r, g, b) - low > NEUTRAL_SPREAD) continue;
+      const scale = (value: number) => Math.min(255, Math.round(WHITE_LIFT_FROM + (value - WHITE_LIFT_FROM) * (255 - WHITE_LIFT_FROM) / span));
+      data[index] = scale(r);
+      data[index + 1] = scale(g);
+      data[index + 2] = scale(b);
+    }
+    const encoded = await sharp(data, { raw: { width: info.width, height: info.height, channels: 3 } }).png().toBuffer();
+    return { data: encoded, info: { width: info.width, height: info.height } };
+  }
+
+  /**
+   * The model's white is 253-254, the canvas padding is 255. Butting them
+   * together leaves a straight one- or two-level edge that the eye picks out
+   * as a faint box around the product. Fading the outer half of the bleed band
+   * to transparent lets the region dissolve into the white canvas instead. The
+   * fade stops short of the subject's own bounding box, so no garment pixel is
+   * touched.
+   */
+  private async featherIntoWhite(region: Buffer, width: number, height: number, bleed: number): Promise<Buffer> {
+    const inset = Math.round(bleed * 0.5);
+    const sigma = Math.max(0.3, bleed * 0.2);
+    const mask = await sharp(Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`
+      + `<rect width="${width}" height="${height}" fill="#000"/>`
+      + `<rect x="${inset}" y="${inset}" width="${Math.max(1, width - inset * 2)}" height="${Math.max(1, height - inset * 2)}" fill="#fff"/>`
+      + "</svg>"
+    ))
+      .resize(width, height, { fit: "fill" })
+      .blur(sigma)
+      .extractChannel(0)
+      .raw()
+      .toBuffer();
+    return sharp(region)
+      .joinChannel(mask, { raw: { width, height, channels: 1 } })
+      .png()
+      .toBuffer();
   }
 
   private async fitSubject(input: Buffer) {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import sharp from "sharp";
 import {
   OpenAIProductDisplayImageProvider,
   PRODUCT_DISPLAY_IMAGE_PROMPT,
@@ -45,6 +46,29 @@ describe("OpenAIProductDisplayImageProvider", () => {
     assert.equal(submittedForm?.has("input_fidelity"), false, "Do not send unsupported legacy fidelity parameters to GPT Image 2.5.");
     assert.equal(result.body.toString(), "generated-png");
     assert.equal(result.processorVersion, `gpt-image-2.5-sunburst:${PRODUCT_DISPLAY_PROMPT_VERSION}:high`);
+  });
+
+  it("sends a portrait photo as a square with room left for the contact shadow", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    let submittedForm: FormData | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      submittedForm = init?.body as FormData;
+      return new Response(JSON.stringify({
+        data: [{ b64_json: Buffer.from("generated-png").toString("base64") }]
+      }), { status: 200 });
+    }) as typeof fetch;
+    const portrait = await sharp({ create: { width: 960, height: 1280, channels: 3, background: "#b8c0cc" } })
+      .jpeg()
+      .toBuffer();
+
+    await new OpenAIProductDisplayImageProvider().generate({
+      body: portrait, contentType: "image/jpeg", filename: "hoodie.jpg"
+    });
+
+    const uploaded = submittedForm?.get("image[]") as Blob;
+    const metadata = await sharp(Buffer.from(await uploaded.arrayBuffer())).metadata();
+    assert.equal(metadata.width, metadata.height, "the model should receive a square");
+    assert.equal(metadata.height, 1600, "the photo's long side should take 80% of that square");
   });
 
   it("honors an explicit model and quality override", async () => {

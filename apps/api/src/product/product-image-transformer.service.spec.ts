@@ -124,8 +124,8 @@ describe("ProductImageTransformerService", () => {
     const smallWidth = await subjectWidth(small.body);
     const largeWidth = await subjectWidth(large.body);
     assert.ok(Math.abs(smallWidth - largeWidth) <= 4, `subject widths differ: ${smallWidth} vs ${largeWidth}`);
-    // 1000px frame for the subject plus a 5% bleed on each side of it.
-    assert.ok(smallWidth >= 890 && smallWidth <= 930, `subject width off target: ${smallWidth}`);
+    // 1060px frame for the subject plus an 8% bleed on each side of it.
+    assert.ok(smallWidth >= 890 && smallWidth <= 940, `subject width off target: ${smallWidth}`);
     assert.equal(small.provider, "openai-image-edit");
   });
 
@@ -168,6 +168,81 @@ describe("ProductImageTransformerService", () => {
     assert.ok(lastGarmentRow > 0, "garment not found");
     assert.ok(largestStep <= 3, `shadow ends in a visible step of ${largestStep}`);
     assert.ok(values.slice(lastGarmentRow).some((value) => value >= 254), "shadow never reaches white");
+  });
+
+  it("dissolves the model's off-white into the canvas with no box around the product", async () => {
+    const service = new ProductImageTransformerService();
+    // Deliberately greyer than the model's real 253-254 so an unblended seam
+    // against the 255 canvas would be a five-level step.
+    const generated = {
+      body: await sharp({ create: { width: 1024, height: 1024, channels: 3, background: { r: 250, g: 250, b: 250 } } })
+        .composite([{ input: { create: { width: 500, height: 600, channels: 3, background: { r: 20, g: 30, b: 40 } } }, left: 262, top: 212 }])
+        .png()
+        .toBuffer(),
+      contentType: "image/png" as const,
+      provider: "openai-image-edit",
+      processorVersion: "test",
+      widthPx: 1024,
+      heightPx: 1024
+    };
+
+    const result = await service.normalizeDisplayFraming(generated);
+    const { data, info } = await sharp(result.body).greyscale().raw().toBuffer({ resolveWithObject: true });
+    const at = (x: number, y: number) => data[y * info.width + x];
+    // The garment's own hard synthetic edge rings under resampling; keep clear
+    // of it so only the background between canvas and product is measured.
+    let left = info.width, right = -1, top = info.height, bottom = -1;
+    for (let y = 0; y < info.height; y += 1) {
+      for (let x = 0; x < info.width; x += 1) {
+        if (at(x, y) < 200) {
+          left = Math.min(left, x); right = Math.max(right, x);
+          top = Math.min(top, y); bottom = Math.max(bottom, y);
+        }
+      }
+    }
+    const nearGarment = (x: number, y: number) => x > left - 16 && x < right + 16 && y > top - 16 && y < bottom + 16;
+    // Compare 4-pixel means either side of each point. That averages away
+    // JPEG's 8x8 quantisation noise near white, which the eye cannot see,
+    // while a straight seam — what reads as a box — still shows at full size.
+    const mean = (x0: number, y: number) => (at(x0, y) + at(x0 + 1, y) + at(x0 + 2, y) + at(x0 + 3, y)) / 4;
+    let largestSeam = 0;
+    for (let y = 0; y < info.height; y += 2) {
+      for (let x = 4; x < info.width - 4; x += 1) {
+        if (nearGarment(x - 4, y) || nearGarment(x + 3, y)) continue;
+        largestSeam = Math.max(largestSeam, Math.abs(mean(x, y) - mean(x - 4, y)));
+      }
+    }
+
+    assert.ok(largestSeam <= 2, `a visible seam of ${largestSeam.toFixed(1)} levels frames the product`);
+  });
+
+  it("lifts the model's off-white to white without touching pale coloured fabric", async () => {
+    const service = new ProductImageTransformerService();
+    // A pale pink garment: its red channel sits in the near-white range, so a
+    // lift that ignored colour would push it redder.
+    const pink = { r: 250, g: 205, b: 215 };
+    const generated = {
+      body: await sharp({ create: { width: 1024, height: 1024, channels: 3, background: { r: 253, g: 253, b: 253 } } })
+        .composite([{ input: { create: { width: 500, height: 600, channels: 3, background: pink } }, left: 262, top: 212 }])
+        .png()
+        .toBuffer(),
+      contentType: "image/png" as const,
+      provider: "openai-image-edit",
+      processorVersion: "test",
+      widthPx: 1024,
+      heightPx: 1024
+    };
+
+    const result = await service.normalizeDisplayFraming(generated);
+    const { data, info } = await sharp(result.body).raw().toBuffer({ resolveWithObject: true });
+    const centre = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels;
+    const corner = (8 * info.width + 8) * info.channels;
+    const nearBackground = (40 * info.width + Math.floor(info.width / 2)) * info.channels;
+
+    assert.ok(Math.abs(data[centre] - pink.r) <= 2 && Math.abs(data[centre + 1] - pink.g) <= 2 && Math.abs(data[centre + 2] - pink.b) <= 2,
+      `pink changed to ${data[centre]},${data[centre + 1]},${data[centre + 2]}`);
+    assert.equal(data[corner], 255);
+    assert.ok(data[nearBackground] >= 254, `model background left at ${data[nearBackground]}`);
   });
 
   it("keeps a near-white subject rather than trimming it away", async () => {

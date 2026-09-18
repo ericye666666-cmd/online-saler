@@ -1,5 +1,6 @@
 import { isShoeCategory } from "@online-saler/shared-types";
 import { Injectable } from "@nestjs/common";
+import sharp from "sharp";
 import { BackgroundRemovalProviderError, type BackgroundRemovalInput } from "./background-removal.provider";
 import type { ProductImageTransformResult } from "./product-image-transformer.service";
 
@@ -7,6 +8,11 @@ const OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits";
 const DEFAULT_MODEL = "gpt-image-2.5-sunburst";
 const DEFAULT_QUALITY = "high";
 const DEFAULT_TIMEOUT_MS = 180_000;
+// The model always returns a square. A portrait photo sent as it is gets scaled
+// until the garment fills that square top to bottom, which leaves no room under
+// it for the contact shadow the prompt asks for. Sending a square with the
+// photo taking this share of it lets the model keep that room.
+const INPUT_SUBJECT_SHARE = 0.8;
 
 export const PRODUCT_DISPLAY_PROMPT_VERSION = "product-display-v4-studio-shadow";
 export const PRODUCT_DISPLAY_IMAGE_PROMPT = [
@@ -66,10 +72,11 @@ export class OpenAIProductDisplayImageProvider {
     form.set("quality", this.quality());
     form.set("background", "opaque");
     form.set("output_format", "png");
+    const upload = await withRoomAroundPhoto(input);
     form.append(
       "image[]",
-      new Blob([new Uint8Array(input.body)], { type: input.contentType }),
-      input.filename
+      new Blob([new Uint8Array(upload.body)], { type: upload.contentType }),
+      upload.filename
     );
 
     const controller = new AbortController();
@@ -156,4 +163,28 @@ function parsePayload(text: string): OpenAIImageEditPayload {
 function errorMessage(payload: OpenAIImageEditPayload): string {
   if (typeof payload.error === "string") return payload.error.slice(0, 600);
   return String(payload.error?.message ?? "unknown error").slice(0, 600);
+}
+
+/**
+ * Square the photo up with room around it, extending the photographer's own
+ * backdrop so the model sees one continuous surface. Anything sharp cannot
+ * decode is sent unchanged and left to the model to accept or reject.
+ */
+async function withRoomAroundPhoto(
+  input: BackgroundRemovalInput
+): Promise<{ body: Buffer; contentType: string; filename: string }> {
+  try {
+    const oriented = await sharp(input.body).rotate().toBuffer({ resolveWithObject: true });
+    const { width, height } = oriented.info;
+    const side = Math.round(Math.max(width, height) / INPUT_SUBJECT_SHARE);
+    const left = Math.floor((side - width) / 2);
+    const top = Math.floor((side - height) / 2);
+    const body = await sharp(oriented.data)
+      .extend({ left, right: side - width - left, top, bottom: side - height - top, extendWith: "copy" })
+      .jpeg({ quality: 95, chromaSubsampling: "4:4:4" })
+      .toBuffer();
+    return { body, contentType: "image/jpeg", filename: input.filename.replace(/\.[^.]+$/, "") + ".jpg" };
+  } catch {
+    return { body: input.body, contentType: input.contentType, filename: input.filename };
+  }
 }
