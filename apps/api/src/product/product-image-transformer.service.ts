@@ -22,6 +22,11 @@ const DISPLAY_SUBJECT_SIZE = 1000;
 // A white garment on white can trim away to nothing; below this share of the
 // original the trim is treated as a miss and the untrimmed image is framed.
 const MIN_TRIM_RETENTION = 0.2;
+// The trim finds the subject by its difference from white, which stops short of
+// the faint outer edge of a soft contact shadow. Keeping this much of the
+// surrounding original, relative to the subject, lets the shadow fade out
+// naturally instead of ending in a hard line against the white padding.
+const SUBJECT_BLEED = 0.05;
 
 @Injectable()
 export class ProductImageTransformerService {
@@ -80,30 +85,40 @@ export class ProductImageTransformerService {
       ...generated,
       body: data,
       contentType: "image/jpeg",
-      processorVersion: `${generated.processorVersion}+framed-${DISPLAY_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
+      processorVersion: `${generated.processorVersion}+framed-v2-${DISPLAY_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
       widthPx: DISPLAY_CANVAS_SIZE,
       heightPx: DISPLAY_CANVAS_SIZE
     };
   }
 
   private async trimToSubject(input: Buffer): Promise<{ data: Buffer; info: { width: number; height: number } }> {
-    const source = sharp(input).rotate();
-    const { width = 0, height = 0 } = await source.metadata();
-    const scale = (result: { info: { width: number; height: number } }) =>
-      width > 0 && height > 0
-        ? Math.min(result.info.width / width, result.info.height / height)
-        : 1;
+    const oriented = await sharp(input).rotate().toBuffer({ resolveWithObject: true });
+    const { width, height } = oriented.info;
 
     try {
-      const trimmed = await sharp(input)
-        .rotate()
+      const trimmed = await sharp(oriented.data)
         .trim({ background: "#ffffff", threshold: 12 })
         .toBuffer({ resolveWithObject: true });
-      if (scale(trimmed) >= MIN_TRIM_RETENTION) return this.fitSubject(trimmed.data);
+      const subjectWidth = trimmed.info.width;
+      const subjectHeight = trimmed.info.height;
+      if (Math.min(subjectWidth / width, subjectHeight / height) >= MIN_TRIM_RETENTION) {
+        const left = Math.abs(trimmed.info.trimOffsetLeft ?? 0);
+        const top = Math.abs(trimmed.info.trimOffsetTop ?? 0);
+        const bleed = Math.round(Math.max(subjectWidth, subjectHeight) * SUBJECT_BLEED);
+        // Pad first so a subject near the edge gets the same bleed as one in the
+        // middle; otherwise the clamp would change the subject's final size.
+        const padded = await sharp(oriented.data)
+          .extend({ top: bleed, bottom: bleed, left: bleed, right: bleed, background: "#ffffff" })
+          .toBuffer();
+        const region = await sharp(padded)
+          .extract({ left, top, width: subjectWidth + bleed * 2, height: subjectHeight + bleed * 2 })
+          .toBuffer();
+        return this.fitSubject(region);
+      }
     } catch {
       // sharp throws when a trim would leave nothing at all; fall through.
     }
-    return this.fitSubject(await sharp(input).rotate().toBuffer());
+    return this.fitSubject(oriented.data);
   }
 
   private async fitSubject(input: Buffer) {

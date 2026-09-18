@@ -124,8 +124,50 @@ describe("ProductImageTransformerService", () => {
     const smallWidth = await subjectWidth(small.body);
     const largeWidth = await subjectWidth(large.body);
     assert.ok(Math.abs(smallWidth - largeWidth) <= 4, `subject widths differ: ${smallWidth} vs ${largeWidth}`);
-    assert.ok(smallWidth >= 980 && smallWidth <= 1020, `subject width off target: ${smallWidth}`);
+    // 1000px frame for the subject plus a 5% bleed on each side of it.
+    assert.ok(smallWidth >= 890 && smallWidth <= 930, `subject width off target: ${smallWidth}`);
     assert.equal(small.provider, "openai-image-edit");
+  });
+
+  it("lets a soft contact shadow fade out instead of ending in a hard line", async () => {
+    const service = new ProductImageTransformerService();
+    // A dark garment with a soft shadow under it that fades from grey to white.
+    const shadowRows = 90;
+    const gradient = Buffer.alloc(400 * shadowRows * 3);
+    for (let y = 0; y < shadowRows; y += 1) {
+      const value = Math.round(205 + (50 * y) / (shadowRows - 1));
+      gradient.fill(value, y * 400 * 3, (y + 1) * 400 * 3);
+    }
+    const generated = {
+      body: await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#ffffff" } })
+        .composite([
+          { input: { create: { width: 400, height: 400, channels: 3, background: { r: 20, g: 30, b: 40 } } }, left: 312, top: 250 },
+          { input: gradient, raw: { width: 400, height: shadowRows, channels: 3 }, left: 312, top: 650 }
+        ])
+        .png()
+        .toBuffer(),
+      contentType: "image/png" as const,
+      provider: "openai-image-edit",
+      processorVersion: "test",
+      widthPx: 1024,
+      heightPx: 1024
+    };
+
+    const result = await service.normalizeDisplayFraming(generated);
+    const { data, info } = await sharp(result.body).greyscale().raw().toBuffer({ resolveWithObject: true });
+    const column = Math.floor(info.width / 2);
+    const values = Array.from({ length: info.height }, (_, y) => data[y * info.width + column]);
+    // Scan only below the garment. Its own hard synthetic edge rings under
+    // resampling, which says nothing about how the shadow ends.
+    const lastGarmentRow = values.reduce((last, value, y) => (value < 100 ? y : last), -1);
+    let largestStep = 0;
+    for (let y = lastGarmentRow + 12; y < values.length; y += 1) {
+      largestStep = Math.max(largestStep, Math.abs(values[y] - values[y - 1]));
+    }
+
+    assert.ok(lastGarmentRow > 0, "garment not found");
+    assert.ok(largestStep <= 3, `shadow ends in a visible step of ${largestStep}`);
+    assert.ok(values.slice(lastGarmentRow).some((value) => value >= 254), "shadow never reaches white");
   });
 
   it("keeps a near-white subject rather than trimming it away", async () => {
