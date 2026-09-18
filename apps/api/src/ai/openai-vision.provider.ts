@@ -15,7 +15,7 @@ import {
   type AIExtractionRequest
 } from "@online-saler/shared-types";
 import { ProductImageStorageService } from "../product/product-image-storage.service";
-import { activeTaxonomyCodes, loadProductTaxonomy } from "../product/product-taxonomy";
+import { activeTaxonomyCodes, loadProductTaxonomy, subcategoryPairs } from "../product/product-taxonomy";
 import type { AIProvider, AIProviderResult } from "./ai-provider";
 import { LightweightMeasurementBoardProvider } from "./lightweight-measurement-board.provider";
 import { normalizeOpenAIVisionOutput } from "./openai-vision-normalizer";
@@ -86,6 +86,7 @@ export class OpenAIVisionProvider implements AIProvider {
     const runtimeTaxonomy = {
       categories: activeTaxonomyCodes(taxonomy, "CATEGORY"),
       subcategories: activeTaxonomyCodes(taxonomy, "SUBCATEGORY"),
+      subcategoriesByCategory: subcategoryPairs(taxonomy),
       colors: activeTaxonomyCodes(taxonomy, "COLOR"),
       materials: activeTaxonomyCodes(taxonomy, "MATERIAL"),
       tags: activeTaxonomyCodes(taxonomy, "TAG")
@@ -144,6 +145,8 @@ export class OpenAIVisionProvider implements AIProvider {
                   `shoeType enum: ${SHOE_TYPES.join(", ")}`,
                   `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
                   `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
+                  `category and subcategory must be a matching pair: ${runtimeTaxonomy.subcategoriesByCategory}`,
+                  "Hoodies, hooded jackets and sweatshirts are category JACKETS with subcategory HOODIES or SWEATSHIRTS (KIDS_HOODIES for children). Blazers are JACKETS/BLAZERS. Polo shirts are SHIRTS/POLO_SHIRTS. OTHERS is only for accessories, underwear and swimwear; OTHER is a last resort when no category fits.",
                   `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
                   `material enum: ${runtimeTaxonomy.materials.join(", ")}`,
                   `tags enum: ${runtimeTaxonomy.tags.join(", ")}`,

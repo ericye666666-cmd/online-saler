@@ -4,7 +4,8 @@ import {
   activeTaxonomyCodes,
   defaultProductTaxonomy,
   normalizeDocument,
-  normalizeTaxonomyCode
+  normalizeTaxonomyCode,
+  subcategoryPairs
 } from "./product-taxonomy";
 
 test("default taxonomy keeps stable codes and a shared OTHER subcategory", () => {
@@ -60,4 +61,18 @@ test("normalizes persisted taxonomy and returns only active codes in sort order"
 
 test("normalizes admin-entered codes without changing persisted codes later", () => {
   assert.equal(normalizeTaxonomyCode("  vintage coats / premium  "), "VINTAGE_COATS_PREMIUM");
+});
+
+test("every subcategory has one owner, and the AI is told which category owns it", () => {
+  const document = defaultProductTaxonomy();
+  const parent = (code: string) => document.groups.SUBCATEGORY.find((option) => option.code === code)?.parentCode;
+  // Shared codes would be silently re-parented by the last category listing them.
+  assert.equal(parent("SWEATERS"), "LADY_TOPS");
+  assert.equal(parent("KNITWEAR"), "JACKETS");
+  assert.equal(parent("SWIMWEAR"), "OTHERS");
+  assert.equal(parent("CURTAINS"), "TEXTILE");
+  const pairs = subcategoryPairs(document);
+  assert.match(pairs, /JACKETS: [^;]*HOODIES[^;]*SWEATSHIRTS/);
+  assert.match(pairs, /BAG: [^;]*TRAVEL_BAG[^;]*WALLET/);
+  assert.doesNotMatch(pairs, /OTHERS: [^;]*HOODIES/);
 });
