@@ -22,6 +22,7 @@ import {
   textileTypes,
 } from "../data/products";
 import { catalogSizeOptions, filterCatalogProducts } from "../catalog-filters";
+import { cardImageSrc } from "../storefront-products";
 import { ProductCollectionButton } from "./product-share-sheet";
 import { ReferralTracker } from "./referral-tracker";
 import { BrowseSelection, SiteHeader } from "./site-header";
@@ -68,7 +69,7 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
       <div className="marketImageWrap depopProductImage group relative">
         <Link href={detailHref} aria-label={t("catalog.viewItem", { item: title })}>
           <img
-            src={product.image}
+            src={cardImageSrc(product.image)}
             alt={title}
             width={640}
             height={640}

@@ -4,6 +4,7 @@ import { getStorefrontI18n } from "../../i18n/server";
 import { translateValue } from "../../i18n/dictionary";
 import { HomeSizePicks } from "./home-size-picks";
 import { RailCard } from "./rail-card";
+import { cardImageSrc } from "../storefront-products";
 
 const RAIL_LENGTH = 12;
 
@@ -32,7 +33,7 @@ export async function HomeFeed({ products }: { products: Product[] }) {
             {categoryTiles.map((tile) => (
               <Link className="homeCategoryTile" key={tile.category} href={`/?category=${encodeURIComponent(tile.category)}`}>
                 <span className="homeCategoryFrame">
-                  {tile.image ? <img src={tile.image} alt="" loading="lazy" /> : null}
+                  {tile.image ? <img src={cardImageSrc(tile.image)} alt="" loading="lazy" /> : null}
                 </span>
                 <span className="homeCategoryLabel">{translateValue(locale, tile.category)}</span>
               </Link>

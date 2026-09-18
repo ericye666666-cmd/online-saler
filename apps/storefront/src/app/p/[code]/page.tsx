@@ -25,6 +25,7 @@ import {
   visibleMeasurements,
 } from "../../product-detail-commerce";
 import { productSizeDisplay } from "../../product-size-display";
+import { cardImageSrc } from "../../storefront-products";
 import { getPublishedProduct, listPublishedProducts } from "../../../db/catalog";
 import { getStorefrontI18n } from "../../../i18n/server";
 
@@ -272,7 +273,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               {related.map((item) => (
                 <article key={item.code}>
                   <Link href={sellerRef ? `/p/${item.code}?ref=${sellerRef}` : `/p/${item.code}`}>
-                    {item.image ? <img src={item.image} alt={productDisplayTitle(item.title)} loading="lazy" /> : null}
+                    {item.image ? <img src={cardImageSrc(item.image)} alt={productDisplayTitle(item.title)} loading="lazy" /> : null}
                     <strong>{productDisplayTitle(item.title)}</strong>
                     <span>{formatPrice(item.price)}</span>
                     <small>Size {item.size}{item.condition ? ` · ${item.condition}` : ""}</small>

@@ -71,10 +71,16 @@
   scroll-padding-left: 0;
 }
 
+/* Card geometry is measured off Vestiaire's app at 430px wide: a card is
+   39.3% of the screen, the image spans the card edge to edge and starts 12px
+   under the rule, text is inset 16px, every line is 14px on a 20px line.
+   The images come through /framed, so each item fills 80% of its square and
+   sits at the same size and height as its neighbours. */
 .homeRailCard {
+  --rail-card-width: 39.3vw;
   position: relative;
   display: flex;
-  width: 164px;
+  width: var(--rail-card-width);
   flex: none;
   border-right: 1px solid #d6d6d6;
   scroll-snap-align: start;
@@ -84,9 +90,10 @@
   display: flex;
   width: 100%;
   flex-direction: column;
-  gap: 3px;
   color: #111;
-  padding: 18px 14px 20px;
+  padding: 12px 0 18px;
+  font-size: 14px;
+  line-height: 20px;
   text-decoration: none;
 }
 
@@ -94,19 +101,24 @@
 .homeRailNoImage {
   display: block;
   width: 100%;
-  aspect-ratio: 1 / 1.08;
-  margin-bottom: 14px;
+  aspect-ratio: 1 / 1;
+  margin-bottom: 18px;
   background: #fff;
   object-fit: contain;
 }
 
+.homeRailBrand,
+.homeRailCard strong,
+.homeRailSize,
+.homeRailPrice {
+  padding: 0 16px;
+}
+
 .homeRailBrand {
   overflow: hidden;
-  padding-right: 28px;
+  padding-right: 40px;
   color: #111;
-  font-size: 13px;
   font-weight: 700;
-  letter-spacing: .01em;
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
@@ -116,35 +128,30 @@
   display: -webkit-box;
   overflow: hidden;
   color: #111;
-  font-size: 13px;
   font-weight: 400;
-  line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 /* With no brand the name is the first line, so it makes room for the heart. */
 .homeRailLink > strong:nth-child(2) {
-  padding-right: 28px;
+  padding-right: 40px;
 }
 
 .homeRailSize {
   color: #111;
-  font-size: 13px;
-  font-weight: 400;
 }
 
 .homeRailPrice {
-  margin-top: 2px;
-  font-size: 14px;
   font-weight: 700;
 }
 
-/* Pinned to the first text line: 18px padding + the image + its margin. */
+/* Centred on the first text line: 12px + the square image + 18px, then half
+   of the 20px line less half of the 30px button. */
 .homeRailSave {
   position: absolute;
-  top: calc(18px + (164px - 28px) * 1.08 + 14px - 4px);
-  right: 8px;
+  top: calc(12px + var(--rail-card-width) + 18px - 5px);
+  right: 9px;
   display: grid;
   width: 30px;
   height: 30px;
@@ -154,10 +161,6 @@
   color: #111;
   cursor: pointer;
   padding: 0;
-}
-
-.homeRailSave.saved {
-  color: #111;
 }
 
 .homeSeeAllButton {
@@ -200,12 +203,15 @@
   background: #f2f1ef;
 }
 
+/* Framed images hold the item at 80% of the square; Vestiaire's tiles run
+   closer to 86%, so the tile draws them a touch larger. */
 .homeCategoryFrame img {
   display: block;
   width: 100%;
   height: 100%;
   mix-blend-mode: multiply;
   object-fit: contain;
+  transform: scale(1.075);
 }
 
 .homeCategoryLabel {
@@ -261,11 +267,7 @@
 
 @media (min-width: 768px) {
   .homeRailCard {
-    width: 210px;
-  }
-
-  .homeRailSave {
-    top: calc(18px + (210px - 28px) * 1.08 + 14px - 4px);
+    --rail-card-width: 220px;
   }
 
   .homeSeeAllButton {

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { formatPrice, Product } from "../data/products";
 import { optionalBrandValue, optionalDisplayValue, productDisplayTitle } from "../product-detail-commerce";
 import { productSizeDisplay } from "../product-size-display";
+import { cardImageSrc } from "../storefront-products";
 import { readSavedCodes, subscribeToSaved, toggleSaved } from "../saved-items";
 import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 import { translateValue } from "../../i18n/dictionary";
@@ -47,7 +48,7 @@ export function SavedPageClient({ products }: { products: Product[] }) {
         return (
           <li key={product.code}>
             <Link className="savedItem" href={`/p/${product.code}`}>
-              {product.image ? <img src={product.image} alt={title} loading="lazy" /> : <span className="savedItemNoImage" />}
+              {product.image ? <img src={cardImageSrc(product.image)} alt={title} loading="lazy" /> : <span className="savedItemNoImage" />}
               <span className="savedItemText">
                 <strong>{title}</strong>
                 {brandLabel ? <span className="savedItemBrand">{brandLabel}</span> : null}

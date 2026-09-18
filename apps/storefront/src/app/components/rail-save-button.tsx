@@ -24,7 +24,7 @@ export function RailSaveButton({ productCode, productTitle }: { productCode: str
       aria-label={saved ? t("catalog.removeSaved", { item: productTitle }) : t("catalog.saveItem", { item: productTitle })}
       aria-pressed={saved}
     >
-      <Heart size={22} strokeWidth={1.4} fill={saved ? "currentColor" : "none"} />
+      <Heart size={20} strokeWidth={1.6} fill={saved ? "currentColor" : "none"} />
     </button>
   );
 }

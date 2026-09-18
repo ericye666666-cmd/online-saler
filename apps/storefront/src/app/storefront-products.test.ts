@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  cardImageSrc,
   activeFilterCount,
   detailAsset,
   detailAssetSrc,
@@ -50,6 +51,10 @@ assert.equal(detailAsset(product, "FRONT_MAIN")?.id, "detail-front");
 assert.equal(hasApprovedPublicDetail(product), true);
 assert.equal(hasApprovedPublicDetail({ ...product, detail: undefined }), false);
 assert.equal(detailAssetSrc(testPublicDetail.assets[0]!), "/api-proxy/product-detail-assets/detail-front/content");
+// Cards show API images reframed to a uniform size; static and absolute images pass through.
+assert.equal(cardImageSrc("/api-proxy/products/p1/image-assets/a1/content"), "/framed/products/p1/image-assets/a1/content");
+assert.equal(cardImageSrc("/products/920260718001.webp"), "/products/920260718001.webp");
+assert.equal(cardImageSrc("https://cdn.example.com/x.jpg"), "https://cdn.example.com/x.jpg");
 assert.equal(moneyKsh(450), "KSh 450");
 assert.equal(moneyKsh(null), "Price pending");
 assert.equal(moneyKsh(0), "Price pending");

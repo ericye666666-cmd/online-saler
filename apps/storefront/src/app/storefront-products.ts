@@ -102,6 +102,11 @@ export function publicProductImageSrc(image: PublicProductImage): string {
   return image.url.startsWith("http") ? image.url : `${API_PROXY_URL}${image.url}`;
 }
 
+/** A product image as cards show it: reframed to a uniform size (see app/framed). */
+export function cardImageSrc(src: string): string {
+  return src.startsWith(`${API_PROXY_URL}/`) ? `/framed/${src.slice(API_PROXY_URL.length + 1)}` : src;
+}
+
 export function detailAssetSrc(asset: PublicProductDetailAsset): string {
   if (!asset.url) return "";
   return asset.url.startsWith("http") ? asset.url : `${API_PROXY_URL}${asset.url}`;

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatPrice, Product } from "../data/products";
 import { optionalBrandValue, optionalDisplayValue, productDisplayTitle } from "../product-detail-commerce";
 import { productSizeDisplay } from "../product-size-display";
+import { cardImageSrc } from "../storefront-products";
 import { translateValue } from "../../i18n/dictionary";
 import type { StorefrontLocale } from "../../i18n/dictionary";
 import { RailSaveButton } from "./rail-save-button";
@@ -19,7 +20,7 @@ export function RailCard({ product, locale }: { product: Product; locale: Storef
   return (
     <div className="homeRailCard">
       <Link className="homeRailLink" href={`/p/${product.code}`}>
-        {product.image ? <img src={product.image} alt={title} loading="lazy" /> : <span className="homeRailNoImage" />}
+        {product.image ? <img src={cardImageSrc(product.image)} alt={title} loading="lazy" /> : <span className="homeRailNoImage" />}
         {brandLabel ? <span className="homeRailBrand">{brandLabel}</span> : null}
         <strong>{title}</strong>
         {sizeLabel ? <span className="homeRailSize">{sizeLabel}</span> : null}
