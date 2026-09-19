@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded, paymentTone } from "./payment-ui";
+import { canRetryPayment, friendlyFailureReason, paymentFailed, paymentStage, paymentSucceeded } from "./payment-ui";
 
 assert.equal(paymentSucceeded("PAID", "PENDING"), true);
 assert.equal(paymentSucceeded("PAYMENT_PROCESSING", "SUCCESS"), true);
@@ -18,22 +18,31 @@ assert.equal(canRetryPayment("TIMEOUT", 120), true);
 assert.equal(canRetryPayment("MANUAL_REVIEW", 120), false);
 assert.equal(canRetryPayment("FAILED", 0), false);
 
-assert.equal(paymentTone({ orderStatus: "PAID", paymentStatus: "PENDING", paymentLoading: false }), "success");
-assert.equal(paymentTone({ paymentStatus: "PENDING", paymentLoading: true }), "pending");
-assert.equal(paymentTone({ paymentStatus: "FAILED", paymentLoading: false }), "failed");
-assert.equal(paymentTone({ paymentStatus: "EXPIRED", paymentLoading: false }), "expired");
-assert.equal(paymentTone({ paymentStatus: "MANUAL_REVIEW", paymentLoading: false }), "review");
+const live = { paymentLoading: false, secondsRemaining: 600 };
 
-assert.equal(paymentHeading({ orderStatus: "PAID", paymentStatus: "SUCCESS", paymentLoading: false }), "Payment confirmed");
-assert.equal(paymentHeading({ paymentStatus: "MANUAL_REVIEW", paymentLoading: false }), "Payment is being checked");
-assert.equal(paymentHeading({ paymentStatus: "CANCELLED", paymentLoading: false }), "Payment was not completed");
-assert.equal(paymentHeading({ paymentStatus: "PENDING", paymentLoading: true }), "Sending M-Pesa request...");
+// The 2026-09-19 case: the STK push was refused, so there is no payment record,
+// only an error. That must read as "not sent", never as "check your phone".
+assert.equal(paymentStage({ ...live, paymentError: "M-Pesa production test mode only allows whitelisted phone numbers." }), "notSent");
 
-assert.equal(
-  paymentBody({ orderStatus: "PAID", paymentStatus: "SUCCESS", receiptNumber: "TGU7R8XYZ1" }),
-  "Receipt TGU7R8XYZ1"
-);
-assert.match(paymentBody({ paymentStatus: "MANUAL_REVIEW" }), /staff review/);
-assert.match(paymentBody({ paymentStatus: "CANCELLED", resultDescription: "Request cancelled by user." }), /cancelled/);
+assert.equal(paymentStage({ ...live, paymentLoading: true }), "sending");
+assert.equal(paymentStage({ ...live }), "sending");
+assert.equal(paymentStage({ ...live, paymentStatus: "PENDING" }), "waiting");
+// A failed status refresh while the prompt is out does not abandon the wait.
+assert.equal(paymentStage({ ...live, paymentStatus: "PENDING", paymentError: "Payment status could not be refreshed." }), "waiting");
+assert.equal(paymentStage({ ...live, paymentStatus: "CANCELLED" }), "failed");
+assert.equal(paymentStage({ ...live, paymentStatus: "TIMEOUT" }), "failed");
+assert.equal(paymentStage({ ...live, paymentStatus: "MANUAL_REVIEW" }), "review");
+assert.equal(paymentStage({ ...live, paymentStatus: "EXPIRED" }), "expired");
+assert.equal(paymentStage({ paymentLoading: false, secondsRemaining: 0, paymentStatus: "PENDING" }), "expired");
+// Money that arrived just after the hold ended still counts as paid.
+assert.equal(paymentStage({ paymentLoading: false, secondsRemaining: 0, orderStatus: "PAID" }), "success");
+assert.equal(paymentStage({ ...live, paymentStatus: "SUCCESS" }), "success");
+
+assert.equal(friendlyFailureReason("Request cancelled by user"), "The M-Pesa prompt was cancelled.");
+assert.equal(friendlyFailureReason("The balance is insufficient for the transaction."), "Your M-Pesa balance wasn't enough for this payment.");
+assert.equal(friendlyFailureReason("The initiator information is invalid."), "The M-Pesa PIN wasn't accepted.");
+assert.equal(friendlyFailureReason("DS timeout user cannot be reached"), "The prompt closed before a PIN was entered.");
+assert.equal(friendlyFailureReason("Something new from Safaricom"), "M-Pesa didn't complete the payment.");
+assert.equal(friendlyFailureReason(null), "M-Pesa didn't complete the payment.");
 
 console.log("Payment UI state tests passed");

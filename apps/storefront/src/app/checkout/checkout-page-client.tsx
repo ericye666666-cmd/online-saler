@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Clock3,
   CreditCard,
+  Loader2,
   MessageCircle,
   PackageCheck,
   ReceiptText,
@@ -40,7 +41,7 @@ import {
 } from "../storefront-cart";
 import type { CartValidationResponse, ValidatedCartItem } from "../../cart/cart-validation-types";
 import { moneyKsh } from "../storefront-products";
-import { canRetryPayment, paymentBody, paymentFailed, paymentHeading, paymentSucceeded, paymentTone } from "../../payments/payment-ui";
+import { friendlyFailureReason, paymentStage, paymentSucceeded, type PaymentStage } from "../../payments/payment-ui";
 import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 import { CUSTOMER_SERVICE_PHONE_LABEL, supportWhatsAppUrl } from "../../support/whatsapp";
 
@@ -364,12 +365,8 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   const itemTotalLabel = hasCheckoutableItems ? moneyKsh(itemTotal) : "Not available";
   const deliveryFeeLabel = deliveryFee === 0 ? "Free" : moneyKsh(deliveryFee);
   const totalLabel = hasCheckoutableItems ? moneyKsh(total) : "Not ready";
-  const minutes = Math.floor(secondsRemaining / 60).toString().padStart(2, "0");
-  const seconds = (secondsRemaining % 60).toString().padStart(2, "0");
   const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
   const isPaymentSucceeded = paymentSucceeded(payment?.orderStatus, paymentStatus);
-  const isPaymentFailed = paymentFailed(paymentStatus);
-  const isPaymentRetryable = canRetryPayment(paymentStatus, secondsRemaining);
   const supportItems = validation.items.slice(0, 3)
     .map((item) => [item.title.slice(0, 120), item.productCode].filter(Boolean).join(" / "))
     .join("; ");
@@ -405,8 +402,6 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
         <PaymentPanel
           fulfillment={fulfillment}
           signedIn={signedIn}
-          isPaymentFailed={isPaymentFailed}
-          isPaymentRetryable={isPaymentRetryable}
           isPaymentSucceeded={isPaymentSucceeded}
           payment={payment}
           paymentError={paymentError}
@@ -416,7 +411,6 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
           reservation={reservation}
           retryPayment={() => initiatePayment(reservation.orderId)}
           secondsRemaining={secondsRemaining}
-          timerLabel={secondsRemaining > 0 ? `${minutes}:${seconds}` : "Expired"}
         />
       </section>
     );
@@ -431,14 +425,10 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
       <div className="checkoutSingleColumn">
         <div className="checkoutStack">
           <section className="checkoutPanel">
-            {reservation ? <h2>M-Pesa request</h2> : null}
-
             {reservation ? (
               <PaymentPanel
                 fulfillment={fulfillment}
                 signedIn={signedIn}
-                isPaymentFailed={isPaymentFailed}
-                isPaymentRetryable={isPaymentRetryable}
                 isPaymentSucceeded={isPaymentSucceeded}
                 payment={payment}
                 paymentError={paymentError}
@@ -448,7 +438,6 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
                 reservation={reservation}
                 retryPayment={() => initiatePayment(reservation.orderId)}
                 secondsRemaining={secondsRemaining}
-                timerLabel={secondsRemaining > 0 ? `${minutes}:${seconds}` : "Expired"}
               />
             ) : activeStep ? (
               <CheckoutStepPanel
@@ -556,8 +545,6 @@ async function validateCart(productIds: string[]): Promise<CartValidationRespons
 function PaymentPanel({
   fulfillment,
   signedIn,
-  isPaymentFailed,
-  isPaymentRetryable,
   isPaymentSucceeded,
   payment,
   paymentError,
@@ -566,13 +553,10 @@ function PaymentPanel({
   refreshingPayment,
   reservation,
   retryPayment,
-  secondsRemaining,
-  timerLabel
+  secondsRemaining
 }: {
   fulfillment: FulfillmentChoice;
   signedIn: boolean;
-  isPaymentFailed: boolean;
-  isPaymentRetryable: boolean;
   isPaymentSucceeded: boolean;
   payment: PaymentState | null;
   paymentError: string;
@@ -582,29 +566,20 @@ function PaymentPanel({
   reservation: Reservation;
   retryPayment: () => void;
   secondsRemaining: number;
-  timerLabel: string;
 }) {
   const { t } = useStorefrontI18n();
-  const supportMessage = `Hello Direct Loop, I need help with order ${reservation.orderNumber}.`;
   const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
-  const tone = paymentTone({
+  const stage = paymentStage({
     orderStatus: payment?.orderStatus,
     paymentStatus,
-    paymentLoading
+    paymentLoading,
+    paymentError,
+    secondsRemaining
   });
-  const timerDisplay = isPaymentSucceeded ? "Paid" : secondsRemaining > 0 ? timerLabel : "Expired";
-  const timerCopy = isPaymentSucceeded
-    ? "payment confirmed"
-    : secondsRemaining > 0
-      ? "remaining to complete payment"
-      : "stock has been released";
-  const paymentIcon = tone === "success"
-    ? <CheckCircle2 size={22} />
-    : tone === "failed" || tone === "expired"
-      ? <AlertCircle size={22} />
-      : tone === "review"
-        ? <ReceiptText size={22} />
-        : <Smartphone size={22} />;
+  // What the page softens for the shopper reaches customer service word for
+  // word, so staff see the real refusal instead of guessing at it.
+  const technicalDetail = paymentError || payment?.resultDescription || "";
+  const supportMessage = `Hello Direct Loop, I need help with order ${reservation.orderNumber}.${technicalDetail ? ` The payment page said: ${technicalDetail}` : ""}`;
 
   if (isPaymentSucceeded) {
     const isPickup = fulfillment === "PICKUP";
@@ -660,74 +635,68 @@ function PaymentPanel({
     );
   }
 
+  const phoneLabel = `+${reservation.phone}`;
+  const heldUntil = new Date(reservation.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const copy: Record<PaymentStage, { title: string; body: string }> = {
+    sending: { title: "Sending the prompt to your phone", body: `Asking M-Pesa to send a payment prompt to ${phoneLabel}.` },
+    waiting: { title: "Check your phone", body: `Enter your M-Pesa PIN on the prompt sent to ${phoneLabel}. This page updates by itself once you have paid.` },
+    notSent: { title: "We couldn't send the M-Pesa prompt", body: "Nothing has been charged. Try again, and if no prompt arrives, message us on WhatsApp." },
+    failed: { title: "Payment wasn't completed", body: `${friendlyFailureReason(payment?.resultDescription)} Nothing has been charged, so you can try again.` },
+    review: { title: "We're checking your payment", body: "M-Pesa sent a result we need to confirm by hand. Please don't pay again - message us on WhatsApp with your order number." },
+    expired: { title: "This hold has ended", body: "The item was held for 15 minutes and is back on sale. If you already entered your PIN, message us on WhatsApp and we'll check." },
+    success: { title: "Payment confirmed", body: "" }
+  };
+  const StageIcon = {
+    sending: Loader2,
+    waiting: Smartphone,
+    notSent: AlertCircle,
+    failed: AlertCircle,
+    review: ReceiptText,
+    expired: Clock3,
+    success: CheckCircle2
+  }[stage];
+  const canRetry = (stage === "notSent" || stage === "failed") && secondsRemaining > 0;
+  // The hold is a footnote, not a deadline to stare at: shown as the time it
+  // ends, and only while the shopper can still act on it.
+  const holding = stage === "sending" || stage === "waiting" || stage === "notSent" || stage === "failed";
+
   return (
-    <div className={`reservationCard ${tone}`} role="status">
-      <div className="reservationTimer">
-        <div>
-          <strong>{timerDisplay}</strong>
-          <span>{timerCopy}</span>
-        </div>
-        <Clock3 size={26} />
-      </div>
+    <div className={`payStage ${stage}`} role="status" aria-live="polite">
+      <div className="payStageIcon" aria-hidden="true"><StageIcon size={26} /></div>
+      <h2 className="payStageTitle">{copy[stage].title}</h2>
+      <p className="payStageBody">{copy[stage].body}</p>
 
-      <div className="paymentReviewGrid">
-        <div><span>Order</span><strong>{reservation.orderNumber}</strong></div>
-        <div><span>Total</span><strong>{moneyKsh(reservation.totalKsh)}</strong></div>
-        <div><span>M-Pesa phone</span><strong>+{reservation.phone}</strong></div>
-      </div>
+      <dl className="payFacts">
+        <div><dt>Amount</dt><dd className="payAmount">{moneyKsh(reservation.totalKsh)}</dd></div>
+        <div><dt>M-Pesa phone</dt><dd>{phoneLabel}</dd></div>
+        <div><dt>Order</dt><dd>{reservation.orderNumber}</dd></div>
+      </dl>
 
-      <div className={`paymentStatusCard ${tone}`}>
-        <div className="paymentStatusIcon">{paymentIcon}</div>
-        <div>
-          <b>
-            {paymentHeading({
-              orderStatus: payment?.orderStatus,
-              paymentStatus,
-              paymentLoading
-            })}
-          </b>
-          <span>
-            {paymentBody({
-              orderStatus: payment?.orderStatus,
-              paymentStatus,
-              receiptNumber: payment?.receiptNumber,
-              paymentError,
-              customerMessage: payment?.customerMessage,
-              resultDescription: payment?.resultDescription
-            })}
-          </span>
-        </div>
-      </div>
-
-      {!isPaymentSucceeded ? (
-        <div className="mpesaInstructionCard">
-          <Smartphone size={18} />
-          <div>
-            <strong>Check your phone</strong>
-            <span>Safaricom will show a payment prompt. Enter your M-Pesa PIN before the timer expires.</span>
-          </div>
-        </div>
+      {holding ? (
+        <p className="payHold"><Clock3 size={15} aria-hidden="true" /> Item held for you until {heldUntil}</p>
       ) : null}
 
-      <div className="paymentTimeline" aria-label="Payment progress">
-        <div className="done"><CheckCircle2 size={16} /><span>Stock locked</span></div>
-        <div className={isPaymentSucceeded ? "done" : isPaymentFailed ? "failed" : "current"}>
-          {isPaymentFailed ? <AlertCircle size={16} /> : isPaymentSucceeded ? <CheckCircle2 size={16} /> : <Smartphone size={16} />}
-          <span>M-Pesa confirmation</span>
-        </div>
-        <div className="pending"><MessageCircle size={16} /><span>Staff handoff call</span></div>
+      <div className="payActions">
+        {canRetry ? (
+          <button className="commercePrimaryButton full" type="button" disabled={paymentLoading} onClick={retryPayment}>
+            <Smartphone size={17} /> {paymentLoading ? "Sending..." : "Send the prompt again"}
+          </button>
+        ) : null}
+        {stage === "waiting" ? (
+          <button className="commerceSecondaryButton full" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
+            <RefreshCw size={16} /> {refreshingPayment ? "Checking..." : "I've entered my PIN"}
+          </button>
+        ) : null}
+        {stage === "expired" ? (
+          <button className="commercePrimaryButton full" type="button" onClick={() => window.location.reload()}>
+            Start again
+          </button>
+        ) : null}
       </div>
-      <div className="checkoutPaymentActions">
-        <button className="commerceSecondaryButton" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
-          <RefreshCw size={16} /> {refreshingPayment ? "Refreshing..." : "Refresh status"}
-        </button>
-      </div>
-      {paymentError || isPaymentRetryable ? (
-        <button className="commerceSecondaryButton full" type="button" disabled={paymentLoading || secondsRemaining <= 0} onClick={retryPayment}>
-          <Smartphone size={16} /> {paymentLoading ? "Retrying..." : "Retry M-Pesa"}
-        </button>
-      ) : null}
-      <CheckoutSupport message={supportMessage} />
+
+      <a className="payHelp" href={supportWhatsAppUrl(supportMessage)} target="_blank" rel="noopener noreferrer">
+        <MessageCircle size={16} aria-hidden="true" /> Need help? Chat with us on WhatsApp
+      </a>
     </div>
   );
 }
