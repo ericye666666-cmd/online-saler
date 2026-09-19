@@ -400,7 +400,6 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
     return (
       <section className="commerceCheckoutShell checkoutSuccessShell" aria-label="Payment confirmation">
         <PaymentPanel
-          fulfillment={fulfillment}
           signedIn={signedIn}
           isPaymentSucceeded={isPaymentSucceeded}
           payment={payment}
@@ -427,7 +426,6 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
           <section className="checkoutPanel">
             {reservation ? (
               <PaymentPanel
-                fulfillment={fulfillment}
                 signedIn={signedIn}
                 isPaymentSucceeded={isPaymentSucceeded}
                 payment={payment}
@@ -543,7 +541,6 @@ async function validateCart(productIds: string[]): Promise<CartValidationRespons
 }
 
 function PaymentPanel({
-  fulfillment,
   signedIn,
   isPaymentSucceeded,
   payment,
@@ -555,7 +552,6 @@ function PaymentPanel({
   retryPayment,
   secondsRemaining
 }: {
-  fulfillment: FulfillmentChoice;
   signedIn: boolean;
   isPaymentSucceeded: boolean;
   payment: PaymentState | null;
@@ -582,13 +578,11 @@ function PaymentPanel({
   const supportMessage = `Hello Direct Loop, I need help with order ${reservation.orderNumber}.${technicalDetail ? ` The payment page said: ${technicalDetail}` : ""}`;
 
   if (isPaymentSucceeded) {
-    const isPickup = fulfillment === "PICKUP";
     return (
       <div className="paymentSuccessPanel" role="status">
         <div className="paymentSuccessMark"><CheckCircle2 size={36} aria-hidden="true" /></div>
         <div className="paymentSuccessHeading">
           <h1>{t("payment.confirmed")}</h1>
-          <p>{t("payment.nextBody")}</p>
         </div>
 
         <dl className="paymentSuccessFacts">
@@ -601,11 +595,7 @@ function PaymentPanel({
           <PackageCheck size={24} aria-hidden="true" />
           <div>
             <h2>{t("payment.nextTitle")}</h2>
-            <p>
-              {isPickup
-                ? `${t("payment.nextBody")} ${t("payment.keepPhone", { phone: `+${reservation.phone}` })}`
-                : `${t("payment.nextBody")} ${t("payment.keepPhone", { phone: `+${reservation.phone}` })}`}
-            </p>
+            <p>{`${t("payment.nextBody")} ${t("payment.keepPhone", { phone: `+${reservation.phone}` })}`}</p>
           </div>
         </section>
 
