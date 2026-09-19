@@ -1,0 +1,424 @@
+/* Product page, after Vestiaire's: square photo on white, a quiet block of
+   brand / name / size / price, then fold-away sections on a pale grey field.
+   One colour (near-black) carries every action; nothing is red or teal.
+   Kept out of globals.css; every rule is scoped to .pdPage so the older
+   productPage rules it overrides stay untouched for any page still using them. */
+
+.pdPage {
+  --pd-ink: #111;
+  --pd-muted: #6b6b6b;
+  --pd-rule: #e4e4e4;
+  --pd-field: #f5f5f5;
+  background: #fff;
+}
+
+.pdShell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 0 120px;
+}
+
+.pdBreadcrumbs {
+  display: none;
+}
+
+/* Photos */
+
+.pdPage .productGallery {
+  display: grid;
+  grid-template-areas: "main" "progress";
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin: 0;
+}
+
+.pdPage .mainProductImage {
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
+
+/* The display images are square with their own white margin; a square frame
+   on white shows them whole with no band above or below. */
+.pdPage .mainProductImage img {
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: #fff;
+}
+
+.pdPage .thumbnailRail {
+  display: none;
+}
+
+.pdPage .productGalleryProgress {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 0 0;
+}
+
+.pdPage .productGalleryProgress button {
+  display: grid;
+  width: 22px;
+  min-height: 28px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pdPage .productGalleryProgress button > span {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #cfcfcf;
+}
+
+.pdPage .productGalleryProgress button.active > span {
+  background: var(--pd-ink);
+}
+
+/* Brand, name, size, price */
+
+.pdSummary {
+  padding: 18px 16px 20px;
+}
+
+.pdHeadline {
+  position: relative;
+  padding-right: 48px;
+}
+
+.pdBrand {
+  margin: 0 0 4px;
+  color: var(--pd-ink);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.pdTitle {
+  margin: 0;
+  color: var(--pd-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+.pdSize {
+  margin: 4px 0 0;
+  color: var(--pd-ink);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.pdPage .pdHeadline .productDetailSave {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  width: 44px;
+  height: 44px;
+}
+
+.pdPage .pdHeadline .productDetailSave svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.6;
+}
+
+.pdPrice {
+  margin: 14px 0 0;
+  color: var(--pd-ink);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.pdStatus {
+  margin: 2px 0 0;
+  color: var(--pd-muted);
+  font-size: 13px;
+}
+
+.pdStatus.unavailable {
+  color: var(--pd-ink);
+  font-weight: 700;
+}
+
+/* The reservation note is said once, in Secure payment. */
+.pdPage .catalogBuyBox > p:not(.catalogBuyToast) {
+  display: none;
+}
+
+.pdPage .catalogChatButton {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--pd-ink);
+  background: #fff;
+  color: var(--pd-ink);
+}
+
+.pdPage .pdShareButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  border: 0;
+  background: transparent;
+  color: var(--pd-ink);
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Fold-away sections */
+
+.pdSections {
+  border-top: 8px solid var(--pd-field);
+  background: var(--pd-field);
+}
+
+.pdFold {
+  border-bottom: 1px solid var(--pd-rule);
+  background: var(--pd-field);
+}
+
+.pdFold > summary {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--pd-ink);
+  cursor: pointer;
+  list-style: none;
+  padding: 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pdFold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pdFold > summary svg {
+  flex: none;
+  transition: transform .18s ease;
+}
+
+.pdFold[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.pdFold > summary:focus-visible {
+  outline: 2px solid var(--pd-ink);
+  outline-offset: -2px;
+}
+
+.pdFoldBody {
+  padding: 0 16px 22px;
+  color: #222;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.pdFoldBody p {
+  margin: 0 0 10px;
+}
+
+.pdFoldBody ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.pdFoldBody li {
+  padding-left: 2px;
+}
+
+.pdFoldBody h3 {
+  margin: 14px 0 4px;
+  color: var(--pd-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pdFacts {
+  margin: 0 0 12px;
+}
+
+.pdFacts > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 42%) 1fr;
+  gap: 12px;
+  border-bottom: 1px solid var(--pd-rule);
+  padding: 11px 0;
+}
+
+.pdFacts > div:first-child {
+  padding-top: 2px;
+}
+
+.pdFacts dt {
+  margin: 0;
+  color: var(--pd-muted);
+  font-size: 14px;
+}
+
+.pdFacts dd {
+  margin: 0;
+  color: var(--pd-ink);
+  font-size: 14px;
+}
+
+.pdNote {
+  color: var(--pd-muted);
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+}
+
+.pdMeasureGuide {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 0 12px;
+  background: #fff;
+}
+
+.pdRelated {
+  margin-top: 36px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdFold > summary svg {
+    transition: none;
+  }
+}
+
+/* Phones: buying is pinned to the bottom edge — chat, then the two buttons. */
+@media (max-width: 900px) {
+  .pdPage .catalogBuyActions.withChat {
+    grid-template-columns: 54px minmax(0, .8fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .pdPage .catalogChatButton {
+    order: 0;
+    min-height: 54px;
+  }
+}
+
+/* Desktop: photos left, everything else in one column on the right. */
+@media (min-width: 901px) {
+  .pdShell {
+    padding: 16px 32px 80px;
+  }
+
+  .pdBreadcrumbs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    color: var(--pd-muted);
+    font-size: 13px;
+  }
+
+  .pdBreadcrumbs a {
+    color: var(--pd-muted);
+    text-decoration: none;
+  }
+
+  .pdBreadcrumbs a:hover {
+    color: var(--pd-ink);
+    text-decoration: underline;
+  }
+
+  .pdTop {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr);
+    gap: 56px;
+    align-items: start;
+  }
+
+  .pdPage .productGallery {
+    grid-template-areas: "thumbnails main";
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .pdPage .thumbnailRail {
+    display: grid;
+    gap: 10px;
+  }
+
+  .pdPage .thumbnailRail button {
+    border: 1px solid var(--pd-rule);
+    border-radius: 0;
+  }
+
+  .pdPage .thumbnailRail button.active {
+    border: 1px solid var(--pd-ink);
+  }
+
+  .pdPage .productGalleryProgress {
+    display: none;
+  }
+
+  .pdSide {
+    position: sticky;
+    top: 16px;
+  }
+
+  .pdSummary {
+    padding: 0 0 24px;
+  }
+
+  .pdBrand {
+    font-size: 17px;
+  }
+
+  .pdTitle {
+    font-size: 18px;
+  }
+
+  .pdPrice {
+    font-size: 20px;
+  }
+
+  .pdPage .catalogBuyBox {
+    margin-top: 22px;
+  }
+
+  .pdPage .catalogBuyActions.withChat {
+    display: grid;
+    grid-template-columns: 52px 1fr 1fr;
+    gap: 10px;
+  }
+
+  .pdPage .catalogChatButton {
+    min-height: 52px;
+  }
+
+  .pdSections {
+    border-top: 1px solid var(--pd-rule);
+    background: transparent;
+  }
+
+  .pdFold {
+    background: transparent;
+  }
+
+  .pdFold > summary,
+  .pdFoldBody {
+    padding-right: 0;
+    padding-left: 0;
+  }
+}

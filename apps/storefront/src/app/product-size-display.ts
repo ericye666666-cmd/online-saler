@@ -1,4 +1,5 @@
 import type { Product } from "./data/products";
+import { translateValue, type StorefrontLocale } from "../i18n/dictionary";
 
 export type ProductSizeDisplay = {
   /** Sits next to the price: "L · UK 14", "XL · UK 46-48", "M · Unisex", "M · Kids". */
@@ -27,6 +28,11 @@ export function productSizeDisplay(product: Product): ProductSizeDisplay {
     age: product.recommendedAge ?? null,
     recommendation: height && weight ? `${height} · ${weight}` : null
   };
+}
+
+/** The headline in the shopper's language: each " · " part is translated on its own ("M · 中性"). */
+export function localizedSizeHeadline(locale: StorefrontLocale, product: Product): string {
+  return productSizeDisplay(product).headline.split(" · ").map((part) => translateValue(locale, part)).join(" · ");
 }
 
 function fitSuffix(fit: string | null, uk: string | null): string | null {

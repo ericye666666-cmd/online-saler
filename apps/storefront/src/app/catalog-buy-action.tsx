@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check } from "lucide-react";
+import { Check, MessageCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Product as CatalogProduct } from "./data/products";
 import { useStorefrontI18n } from "../i18n/use-storefront-i18n";
@@ -23,7 +23,12 @@ function bagHolds(productId: string): boolean {
   }
 }
 
-export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
+export function CatalogBuyAction({ product, chatHref, chatLabel }: {
+  product: CatalogProduct;
+  /** Customer-service chat about this item, shown as the first button of the bar. */
+  chatHref?: string;
+  chatLabel?: string;
+}) {
   const { t } = useStorefrontI18n();
   const [toast, setToast] = useState("");
   const [buying, setBuying] = useState(false);
@@ -71,7 +76,12 @@ export function CatalogBuyAction({ product }: { product: CatalogProduct }) {
 
   return (
     <div className="catalogBuyBox">
-      <div className="catalogBuyActions">
+      <div className={`catalogBuyActions ${chatHref ? "withChat" : ""}`}>
+        {chatHref ? (
+          <a className="catalogChatButton" href={chatHref} target="_blank" rel="noopener noreferrer" aria-label={chatLabel} title={chatLabel}>
+            <MessageCircle size={22} strokeWidth={1.6} aria-hidden="true" />
+          </a>
+        ) : null}
         {available && inBag ? (
           <Link className="catalogBuyButton secondary" href="/cart">
             <Check size={17} aria-hidden="true" /> {t("product.viewBag")}

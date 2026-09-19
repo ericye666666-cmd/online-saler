@@ -24,7 +24,7 @@ import { ReferralTracker } from "./referral-tracker";
 import { BrowseSelection, CatalogDepartment, SiteHeader } from "./site-header";
 import { optionalBrandValue, optionalDisplayValue, productDisplayTitle } from "../product-detail-commerce";
 import { readSavedCodes, subscribeToSaved, toggleSaved as toggleSavedItem } from "../saved-items";
-import { productSizeDisplay } from "../product-size-display";
+import { localizedSizeHeadline } from "../product-size-display";
 import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 import type { DictionaryKey } from "../../i18n/dictionary";
 import { translateValue } from "../../i18n/dictionary";
@@ -55,7 +55,7 @@ function ProductCard({ product, isSaved, onToggleSaved, sellerRef, source, place
   // Brand and size are blank for whole categories (bags carry no apparel size), so each line is optional.
   const title = productDisplayTitle(product.title);
   const brandLabel = optionalBrandValue(product.brand);
-  const sizeLabel = optionalDisplayValue(translateValue(locale, productSizeDisplay(product).headline));
+  const sizeLabel = optionalDisplayValue(localizedSizeHeadline(locale, product));
 
   return (
     <article className={`marketCard depopProductCard ${product.status !== "Available" ? "unavailable" : ""}`}>

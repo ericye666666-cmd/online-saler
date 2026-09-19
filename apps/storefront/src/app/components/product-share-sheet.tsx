@@ -39,6 +39,7 @@ import {
   SheetTrigger,
 } from "../../components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 
 const ShareCardStudio = dynamic(
   () => import("../../affiliate/share-card-studio").then((module) => module.ShareCardStudio),
@@ -52,6 +53,7 @@ type ProductShareSheetProps = {
 };
 
 export function ProductShareSheet({ product, className, compact = false }: ProductShareSheetProps) {
+  const shareLabel = useStorefrontI18n().t("pd.share");
   const { payload, loading, refresh } = useAffiliateSession();
   const affiliate = payload?.affiliate ?? null;
   const [copied, setCopied] = useState(false);
@@ -97,7 +99,7 @@ export function ProductShareSheet({ product, className, compact = false }: Produ
           title={compact ? "Share" : undefined}
         >
           <Share2 size={compact ? 19 : 18} />
-          {compact ? null : "Share"}
+          {compact ? null : shareLabel}
         </button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-xl">

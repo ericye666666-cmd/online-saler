@@ -78,7 +78,7 @@ export function toCatalogProduct(product: PublicProduct & { detail: NonNullable<
     ? formatShoeSizeLabel(product.tagSize || product.size, product.shoeSizeSystem) || "Size not confirmed"
     : chart
       ? chart.waistInches === null ? chart.sizeLabel : `Waist ${chart.waistInches}`
-      : (["BAG", "TEXTILE", "OTHERS", "OTHER"].includes(product.category ?? "") ? product.size?.trim() : normalizeApparelSizeLabel(product.size)) || product.kidsAgeRange?.trim() || "Size not confirmed";
+      : (["BAG", "TEXTILE"].includes(product.category ?? "") ? product.size?.trim() : normalizeApparelSizeLabel(product.size)) || product.kidsAgeRange?.trim() || "Size not confirmed";
   const color = display(product.color ?? "Unknown");
 
   return {

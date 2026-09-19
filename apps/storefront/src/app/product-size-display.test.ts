@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { toCatalogProduct } from "../db/catalog";
-import { productSizeDisplay } from "./product-size-display";
+import { localizedSizeHeadline, productSizeDisplay } from "./product-size-display";
 import type { PublicProduct } from "./storefront-products";
 import { testPublicDetail } from "./storefront-products.test-fixture";
 
@@ -67,4 +67,12 @@ test("a label the chart cannot resolve is shown as stored, with no invented guid
   const wrongLadder = toCatalogProduct({ ...base, audience: "WOMEN", size: "BABY" });
   assert.equal(wrongLadder.ukSize, null);
   assert.equal(productSizeDisplay(wrongLadder).recommendation, null);
+});
+
+test("the size line is translated part by part, and lower-case letter sizes are made canonical", () => {
+  const filedUnderOther = toCatalogProduct({ ...base, category: "OTHER", subcategory: "OTHER", audience: "UNISEX", size: "m" });
+  assert.equal(filedUnderOther.size, "M");
+  const unisex = toCatalogProduct({ ...base, audience: "UNISEX", size: "M" });
+  assert.equal(localizedSizeHeadline("en", unisex), "M · Unisex");
+  assert.equal(localizedSizeHeadline("zh-CN", unisex), "M · 中性");
 });
