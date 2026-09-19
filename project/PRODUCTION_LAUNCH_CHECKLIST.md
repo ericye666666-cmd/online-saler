@@ -1,6 +1,6 @@
 # Production Launch Checklist
 
-This checklist is the release gate for the first Safaricom Till production test and the later live order rollout.
+This checklist is the release gate for every production Storefront deployment. Live M-Pesa payments opened on 2026-09-15.
 
 ## Required Google Secret Manager secrets
 
@@ -17,7 +17,8 @@ Create these secrets in the production Google Cloud project. Do not store these 
 | `PRODUCTION_MPESA_SHORTCODE` | `MPESA_SHORTCODE` | Production H.O./Business Shortcode used to generate the STK password. |
 | `PRODUCTION_MPESA_TILL_NUMBER` | `MPESA_TILL_NUMBER` | Production Store/Till Number used as `PartyB` for Buy Goods. |
 | `PRODUCTION_MPESA_PASSKEY` | `MPESA_PASSKEY` | Production STK Push passkey. |
-| `PRODUCTION_MPESA_TEST_PHONE_WHITELIST` | `MPESA_TEST_PHONE_WHITELIST` | Comma-separated Kenya phone numbers allowed during 1 KSh test mode. |
+
+`PRODUCTION_MPESA_TEST_PHONE_WHITELIST` is no longer read by anything and can be deleted from Secret Manager.
 
 ## Required GitHub repository variables
 
@@ -48,20 +49,19 @@ MPESA_TRANSACTION_TYPE=CustomerBuyGoodsOnline
 MPESA_SHORTCODE=<H.O./Business Shortcode>
 MPESA_TILL_NUMBER=<Store/Till Number>
 MPESA_CALLBACK_URL=<production callback URL>
-MPESA_PRODUCTION_LAUNCH_MODE=one_ksh
-MPESA_TEST_AMOUNT_KSH=1
 MPESA_ENABLE_SANDBOX_SIMULATOR=false
 ```
 
-Do not switch `MPESA_PRODUCTION_LAUNCH_MODE` to `live` until the 1 KSh Till test is signed off.
+Every customer is charged the full order total. There is no test amount and no phone whitelist.
 
-The production Storefront deployment workflow now blocks deployment when:
+The `one_ksh` launch mode was removed on 2026-09-19. It let a single dropdown choice in the deploy form restrict payment to a few staff phones, and while it was deployed on that day every real customer's M-Pesa prompt was refused. Do not reintroduce a launch-mode choice into the deploy form. Revisions deployed before the removal may still carry `MPESA_PRODUCTION_LAUNCH_MODE` and `MPESA_TEST_AMOUNT_KSH`; the code no longer reads them.
+
+The production Storefront deployment workflow blocks deployment when:
 
 - Any required Google Secret Manager secret is missing or has no latest version.
 - The production H.O./Business Shortcode and Store/Till Number are non-numeric or identical.
 - `MPESA_CALLBACK_URL_PRODUCTION` is missing.
 - `MPESA_CALLBACK_URL_PRODUCTION` is not an HTTPS `/api/payments/mpesa/callback` URL.
-- `mpesa_launch_mode=one_ksh` is selected but `PRODUCTION_MPESA_TEST_PHONE_WHITELIST` is empty.
 - The deployed callback endpoint cannot reject malformed callback payloads with HTTP 400.
 
 ## Cloud Scheduler
@@ -92,65 +92,41 @@ Reserved inventory returns to AVAILABLE.
 
 The production Storefront deployment workflow configures this scheduler automatically after each successful deployment. A production deploy should be considered failed if scheduler configuration fails.
 
-## 1 KSh Safaricom Till test
+## Post-deploy payment check
 
-Use this only with `MPESA_PRODUCTION_LAUNCH_MODE=one_ksh`.
+Run this after any deployment that touches checkout, payment, or the M-Pesa configuration. It charges real money, so use a low-priced item and warn the warehouse that the test order must not be packed.
 
-1. Confirm the production H.O./Business Shortcode, Store/Till Number, and passkey with Safaricom.
-2. Add only the test phone numbers to `PRODUCTION_MPESA_TEST_PHONE_WHITELIST`.
-3. Deploy production Storefront with the manual workflow input `mpesa_launch_mode=one_ksh`.
-4. Confirm Google OAuth callback is registered:
-   ```text
-   <storefront-url>/api/auth/google/callback
-   ```
-5. Confirm M-Pesa callback is registered or configured:
+1. Confirm the M-Pesa callback is registered or configured:
    ```text
    <storefront-url>/api/payments/mpesa/callback
    ```
-6. Publish one low-risk test item.
-7. Sign in with Google on a mobile phone.
-8. Checkout using a whitelisted M-Pesa phone.
-9. Confirm the STK Push amount is exactly `KSh 1`.
-10. Enter the M-Pesa PIN.
-11. Confirm money arrives in the correct Till.
-12. Confirm callback reaches the app.
-13. Confirm `Payment.status = SUCCESS`.
-14. Confirm `Order.status = PAID`.
-15. Confirm related inventory is `PAID`.
-16. Confirm the product is no longer available on Storefront.
-17. Re-send or simulate the same callback payload and confirm it does not create a duplicate payment, order state change, or commission.
+2. On a mobile phone, without signing in, add one low-priced available item to the bag and check out.
+3. Confirm the STK Push arrives and shows the full item price.
+4. Enter the M-Pesa PIN.
+5. Confirm money arrives in the correct Till.
+6. Confirm callback reaches the app.
+7. Confirm `Payment.status = SUCCESS`.
+8. Confirm `Order.status = PAID`.
+9. Confirm related inventory is `PAID`.
+10. Confirm the product is no longer available on Storefront.
+11. Re-send or simulate the same callback payload and confirm it does not create a duplicate payment, order state change, or commission.
 
-## Live amount opening steps
+For changes to reservation or inventory handling, also run a two-customer same-item test:
 
-Only perform this after the 1 KSh test is approved.
+- Customer A starts payment and reserves the item.
+- Customer B tries the same item and receives an unavailable or reserved message.
+- Customer A pays successfully.
+- Customer B still cannot buy the same item.
 
-1. Confirm at least one successful 1 KSh payment receipt in the correct Till.
-2. Confirm customer-facing error pages and retry states on mobile.
-3. Confirm Cloud Run logs contain no recurring errors for callback, checkout, or cleanup.
-4. Confirm alerts are enabled for Cloud Run 5xx and high latency.
-5. Confirm database migrations have been applied.
-6. Confirm Cloud Scheduler cleanup succeeds for at least 10 minutes.
-7. Run a two-customer same-item test:
-   - Customer A starts payment and reserves the item.
-   - Customer B tries the same item and receives an unavailable or reserved message.
-   - Customer A pays successfully.
-   - Customer B still cannot buy the same item.
-8. Deploy production Storefront again with workflow input:
-   ```text
-   mpesa_launch_mode=live
-   ```
-9. Place one real order with the real amount.
-10. Confirm `Payment SUCCESS`, `Order PAID`, inventory `PAID`, and the product removed from sale.
+## Deployment no-go conditions
 
-## Launch no-go conditions
-
-Do not open live payments if any of these are true:
+Do not deploy, or roll back, if any of these are true:
 
 - Callback is not reachable over public HTTPS.
-- Payment callback creates manual review for the 1 KSh test.
+- A successful payment callback lands in manual review.
 - The same callback can be applied twice.
 - Inventory remains available after successful payment.
 - Cloud Scheduler cannot release expired reservations.
 - Storefront mobile checkout has a blocking UI error.
-- Google OAuth cannot return users to checkout.
+- Checkout asks for sign-in before payment.
 - Cloud Run production secrets are missing or stored outside Secret Manager.

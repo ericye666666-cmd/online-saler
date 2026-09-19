@@ -135,7 +135,6 @@ jobs:
             MPESA_ENABLE_SANDBOX_SIMULATOR=false
             MPESA_CALLBACK_URL=${{ env.STOREFRONT_PUBLIC_URL }}/api/payments/mpesa/callback
             MPESA_CALLBACK_BASE_URL=${{ env.STOREFRONT_PUBLIC_URL }}
-            MPESA_PRODUCTION_LAUNCH_MODE=live
             MPESA_TRANSACTION_TYPE=CustomerBuyGoodsOnline
             MPESA_ACCOUNT_REFERENCE_PREFIX=DLOOP
           secrets: |

@@ -120,7 +120,7 @@ export async function initiateMpesaPayment(
       throw new PaymentConflictError("This order no longer owns its reserved items.");
     }
     const phone = await phoneForOrder(tx, order.id);
-    const charge = resolveMpesaCharge({ environment: client.config.environment, orderAmountKsh: order.totalKsh, phone });
+    const charge = resolveMpesaCharge({ orderAmountKsh: order.totalKsh });
     const payment = await tx.payment.create({
       data: {
         orderId: order.id, status: PaymentStatus.PENDING, amountKsh: charge.amountKsh,
@@ -252,7 +252,7 @@ export async function handleMpesaCallback(body: unknown) {
       (order.status === OrderStatus.PENDING_PAYMENT || order.status === OrderStatus.PAYMENT_PROCESSING) &&
       payment.status === PaymentStatus.PENDING;
     const amountMatches = callback.amountKsh === payment.amountKsh && mpesaPaymentAmountMatchesOrder({
-      environment: mpesaConfigFromEnv().environment, paymentAmountKsh: payment.amountKsh, orderAmountKsh: order.totalKsh, phone: payment.phone
+      paymentAmountKsh: payment.amountKsh, orderAmountKsh: order.totalKsh
     });
     const receiptOwner = callback.receiptNumber ? await tx.payment.findUnique({ where: { providerReceiptNumber: callback.receiptNumber }, select: { id: true } }) : null;
     const metadataMatches = (!callback.phone || callback.phone === payment.phone) &&

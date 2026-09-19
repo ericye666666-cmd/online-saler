@@ -81,7 +81,9 @@ test("production workflow retains manual confirmation and places the candidate s
   assert.match(workflow, /on:\n  workflow_dispatch:/);
   assert.doesNotMatch(workflow, /^  (push|pull_request):/m);
   assert.match(workflow, /inputs\.confirm.*deploy-production/);
-  assert.match(workflow, /MPESA_PRODUCTION_LAUNCH_MODE=\$\{\{ inputs\.mpesa_launch_mode \}\}/);
+  // The 1 KSh whitelist mode was removed after it closed the shop to real
+  // customers. A launch-mode choice must not come back into the deploy form.
+  assert.doesNotMatch(workflow, /mpesa_launch_mode|one_ksh|MPESA_PRODUCTION_LAUNCH_MODE|MPESA_TEST_PHONE_WHITELIST/);
   assert.ok(workflow.indexOf("node scripts/production-storefront-preflight.mjs") < workflow.indexOf("- name: Deploy Cloud Run service"));
   assert.doesNotMatch(workflow, /continue-on-error:/);
   assert.doesNotMatch(workflow, /\| grep -[Eq]*q/);

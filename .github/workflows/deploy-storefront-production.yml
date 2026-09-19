@@ -6,14 +6,6 @@ on:
       confirm:
         description: "Type deploy-production to deploy the production Storefront service."
         required: true
-      mpesa_launch_mode:
-        description: "Use one_ksh for the first Till test. Use live only after sign-off."
-        required: true
-        default: "one_ksh"
-        type: choice
-        options:
-          - one_ksh
-          - live
 
 permissions:
   contents: read
@@ -62,8 +54,7 @@ jobs:
             PRODUCTION_MPESA_CONSUMER_SECRET \
             PRODUCTION_MPESA_SHORTCODE \
             PRODUCTION_MPESA_TILL_NUMBER \
-            PRODUCTION_MPESA_PASSKEY \
-            PRODUCTION_MPESA_TEST_PHONE_WHITELIST
+            PRODUCTION_MPESA_PASSKEY
           do
             gcloud secrets versions access latest \
               --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
@@ -80,21 +71,6 @@ jobs:
           if ! [[ "${BUSINESS_SHORTCODE}" =~ ^[0-9]+$ ]] || ! [[ "${TILL_NUMBER}" =~ ^[0-9]+$ ]]; then
             echo "Production M-Pesa H.O. shortcode and Till number must both be numeric." >&2
             exit 1
-          fi
-
-          if [ "${{ inputs.mpesa_launch_mode }}" = "one_ksh" ]; then
-            TEST_WHITELIST="$(gcloud secrets versions access latest \
-              --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
-              --secret PRODUCTION_MPESA_TEST_PHONE_WHITELIST)"
-
-            if [ -z "${TEST_WHITELIST}" ]; then
-              echo "PRODUCTION_MPESA_TEST_PHONE_WHITELIST must contain at least one test phone in one_ksh mode." >&2
-              exit 1
-            fi
-          fi
-
-          if [ "${{ inputs.mpesa_launch_mode }}" = "live" ]; then
-            echo "Live M-Pesa amount deployment selected. This should only run after a signed-off 1 KSh test."
           fi
 
           if [ -z "${{ vars.MPESA_CALLBACK_URL_PRODUCTION }}" ]; then
@@ -192,8 +168,6 @@ jobs:
             MPESA_ENVIRONMENT=production
             MPESA_TRANSACTION_TYPE=CustomerBuyGoodsOnline
             MPESA_CALLBACK_URL=${{ vars.MPESA_CALLBACK_URL_PRODUCTION }}
-            MPESA_PRODUCTION_LAUNCH_MODE=${{ inputs.mpesa_launch_mode }}
-            MPESA_TEST_AMOUNT_KSH=1
             MPESA_ENABLE_SANDBOX_SIMULATOR=false
             MPESA_ACCOUNT_REFERENCE_PREFIX=DLOOP
           secrets: |
@@ -206,7 +180,6 @@ jobs:
             MPESA_SHORTCODE=PRODUCTION_MPESA_SHORTCODE:latest
             MPESA_TILL_NUMBER=PRODUCTION_MPESA_TILL_NUMBER:latest
             MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest
-            MPESA_TEST_PHONE_WHITELIST=PRODUCTION_MPESA_TEST_PHONE_WHITELIST:latest
 
       - name: Verify Storefront production surface
         run: |
