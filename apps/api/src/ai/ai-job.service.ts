@@ -6,6 +6,7 @@ import {
   requiresHumanConfirmation,
   isShoeCategory,
   isShoeProduct,
+  SHOE_IMAGE_TYPES,
   SHOE_REQUIRED_IMAGE_TYPES,
   type AIExtractionRequest,
   type AIExtractionResult,
@@ -156,12 +157,13 @@ export class AIJobService {
       return !latest || !requestedIds.has(latest.id);
     });
     if (missing.length) {
-      throw new BadRequestException(`Shoe recognition requires the latest original pair, side, soles and size-label photos; missing: ${missing.join(", ")}`);
+      throw new BadRequestException(`Shoe recognition requires the latest original pair photo; missing: ${missing.join(", ")}`);
     }
     // Retakes are retained for the audit trail but must not compete with the
     // current label or inflate every recognition request. Include the latest
-    // defect photo when present, even when a caller omits that optional slot.
-    return [...SHOE_REQUIRED_IMAGE_TYPES, "DEFECT" as const].flatMap((type) => {
+    // side, soles, label and defect photos when present, even when a caller
+    // omits those optional slots.
+    return [...SHOE_IMAGE_TYPES, "DEFECT" as const].flatMap((type) => {
       const latest = originals.find((image) => image.type === type);
       return latest ? [latest.id] : [];
     });

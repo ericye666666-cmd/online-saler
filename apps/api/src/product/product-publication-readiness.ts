@@ -56,7 +56,7 @@ export function shoeIntakeBlocker(product: Pick<PublicationProduct,
     return [String(image.type)];
   }));
   const missing = SHOE_REQUIRED_IMAGE_TYPES.filter((type) => !imageTypes.has(type));
-  if (missing.length) return `Add original shoe photos before approving shoes: ${missing.join(", ")} (pair, side, soles, size label).`;
+  if (missing.length) return `Add the original pair photo before approving shoes: ${missing.join(", ")}.`;
   return null;
 }
 
