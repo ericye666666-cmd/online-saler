@@ -66,7 +66,7 @@ describe("AIJobService", () => {
 });
 
 
-it("rejects direct shoe AI requests missing the latest pair photo before invoking a provider; side, soles and label are optional", async () => {
+it("rejects direct shoe AI requests missing required views or reusing an outdated size label before invoking a provider", async () => {
   prisma.product.findUnique = (async () => ({ id: "shoe", category: "KIDS", subcategory: "KIDS_SHOES", status: ProductStatus.PHOTOGRAPHED })) as never;
   prisma.productImage.findMany = (async () => [
     { id: "label-new", type: "LABEL" }, { id: "pair", type: "FRONT" },
@@ -74,7 +74,8 @@ it("rejects direct shoe AI requests missing the latest pair photo before invokin
   ]) as never;
   let calls = 0;
   const service = new AIJobService({ extract: async () => { calls += 1; throw new Error("Must not invoke provider"); } });
-  await assert.rejects(service.submit({ productId: "shoe", imageIds: ["side", "soles", "label-new"], promptVersion: "test" }), /latest original pair photo; missing: FRONT/);
+  await assert.rejects(service.submit({ productId: "shoe", imageIds: ["pair"], promptVersion: "test" }), /missing: BACK, DETAIL, LABEL/);
+  await assert.rejects(service.submit({ productId: "shoe", imageIds: ["pair", "side", "soles", "label-old"], promptVersion: "test" }), /missing: LABEL/);
   await assert.rejects(service.submit({ productId: "shoe", imageIds: ["pair", "side", "soles", "label-new", "another-products-image"], promptVersion: "test" }), /only this product's original images/);
   assert.equal(calls, 0);
 });

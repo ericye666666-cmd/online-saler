@@ -1644,7 +1644,8 @@ export const enDictionary: Record<string, string> = {
     "Creates 10 empty item slots at once so staff can photograph and upload without stopping.",
   "一双鞋对应一个商品和条码。请对照整双、侧面、鞋底及尺码标原图检查。":
     "One pair of shoes is one item with one barcode. Check it against the original photos of the pair, the side, the sole and the size label.",
-  "一双一个商品。只有整双主图必拍，要同时拍到左右鞋；侧面、鞋底和尺码标签可选，拍了 AI 读得更准。按编号集中拍完，再坐下上传；有瑕疵补特写。": "One pair is one product. Only the pair photo is required, showing both shoes; side, soles and size label are optional and help the AI read more accurately. Shoot a whole batch by number, then sit down to upload; add close-ups of any defects.",
+  "一双一个商品。整双主图同时拍到左右鞋；侧面和鞋底需展示两只鞋，标签需能核对左右尺码。按编号集中拍完，再坐下上传；有瑕疵补特写。":
+    "One pair is one item. The main photo must show both shoes; the side and sole photos must show both; and the label photo must let you check both sizes. Photograph everything by number first, then sit down and upload, adding close-ups of any defects.",
   "一物一件": "One item, one piece",
   "衣服轮廓点选画布": "Garment outline canvas",
   "移除": "Remove",

@@ -14,18 +14,16 @@ import {
 
 assert.equal(imageUploadIssue({ type: "image/jpeg", size: 1024 }), null);
 const shoeImages = ["FRONT", "BACK", "DETAIL", "LABEL"].map((type) => ({ type }));
-// Shoes, like clothing, need only the pair photo; side, soles and label are optional.
-assert.deepEqual(missingCaptureImageTypes({ category: "SHOES", images: [{ type: "FRONT" }] }), []);
-assert.deepEqual(missingCaptureImageTypes({ category: "SHOES", images: [{ type: "BACK" }, { type: "LABEL" }] }), ["FRONT"]);
+assert.deepEqual(missingCaptureImageTypes({ category: "SHOES", images: [{ type: "FRONT" }] }), ["BACK", "DETAIL", "LABEL"]);
 assert.deepEqual(missingCaptureImageTypes({ category: "KIDS", subcategory: "KIDS_SHOES", images: shoeImages }), []);
 assert.equal(completedCaptureCount([
   { category: "SHOES", images: shoeImages },
-  { category: "SHOES", images: shoeImages.filter((image) => image.type !== "FRONT") },
+  { category: "SHOES", images: shoeImages.filter((image) => image.type !== "LABEL") },
   { category: "TSHIRTS", images: [{ type: "FRONT" }] }
 ]), 2);
 assert.equal(firstProductMissingCapture([
-  { category: "SHOES", images: [{ type: "FRONT" }] },
-  { category: "SHOES", images: [{ type: "DETAIL" }] }
+  { category: "SHOES", images: shoeImages },
+  { category: "SHOES", images: [{ type: "FRONT" }] }
 ]), 1);
 assert.match(imageUploadIssue({ type: "image/heic", size: 1024 }) ?? "", /HEIC/);
 assert.match(imageUploadIssue({ type: "image/jpeg", size: 11 * 1024 * 1024 }) ?? "", /10 MB/);

@@ -394,7 +394,7 @@ export function ProductBatchUploadPage({ batchId, initialProductId }: { batchId:
         </label>
       </div>
 
-      {shoes ? <p className="text-sm text-muted-foreground">{t("一双一个商品。只有整双主图必拍，要同时拍到左右鞋；侧面、鞋底和尺码标签可选，拍了 AI 读得更准。按编号集中拍完，再坐下上传；有瑕疵补特写。")}</p> : null}
+      {shoes ? <p className="text-sm text-muted-foreground">{t("一双一个商品。整双主图同时拍到左右鞋；侧面和鞋底需展示两只鞋，标签需能核对左右尺码。按编号集中拍完，再坐下上传；有瑕疵补特写。")}</p> : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {PRODUCT_FACTORY_IMAGE_TYPES.map((type) => (

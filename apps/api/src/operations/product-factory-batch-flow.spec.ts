@@ -12,14 +12,15 @@ function products(status: string, count = 10, extra: Partial<BatchFlowProduct> =
   return Array.from({ length: count }, () => ({ status, ...extra }));
 }
 
-test("shoe batches leave capture once every pair has its pair photo; side, soles and label are optional", () => {
-  const pairs = products("PHOTOGRAPHED", 10, { category: "SHOES", images: [{ type: "FRONT" }] });
+test("shoe batches stay in capture until every pair has all four original views", () => {
+  const images = ["FRONT", "BACK", "DETAIL", "LABEL"].map((type) => ({ type }));
+  const pairs = products("PHOTOGRAPHED", 10, { category: "SHOES", images });
   assert.equal(deriveProductFactoryBatchFlow(pairs).stage, "AI_IMAGE");
-  pairs[9].images = [{ type: "BACK" }, { type: "LABEL" }];
+  pairs[9].images = [{ type: "FRONT" }];
   const incomplete = deriveProductFactoryBatchFlow(pairs);
   assert.equal(incomplete.stage, "UPLOAD");
   assert.equal(incomplete.stageCompletedCount, 9);
-  pairs[9] = { status: "CALIBRATION_PENDING", category: "KIDS", subcategory: "KIDS_SHOES", images: [{ type: "DETAIL" }] };
+  pairs[9] = { status: "CALIBRATION_PENDING", category: "KIDS", subcategory: "KIDS_SHOES", images: [{ type: "FRONT" }] };
   assert.equal(deriveProductFactoryBatchFlow(pairs).stage, "UPLOAD");
 });
 
