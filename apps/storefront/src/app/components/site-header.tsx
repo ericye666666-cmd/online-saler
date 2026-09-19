@@ -197,9 +197,9 @@ export function SiteHeader({
         </form>
 
         <div className="depopHeaderActions">
-          <button className="depopIconButton" type="button" aria-label={t("header.saved")}>
+          <Link className="depopIconButton" href="/saved" aria-label={t("header.saved")}>
             <Heart size={24} />
-          </button>
+          </Link>
           <Link className="depopIconButton depopCartIcon" href="/cart" aria-label={`Open cart${cartCount ? `, ${cartCount} items` : ""}`}>
             <ShoppingBag size={23} />
             {cartCount ? <span>{cartCount}</span> : null}

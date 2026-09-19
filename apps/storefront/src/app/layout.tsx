@@ -6,6 +6,7 @@ import "./storefront-tab-bar.css";
 import "./storefront-tab-pages.css";
 import "./storefront-home-feed.css";
 import "./storefront-product-page.css";
+import "./storefront-bag.css";
 import { Inter, Playfair_Display } from "next/font/google";
 import { StorefrontTabBar } from "./components/storefront-tab-bar";
 

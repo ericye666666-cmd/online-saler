@@ -1,0 +1,360 @@
+/* The bag, after Vestiaire's: a pale grey page, white top bar with Close /
+   Bag · N items / Edit, one white card per piece, and the subtotal with a
+   single black button pinned to the bottom edge. */
+
+.bagMain {
+  min-height: 100vh;
+  background: #f2f2f2;
+}
+
+.bagPage {
+  --bag-ink: #111;
+  --bag-muted: #6b6b6b;
+  --bag-rule: #e6e6e6;
+  max-width: 720px;
+  min-height: 100vh;
+  margin: 0 auto;
+  background: #f2f2f2;
+  color: var(--bag-ink);
+}
+
+.bagPage.withFooter {
+  padding-bottom: calc(150px + env(safe-area-inset-bottom));
+}
+
+.bagTopBar {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 64px;
+  border-bottom: 1px solid var(--bag-rule);
+  background: #fff;
+  padding: 6px 16px;
+}
+
+.bagTopAction {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--bag-ink);
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 16px;
+}
+
+.bagTopAction.end {
+  justify-self: end;
+}
+
+.bagTopTitle {
+  text-align: center;
+}
+
+.bagTopTitle h1 {
+  margin: 0;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.bagTopTitle span {
+  color: var(--bag-muted);
+  font-size: 13px;
+}
+
+.bagBody {
+  padding: 12px 0 24px;
+}
+
+.bagMessage {
+  padding: 40px 16px;
+  color: var(--bag-muted);
+  text-align: center;
+}
+
+/* Rows */
+
+.bagList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bagRow {
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+}
+
+.bagRowCard {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 14px;
+  align-items: start;
+  background: #fff;
+  padding: 16px;
+  transition: transform .22s ease;
+  touch-action: pan-y;
+}
+
+.bagRowCard.dragging {
+  transition: none;
+}
+
+.bagRowImage {
+  display: block;
+  width: 88px;
+  height: 88px;
+  background: #fff;
+}
+
+.bagRowImage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.bagRowText {
+  min-width: 0;
+}
+
+.bagRowTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--bag-ink);
+  font-size: 16px;
+  line-height: 1.35;
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.bagRowMeta {
+  margin: 4px 0 0;
+  color: var(--bag-muted);
+  font-size: 14px;
+}
+
+.bagRowStatus {
+  margin: 4px 0 0;
+  color: var(--bag-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bagRowPrice {
+  margin: 8px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* The actions sit under the card and show as it slides left. */
+.bagRowActions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 188px;
+}
+
+.bagRowActions button {
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  padding: 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.bagMove {
+  background: #d98a60;
+}
+
+.bagDelete {
+  background: #f23b3b;
+}
+
+.bagUnavailable {
+  margin-top: 26px;
+}
+
+.bagUnavailable h2 {
+  margin: 0 16px 10px;
+  color: var(--bag-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.bagRow.unavailable .bagRowImage,
+.bagRow.unavailable .bagRowTitle,
+.bagRow.unavailable .bagRowPrice {
+  opacity: .45;
+}
+
+.bagNotice {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 10px;
+  background: #fff;
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.bagNotice strong {
+  display: block;
+}
+
+.bagNotice p {
+  margin: 2px 0 10px;
+  color: var(--bag-muted);
+}
+
+.bagNotice button {
+  border: 1px solid var(--bag-ink);
+  background: #fff;
+  color: var(--bag-ink);
+  cursor: pointer;
+  padding: 9px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.bagError {
+  margin: 0 16px 10px;
+  color: #b3261e;
+  font-size: 14px;
+}
+
+.bagFootnote {
+  margin: 18px 16px 0;
+  color: var(--bag-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.bagContinue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 16px 0;
+  color: var(--bag-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Subtotal and Next, pinned to the bottom edge */
+
+.bagFooter {
+  position: fixed;
+  z-index: 30;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  gap: 12px;
+  max-width: 720px;
+  margin: 0 auto;
+  border-top: 1px solid var(--bag-rule);
+  background: #fff;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.bagSubtotal {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 18px;
+}
+
+.bagSubtotal span {
+  font-weight: 600;
+}
+
+.bagSubtotal strong {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.bagPrimary,
+.bagSecondary {
+  display: grid;
+  min-height: 56px;
+  place-items: center;
+  border: 1px solid var(--bag-ink);
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bagPrimary {
+  background: var(--bag-ink);
+  color: #fff;
+}
+
+.bagPrimary:disabled {
+  border-color: #bdbdbd;
+  background: #bdbdbd;
+  cursor: not-allowed;
+}
+
+.bagSecondary {
+  background: #fff;
+  color: var(--bag-ink);
+}
+
+.bagEmpty {
+  display: grid;
+  gap: 12px;
+  margin: 40px 16px 0;
+  background: #fff;
+  padding: 32px 20px;
+  text-align: center;
+}
+
+.bagEmpty h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.bagEmpty p {
+  margin: 0 0 8px;
+  color: var(--bag-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bagRowCard {
+    transition: none;
+  }
+}
+
+@media (min-width: 721px) {
+  .bagList {
+    gap: 12px;
+  }
+
+  .bagRow,
+  .bagNotice,
+  .bagEmpty {
+    border: 1px solid var(--bag-rule);
+  }
+}
