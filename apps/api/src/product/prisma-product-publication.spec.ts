@@ -121,7 +121,7 @@ test("a stale review decision cannot leave a review record when its state update
   assert.deepEqual(fixture.saved, []);
 });
 
-test("shoe approval and publication recheck all human shoe evidence and original photo types", async () => {
+test("shoe approval and publication recheck all human shoe evidence and the pair photo", async () => {
   for (const status of [ProductStatus.APPROVED, ProductStatus.PUBLISHED]) {
     const fixture = persistenceFixture();
     const shoes = Object.assign(fixture.product, {
@@ -133,14 +133,15 @@ test("shoe approval and publication recheck all human shoe evidence and original
     const cases = [
       { shoePairConfirmed: false }, { shoeConditionNotes: " " }, { shoeType: "UNKNOWN" },
       { shoeSizeSystem: null }, { tagSize: "UK 4" }, { finalSizeLabel: "L" },
-      ...["FRONT", "BACK", "DETAIL", "LABEL"].map((missing) => ({ images: complete.images.filter((image) => image.type !== missing) }))
+      { images: complete.images.filter((image) => image.type !== "FRONT") }
     ];
     for (const invalid of cases) {
       Object.assign(shoes, complete, invalid);
       await assert.rejects(new PrismaProductRepository().saveStateChange(saveInput(status)), /shoe|pair|confirmed AI display image/i);
       assert.deepEqual(fixture.saved, []);
     }
-    Object.assign(shoes, complete);
+    // Side, soles and label photos are optional.
+    Object.assign(shoes, complete, { images: complete.images.filter((image) => image.type === "FRONT") });
     await new PrismaProductRepository().saveStateChange(saveInput(status));
     assert.deepEqual(fixture.saved, ["product", "audit"]);
   }

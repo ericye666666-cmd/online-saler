@@ -8,8 +8,14 @@ export const SHOE_TYPES = [
 ] as const;
 export type ShoeType = typeof SHOE_TYPES[number];
 
-/** Existing original-image slots: pair overview, side, soles, size label. */
-export const SHOE_REQUIRED_IMAGE_TYPES = ["FRONT", "BACK", "DETAIL", "LABEL"] as const;
+/** Original-image slots for shoes: pair overview, side, soles, size label. */
+export const SHOE_IMAGE_TYPES = ["FRONT", "BACK", "DETAIL", "LABEL"] as const;
+/**
+ * Only the pair photo is required, as for clothing. Side, soles and size label
+ * are used when staff take them, but no longer block intake, AI reading or
+ * approval (operations decision, 2026-09-19).
+ */
+export const SHOE_REQUIRED_IMAGE_TYPES = ["FRONT"] as const;
 
 export function isShoeCategory(category?: string | null): boolean {
   return ["SHOE", "SHOES"].includes(String(category ?? "").trim().toUpperCase());
