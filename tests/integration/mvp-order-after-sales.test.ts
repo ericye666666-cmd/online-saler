@@ -41,7 +41,7 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
   try {
     // Exercise the real token and database permission services with an isolated
     // test role. No authentication mock and no bootstrap of global admins.
-    const permissionCodes = ["orders.view", "orders.pick", "orders.pack", "orders.complete", "orders.after-sale", "action.customer-service.approve"];
+    const permissionCodes = ["orders.view", "orders.pick", "orders.pack", "orders.complete", "orders.after-sale", "orders.assign-node", "orders.node-receive", "action.customer-service.approve"];
     const permissionIds: string[] = [];
     for (const code of permissionCodes) {
       let permission = await prisma.permission.findUnique({ where: { code } });
@@ -155,6 +155,18 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     assert.equal((await prisma.orderFulfillment.findUniqueOrThrow({ where: { orderId: order.id } })).status, "READY_TO_PACK");
     await fulfillment.startPacking(order.id, actor);
     await fulfillment.completePacking(order.id, { ...actor, packagingMethod: "BAG", packageCount: 1 });
+    // The order is collected from a store, so the package has to travel and be
+    // scanned in before anyone can hand it over.
+    await assert.rejects(fulfillment.readyForPickup(order.id, actor), /cannot move from PACKED/);
+    await fulfillment.sendToNode(order.id, actor);
+    const inTransit = await prisma.orderFulfillment.findUniqueOrThrow({ where: { orderId: order.id } });
+    assert.equal(inTransit.status, "IN_TRANSIT_TO_NODE");
+    assert.ok(inTransit.packageCode);
+    await assert.rejects(fulfillment.receiveAtNode(order.id, { ...actor, packageCode: "PKG-WRONG-LABEL" }), /Check the label/);
+    await fulfillment.receiveAtNode(order.id, { ...actor, packageCode: inTransit.packageCode! });
+    const atNode = await prisma.orderFulfillment.findUniqueOrThrow({ where: { orderId: order.id } });
+    assert.equal(atNode.status, "ARRIVED_AT_NODE");
+    assert.ok(atNode.arrivedAtNodeAt);
     await fulfillment.readyForPickup(order.id, actor);
     await assert.rejects(fulfillment.confirmPickup(order.id, { ...actor, verificationMethod: "ORDER_NUMBER", verificationValue: "WRONG-ORDER" }), /verification does not match/);
     await fulfillment.confirmPickup(order.id, { ...actor, verificationMethod: "ORDER_NUMBER", verificationValue: order.orderNumber });
