@@ -6,6 +6,7 @@ set -euo pipefail
 
 GCP_SCHEDULER_REGION="${GCP_SCHEDULER_REGION:-europe-west1}"
 JOB_NAME="${JOB_NAME:-release-expired-reservations-production}"
+VIDEO_JOB_NAME="${VIDEO_JOB_NAME:-render-affiliate-videos-production}"
 SECRET_NAME="${SECRET_NAME:-PRODUCTION_INTERNAL_CRON_SECRET}"
 CRON_SECRET="$(gcloud secrets versions access latest --project "${GCP_PROJECT_ID}" --secret "${SECRET_NAME}")"
 
@@ -14,26 +15,35 @@ if [ -z "${CRON_SECRET}" ]; then
   exit 1
 fi
 
-URI="${STOREFRONT_PUBLIC_URL%/}/api/internal/release-expired-reservations"
+# Creates or updates one Cloud Scheduler job that POSTs to an internal route.
+upsert_job() {
+  local name="$1" path="$2" schedule="$3" deadline="$4"
+  local uri="${STOREFRONT_PUBLIC_URL%/}${path}"
+  if gcloud scheduler jobs describe "${name}" --project "${GCP_PROJECT_ID}" --location "${GCP_SCHEDULER_REGION}" >/dev/null 2>&1; then
+    gcloud scheduler jobs update http "${name}" \
+      --project "${GCP_PROJECT_ID}" \
+      --location "${GCP_SCHEDULER_REGION}" \
+      --schedule "${schedule}" \
+      --time-zone "Africa/Nairobi" \
+      --uri "${uri}" \
+      --http-method POST \
+      --attempt-deadline "${deadline}" \
+      --update-headers "Authorization=Bearer ${CRON_SECRET}"
+  else
+    gcloud scheduler jobs create http "${name}" \
+      --project "${GCP_PROJECT_ID}" \
+      --location "${GCP_SCHEDULER_REGION}" \
+      --schedule "${schedule}" \
+      --time-zone "Africa/Nairobi" \
+      --uri "${uri}" \
+      --http-method POST \
+      --attempt-deadline "${deadline}" \
+      --headers "Authorization=Bearer ${CRON_SECRET}"
+  fi
+  echo "Cloud Scheduler job ${name} in ${GCP_SCHEDULER_REGION} calls ${uri} on '${schedule}'."
+}
 
-if gcloud scheduler jobs describe "${JOB_NAME}" --project "${GCP_PROJECT_ID}" --location "${GCP_SCHEDULER_REGION}" >/dev/null 2>&1; then
-  gcloud scheduler jobs update http "${JOB_NAME}" \
-    --project "${GCP_PROJECT_ID}" \
-    --location "${GCP_SCHEDULER_REGION}" \
-    --schedule "* * * * *" \
-    --time-zone "Africa/Nairobi" \
-    --uri "${URI}" \
-    --http-method POST \
-    --update-headers "Authorization=Bearer ${CRON_SECRET}"
-else
-  gcloud scheduler jobs create http "${JOB_NAME}" \
-    --project "${GCP_PROJECT_ID}" \
-    --location "${GCP_SCHEDULER_REGION}" \
-    --schedule "* * * * *" \
-    --time-zone "Africa/Nairobi" \
-    --uri "${URI}" \
-    --http-method POST \
-    --headers "Authorization=Bearer ${CRON_SECRET}"
-fi
-
-echo "Cloud Scheduler job ${JOB_NAME} in ${GCP_SCHEDULER_REGION} calls ${URI} every minute."
+upsert_job "${JOB_NAME}" "/api/internal/release-expired-reservations" "* * * * *" "180s"
+# Plans each affiliate's daily TikTok videos and renders one per call; about
+# 90 videos a day (30 affiliates x 3) finish within the first hours of the day.
+upsert_job "${VIDEO_JOB_NAME}" "/api/internal/run-through-videos" "*/3 * * * *" "300s"

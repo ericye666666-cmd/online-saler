@@ -1313,17 +1313,28 @@ model TikTokVideo {
 // Its items record which pieces each video showed, so the next video can pick
 // the pieces that have been shown least.
 model RunThroughVideo {
-  id           String                @id @default(uuid())
-  affiliateId  String
-  category     String?
-  status       AffiliateAssetStatus  @default(PROCESSING)
-  errorMessage String?
-  affiliate    Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  items        RunThroughVideoItem[]
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  id               String                @id @default(uuid())
+  affiliateId      String
+  category         String?
+  // Daily videos: the Nairobi day (YYYY-MM-DD) and slot they were planned for.
+  // Extra videos an affiliate makes on demand have neither.
+  day              String?
+  slot             Int?
+  // Seeds the video's look (cover layout, tone, transition, pace, length).
+  seed             Int                   @default(0)
+  status           AffiliateAssetStatus  @default(PROCESSING)
+  errorMessage     String?
+  storageObjectKey String?
+  renderStartedAt  DateTime?
+  downloadedAt     DateTime?
+  affiliate        Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  items            RunThroughVideoItem[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
+  @@unique([affiliateId, day, slot])
   @@index([affiliateId, createdAt])
+  @@index([status, day])
 }
 
 model RunThroughVideoItem {

@@ -152,8 +152,8 @@ jobs:
           flags: >-
             --allow-unauthenticated
             --port=3000
-            --memory=1Gi
-            --cpu=1
+            --memory=2Gi
+            --cpu=2
             --min-instances=1
             --max-instances=5
             --service-account=${{ vars.GCP_STOREFRONT_SERVICE_ACCOUNT_PRODUCTION }}
@@ -162,6 +162,7 @@ jobs:
             NODE_ENV=production
             API_URL=${{ vars.API_URL_PRODUCTION }}
             STOREFRONT_PUBLIC_URL=${{ vars.STOREFRONT_PUBLIC_URL_PRODUCTION }}
+            PRODUCT_IMAGE_BUCKET=${{ vars.PRODUCT_IMAGE_BUCKET_PRODUCTION || 'online-saler-staging-product-images' }}
             NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY_PRODUCTION }}
             GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID_PRODUCTION }}
             MPESA_ENV=production
@@ -227,7 +228,7 @@ jobs:
             exit 1
           fi
 
-      - name: Configure production reservation cleanup scheduler
+      - name: Configure production schedulers (reservation cleanup, affiliate videos)
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID_PRODUCTION }}
           GCP_SCHEDULER_REGION: ${{ vars.GCP_SCHEDULER_REGION_PRODUCTION }}

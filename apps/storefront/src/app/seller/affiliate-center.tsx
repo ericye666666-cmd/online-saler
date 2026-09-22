@@ -47,7 +47,7 @@ type CenterTab = "dashboard" | "tiktok-video" | "collections" | "campaigns" | "s
 
 const tabs: Array<{ id: CenterTab; label: string; icon: React.ReactNode }> = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard /> },
-  { id: "tiktok-video", label: "TikTok video", icon: <Video /> },
+  { id: "tiktok-video", label: "TikTok videos", icon: <Video /> },
   { id: "collections", label: "Collections", icon: <FolderHeart /> },
   { id: "campaigns", label: "Campaigns", icon: <Megaphone /> },
   { id: "share-assets", label: "Share Assets", icon: <BookImage /> },

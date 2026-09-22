@@ -32,3 +32,17 @@ export async function uploadAffiliateAsset(objectName: string, contentType: stri
   if (!response.ok) throw new Error(`Affiliate asset upload failed with status ${response.status}.`);
   return `gs://${bucket}/${objectName}`;
 }
+
+/** Fetches a stored asset from the bucket; the response body streams the object. */
+export async function fetchAffiliateAsset(objectName: string) {
+  const bucket = affiliateAssetBucket();
+  if (!bucket) throw new Error("No asset bucket is configured.");
+  const tokenResponse = await fetch(METADATA_TOKEN_URL, { headers: { "Metadata-Flavor": "Google" } });
+  if (!tokenResponse.ok) throw new Error("Cloud Storage access token could not be obtained.");
+  const token = await tokenResponse.json() as TokenResponse;
+  if (!token.access_token) throw new Error("Cloud Storage access token was empty.");
+  const url = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(objectName)}?alt=media`;
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token.access_token}` } });
+  if (!response.ok || !response.body) throw new Error(`Affiliate asset download failed with status ${response.status}.`);
+  return response;
+}

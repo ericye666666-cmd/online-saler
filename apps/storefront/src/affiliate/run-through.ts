@@ -97,3 +97,67 @@ export function compareSizes(a: string, b: string): number {
 export function runThroughSizes(sizes: string[]): string[] {
   return [...new Set(sizes.map((size) => size.trim().toUpperCase()).filter(Boolean))].sort(compareSizes);
 }
+
+// ---------------------------------------------------------------------------
+// Daily videos. Every affiliate gets RUN_THROUGH_DAILY_VIDEOS each Nairobi day,
+// each a different category, rendered ahead of time. Beyond the pieces, every
+// video's look comes from its seed, so no two videos share a cover, pace,
+// length and transition, and TikTok does not match them as duplicates.
+
+export const RUN_THROUGH_DAILY_VIDEOS = 3;
+
+export type RunThroughVariant = {
+  cover: "grid" | "hero" | "strip";
+  tone: string;
+  transition: "slide" | "fade" | "zoom" | "cut";
+  itemFrames: number;
+  itemCount: number;
+  largestFirst: boolean;
+};
+
+const TONES = ["#ffffff", "#f7f4ef", "#f3f3f1", "#f4f1f6"];
+const COVERS: RunThroughVariant["cover"][] = ["grid", "hero", "strip"];
+const TRANSITIONS: RunThroughVariant["transition"][] = ["slide", "fade", "zoom", "cut"];
+
+/** A small deterministic generator (mulberry32), so a video renders the same every time. */
+export function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function runThroughVariant(seed: number): RunThroughVariant {
+  const random = seededRandom(seed);
+  const pick = <T,>(values: T[]) => values[Math.floor(random() * values.length)];
+  return {
+    cover: pick(COVERS),
+    tone: pick(TONES),
+    transition: pick(TRANSITIONS),
+    // 1.0–1.4 s a piece and 6–9 pieces: every video lands between 8 and 15 s.
+    itemFrames: pick([30, 33, 36, 39, 42]),
+    itemCount: 6 + Math.floor(random() * 4),
+    largestFirst: random() < 0.3,
+  };
+}
+
+/** Today's date in Nairobi as YYYY-MM-DD; daily videos belong to it. */
+export function nairobiDay(now: Date = new Date()): string {
+  return new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * The categories an affiliate's daily videos cover. Affiliates start at
+ * different points of the list and move one step each day, so across the team
+ * every category is posted every day and each affiliate's feed keeps changing.
+ */
+export function dailyCategories(categories: string[], affiliateIndex: number, day: string, count = RUN_THROUGH_DAILY_VIDEOS): string[] {
+  if (!categories.length) return [];
+  const dayNumber = Math.floor(Date.parse(`${day}T00:00:00Z`) / 86_400_000);
+  const start = (affiliateIndex * count + dayNumber) % categories.length;
+  return Array.from({ length: count }, (_, slot) => categories[(start + slot) % categories.length]);
+}

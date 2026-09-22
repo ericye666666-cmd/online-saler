@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compareSizes, runThroughCaption, runThroughCategoryLabel, runThroughSizes, selectRunThroughProducts, type RunThroughCandidate } from "./run-through";
+import {
+  compareSizes,
+  dailyCategories,
+  nairobiDay,
+  runThroughCaption,
+  runThroughCategoryLabel,
+  runThroughSizes,
+  runThroughVariant,
+  selectRunThroughProducts,
+  type RunThroughCandidate,
+} from "./run-through";
 
 function candidate(id: string, timesShown: number, timesShownByAffiliate = 0, published = "2026-09-01"): RunThroughCandidate {
   return { id, timesShown, timesShownByAffiliate, publishedAt: new Date(published) };
@@ -58,3 +68,31 @@ function sequence(...values: number[]) {
   let index = 0;
   return () => values[index++ % values.length];
 }
+
+test("a video's look is fixed by its seed and varies between seeds", () => {
+  assert.deepEqual(runThroughVariant(42), runThroughVariant(42));
+  const looks = new Set(Array.from({ length: 40 }, (_, seed) => JSON.stringify(runThroughVariant(seed))));
+  assert.ok(looks.size >= 35, `only ${looks.size} distinct looks from 40 seeds`);
+  for (let seed = 0; seed < 200; seed += 1) {
+    const variant = runThroughVariant(seed);
+    const seconds = (variant.itemCount * variant.itemFrames) / 30;
+    assert.ok(variant.itemCount >= 6 && variant.itemCount <= 9);
+    assert.ok(seconds >= 6 && seconds <= 12.6);
+  }
+});
+
+test("the Nairobi day turns over at 21:00 UTC", () => {
+  assert.equal(nairobiDay(new Date("2026-09-22T20:59:00Z")), "2026-09-22");
+  assert.equal(nairobiDay(new Date("2026-09-22T21:00:00Z")), "2026-09-23");
+});
+
+test("each affiliate gets different categories, and they move on the next day", () => {
+  const categories = ["TSHIRTS", "DRESSES", "JACKETS", "PANTS", "SHIRTS"];
+  const first = dailyCategories(categories, 0, "2026-09-22");
+  const second = dailyCategories(categories, 1, "2026-09-22");
+  assert.equal(new Set(first).size, 3);
+  assert.notDeepEqual(first, second);
+  assert.notDeepEqual(first, dailyCategories(categories, 0, "2026-09-23"));
+  assert.deepEqual(dailyCategories(["TSHIRTS"], 0, "2026-09-22"), ["TSHIRTS", "TSHIRTS", "TSHIRTS"]);
+  assert.deepEqual(dailyCategories([], 0, "2026-09-22"), []);
+});
