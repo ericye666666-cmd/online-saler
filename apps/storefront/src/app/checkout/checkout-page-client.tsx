@@ -1,6 +1,6 @@
 "use client";
 
-import { pickupPoints, pickupOrderNote } from "./pickup-points";
+import type { PickupPoint } from "./pickup-points";
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -94,7 +94,7 @@ function checkoutDraftStorageKey(draftKey: string): string {
 
 // draftKey scopes the locally saved checkout draft: a signed-in customer id, or
 // "guest" for shoppers who go straight to payment without an account.
-export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false }: { mapsApiKey?: string; draftKey: string; signedIn?: boolean }) {
+export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false, pickupPoints = [] }: { mapsApiKey?: string; draftKey: string; signedIn?: boolean; pickupPoints?: PickupPoint[] }) {
   const [snapshot, setSnapshot] = useState<CartSnapshot | null>(null);
   const [validation, setValidation] = useState<CartValidationResponse | null>(null);
   const [state, setState] = useState<CheckoutState>("loading");
@@ -246,10 +246,12 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
           phone,
           fulfillmentMethod: fulfillment,
           deliveryAddress: deliveryRequiresAddress(fulfillment) ? deliveryAddress : null,
-          deliveryNote: [
-            `WhatsApp contact: ${contact}`,
-            fulfillment === "PICKUP" ? pickupOrderNote(pickupPointId, deliveryNote) : deliveryNote.trim()
-          ].filter(Boolean).join("\n")
+          // The pickup point and the WhatsApp number are columns now, not a
+          // sentence pasted into the note, so orders can be routed and counted
+          // by store and support can search by contact number.
+          fulfillmentNodeId: fulfillment === "PICKUP" ? pickupPointId : null,
+          whatsappPhone: contact,
+          deliveryNote: deliveryNote.trim() || null
         })
       });
       const result = await response.json().catch(() => ({})) as Reservation & { error?: string };
@@ -450,6 +452,7 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
                 fulfillment={fulfillment}
                 setFulfillment={setFulfillment}
                 pickupPointId={pickupPointId}
+                pickupPoints={pickupPoints}
                 setPickupPointId={setPickupPointId}
                 deliveryAddress={deliveryAddress}
                 setDeliveryAddress={setDeliveryAddress}
@@ -764,6 +767,7 @@ type CheckoutStepPanelProps = {
   setFulfillment: (value: FulfillmentChoice) => void;
   pickupPointId: string;
   setPickupPointId: (value: string) => void;
+  pickupPoints: PickupPoint[];
   deliveryAddress: string;
   setDeliveryAddress: (value: string) => void;
   deliveryNote: string;
@@ -847,7 +851,7 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
                 />
                 <Truck size={20} />
                 <div>
-                  <span>Free</span>
+                  <span>KSh {KIKUYU_DELIVERY_FEE_KSH}</span>
                   <strong>Courier delivery</strong>
                 </div>
               </label>
@@ -859,10 +863,10 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
                 <select id="pickup-point" name="pickupPoint" required value={props.pickupPointId}
                   disabled={submitting} onChange={(event) => props.setPickupPointId(event.target.value)}>
                   <option value="">Choose a pickup point</option>
-                  {pickupPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
+                  {props.pickupPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
                 </select>
-                {pickupPoints.filter((point) => point.id === props.pickupPointId).map((point) => (
-                  <a key={point.id} href={point.mapsUrl} target="_blank" rel="noopener noreferrer">View {point.name} on Google Maps ↗</a>
+                {props.pickupPoints.filter((point) => point.id === props.pickupPointId && point.mapsUrl).map((point) => (
+                  <a key={point.id} href={point.mapsUrl!} target="_blank" rel="noopener noreferrer">View {point.name} on Google Maps ↗</a>
                 ))}
               </div>
             ) : null}
@@ -947,7 +951,7 @@ function readCheckoutDraft(draftKey: string): CheckoutDraft | null {
       fulfillment: fields.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "KIKUYU_LOCAL_DELIVERY" : "PICKUP",
       deliveryAddress: text(fields.deliveryAddress, 1500),
       deliveryNote: text(fields.deliveryNote, 10_000),
-      pickupPointId: pickupPoints.some((point) => point.id === fields.pickupPointId) ? String(fields.pickupPointId) : ""
+      pickupPointId: text(fields.pickupPointId, 80)
     };
   } catch {
     return null;

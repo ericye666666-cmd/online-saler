@@ -2,14 +2,18 @@ import {
   CheckoutDraftStatus,
   InventoryItemStatus,
   MpesaCallbackProcessingStatus,
+  NotificationAudience,
   OrderStatus,
+  PaymentSettlementError,
   PaymentStatus,
   Prisma,
+  enqueueNotification,
   prisma,
   releaseExpiredReservations,
   lockReservationOrder,
   lockOrderReservationInventory,
-  releaseUnpaidOrderReservation
+  releaseUnpaidOrderReservation,
+  settleSuccessfulPayment
 } from "@online-saler/database";
 import { randomUUID } from "node:crypto";
 import {
@@ -24,8 +28,12 @@ import {
   mpesaPaymentAmountMatchesOrder,
   resolveMpesaCharge
 } from "./mpesa-production-guard";
-import { createPendingCommissionForPaidOrder } from "../affiliate/affiliate-service";
-import { buildPaidOrderPickingTask } from "./payment-fulfillment";
+import {
+  LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
+  SUPPORT_PHONE_LABEL,
+  notificationBody,
+  notificationDedupeKey
+} from "@online-saler/business-rules";
 
 export class PaymentValidationError extends Error {}
 export class PaymentConflictError extends Error {}
@@ -273,23 +281,65 @@ export async function handleMpesaCallback(body: unknown) {
       where: { id: payment.id },
       data: { status: PaymentStatus.SUCCESS, providerMerchantRequestId: callback.merchantRequestId, providerResultCode: callback.resultCode, providerResultDescription: callback.resultDescription, providerReceiptNumber: callback.receiptNumber, providerResponseJson: jsonValue(body), completedAt: now }
     });
-    await tx.order.update({ where: { id: payment.orderId }, data: { status: OrderStatus.PAID } });
-    const existingPickingTask = await tx.orderFulfillment.findUnique({ where: { orderId: payment.orderId } });
-    if (!existingPickingTask) {
-      const pickingTask = buildPaidOrderPickingTask(payment.orderId, order.items);
-      const fulfillment = await tx.orderFulfillment.create({ data: pickingTask.fulfillment });
-      if (pickingTask.items.length > 0) {
-        await tx.fulfillmentItem.createMany({ data: pickingTask.items.map((item) => ({ ...item, fulfillmentId: fulfillment.id })), skipDuplicates: true });
-      }
-      await tx.fulfillmentEvent.create({ data: { ...pickingTask.event, fulfillmentId: fulfillment.id } });
+    try {
+      await settleSuccessfulPayment(tx, {
+        paymentId: payment.id,
+        commissionRateBps: LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
+        requireActiveReservation: true,
+        now
+      });
+    } catch (error) {
+      if (error instanceof PaymentSettlementError) throw new PaymentConflictError(error.message);
+      throw error;
     }
-    await createPendingCommissionForPaidOrder(tx, payment.orderId);
-    await tx.checkoutDraft.update({ where: { id: order.sourceDraft!.id }, data: { status: CheckoutDraftStatus.CONVERTED } });
-    for (const item of inventory) {
-      const updated = await tx.inventoryItem.updateMany({ where: { id: item.id, status: InventoryItemStatus.RESERVED }, data: { status: InventoryItemStatus.PAID } });
-      if (updated.count !== 1) throw new PaymentConflictError("Reserved inventory changed during payment confirmation.");
-    }
+    await queuePaidOrderNotifications(tx, payment.orderId);
     return { ok: true, status: PaymentStatus.SUCCESS };
+  });
+}
+
+/**
+ * Queues the "we have your money" message and, when the sale came through an
+ * affiliate link, tells the affiliate they earned. Both go to the outbox inside
+ * the payment transaction so a provider outage cannot undo a confirmed payment.
+ */
+async function queuePaidOrderNotifications(tx: Prisma.TransactionClient, orderId: string) {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    include: { customer: true, affiliate: true, commission: true, items: { select: { id: true } } }
+  });
+  if (!order) return;
+  await enqueueNotification(tx, {
+    topic: "CUSTOMER_PAYMENT_SUCCESS",
+    audience: NotificationAudience.CUSTOMER,
+    dedupeKey: notificationDedupeKey("CUSTOMER_PAYMENT_SUCCESS", orderId),
+    recipientPhone: order.whatsappPhone || order.customer.phone,
+    recipientLabel: order.customer.displayName,
+    orderId,
+    body: notificationBody("CUSTOMER_PAYMENT_SUCCESS", {
+      orderNumber: order.orderNumber,
+      amountKsh: order.totalKsh,
+      itemCount: order.items.length,
+      supportPhone: SUPPORT_PHONE_LABEL
+    })
+  });
+  if (!order.affiliate || !order.commission) return;
+  const previousSales = await tx.commission.count({
+    where: { affiliateId: order.affiliate.id, orderId: { not: orderId } }
+  });
+  const topic = previousSales === 0 ? "AFFILIATE_FIRST_SALE" : "AFFILIATE_NEW_ORDER";
+  await enqueueNotification(tx, {
+    topic,
+    audience: NotificationAudience.AFFILIATE,
+    dedupeKey: notificationDedupeKey(topic, orderId),
+    recipientPhone: order.affiliate.phone,
+    recipientLabel: order.affiliate.displayName,
+    orderId,
+    affiliateId: order.affiliateId,
+    body: notificationBody(topic, {
+      orderNumber: order.orderNumber,
+      amountKsh: order.commission.commissionAmountKsh,
+      affiliateName: order.affiliate.displayName
+    })
   });
 }
 

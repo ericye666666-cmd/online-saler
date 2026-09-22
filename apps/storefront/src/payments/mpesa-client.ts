@@ -1,5 +1,19 @@
 import { createHash } from "node:crypto";
 
+export type MpesaStkQueryResponse = {
+  checkoutRequestId: string;
+  merchantRequestId: string | null;
+  /**
+   * 0 is paid. 1032 is cancelled by the customer, 1037 timed out, 1 is
+   * insufficient funds. 500.001.1001 ("being processed") comes back as a
+   * non-numeric code and is reported as null so the caller waits instead of
+   * deciding.
+   */
+  resultCode: number | null;
+  resultDescription: string | null;
+  raw: unknown;
+};
+
 export type MpesaConfig = {
   environment: "sandbox" | "production";
   consumerKey: string;
@@ -13,6 +27,7 @@ export type MpesaConfig = {
   accountReferencePrefix: string;
   oauthUrl: string;
   stkPushUrl: string;
+  stkQueryUrl: string;
 };
 
 export type MpesaStkPushRequest = {
@@ -36,6 +51,17 @@ export class MpesaProviderError extends Error {
     super(message);
   }
 }
+
+type StkQueryResponse = {
+  ResponseCode?: string;
+  ResponseDescription?: string;
+  MerchantRequestID?: string;
+  CheckoutRequestID?: string;
+  ResultCode?: string | number;
+  ResultDesc?: string;
+  errorCode?: string;
+  errorMessage?: string;
+};
 
 type OAuthResponse = {
   access_token?: string;
@@ -75,7 +101,8 @@ export function mpesaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MpesaC
     transactionType: env.MPESA_TRANSACTION_TYPE?.trim() || "CustomerPayBillOnline",
     accountReferencePrefix: env.MPESA_ACCOUNT_REFERENCE_PREFIX?.trim() || "DLOOP",
     oauthUrl: env.MPESA_OAUTH_URL?.trim() || `${baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
-    stkPushUrl: env.MPESA_STK_PUSH_URL?.trim() || `${baseUrl}/mpesa/stkpush/v1/processrequest`
+    stkPushUrl: env.MPESA_STK_PUSH_URL?.trim() || `${baseUrl}/mpesa/stkpush/v1/processrequest`,
+    stkQueryUrl: env.MPESA_STK_QUERY_URL?.trim() || `${baseUrl}/mpesa/stkpushquery/v1/query`
   };
   assertMpesaProductionConfig(config);
   return config;
@@ -128,6 +155,43 @@ export class MpesaClient {
       responseCode: body.ResponseCode ?? null,
       responseDescription: body.ResponseDescription ?? null,
       customerMessage: body.CustomerMessage ?? null,
+      raw: body
+    };
+  }
+
+  /**
+   * Asks Safaricom what actually happened to an STK request. Callbacks get
+   * lost - a redeploy, a network blip, a retry budget that runs out - and a
+   * lost callback means the shopper paid, the order never moved, and the
+   * reservation expired underneath them. This is the tie-breaker.
+   */
+  async queryStkPushStatus(checkoutRequestId: string): Promise<MpesaStkQueryResponse> {
+    const token = await this.fetchAccessToken();
+    const timestamp = mpesaTimestamp();
+    const password = Buffer.from(`${this.config.shortcode}${this.config.passkey}${timestamp}`).toString("base64");
+    const response = await this.fetchImpl(this.config.stkQueryUrl, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        BusinessShortCode: this.config.shortcode,
+        Password: password,
+        Timestamp: timestamp,
+        CheckoutRequestID: checkoutRequestId
+      }),
+      cache: "no-store"
+    });
+    const body = (await response.json().catch(() => ({}))) as StkQueryResponse;
+    if (!response.ok || body.errorCode) {
+      throw new MpesaProviderError(body.errorMessage || "M-Pesa transaction status query failed.", body);
+    }
+    const resultCode = body.ResultCode === undefined || body.ResultCode === null
+      ? null
+      : Number(body.ResultCode);
+    return {
+      checkoutRequestId: body.CheckoutRequestID ?? checkoutRequestId,
+      merchantRequestId: body.MerchantRequestID ?? null,
+      resultCode: Number.isFinite(resultCode) ? resultCode : null,
+      resultDescription: body.ResultDesc ?? body.ResponseDescription ?? null,
       raw: body
     };
   }

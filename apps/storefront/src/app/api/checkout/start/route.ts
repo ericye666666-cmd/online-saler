@@ -33,6 +33,8 @@ export async function POST(request: Request) {
       fulfillmentMethod?: string;
       deliveryAddress?: string | null;
       deliveryNote?: string | null;
+      fulfillmentNodeId?: string | null;
+      whatsappPhone?: string | null;
     };
     const productIds = Array.isArray(body.productIds)
       ? body.productIds.filter((productId) => typeof productId === "string").map((productId) => productId.trim()).filter(Boolean)
@@ -60,6 +62,8 @@ export async function POST(request: Request) {
       fulfillmentMethod: body.fulfillmentMethod as FulfillmentMethod,
       deliveryAddress: body.deliveryAddress,
       deliveryNote: body.deliveryNote,
+      fulfillmentNodeId: body.fulfillmentNodeId,
+      whatsappPhone: body.whatsappPhone,
       attribution
     });
 

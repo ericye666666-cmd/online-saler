@@ -2,11 +2,13 @@ import { randomBytes } from "node:crypto";
 import {
   CheckoutDraftStatus,
   FulfillmentMethod,
+  FulfillmentNodeStatus,
   InventoryItemStatus,
   OrderStatus,
   PaymentStatus,
   ProductStatus,
   Prisma,
+  normalizeNotificationPhone,
   releaseUnpaidOrderReservation,
   prisma,
   releaseExpiredReservations as releaseExpiredReservationsFromDatabase
@@ -30,8 +32,24 @@ export type StartCheckoutInput = {
   fulfillmentMethod: FulfillmentMethod;
   deliveryAddress?: string | null;
   deliveryNote?: string | null;
+  /**
+   * The store the shopper collects from. It used to be pasted into the free
+   * text delivery note, which meant nothing downstream could route, count or
+   * dashboard by store.
+   */
+  fulfillmentNodeId?: string | null;
+  whatsappPhone?: string | null;
   attribution?: CheckoutAttributionInput | null;
 };
+
+/** Stores and the warehouse a shopper can be served from. */
+export async function activeFulfillmentNodes() {
+  return prisma.fulfillmentNode.findMany({
+    where: { status: FulfillmentNodeStatus.ACTIVE },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true, code: true, name: true, mapsUrl: true, address: true, supportsPickup: true, supportsDelivery: true }
+  });
+}
 
 export class CheckoutConflictError extends Error {}
 export class CheckoutValidationError extends Error {}
@@ -55,6 +73,20 @@ export async function startCheckout(input: StartCheckoutInput) {
   }
   if (input.fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY && !deliveryAddress) {
     throw new CheckoutValidationError("Delivery address is required for local delivery.");
+  }
+
+  const whatsappPhone = normalizeNotificationPhone(input.whatsappPhone) ?? null;
+  const node = input.fulfillmentNodeId
+    ? await prisma.fulfillmentNode.findFirst({
+        where: { id: input.fulfillmentNodeId, status: FulfillmentNodeStatus.ACTIVE }
+      })
+    : null;
+  if (input.fulfillmentMethod === FulfillmentMethod.PICKUP) {
+    if (!node) throw new CheckoutValidationError("Choose a pickup point before payment.");
+    if (!node.supportsPickup) throw new CheckoutValidationError("That store does not offer pickup.");
+  }
+  if (node && input.fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY && !node.supportsDelivery) {
+    throw new CheckoutValidationError("That store does not dispatch deliveries.");
   }
 
   await releaseExpiredReservations();
@@ -116,6 +148,7 @@ export async function startCheckout(input: StartCheckoutInput) {
         && draft.fulfillmentMethod === input.fulfillmentMethod
         && draft.deliveryAddress === deliveryAddress
         && draft.deliveryNote === deliveryNote
+        && draft.fulfillmentNodeId === (node?.id ?? null)
         && (draft.convertedOrder?.status === OrderStatus.PENDING_PAYMENT || draft.convertedOrder?.status === OrderStatus.PAYMENT_PROCESSING);
     });
 
@@ -204,6 +237,8 @@ export async function startCheckout(input: StartCheckoutInput) {
         itemSubtotalKsh: amounts.itemSubtotalKsh,
         deliveryFeeKsh: amounts.deliveryFeeKsh,
         totalKsh: amounts.totalKsh,
+        fulfillmentNodeId: node?.id ?? null,
+        whatsappPhone,
         affiliateId: attribution?.affiliateId ?? null,
         affiliateSource: attribution?.source ?? null,
         affiliatePlacement: attribution?.placement ?? null,
@@ -258,6 +293,8 @@ export async function startCheckout(input: StartCheckoutInput) {
         fulfillmentMethod: input.fulfillmentMethod,
         deliveryAddress,
         deliveryNote,
+        fulfillmentNodeId: node?.id ?? null,
+        whatsappPhone,
         itemSubtotalKsh: amounts.itemSubtotalKsh,
         deliveryFeeKsh: amounts.deliveryFeeKsh,
         totalKsh: amounts.totalKsh,
