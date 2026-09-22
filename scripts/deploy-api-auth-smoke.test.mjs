@@ -14,6 +14,7 @@ const namedStep = (name) => {
 test("deployment smoke shares one staff login and uses Bearer tokens for every protected curl", () => {
   assert.match(namedStep("Authenticate deployment smoke checks"), /verify-staging-image-processing\.mjs --authenticate/);
   assert.equal((workflow.match(/STAGING_ADMIN_PASSWORD:/g) ?? []).length, 1);
+  assert.equal((workflow.match(/STAGING_ADMIN_LOGIN:/g) ?? []).length, 1);
   assert.doesNotMatch(workflow, /ADMIN_RESPONSE|ADMIN_USER_ID|X-Admin-User-Id|X-Employee-Id|[?&]adminUserId=/);
   for (const name of ["Verify product creation", "Verify real image upload and retrieval", "Verify Operations workspace API", "Verify product control API", "Verify OpenAI image recognition"]) {
     const step = namedStep(name);
@@ -25,6 +26,15 @@ test("deployment smoke shares one staff login and uses Bearer tokens for every p
     }
   }
   assert.match(namedStep("Verify OpenAI image recognition"), /\/ai-jobs\/\$\{AI_JOB_ID\}/);
+});
+
+test("smoke credentials come only from masked secrets and are never echoed", () => {
+  const step = namedStep("Authenticate deployment smoke checks");
+  assert.match(step, /STAGING_ADMIN_LOGIN: \$\{\{ secrets\.STAGING_ADMIN_LOGIN \}\}\n/);
+  assert.match(step, /STAGING_ADMIN_PASSWORD: \$\{\{ secrets\.STAGING_ADMIN_PASSWORD \}\}\n/);
+  assert.doesNotMatch(workflow, /secrets\.[A-Z_]+ \|\|/, "a literal fallback would be printed unmasked");
+  assert.doesNotMatch(workflow, /"password"\s*:/);
+  assert.doesNotMatch(workflow, /(?:echo|printf)[^\n]*\$\{?STAGING_ADMIN_(?:LOGIN|PASSWORD)/);
 });
 
 test("public catalog and original media smoke checks do not depend on staff authentication", () => {

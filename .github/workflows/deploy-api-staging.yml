@@ -217,9 +217,16 @@ jobs:
       - name: Authenticate deployment smoke checks
         env:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
-          STAGING_ADMIN_LOGIN: superadmin
-          STAGING_ADMIN_PASSWORD: ${{ secrets.OPERATIONS_SMOKE_PASSWORD || 'ChangeMe43!' }}
-        run: node scripts/verify-staging-image-processing.mjs --authenticate
+          # Both values must come from repository secrets so GitHub masks them in logs.
+          # Never add a literal fallback here: this repository and its Actions logs are public.
+          STAGING_ADMIN_LOGIN: ${{ secrets.STAGING_ADMIN_LOGIN }}
+          STAGING_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
+        run: |
+          if [ -z "${STAGING_ADMIN_LOGIN}" ] || [ -z "${STAGING_ADMIN_PASSWORD}" ]; then
+            echo "STAGING_ADMIN_LOGIN and STAGING_ADMIN_PASSWORD repository secrets must be configured."
+            exit 1
+          fi
+          node scripts/verify-staging-image-processing.mjs --authenticate
 
       - name: Verify product creation
         run: |
