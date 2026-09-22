@@ -4975,3 +4975,30 @@ select:focus-visible {
     font-size: 9px;
   }
 }
+
+/*
+ * The Affiliate Centre is a working console, not a shopfront: staff use the
+ * Operations workspace all day and the two should feel like one product. This
+ * scope swaps the warm shop palette for the same neutral greys, so cards,
+ * buttons and rules match Operations.
+ */
+.affiliateConsole {
+  --ui-background: #ffffff;
+  --ui-foreground: #252525;
+  --ui-card: #ffffff;
+  --ui-card-foreground: #252525;
+  --ui-popover: #ffffff;
+  --ui-popover-foreground: #252525;
+  --ui-primary: #343434;
+  --ui-primary-foreground: #fbfbfb;
+  --ui-secondary: #f7f7f7;
+  --ui-secondary-foreground: #343434;
+  --ui-muted: #f7f7f7;
+  --ui-muted-foreground: #8e8e8e;
+  --ui-accent: #f7f7f7;
+  --ui-accent-foreground: #343434;
+  --ui-border: #ebebeb;
+  --ui-input: #ebebeb;
+  --ui-ring: #b5b5b5;
+  color: var(--ui-foreground);
+}
