@@ -13,3 +13,10 @@ Each module should define:
 - Permissions.
 - Tests.
 - Operational risks.
+
+## Notes in this directory
+
+- [fulfillment-nodes.md](fulfillment-nodes.md) — the warehouse-to-store hand-off,
+  node configuration, and delivery economics.
+- [payment-exceptions.md](payment-exceptions.md) — the manual review queue,
+  M-Pesa reconciliation, refunds, and the environment they need.

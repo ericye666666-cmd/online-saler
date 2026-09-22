@@ -215,6 +215,10 @@ export async function startCheckout(input: StartCheckoutInput) {
     );
     const expiresAt = new Date(now.getTime() + RESERVATION_MINUTES * 60_000);
     const orderNumber = `DL-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(4).toString("hex").toUpperCase()}`;
+    // A short code the shopper reads out at the counter. Until now the pickup
+    // code column was never written, so staff could only verify by order
+    // number or phone, and PICKUP_CODE verification could never match.
+    const pickupCode = input.fulfillmentMethod === FulfillmentMethod.PICKUP ? generatePickupCode() : null;
     const attribution = await resolveCheckoutAttribution(tx, input.customerId, input.attribution, now);
 
     await tx.customer.update({
@@ -232,6 +236,7 @@ export async function startCheckout(input: StartCheckoutInput) {
         customerId: input.customerId,
         status: OrderStatus.PENDING_PAYMENT,
         fulfillmentMethod: input.fulfillmentMethod,
+        pickupCode,
         deliveryAddress,
         deliveryNote,
         itemSubtotalKsh: amounts.itemSubtotalKsh,
@@ -325,10 +330,24 @@ async function retryCheckoutTransaction<T>(operation: () => Promise<T>): Promise
     try {
       return await operation();
     } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2034") throw error;
+      // P2034 is a serialization conflict; P2002 is the once-in-a-blue-moon
+      // pickup code collision. Both are retried with fresh values.
+      const retryable = error instanceof Prisma.PrismaClientKnownRequestError
+        && (error.code === "P2034" || error.code === "P2002");
+      if (!retryable) throw error;
       if (attempt >= 2) throw new CheckoutConflictError("These items changed during checkout. Please try again.");
     }
   }
+}
+
+/**
+ * Six characters from an alphabet with no 0/O or 1/I, so a code read aloud in a
+ * noisy shop cannot be written down two ways.
+ */
+function generatePickupCode(): string {
+  const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const bytes = randomBytes(6);
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 function normalizeProductIds(productIds: string[]): string[] {

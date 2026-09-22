@@ -18,6 +18,7 @@ export async function getCustomerOrderByNumber(orderNumber: string, customerIds:
     },
     include: {
       sourceDraft: true,
+      fulfillmentNode: { select: { name: true, mapsUrl: true, address: true, phone: true } },
       payments: {
         orderBy: { createdAt: "desc" },
         take: 3

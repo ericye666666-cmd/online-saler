@@ -115,6 +115,15 @@ export default async function OrderPage({ params }: OrderPageProps) {
               <h2>{t("order.fulfillment")}</h2>
               <dl>
                 <div><dt>{t("order.method")}</dt><dd>{order.fulfillmentMethod === "PICKUP" ? t("checkout.pickup") : t("checkout.delivery")}</dd></div>
+                {order.fulfillmentNode ? (
+                  <div><dt>{t("order.pickupPoint")}</dt><dd>
+                    {order.fulfillmentNode.name}
+                    {order.fulfillmentNode.mapsUrl ? <> <a href={order.fulfillmentNode.mapsUrl} target="_blank" rel="noopener noreferrer">Google Maps ↗</a></> : null}
+                  </dd></div>
+                ) : null}
+                {order.pickupCode ? (
+                  <div><dt>{t("order.pickupCode")}</dt><dd><strong>{order.pickupCode}</strong></dd></div>
+                ) : null}
                 <div><dt>{t("order.deliveryFee")}</dt><dd>{order.deliveryFeeKsh === 0 ? t("order.free") : moneyKsh(order.deliveryFeeKsh)}</dd></div>
                 <div><dt>{t("order.address")}</dt><dd>{delivery.address || t("checkout.pickup")} {delivery.point ? <a href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">Google Maps ↗</a> : null}</dd></div>
                 <div><dt>{t("order.note")}</dt><dd>{order.deliveryNote ?? "—"}</dd></div>

@@ -1251,6 +1251,7 @@ export class OperationsFulfillmentService {
         itemCount: order.items.length,
         amountKsh: extra.amountKsh ?? null,
         riderName: extra.riderName ?? null,
+        pickupCode: order.pickupCode,
         supportPhone: SUPPORT_PHONE_LABEL
       })
     });

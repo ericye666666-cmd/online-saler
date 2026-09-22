@@ -19,6 +19,8 @@ import {
 import { OperationsFulfillmentService } from "./operations-fulfillment.service";
 import { OperationsFinanceController } from "./operations-finance.controller";
 import { OperationsFinanceService } from "./operations-finance.service";
+import { OperationsNodeAdminController, OperationsNotificationsController } from "./operations-node-admin.controller";
+import { OperationsNodeAdminService } from "./operations-node-admin.service";
 import { OperationsPaymentReviewController } from "./operations-payment-review.controller";
 import { OperationsPaymentReviewService } from "./operations-payment-review.service";
 import { OperationsProductBatchController } from "./operations-product-batch.controller";
@@ -42,6 +44,8 @@ import { OperationsWarehouseService } from "./operations-warehouse.service";
     OperationsProductFactoryAdminController,
     OperationsFulfillmentController,
     OperationsFinanceController,
+    OperationsNodeAdminController,
+    OperationsNotificationsController,
     OperationsPaymentReviewController,
     OperationsWarehouseLocationsController,
     OperationsInventoryOverviewController,
@@ -57,6 +61,7 @@ import { OperationsWarehouseService } from "./operations-warehouse.service";
     OperationsProductFactoryAdminService,
     OperationsFulfillmentService,
     OperationsFinanceService,
+    OperationsNodeAdminService,
     OperationsPaymentReviewService,
     OperationsWarehouseService,
     OperationsAffiliateService,

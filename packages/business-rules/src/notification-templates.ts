@@ -15,6 +15,7 @@ export type NotificationTemplateInput = {
   itemTitle?: string | null;
   itemCount?: number | null;
   riderName?: string | null;
+  pickupCode?: string | null;
   affiliateName?: string | null;
   supportPhone?: string | null;
   reason?: string | null;
@@ -34,7 +35,7 @@ const templates: Record<NotificationTopicName, (input: NotificationTemplateInput
   CUSTOMER_PAYMENT_SUCCESS: (input) =>
     `Direct Loop: payment received for order ${input.orderNumber}${input.amountKsh ? ` (${money(input.amountKsh)})` : ""}. We are preparing ${items(input)} now. Questions? ${input.supportPhone ?? ""}`,
   CUSTOMER_ORDER_READY_FOR_PICKUP: (input) =>
-    `Direct Loop: order ${input.orderNumber} is ready for pickup at ${input.nodeName ?? "our store"}. ${input.nodeMapsUrl ?? ""} Bring this order number. ${input.supportPhone ?? ""}`,
+    `Direct Loop: order ${input.orderNumber} is ready for pickup at ${input.nodeName ?? "our store"}. ${input.nodeMapsUrl ?? ""} Pickup code ${input.pickupCode ?? input.orderNumber}. ${input.supportPhone ?? ""}`,
   CUSTOMER_ORDER_DISPATCHED: (input) =>
     `Direct Loop: order ${input.orderNumber} is on the way${input.riderName ? ` with ${input.riderName}` : ""}. Please keep your phone on. ${input.supportPhone ?? ""}`,
   CUSTOMER_ORDER_COMPLETED: (input) =>
