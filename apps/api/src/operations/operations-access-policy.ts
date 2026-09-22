@@ -138,6 +138,46 @@ const pagePermissions: OperationsPermission[] = [
     description: "Open generated product detail review and approval controls."
   },
   {
+    code: "page.orders.node",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-node",
+    action: "view",
+    description: "Open the store node fulfillment workbench."
+  },
+  {
+    code: "page.orders.payment-review",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-payment-review",
+    action: "view",
+    description: "Open payments and M-Pesa callbacks waiting for manual review."
+  },
+  {
+    code: "page.orders.finance",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-finance",
+    action: "view",
+    description: "Open the finance summary for revenue, refunds, delivery cost and commission."
+  },
+  {
+    code: "page.system.nodes",
+    module: "system",
+    scope: "PAGE",
+    page: "fulfillment-nodes",
+    action: "view",
+    description: "Open fulfillment node configuration."
+  },
+  {
+    code: "page.system.notifications",
+    module: "system",
+    scope: "PAGE",
+    page: "notifications",
+    action: "view",
+    description: "Open the outbound notification outbox."
+  },
+  {
     code: "page.system.accounts",
     module: "system",
     scope: "PAGE",
@@ -184,6 +224,16 @@ const orderWorkflowPermissions: OperationsPermission[] = [
   ["orders.complete", "complete", "Confirm delivery or customer pickup completion."],
   ["orders.cancel", "cancel", "Cancel an eligible order."],
   ["orders.after-sale", "after-sale", "Manage after-sale ownership and status."],
+  ["orders.assign-node", "assign-node", "Route an order to a fulfillment node and send its package."],
+  ["orders.node-receive", "node-receive", "Confirm a package arrived at a fulfillment node."],
+  ["orders.delivery-cost", "delivery-cost", "Record the actual Bolt fare paid for a delivery."],
+  ["orders.write-off", "write-off", "Write off a paid order that can never be fulfilled."],
+  ["orders.refund", "refund", "Record a refund that was already executed in M-Pesa."],
+  ["orders.payment-review", "payment-review", "Resolve payments and callbacks held for manual review."],
+  ["nodes.view", "view", "View fulfillment nodes."],
+  ["nodes.manage", "manage", "Create, edit, enable and disable fulfillment nodes."],
+  ["notifications.view", "view", "View the outbound notification outbox."],
+  ["notifications.retry", "retry", "Retry or cancel a queued notification."],
   ["warehouse-locations.view", "view", "View warehouse locations and their products."],
   ["warehouse-locations.manage", "manage", "Create, enable, and disable warehouse locations."],
   ["warehouse-locations.edit-capacity", "edit-capacity", "Edit warehouse location capacity."],
@@ -192,7 +242,10 @@ const orderWorkflowPermissions: OperationsPermission[] = [
   ["analytics.warehouse.view", "warehouse-analytics", "Open advanced warehouse analytics in Metabase."]
 ].map(([code, action, description]) => ({
   code,
-  module: code.startsWith("analytics.") ? "analytics" : code.startsWith("orders.") ? "orders" : "product",
+  module: code.startsWith("analytics.") ? "analytics"
+    : code.startsWith("orders.") ? "orders"
+      : code.startsWith("nodes.") || code.startsWith("notifications.") ? "system"
+        : "product",
   scope: "ACTION" as const,
   action,
   description
@@ -245,6 +298,20 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "orders.complete",
       "orders.cancel",
       "orders.after-sale",
+      "orders.assign-node",
+      "orders.node-receive",
+      "orders.delivery-cost",
+      "orders.write-off",
+      "orders.payment-review",
+      "page.orders.node",
+      "page.orders.payment-review",
+      "page.orders.finance",
+      "page.system.nodes",
+      "page.system.notifications",
+      "nodes.view",
+      "nodes.manage",
+      "notifications.view",
+      "notifications.retry",
       "warehouse-locations.view",
       "warehouse-locations.manage",
       "warehouse-locations.edit-capacity",
@@ -290,8 +357,27 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "orders.pack",
       "orders.dispatch",
       "orders.complete",
+      "orders.assign-node",
+      "nodes.view",
       "warehouse-locations.view",
       "inventory-overview.view"
+    ]
+  },
+  {
+    code: "STORE_MANAGER",
+    name: "Store Node Manager",
+    description: "Receive packages at a store, hand them to Bolt or the customer, and record the fare.",
+    permissions: [
+      "module.orders",
+      "page.orders.node",
+      "action.orders.view",
+      "orders.view",
+      "orders.node-receive",
+      "orders.assign-rider",
+      "orders.dispatch",
+      "orders.complete",
+      "orders.delivery-cost",
+      "nodes.view"
     ]
   },
   {
@@ -312,7 +398,18 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "orders.assign-picker",
       "orders.assign-rider",
       "orders.cancel",
-      "orders.after-sale"
+      "orders.after-sale",
+      "orders.assign-node",
+      "orders.node-receive",
+      "orders.write-off",
+      "orders.payment-review",
+      "orders.delivery-cost",
+      "page.orders.node",
+      "page.orders.payment-review",
+      "nodes.view",
+      "notifications.view",
+      "notifications.retry",
+      "page.system.notifications"
     ]
   },
   {
@@ -360,7 +457,13 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "action.affiliate.export",
       "action.analytics.view",
       "action.analytics.export",
-      "analytics.warehouse.view"
+      "analytics.warehouse.view",
+      "page.orders.all",
+      "page.orders.finance",
+      "page.orders.payment-review",
+      "orders.payment-review",
+      "orders.refund",
+      "nodes.view"
     ]
   },
   {

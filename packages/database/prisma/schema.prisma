@@ -194,33 +194,43 @@ model Employee {
   deliveryRider               DeliveryRider?        @relation("DeliveryRiderEmployee")
   afterSaleCases              CustomerServiceCase[] @relation("CustomerServiceCaseOwner")
   adminUser                   AdminUser?            @relation("AdminUserLinkedEmployee")
+  homeNodeId                  String?
+  homeNode                    FulfillmentNode?      @relation("FulfillmentNodeStaff", fields: [homeNodeId], references: [id], onDelete: SetNull)
+  sentToNodeFulfillments      OrderFulfillment[]    @relation("FulfillmentSentToNodeBy")
+  arrivedAtNodeFulfillments   OrderFulfillment[]    @relation("FulfillmentArrivedAtNodeBy")
+  deliveryCostFulfillments    OrderFulfillment[]    @relation("FulfillmentDeliveryCostBy")
   createdAt                   DateTime              @default(now())
   updatedAt                   DateTime              @updatedAt
+
+  @@index([homeNodeId, status])
 }
 
 model AdminUser {
-  id                   String                @id @default(uuid())
-  name                 String
-  email                String?               @unique
-  loginAccount         String                @unique
-  phone                String?               @unique
-  passwordHash         String?
-  inviteTokenHash      String?
-  inviteExpiresAt      DateTime?
-  status               AdminUserStatus       @default(ACTIVE)
-  linkedEmployeeId     String?               @unique
-  linkedEmployee       Employee?             @relation("AdminUserLinkedEmployee", fields: [linkedEmployeeId], references: [id], onDelete: SetNull)
-  roles                UserRole[]
-  customerServiceCases CustomerServiceCase[] @relation("CustomerServiceCaseCreatedBy")
-  customerServiceNotes CustomerServiceNote[] @relation("CustomerServiceNoteAuthor")
-  fulfillmentEvents    FulfillmentEvent[]    @relation("FulfillmentEventAdminActor")
-  deliveryAssignments  DeliveryAssignment[]  @relation("DeliveryAssignmentAssignedBy")
-  auditLogs            AuditLog[]            @relation("AuditLogAdminUser")
-  lastLoginAt          DateTime?
-  lockedAt             DateTime?
-  disabledAt           DateTime?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  id                     String                @id @default(uuid())
+  name                   String
+  email                  String?               @unique
+  loginAccount           String                @unique
+  phone                  String?               @unique
+  passwordHash           String?
+  inviteTokenHash        String?
+  inviteExpiresAt        DateTime?
+  status                 AdminUserStatus       @default(ACTIVE)
+  linkedEmployeeId       String?               @unique
+  linkedEmployee         Employee?             @relation("AdminUserLinkedEmployee", fields: [linkedEmployeeId], references: [id], onDelete: SetNull)
+  roles                  UserRole[]
+  customerServiceCases   CustomerServiceCase[] @relation("CustomerServiceCaseCreatedBy")
+  customerServiceNotes   CustomerServiceNote[] @relation("CustomerServiceNoteAuthor")
+  fulfillmentEvents      FulfillmentEvent[]    @relation("FulfillmentEventAdminActor")
+  deliveryAssignments    DeliveryAssignment[]  @relation("DeliveryAssignmentAssignedBy")
+  auditLogs              AuditLog[]            @relation("AuditLogAdminUser")
+  reviewedPayments       Payment[]             @relation("PaymentReviewedBy")
+  resolvedMpesaCallbacks MpesaCallback[]       @relation("MpesaCallbackResolvedBy")
+  recordedRefunds        RefundRecord[]        @relation("RefundRecordedBy")
+  lastLoginAt            DateTime?
+  lockedAt               DateTime?
+  disabledAt             DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
   @@index([status, createdAt])
   @@index([linkedEmployeeId])
@@ -314,12 +324,12 @@ model SystemSetting {
 }
 
 model Product {
-  id                   String               @id @default(uuid())
-  productCode          String               @unique
+  id                   String                       @id @default(uuid())
+  productCode          String                       @unique
   batchId              String?
   batchItemNumber      Int?
-  barcode              String?              @unique
-  status               ProductStatus        @default(DRAFT)
+  barcode              String?                      @unique
+  status               ProductStatus                @default(DRAFT)
   title                String?
   description          String?
   category             String?
@@ -332,14 +342,14 @@ model Product {
   stretchLevel         ProductStretchLevel?
   fabricWeight         ProductFabricWeight?
   material             String?
-  tags                 String[]             @default([])
-  detailSourceVersion  Int                  @default(0)
+  tags                 String[]                     @default([])
+  detailSourceVersion  Int                          @default(0)
   gender               ProductGender?
   kidsAgeRange         String?
   tagSize              String?
   shoeSizeSystem       String?
   shoeType             String?
-  shoePairConfirmed    Boolean              @default(false)
+  shoePairConfirmed    Boolean                      @default(false)
   shoeConditionNotes   String?
   finalSizeLabel       String?
   ukSizeLabel          String?
@@ -349,9 +359,9 @@ model Product {
   labelAppliedAt       DateTime?
   createdByEmployeeId  String?
   approvedByEmployeeId String?
-  createdBy            Employee?            @relation("ProductCreatedBy", fields: [createdByEmployeeId], references: [id])
-  approvedBy           Employee?            @relation("ProductApprovedBy", fields: [approvedByEmployeeId], references: [id])
-  batch                ProductBatch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  createdBy            Employee?                    @relation("ProductCreatedBy", fields: [createdByEmployeeId], references: [id])
+  approvedBy           Employee?                    @relation("ProductApprovedBy", fields: [approvedByEmployeeId], references: [id])
+  batch                ProductBatch?                @relation(fields: [batchId], references: [id], onDelete: SetNull)
   images               ProductImage[]
   measurements         ProductMeasurement[]
   aiExtractions        AIExtraction[]
@@ -369,8 +379,8 @@ model Product {
   shareCards           ShareCard[]
   publishedAt          DateTime?
   unpublishedAt        DateTime?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
 
   @@unique([batchId, batchItemNumber])
   @@index([status, publishedAt])
@@ -382,18 +392,18 @@ model Product {
 }
 
 model ProductBatch {
-  id                  String             @id @default(uuid())
-  batchCode           String             @unique
-  status              ProductBatchStatus @default(OPEN)
-  targetCount         Int                @default(10)
-  intakeCategory      String?
-  createdByEmployeeId String?
-  createdBy           Employee?          @relation("ProductBatchCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
-  products            Product[]
+  id                   String                       @id @default(uuid())
+  batchCode            String                       @unique
+  status               ProductBatchStatus           @default(OPEN)
+  targetCount          Int                          @default(10)
+  intakeCategory       String?
+  createdByEmployeeId  String?
+  createdBy            Employee?                    @relation("ProductBatchCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  products             Product[]
   detailGenerationJobs ProductDetailGenerationJob[]
-  note                String?
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  note                 String?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
 
   @@index([status, createdAt])
   @@index([createdByEmployeeId])
@@ -640,6 +650,8 @@ enum FulfillmentStatus {
   PICKING
   READY_TO_PACK
   PACKED
+  IN_TRANSIT_TO_NODE
+  ARRIVED_AT_NODE
   READY_FOR_PICKUP
   READY_FOR_DISPATCH
   OUT_FOR_DELIVERY
@@ -675,7 +687,54 @@ enum FulfillmentExceptionReason {
   ITEM_DAMAGED
   CUSTOMER_CANCELLED
   DELIVERY_FAILED
+  ITEM_SOLD_OFFLINE
+  NODE_NOT_RECEIVED
+  WRONG_NODE
+  CUSTOMER_UNREACHABLE
   OTHER
+}
+
+enum FulfillmentNodeType {
+  WAREHOUSE
+  STORE
+}
+
+enum FulfillmentNodeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum NotificationChannel {
+  SMS
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum NotificationAudience {
+  CUSTOMER
+  AFFILIATE
+  NODE
+  WAREHOUSE
+  ADMIN
+}
+
+enum RefundKind {
+  AFTER_SALE_RETURN
+  UNFULFILLABLE_ORDER
+  DUPLICATE_PAYMENT
+  OVERPAYMENT
+}
+
+enum PaymentReviewDecision {
+  SETTLED
+  NOT_RECEIVED
+  REFUNDED
 }
 
 enum MpesaCallbackProcessingStatus {
@@ -790,6 +849,8 @@ model CheckoutDraft {
   fulfillmentMethod FulfillmentMethod   @default(PICKUP)
   deliveryAddress   String?
   deliveryNote      String?
+  fulfillmentNodeId String?
+  whatsappPhone     String?
   itemSubtotalKsh   Int                 @default(0)
   deliveryFeeKsh    Int                 @default(0)
   totalKsh          Int                 @default(0)
@@ -822,7 +883,10 @@ model Order {
   affiliateSource      String?
   affiliatePlacement   String?
   affiliateCampaign    String?
+  fulfillmentNodeId    String?
+  whatsappPhone        String?
   customer             Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  fulfillmentNode      FulfillmentNode?      @relation(fields: [fulfillmentNodeId], references: [id], onDelete: SetNull)
   affiliate            Affiliate?            @relation("OrderAffiliate", fields: [affiliateId], references: [id], onDelete: SetNull)
   items                OrderItem[]
   payments             Payment[]
@@ -835,6 +899,8 @@ model Order {
   customerServiceNotes CustomerServiceNote[]
   afterSaleReturns     AfterSaleReturn[]
   afterSaleEvents      AfterSaleEvent[]
+  refunds              RefundRecord[]
+  notifications        Notification[]
   sourceDraft          CheckoutDraft?        @relation("CheckoutDraftConvertedOrder")
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -842,6 +908,7 @@ model Order {
   @@index([customerId, createdAt])
   @@index([status, createdAt])
   @@index([affiliateId, createdAt])
+  @@index([fulfillmentNodeId, status, createdAt])
 }
 
 model OrderItem {
@@ -886,32 +953,42 @@ model OrderSnapshot {
 }
 
 model Payment {
-  id                        String          @id @default(uuid())
+  id                        String                 @id @default(uuid())
   orderId                   String
-  provider                  PaymentProvider @default(MPESA)
-  status                    PaymentStatus   @default(PENDING)
+  provider                  PaymentProvider        @default(MPESA)
+  status                    PaymentStatus          @default(PENDING)
   amountKsh                 Int
-  currency                  OrderCurrency   @default(KES)
+  currency                  OrderCurrency          @default(KES)
   phone                     String
-  idempotencyKey            String          @unique
+  idempotencyKey            String                 @unique
   providerMerchantRequestId String?
-  providerCheckoutRequestId String?         @unique
-  providerReceiptNumber     String?         @unique
+  providerCheckoutRequestId String?                @unique
+  providerReceiptNumber     String?                @unique
   providerResultCode        Int?
   providerResultDescription String?
   providerResponseJson      Json?
-  requestedAt               DateTime        @default(now())
+  requestedAt               DateTime               @default(now())
   expiresAt                 DateTime?
   completedAt               DateTime?
-  order                     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  providerQueryCount        Int                    @default(0)
+  providerQueryAt           DateTime?
+  providerQueryResultCode   Int?
+  providerQueryDescription  String?
+  reviewDecision            PaymentReviewDecision?
+  reviewedByAdminUserId     String?
+  reviewedAt                DateTime?
+  reviewNote                String?
+  order                     Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reviewedByAdminUser       AdminUser?             @relation("PaymentReviewedBy", fields: [reviewedByAdminUserId], references: [id], onDelete: SetNull)
   callbacks                 MpesaCallback[]
-  createdAt                 DateTime        @default(now())
-  updatedAt                 DateTime        @updatedAt
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
 
   @@index([orderId, status])
   @@index([status, requestedAt])
   @@index([phone, status])
   @@index([providerMerchantRequestId])
+  @@index([status, providerQueryAt])
 }
 
 model OrderFulfillment {
@@ -927,8 +1004,21 @@ model OrderFulfillment {
   deliveryRiderId             String?
   deliveryRiderName           String?
   deliveryRiderPhone          String?
+  fulfillmentNodeId           String?
+  packageCode                 String?                     @unique
+  sentToNodeByEmployeeId      String?
+  sentToNodeAt                DateTime?
+  arrivedAtNodeByEmployeeId   String?
+  arrivedAtNodeAt             DateTime?
+  nodeReceiptNote             String?
+  actualDeliveryCostKsh       Int?
+  deliveryCostNote            String?
+  deliveryCostByEmployeeId    String?
+  deliveryCostRecordedAt      DateTime?
   exceptionReason             FulfillmentExceptionReason?
   exceptionNote               String?
+  exceptionFromStatus         FulfillmentStatus?
+  exceptionResolvedAt         DateTime?
   packingStatus               String?
   packingNote                 String?
   packagingMethod             PackagingMethod?
@@ -951,6 +1041,10 @@ model OrderFulfillment {
   dispatchedBy                Employee?                   @relation("FulfillmentDispatchedBy", fields: [dispatchedByEmployeeId], references: [id], onDelete: SetNull)
   pickupConfirmedBy           Employee?                   @relation("FulfillmentPickupConfirmedBy", fields: [pickupConfirmedByEmployeeId], references: [id], onDelete: SetNull)
   afterSaleOwner              Employee?                   @relation("FulfillmentAfterSaleOwner", fields: [afterSaleOwnerEmployeeId], references: [id], onDelete: SetNull)
+  fulfillmentNode             FulfillmentNode?            @relation(fields: [fulfillmentNodeId], references: [id], onDelete: SetNull)
+  sentToNodeBy                Employee?                   @relation("FulfillmentSentToNodeBy", fields: [sentToNodeByEmployeeId], references: [id], onDelete: SetNull)
+  arrivedAtNodeBy             Employee?                   @relation("FulfillmentArrivedAtNodeBy", fields: [arrivedAtNodeByEmployeeId], references: [id], onDelete: SetNull)
+  deliveryCostBy              Employee?                   @relation("FulfillmentDeliveryCostBy", fields: [deliveryCostByEmployeeId], references: [id], onDelete: SetNull)
   deliveryRider               DeliveryRider?              @relation(fields: [deliveryRiderId], references: [id], onDelete: SetNull)
   items                       FulfillmentItem[]
   deliveryAssignments         DeliveryAssignment[]
@@ -963,6 +1057,7 @@ model OrderFulfillment {
   @@index([packedByEmployeeId])
   @@index([dispatchedByEmployeeId])
   @@index([deliveryRiderId])
+  @@index([fulfillmentNodeId, status, updatedAt])
 }
 
 model FulfillmentItem {
@@ -1071,12 +1166,17 @@ model MpesaCallback {
   transactionDate           DateTime?
   processingStatus          MpesaCallbackProcessingStatus
   rawJson                   Json
+  resolvedByAdminUserId     String?
+  resolvedAt                DateTime?
+  resolutionNote            String?
   payment                   Payment?                      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  resolvedByAdminUser       AdminUser?                    @relation("MpesaCallbackResolvedBy", fields: [resolvedByAdminUserId], references: [id], onDelete: SetNull)
   createdAt                 DateTime                      @default(now())
 
   @@index([paymentId, createdAt])
   @@index([orderId, createdAt])
   @@index([mpesaReceiptNumber])
+  @@index([processingStatus, resolvedAt, createdAt])
 }
 
 model Affiliate {
@@ -1100,6 +1200,7 @@ model Affiliate {
   commissions       Commission[]
   collections       Collection[]
   campaigns         Campaign[]
+  notifications     Notification[]
   shareCards        ShareCard[]
   statusPacks       StatusPack[]
   tiktokVideos      TikTokVideo[]
@@ -1113,23 +1214,23 @@ model Affiliate {
 }
 
 model AffiliateLink {
-  id          String            @id @default(uuid())
-  affiliateId String
-  linkCode    String            @unique
-  type        AffiliateLinkType @default(STORE)
-  productId   String?
+  id           String            @id @default(uuid())
+  affiliateId  String
+  linkCode     String            @unique
+  type         AffiliateLinkType @default(STORE)
+  productId    String?
   collectionId String?
-  landingPath String
-  source      String?
-  placement   String?
-  campaign    String?
-  active      Boolean           @default(true)
-  affiliate   Affiliate         @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  product     Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
-  collection  Collection?       @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-  clicks      AffiliateClick[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  landingPath  String
+  source       String?
+  placement    String?
+  campaign     String?
+  active       Boolean           @default(true)
+  affiliate    Affiliate         @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  product      Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  collection   Collection?       @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  clicks       AffiliateClick[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   @@index([affiliateId, type, createdAt])
   @@index([productId])
@@ -1224,22 +1325,22 @@ model CollectionItem {
 }
 
 model Campaign {
-  id            String          @id @default(uuid())
-  affiliateId   String
-  collectionId  String?
-  title         String
-  slug          String
-  channel       CampaignChannel
-  source        String
-  placement     String
-  status        CampaignStatus  @default(DRAFT)
-  affiliate     Affiliate       @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  collection    Collection?     @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-  shareCards    ShareCard[]
-  statusPacks   StatusPack[]
-  tiktokVideos  TikTokVideo[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id           String          @id @default(uuid())
+  affiliateId  String
+  collectionId String?
+  title        String
+  slug         String
+  channel      CampaignChannel
+  source       String
+  placement    String
+  status       CampaignStatus  @default(DRAFT)
+  affiliate    Affiliate       @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection   Collection?     @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  shareCards   ShareCard[]
+  statusPacks  StatusPack[]
+  tiktokVideos TikTokVideo[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   @@unique([affiliateId, slug])
   @@index([affiliateId, status, createdAt])
@@ -1253,15 +1354,15 @@ model ShareCard {
   campaignId       String?
   affiliateLink    String
   storageObjectKey String?
-  publicUrl         String?
-  width             Int                  @default(1200)
-  height            Int                  @default(630)
-  status            AffiliateAssetStatus @default(PROCESSING)
-  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  product           Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
-  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  publicUrl        String?
+  width            Int                  @default(1200)
+  height           Int                  @default(630)
+  status           AffiliateAssetStatus @default(PROCESSING)
+  affiliate        Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  product          Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  campaign         Campaign?            @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@index([affiliateId, createdAt])
   @@index([productId, createdAt])
@@ -1276,13 +1377,13 @@ model StatusPack {
   pageCount        Int
   affiliateLink    String
   storageObjectKey String?
-  publicUrl         String?
-  status            AffiliateAssetStatus @default(PROCESSING)
-  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  collection        Collection           @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  publicUrl        String?
+  status           AffiliateAssetStatus @default(PROCESSING)
+  affiliate        Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection       Collection           @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  campaign         Campaign?            @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@index([affiliateId, createdAt])
   @@index([collectionId, createdAt])
@@ -1296,14 +1397,14 @@ model TikTokVideo {
   durationSeconds  Int                  @default(12)
   affiliateLink    String
   storageObjectKey String?
-  publicUrl         String?
-  status            AffiliateAssetStatus @default(PROCESSING)
+  publicUrl        String?
+  status           AffiliateAssetStatus @default(PROCESSING)
   errorMessage     String?
-  affiliate         Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  collection        Collection           @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  campaign          Campaign?             @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  affiliate        Affiliate            @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  collection       Collection           @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  campaign         Campaign?            @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@index([affiliateId, createdAt])
   @@index([collectionId, createdAt])
@@ -1349,11 +1450,11 @@ model RunThroughVideoItem {
 }
 
 model Commission {
-  id                  String                @id @default(uuid())
+  id                  String                 @id @default(uuid())
   affiliateId         String
-  orderId             String                @unique
-  attributionId       String?               @unique
-  status              CommissionStatus      @default(PENDING)
+  orderId             String                 @unique
+  attributionId       String?                @unique
+  status              CommissionStatus       @default(PENDING)
   rateBps             Int
   orderSubtotalKsh    Int
   commissionAmountKsh Int
@@ -1364,11 +1465,11 @@ model Commission {
   paidAt              DateTime?
   holdReason          String?
   note                String?
-  affiliate           Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
-  order               Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  attribution         AffiliateAttribution? @relation(fields: [attributionId], references: [id], onDelete: SetNull)
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
+  affiliate           Affiliate              @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  order               Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  attribution         AffiliateAttribution?  @relation(fields: [attributionId], references: [id], onDelete: SetNull)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
   @@index([affiliateId, status, createdAt])
   @@index([status, eligibleAt])
@@ -1427,7 +1528,6 @@ model CustomerServiceNote {
   @@index([authorAdminUserId, createdAt])
 }
 
-
 enum AfterSaleReturnStatus {
   REQUESTED
   APPROVED
@@ -1450,50 +1550,115 @@ enum CommissionAdjustmentKind {
 }
 
 model AfterSaleReturn {
-  id                         String                  @id @default(uuid())
-  orderId                    String
-  orderItemId                String                  @unique
-  serviceCaseId              String                  @unique
-  status                     AfterSaleReturnStatus   @default(REQUESTED)
-  reason                     AfterSaleReturnReason
-  measurementDifferenceCm    Float?
-  requestNote                String
-  requestedByAdminUserId     String
-  requestedAt                DateTime                @default(now())
-  decidedByAdminUserId       String?
-  decidedAt                  DateTime?
-  decisionNote               String?
-  receivedByAdminUserId      String?
-  receivedAt                 DateTime?
-  receivedBarcode            String?
-  restockable                Boolean?
-  inspectionNote             String?
-  inventoryUpdatedAt         DateTime?
-  restockedAt                DateTime?
-  restockedByAdminUserId     String?
-  restockedLocationId         String?
-  order                      Order                   @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  orderItem                  OrderItem               @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
-  serviceCase                CustomerServiceCase     @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
-  refunds                    RefundRecord[]
-  commissionAdjustment       CommissionAdjustment?
-  events                     AfterSaleEvent[]
-  updatedAt                  DateTime                @updatedAt
+  id                      String                @id @default(uuid())
+  orderId                 String
+  orderItemId             String                @unique
+  serviceCaseId           String                @unique
+  status                  AfterSaleReturnStatus @default(REQUESTED)
+  reason                  AfterSaleReturnReason
+  measurementDifferenceCm Float?
+  requestNote             String
+  requestedByAdminUserId  String
+  requestedAt             DateTime              @default(now())
+  decidedByAdminUserId    String?
+  decidedAt               DateTime?
+  decisionNote            String?
+  receivedByAdminUserId   String?
+  receivedAt              DateTime?
+  receivedBarcode         String?
+  restockable             Boolean?
+  inspectionNote          String?
+  inventoryUpdatedAt      DateTime?
+  restockedAt             DateTime?
+  restockedByAdminUserId  String?
+  restockedLocationId     String?
+  order                   Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderItem               OrderItem             @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  serviceCase             CustomerServiceCase   @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
+  refunds                 RefundRecord[]
+  commissionAdjustment    CommissionAdjustment?
+  events                  AfterSaleEvent[]
+  updatedAt               DateTime              @updatedAt
 
   @@index([orderId, status])
   @@index([status, requestedAt])
 }
 
 model RefundRecord {
-  id                    String          @id @default(uuid())
-  afterSaleReturnId     String
+  id                    String           @id @default(uuid())
+  orderId               String
+  afterSaleReturnId     String?
+  kind                  RefundKind       @default(AFTER_SALE_RETURN)
+  reason                String?
   amountKsh             Int
-  externalReference     String          @unique
+  externalReference     String           @unique
   evidenceNote          String
   refundedAt            DateTime
   recordedByAdminUserId String
-  recordedAt            DateTime        @default(now())
-  afterSaleReturn       AfterSaleReturn @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
+  recordedAt            DateTime         @default(now())
+  order                 Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  afterSaleReturn       AfterSaleReturn? @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
+  recordedByAdminUser   AdminUser?       @relation("RefundRecordedBy", fields: [recordedByAdminUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, recordedAt])
+  @@index([kind, recordedAt])
+}
+
+model FulfillmentNode {
+  id               String                @id @default(uuid())
+  code             String                @unique
+  name             String
+  type             FulfillmentNodeType   @default(STORE)
+  status           FulfillmentNodeStatus @default(ACTIVE)
+  supportsPickup   Boolean               @default(true)
+  supportsDelivery Boolean               @default(true)
+  mapsUrl          String?
+  address          String?
+  phone            String?
+  sortOrder        Int                   @default(0)
+  note             String?
+  orders           Order[]
+  fulfillments     OrderFulfillment[]
+  staff            Employee[]            @relation("FulfillmentNodeStaff")
+  notifications    Notification[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([status, sortOrder])
+  @@index([type, status])
+}
+
+model Notification {
+  id                String               @id @default(uuid())
+  topic             String
+  audience          NotificationAudience
+  channel           NotificationChannel  @default(SMS)
+  status            NotificationStatus   @default(PENDING)
+  dedupeKey         String               @unique
+  recipientPhone    String
+  recipientLabel    String?
+  body              String
+  orderId           String?
+  affiliateId       String?
+  fulfillmentNodeId String?
+  attempts          Int                  @default(0)
+  nextAttemptAt     DateTime             @default(now())
+  lastError         String?
+  providerMessageId String?
+  provider          String?
+  sentAt            DateTime?
+  cancelledAt       DateTime?
+  order             Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  affiliate         Affiliate?           @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  fulfillmentNode   FulfillmentNode?     @relation(fields: [fulfillmentNodeId], references: [id], onDelete: SetNull)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([audience, status, createdAt])
+  @@index([orderId, createdAt])
+  @@index([affiliateId, createdAt])
+  @@index([topic, createdAt])
 }
 
 model CommissionAdjustment {
@@ -1507,26 +1672,26 @@ model CommissionAdjustment {
   recordedByAdminUserId String
   createdAt             DateTime                 @default(now())
   commission            Commission               @relation(fields: [commissionId], references: [id], onDelete: Restrict)
-  afterSaleReturn       AfterSaleReturn           @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
+  afterSaleReturn       AfterSaleReturn          @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
 
   @@index([commissionId, kind])
 }
 
 model AfterSaleEvent {
-  id               String          @id @default(uuid())
-  orderId          String
+  id                String          @id @default(uuid())
+  orderId           String
   afterSaleReturnId String
-  action           String
-  actorAdminUserId String
-  sourceApp        SourceApp       @default(OPERATIONS)
-  reason           String
-  beforeJson       Json
-  afterJson        Json
-  idempotencyKey   String
-  requestHash      String
-  createdAt        DateTime        @default(now())
-  order            Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  afterSaleReturn  AfterSaleReturn @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
+  action            String
+  actorAdminUserId  String
+  sourceApp         SourceApp       @default(OPERATIONS)
+  reason            String
+  beforeJson        Json
+  afterJson         Json
+  idempotencyKey    String
+  requestHash       String
+  createdAt         DateTime        @default(now())
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  afterSaleReturn   AfterSaleReturn @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
 
   @@unique([orderId, idempotencyKey])
   @@index([afterSaleReturnId, createdAt])

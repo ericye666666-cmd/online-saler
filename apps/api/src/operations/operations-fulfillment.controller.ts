@@ -5,13 +5,17 @@ import {
   OperationsFulfillmentService,
   type AdminInput,
   type AfterSaleInput,
+  type DeliveryCostInput,
   type EmployeeInput,
   type ExceptionInput,
+  type NodeInput,
   type OrderCenterListInput,
   type PackingInput,
   type PickupInput,
+  type RefundInput,
   type RiderInput,
-  type ScanInput
+  type ScanInput,
+  type WriteOffInput
 } from "./operations-fulfillment.service";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsWarehouseService } from "./operations-warehouse.service";
@@ -36,6 +40,11 @@ export class OperationsFulfillmentController {
   @Get()
   async list(@Headers("authorization") authorization: string | undefined, @Query() query: OrderCenterListInput) {
     return this.orders.listOrders({ ...query, adminUserId: await this.access.requireAccessToken(authorization) });
+  }
+
+  @Get("nodes")
+  async nodes(@Headers("authorization") authorization?: string) {
+    return this.orders.nodes(await this.access.requireAccessToken(authorization));
   }
 
   @Get(":orderId")
@@ -106,6 +115,41 @@ export class OperationsFulfillmentController {
   @Post(":orderId/cancel")
   async cancel(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
     return this.orders.cancel(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/assign-node")
+  async assignNode(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: NodeInput) {
+    return this.orders.assignNode(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/send-to-node")
+  async sendToNode(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.sendToNode(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/receive-at-node")
+  async receiveAtNode(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput & { packageCode?: string }) {
+    return this.orders.receiveAtNode(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/delivery-cost")
+  async deliveryCost(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: DeliveryCostInput) {
+    return this.orders.recordDeliveryCost(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/resolve-exception")
+  async resolveException(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.resolveException(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/write-off")
+  async writeOff(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: WriteOffInput) {
+    return this.orders.writeOff(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/refund")
+  async refund(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: RefundInput) {
+    return this.orders.recordRefund(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/assign-after-sale")

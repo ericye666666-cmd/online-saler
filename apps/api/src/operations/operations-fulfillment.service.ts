@@ -9,22 +9,42 @@ import {
   FulfillmentExceptionReason,
   FulfillmentItemStatus,
   FulfillmentMethod,
+  FulfillmentNodeStatus,
+  FulfillmentNodeType,
   FulfillmentStatus,
   InventoryItemStatus,
+  NotificationAudience,
   OrderStatus,
   PackagingMethod,
   PaymentStatus,
   PickupVerificationMethod,
   Prisma,
+  RefundKind,
+  closeUnpaidOrder,
+  enqueueNotification,
   lockReservationOrder,
   lockOrderReservationInventory,
-  prisma
+  orderRefundPosition,
+  prisma,
+  reverseCommissionForClosedOrder,
+  writeOffPaidOrder,
+  type InventoryOutcome
 } from "@online-saler/database";
+import {
+  SUPPORT_PHONE_LABEL,
+  isValidActualDeliveryCost,
+  notificationBody,
+  notificationDedupeKey,
+  type NotificationTopicName
+} from "@online-saler/business-rules";
 import { OperationsAccessService } from "./operations-access.service";
 import {
+  buildPackageCode,
+  canResolveFulfillmentException,
   canTransitionFulfillment,
   maskCustomerPhone,
   orderCenterTab,
+  requiresNodeTransit,
   type OrderCenterTab,
   verifyFulfillmentItemBarcode
 } from "./operations-fulfillment-state";
@@ -33,6 +53,8 @@ import { refreshWarehouseLocationStatuses } from "./warehouse-capacity";
 const ORDER_INCLUDE = {
   customer: true,
   affiliate: true,
+  fulfillmentNode: true,
+  refunds: { orderBy: { recordedAt: "desc" } },
   items: {
     include: { snapshot: true },
     orderBy: { createdAt: "asc" }
@@ -43,6 +65,10 @@ const ORDER_INCLUDE = {
   },
   fulfillment: {
     include: {
+      fulfillmentNode: true,
+      sentToNodeBy: true,
+      arrivedAtNodeBy: true,
+      deliveryCostBy: true,
       assignedPicker: true,
       packingStartedBy: true,
       packedBy: true,
@@ -112,6 +138,16 @@ export type RiderInput = AdminInput & {
   estimatedDeliveryAt?: string;
 };
 export type ExceptionInput = AdminInput & { reason?: FulfillmentExceptionReason };
+export type NodeInput = AdminInput & { nodeId?: string };
+export type DeliveryCostInput = AdminInput & { actualDeliveryCostKsh?: number };
+export type WriteOffInput = AdminInput & { inventoryOutcome?: InventoryOutcome };
+export type RefundInput = AdminInput & {
+  amountKsh?: number;
+  externalReference?: string;
+  evidenceNote?: string;
+  refundedAt?: string;
+  reason?: string;
+};
 export type AfterSaleInput = AdminInput & {
   employeeId?: string;
   caseId?: string;
@@ -160,6 +196,8 @@ export class OperationsFulfillmentService {
       all: orders.length,
       "pending-payment": 0,
       "waiting-pick": 0,
+      "in-transit-to-node": 0,
+      "at-node": 0,
       picking: 0,
       "ready-to-pack": 0,
       packed: 0,
@@ -576,6 +614,9 @@ export class OperationsFulfillmentService {
         newStatus: FulfillmentStatus.OUT_FOR_DELIVERY,
         note: input.note
       });
+      await this.queueCustomerNotification(tx, orderId, "CUSTOMER_ORDER_DISPATCHED", {
+        riderName: fulfillment.deliveryRiderName ?? fulfillment.deliveryRider?.name ?? null
+      });
     });
     return this.orderDetail(orderId, input.adminUserId);
   }
@@ -631,8 +672,18 @@ export class OperationsFulfillmentService {
     await prisma.$transaction(async (tx) => {
       await tx.orderFulfillment.update({
         where: { id: fulfillment.id },
-        data: { status: FulfillmentStatus.EXCEPTION, exceptionReason: reason, exceptionNote: input.note?.trim() || null }
+        data: {
+          status: FulfillmentStatus.EXCEPTION,
+          exceptionReason: reason,
+          exceptionNote: input.note?.trim() || null,
+          // Keep the step the order was on so a resolved exception can rejoin it.
+          exceptionFromStatus: fulfillment.status === FulfillmentStatus.EXCEPTION
+            ? fulfillment.exceptionFromStatus
+            : fulfillment.status,
+          exceptionResolvedAt: null
+        }
       });
+      await this.queueAdminAlert(tx, order, "ADMIN_FULFILLMENT_EXCEPTION", `${reason}${input.note?.trim() ? `: ${input.note.trim()}` : ""}`);
       await this.createEvent(tx, {
         idempotencyKey: `exception:${fulfillment.id}:${fulfillment.status}:${reason}:${input.note?.trim() ?? ""}`,
         fulfillmentId: fulfillment.id,
@@ -648,24 +699,41 @@ export class OperationsFulfillmentService {
     return this.orderDetail(orderId, input.adminUserId);
   }
 
+  /**
+   * Cancels an order that was never paid. The garment goes straight back on
+   * sale: leaving the inventory row reserved, as this used to, took the item
+   * out of circulation permanently because the expiry sweep skips an order that
+   * is no longer waiting for payment.
+   */
   async cancel(orderId: string, input: AdminInput) {
     const actor = await this.adminForPermission(input.adminUserId, "orders.cancel");
     await prisma.$transaction(async (tx) => {
       await lockReservationOrder(tx, orderId);
-      const order = await tx.order.findUnique({ where: { id: orderId }, include: { fulfillment: true } });
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { fulfillment: true, payments: { where: { status: PaymentStatus.SUCCESS }, select: { id: true } } }
+      });
       if (!order) throw new NotFoundException("Order was not found.");
       if (order.status === OrderStatus.CANCELLED) return;
       if (order.status === OrderStatus.COMPLETED || order.status === OrderStatus.REFUNDED || order.fulfillment?.status === FulfillmentStatus.COMPLETED) {
         throw new BadRequestException("Completed or refunded orders cannot be cancelled here.");
       }
-      await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CANCELLED } });
+      if (order.payments.length) {
+        throw new BadRequestException("This order has been paid. Use write-off so the stock outcome and the refund are recorded.");
+      }
+      const reason = input.note?.trim() || "Order cancelled in the order centre.";
+      const result = await closeUnpaidOrder(tx, orderId, actor.actorEmployeeId ?? null, reason);
+      if (!result.changed) throw new ConflictException("Order state changed before cancellation. Refresh and try again.");
       if (order.fulfillment) {
         await tx.orderFulfillment.update({
           where: { id: order.fulfillment.id },
           data: {
             status: FulfillmentStatus.EXCEPTION,
             exceptionReason: FulfillmentExceptionReason.CUSTOMER_CANCELLED,
-            exceptionNote: input.note?.trim() || null
+            exceptionNote: input.note?.trim() || null,
+            exceptionFromStatus: order.fulfillment.status === FulfillmentStatus.EXCEPTION
+              ? order.fulfillment.exceptionFromStatus
+              : order.fulfillment.status
           }
         });
         await this.createEvent(tx, {
@@ -744,6 +812,495 @@ export class OperationsFulfillmentService {
     return this.orderDetail(orderId, input.adminUserId);
   }
 
+  /** Nodes a package can be routed to. */
+  async nodes(adminUserId?: string) {
+    await this.access.requirePermission(adminUserId, "nodes.view");
+    return prisma.fulfillmentNode.findMany({
+      where: { status: FulfillmentNodeStatus.ACTIVE },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }]
+    });
+  }
+
+  /**
+   * Routes an order to the node that will hand it to the customer. Pickup
+   * orders arrive with the node the customer chose; delivery orders are routed
+   * here, before the package leaves the warehouse.
+   */
+  async assignNode(orderId: string, input: NodeInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.assign-node");
+    const nodeId = input.nodeId?.trim();
+    if (!nodeId) throw new BadRequestException("Choose a fulfillment node.");
+    const node = await prisma.fulfillmentNode.findUnique({ where: { id: nodeId } });
+    if (!node || node.status !== FulfillmentNodeStatus.ACTIVE) throw new BadRequestException("That fulfillment node is not active.");
+
+    await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const order = await tx.order.findUnique({ where: { id: orderId }, include: { fulfillment: true } });
+      if (!order) throw new NotFoundException("Order was not found.");
+      if (!order.fulfillment) throw new BadRequestException("This order does not have a fulfillment task yet.");
+      const settled: FulfillmentStatus[] = [
+        FulfillmentStatus.IN_TRANSIT_TO_NODE,
+        FulfillmentStatus.ARRIVED_AT_NODE,
+        FulfillmentStatus.READY_FOR_PICKUP,
+        FulfillmentStatus.READY_FOR_DISPATCH,
+        FulfillmentStatus.OUT_FOR_DELIVERY,
+        FulfillmentStatus.COMPLETED
+      ];
+      if (settled.includes(order.fulfillment.status)) {
+        throw new BadRequestException("The package has already left the warehouse. Raise an exception instead of re-routing it.");
+      }
+      if (order.fulfillmentMethod === FulfillmentMethod.PICKUP && !node.supportsPickup) {
+        throw new BadRequestException("That node does not accept customer pickup.");
+      }
+      if (order.fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY && !node.supportsDelivery) {
+        throw new BadRequestException("That node does not dispatch deliveries.");
+      }
+      await tx.order.update({ where: { id: orderId }, data: { fulfillmentNodeId: node.id } });
+      await tx.orderFulfillment.update({
+        where: { id: order.fulfillment.id },
+        data: { fulfillmentNodeId: node.id }
+      });
+      await this.createEvent(tx, {
+        fulfillmentId: order.fulfillment.id,
+        orderId,
+        ...actor,
+        action: "ASSIGN_FULFILLMENT_NODE",
+        oldStatus: order.fulfillment.status,
+        newStatus: order.fulfillment.status,
+        note: `${node.name}${input.note?.trim() ? ` - ${input.note.trim()}` : ""}`
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * Hands a packed order to the transfer run that takes it to its store node.
+   * The package code is what the store scans in on arrival, so warehouse and
+   * store are looking at the same label instead of arguing about a parcel.
+   */
+  async sendToNode(orderId: string, input: AdminInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.assign-node");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status === FulfillmentStatus.IN_TRANSIT_TO_NODE) return this.orderDetail(orderId, input.adminUserId);
+    const node = order.fulfillmentNode;
+    if (!node) throw new BadRequestException("Route this order to a node before sending its package.");
+    if (!requiresNodeTransit(node.type)) {
+      throw new BadRequestException("Orders handed over at the warehouse do not need a transfer.");
+    }
+    this.assertTransition(order, FulfillmentStatus.IN_TRANSIT_TO_NODE);
+    const packageCode = fulfillment.packageCode || buildPackageCode(order.orderNumber, node.code);
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const current = await tx.orderFulfillment.findUnique({ where: { id: fulfillment.id } });
+      if (!current || current.status !== FulfillmentStatus.PACKED) {
+        throw new ConflictException("Fulfillment state changed. Refresh before sending the package.");
+      }
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          status: FulfillmentStatus.IN_TRANSIT_TO_NODE,
+          packageCode,
+          sentToNodeByEmployeeId: actor.actorEmployeeId,
+          sentToNodeAt: now
+        }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.IN_TRANSIT_TO_NODE}`,
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        relatedEmployeeId: actor.actorEmployeeId,
+        action: "SEND_PACKAGE_TO_NODE",
+        oldStatus: fulfillment.status,
+        newStatus: FulfillmentStatus.IN_TRANSIT_TO_NODE,
+        note: `${packageCode}${input.note?.trim() ? ` - ${input.note.trim()}` : ""}`
+      });
+      await this.queueNodeNotification(tx, order, "NODE_PACKAGE_IN_TRANSIT");
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * The store confirms the package physically arrived. Without this record
+   * there is no way to settle "the warehouse says it shipped, the store says it
+   * never came".
+   */
+  async receiveAtNode(orderId: string, input: AdminInput & { packageCode?: string }) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.node-receive");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status === FulfillmentStatus.ARRIVED_AT_NODE) return this.orderDetail(orderId, input.adminUserId);
+    this.assertTransition(order, FulfillmentStatus.ARRIVED_AT_NODE);
+    const scanned = input.packageCode?.trim().toUpperCase();
+    if (scanned && fulfillment.packageCode && scanned !== fulfillment.packageCode.toUpperCase()) {
+      throw new BadRequestException(`This package belongs to ${fulfillment.packageCode}. Check the label before receiving it.`);
+    }
+    await this.employeeBelongsToNode(actor.actorEmployeeId, fulfillment.fulfillmentNodeId);
+
+    await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const current = await tx.orderFulfillment.findUnique({ where: { id: fulfillment.id } });
+      if (!current || current.status !== FulfillmentStatus.IN_TRANSIT_TO_NODE) {
+        throw new ConflictException("Fulfillment state changed. Refresh before receiving the package.");
+      }
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          status: FulfillmentStatus.ARRIVED_AT_NODE,
+          arrivedAtNodeByEmployeeId: actor.actorEmployeeId,
+          arrivedAtNodeAt: new Date(),
+          nodeReceiptNote: input.note?.trim() || null
+        }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.ARRIVED_AT_NODE}`,
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        relatedEmployeeId: actor.actorEmployeeId,
+        action: "RECEIVE_PACKAGE_AT_NODE",
+        oldStatus: fulfillment.status,
+        newStatus: FulfillmentStatus.ARRIVED_AT_NODE,
+        note: input.note
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /** Records the fare the node actually paid Bolt, against the KSh 50 the customer paid. */
+  async recordDeliveryCost(orderId: string, input: DeliveryCostInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.delivery-cost");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (order.fulfillmentMethod !== FulfillmentMethod.KIKUYU_LOCAL_DELIVERY) {
+      throw new BadRequestException("Only delivery orders have a Bolt fare.");
+    }
+    const amount = Number(input.actualDeliveryCostKsh);
+    if (!isValidActualDeliveryCost(amount)) {
+      throw new BadRequestException("Enter the actual fare as a whole KSh amount.");
+    }
+    const dispatched: FulfillmentStatus[] = [
+      FulfillmentStatus.OUT_FOR_DELIVERY,
+      FulfillmentStatus.COMPLETED,
+      FulfillmentStatus.EXCEPTION
+    ];
+    if (!dispatched.includes(fulfillment.status)) {
+      throw new BadRequestException("Record the fare once the parcel has been handed to the rider.");
+    }
+    await this.employeeBelongsToNode(actor.actorEmployeeId, fulfillment.fulfillmentNodeId);
+    await prisma.$transaction(async (tx) => {
+      const before = await tx.orderFulfillment.findUnique({ where: { id: fulfillment.id } });
+      if (!before) throw new NotFoundException("Fulfillment task was not found.");
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          actualDeliveryCostKsh: amount,
+          deliveryCostNote: input.note?.trim() || null,
+          deliveryCostByEmployeeId: actor.actorEmployeeId,
+          deliveryCostRecordedAt: new Date()
+        }
+      });
+      await tx.auditLog.create({
+        data: {
+          actorType: ActorType.EMPLOYEE,
+          actorId: actor.actorEmployeeId,
+          actorAdminUserId: actor.actorAdminUserId,
+          sourceApp: SourceApp.OPERATIONS,
+          module: "ORDERS",
+          entityType: "OrderFulfillment",
+          entityId: fulfillment.id,
+          action: "RECORD_DELIVERY_COST",
+          beforeJson: { actualDeliveryCostKsh: before.actualDeliveryCostKsh },
+          afterJson: { actualDeliveryCostKsh: amount, customerDeliveryFeeKsh: order.deliveryFeeKsh },
+          reason: input.note?.trim() || "Bolt fare recorded after dispatch."
+        }
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * Returns an order from EXCEPTION to the step it was on. Without this an
+   * exception is a dead end and the only way out is cancelling the order.
+   */
+  async resolveException(orderId: string, input: AdminInput) {
+    const actor = await this.employeeForAnyPermission(input.adminUserId, ["orders.pick", "orders.pack", "orders.dispatch", "orders.node-receive"]);
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status !== FulfillmentStatus.EXCEPTION) return this.orderDetail(orderId, input.adminUserId);
+    if (!canResolveFulfillmentException(fulfillment)) {
+      throw new BadRequestException("This exception has no recorded step to return to. Write the order off instead.");
+    }
+    if (order.status === OrderStatus.CANCELLED || order.status === OrderStatus.REFUNDED) {
+      throw new BadRequestException("A cancelled or refunded order cannot re-enter fulfillment.");
+    }
+    const note = input.note?.trim();
+    if (!note) throw new BadRequestException("Say what was resolved before returning the order to fulfillment.");
+    const back = fulfillment.exceptionFromStatus!;
+
+    await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const current = await tx.orderFulfillment.findUnique({ where: { id: fulfillment.id } });
+      if (!current || current.status !== FulfillmentStatus.EXCEPTION) {
+        throw new ConflictException("Fulfillment state changed. Refresh before resolving the exception.");
+      }
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          status: back,
+          exceptionReason: null,
+          exceptionNote: null,
+          exceptionFromStatus: null,
+          exceptionResolvedAt: new Date()
+        }
+      });
+      await this.createEvent(tx, {
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        action: "RESOLVE_EXCEPTION",
+        oldStatus: FulfillmentStatus.EXCEPTION,
+        newStatus: back,
+        note
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * Writes off a paid order that can never be fulfilled - the garment was lost,
+   * damaged, or already sold in a store. The stock outcome is explicit, the
+   * commission is reversed, and the order is left owing a refund that finance
+   * records separately once M-Pesa has actually sent the money back.
+   */
+  async writeOff(orderId: string, input: WriteOffInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.write-off");
+    const outcome: InventoryOutcome = input.inventoryOutcome === "RESTOCK" ? "RESTOCK" : "LOST";
+    const note = input.note?.trim();
+    if (!note) throw new BadRequestException("A write-off needs a reason on the record.");
+
+    await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { fulfillment: true, payments: { where: { status: PaymentStatus.SUCCESS }, select: { id: true } } }
+      });
+      if (!order) throw new NotFoundException("Order was not found.");
+      if (!order.payments.length) throw new BadRequestException("This order was never paid. Cancel it instead of writing it off.");
+      if (order.status === OrderStatus.COMPLETED) throw new BadRequestException("A completed order goes through after-sales, not write-off.");
+      if (order.status === OrderStatus.CANCELLED || order.status === OrderStatus.REFUNDED) return;
+
+      const before = order.fulfillment?.status ?? null;
+      const result = await writeOffPaidOrder(tx, orderId, outcome, actor.actorEmployeeId ?? null, `Order write-off: ${note}`);
+      if (!result.changed) throw new ConflictException("Order state changed before write-off. Refresh and try again.");
+
+      if (order.fulfillment) {
+        await tx.orderFulfillment.update({
+          where: { id: order.fulfillment.id },
+          data: {
+            status: FulfillmentStatus.EXCEPTION,
+            exceptionReason: order.fulfillment.exceptionReason ?? FulfillmentExceptionReason.ITEM_NOT_FOUND,
+            exceptionNote: note,
+            exceptionFromStatus: null
+          }
+        });
+        await this.createEvent(tx, {
+          idempotencyKey: `write-off:${order.fulfillment.id}`,
+          fulfillmentId: order.fulfillment.id,
+          orderId,
+          ...actor,
+          action: "WRITE_OFF_ORDER",
+          oldStatus: before,
+          newStatus: FulfillmentStatus.EXCEPTION,
+          note: `${outcome === "RESTOCK" ? "Item returned to stock" : "Item written off as lost"} - ${note}`
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          actorType: ActorType.EMPLOYEE,
+          actorId: actor.actorEmployeeId,
+          actorAdminUserId: actor.actorAdminUserId,
+          sourceApp: SourceApp.OPERATIONS,
+          module: "ORDERS",
+          entityType: "Order",
+          entityId: orderId,
+          action: "WRITE_OFF_ORDER",
+          beforeJson: { orderStatus: order.status, fulfillmentStatus: before },
+          afterJson: {
+            orderStatus: OrderStatus.CANCELLED,
+            inventoryOutcome: outcome,
+            restockedItems: result.restockedItems,
+            lostItems: result.lostItems
+          },
+          reason: note
+        }
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * Records a refund that has already been executed in M-Pesa. Like the
+   * after-sales path, this books money that moved outside the system; it never
+   * moves money itself.
+   */
+  async recordRefund(orderId: string, input: RefundInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.refund");
+    const amount = Number(input.amountKsh);
+    const externalReference = input.externalReference?.trim();
+    const evidenceNote = input.evidenceNote?.trim() || input.note?.trim();
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new BadRequestException("Refund amount must be a positive whole KSh amount.");
+    if (!externalReference) throw new BadRequestException("Enter the M-Pesa reversal or payout reference.");
+    if (!evidenceNote) throw new BadRequestException("Describe the evidence for this refund.");
+    const refundedAt = input.refundedAt ? validDate(input.refundedAt, "Refund date") : new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { payments: true, refunds: true }
+      });
+      if (!order) throw new NotFoundException("Order was not found.");
+      const position = orderRefundPosition(order);
+      if (!position.paidKsh) throw new BadRequestException("This order has no successful payment to refund.");
+      if (amount > position.outstandingKsh) {
+        throw new BadRequestException(`Recorded refunds would exceed the KSh ${position.paidKsh} actually paid.`);
+      }
+      await tx.refundRecord.create({
+        data: {
+          orderId,
+          kind: RefundKind.UNFULFILLABLE_ORDER,
+          reason: input.reason?.trim() || null,
+          amountKsh: amount,
+          externalReference,
+          evidenceNote,
+          refundedAt,
+          recordedByAdminUserId: actor.actorAdminUserId!
+        }
+      });
+      const refundedKsh = position.refundedKsh + amount;
+      if (refundedKsh >= position.paidKsh) {
+        await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.REFUNDED } });
+        await reverseCommissionForClosedOrder(tx, orderId, "ORDER_REFUNDED");
+      }
+      await tx.auditLog.create({
+        data: {
+          actorType: ActorType.EMPLOYEE,
+          actorId: actor.actorEmployeeId,
+          actorAdminUserId: actor.actorAdminUserId,
+          sourceApp: SourceApp.OPERATIONS,
+          module: "ORDERS",
+          entityType: "Order",
+          entityId: orderId,
+          action: "RECORD_ORDER_REFUND",
+          beforeJson: { refundedKsh: position.refundedKsh, paidKsh: position.paidKsh },
+          afterJson: { refundedKsh, paidKsh: position.paidKsh, externalReference },
+          reason: evidenceNote
+        }
+      });
+      await this.queueCustomerNotification(tx, orderId, "CUSTOMER_REFUND_RECORDED", { amountKsh: amount });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /** Store staff may only receive packages addressed to their own node. */
+  private async employeeBelongsToNode(employeeId: string | null | undefined, nodeId: string | null) {
+    if (!employeeId || !nodeId) return;
+    const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { homeNodeId: true } });
+    // Warehouse and head-office staff have no home node and can act anywhere.
+    if (!employee?.homeNodeId || employee.homeNodeId === nodeId) return;
+    throw new ForbiddenException("This package is addressed to a different node.");
+  }
+
+  /**
+   * Queues a message for the shopper. It is written inside the same
+   * transaction as the state change that earned it, so a provider outage can
+   * never roll back a fulfillment transition and a retried transition can never
+   * send the message twice.
+   */
+  private async queueCustomerNotification(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    topic: NotificationTopicName,
+    extra: { amountKsh?: number | null; riderName?: string | null } = {}
+  ) {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { customer: true, fulfillmentNode: true, items: { select: { id: true } } }
+    });
+    if (!order) return;
+    await enqueueNotification(tx, {
+      topic,
+      audience: NotificationAudience.CUSTOMER,
+      dedupeKey: notificationDedupeKey(topic, orderId),
+      recipientPhone: order.whatsappPhone || order.customer.phone,
+      recipientLabel: order.customer.displayName ?? null,
+      orderId,
+      fulfillmentNodeId: order.fulfillmentNodeId,
+      body: notificationBody(topic, {
+        orderNumber: order.orderNumber,
+        customerName: order.customer.displayName,
+        nodeName: order.fulfillmentNode?.name ?? null,
+        nodeMapsUrl: order.fulfillmentNode?.mapsUrl ?? null,
+        itemCount: order.items.length,
+        amountKsh: extra.amountKsh ?? null,
+        riderName: extra.riderName ?? null,
+        supportPhone: SUPPORT_PHONE_LABEL
+      })
+    });
+  }
+
+  /** Tells the store a package is coming or is waiting for a rider. */
+  private async queueNodeNotification(
+    tx: Prisma.TransactionClient,
+    order: OrderDetail,
+    topic: NotificationTopicName
+  ) {
+    const node = order.fulfillmentNode;
+    if (!node?.phone) return;
+    await enqueueNotification(tx, {
+      topic,
+      audience: NotificationAudience.NODE,
+      dedupeKey: notificationDedupeKey(topic, order.id),
+      recipientPhone: node.phone,
+      recipientLabel: node.name,
+      orderId: order.id,
+      fulfillmentNodeId: node.id,
+      body: notificationBody(topic, {
+        orderNumber: order.orderNumber,
+        nodeName: node.name,
+        itemCount: order.items.length
+      })
+    });
+  }
+
+  /**
+   * Alerts whoever is on duty. The numbers come from ADMIN_ALERT_PHONES so the
+   * on-call list can change without a deploy; with none set the alert is simply
+   * not queued and the exception still shows in the order centre.
+   */
+  private async queueAdminAlert(
+    tx: Prisma.TransactionClient,
+    order: { id: string; orderNumber: string },
+    topic: NotificationTopicName,
+    reason: string
+  ) {
+    const phones = (process.env.ADMIN_ALERT_PHONES ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+    for (const phone of phones) {
+      await enqueueNotification(tx, {
+        topic,
+        audience: NotificationAudience.ADMIN,
+        dedupeKey: notificationDedupeKey(topic, `${order.id}:${phone}:${reason}`),
+        recipientPhone: phone,
+        orderId: order.id,
+        body: notificationBody(topic, { orderNumber: order.orderNumber, reason })
+      });
+    }
+  }
+
   private async moveToHandoff(
     orderId: string,
     input: AdminInput,
@@ -768,6 +1325,12 @@ export class OperationsFulfillmentService {
         newStatus: status,
         note: input.note
       });
+      if (status === FulfillmentStatus.READY_FOR_PICKUP) {
+        await this.queueCustomerNotification(tx, orderId, "CUSTOMER_ORDER_READY_FOR_PICKUP");
+      }
+      if (status === FulfillmentStatus.READY_FOR_DISPATCH) {
+        await this.queueNodeNotification(tx, order, "NODE_PACKAGE_AWAITING_DISPATCH");
+      }
     });
     return this.orderDetail(orderId, input.adminUserId);
   }
@@ -811,6 +1374,7 @@ export class OperationsFulfillmentService {
         newStatus: FulfillmentStatus.COMPLETED,
         note
       });
+      await this.queueCustomerNotification(tx, current.id, "CUSTOMER_ORDER_COMPLETED");
     });
   }
 
@@ -888,7 +1452,8 @@ export class OperationsFulfillmentService {
       from: fulfillment.status,
       to,
       fulfillmentMethod: order.fulfillmentMethod,
-      hasDeliveryRider: Boolean(fulfillment.deliveryRiderId)
+      hasDeliveryRider: Boolean(fulfillment.deliveryRiderId),
+      nodeType: nodeTypeFor(order)
     })) throw new BadRequestException(`Fulfillment cannot move from ${fulfillment?.status ?? "NONE"} to ${to}.`);
   }
 
@@ -1078,6 +1643,8 @@ function tabWhere(tab: OrderCenterTab): Prisma.OrderWhereInput {
   if (tab === "picking") return { fulfillment: { is: { status: FulfillmentStatus.PICKING } } };
   if (tab === "ready-to-pack") return { fulfillment: { is: { status: FulfillmentStatus.READY_TO_PACK } } };
   if (tab === "packed") return { fulfillment: { is: { status: FulfillmentStatus.PACKED } } };
+  if (tab === "in-transit-to-node") return { fulfillment: { is: { status: FulfillmentStatus.IN_TRANSIT_TO_NODE } } };
+  if (tab === "at-node") return { fulfillment: { is: { status: FulfillmentStatus.ARRIVED_AT_NODE } } };
   if (tab === "ready-for-pickup") return { fulfillment: { is: { status: FulfillmentStatus.READY_FOR_PICKUP } } };
   if (tab === "ready-for-dispatch") return { fulfillment: { is: { status: FulfillmentStatus.READY_FOR_DISPATCH } } };
   if (tab === "out-for-delivery") return { fulfillment: { is: { status: FulfillmentStatus.OUT_FOR_DELIVERY } } };
@@ -1116,4 +1683,11 @@ function pickupVerificationMatches(order: OrderDetail, method: PickupVerificatio
 
 function normalizePhone(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
+}
+
+function nodeTypeFor(order: {
+  fulfillmentNode?: { type: FulfillmentNodeType } | null;
+  fulfillment?: { fulfillmentNode?: { type: FulfillmentNodeType } | null } | null;
+}): FulfillmentNodeType | null {
+  return order.fulfillment?.fulfillmentNode?.type ?? order.fulfillmentNode?.type ?? null;
 }

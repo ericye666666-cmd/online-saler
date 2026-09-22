@@ -97,7 +97,7 @@ export class OperationsAfterSalesService {
     const totalRefunded = order.afterSaleReturns.flatMap((row) => row.refunds).reduce((sum, row) => sum + row.amountKsh, 0);
     const paymentAmount = order.payments.filter((row) => row.status === PaymentStatus.SUCCESS).reduce((sum, row) => sum + row.amountKsh, 0);
     assertRefundAmount(input.amountKsh, record.orderItem.lineTotalKsh, itemRefunded, order.totalKsh, totalRefunded, paymentAmount);
-    await tx.refundRecord.create({ data: { afterSaleReturnId: record.id, amountKsh: input.amountKsh, externalReference, evidenceNote, refundedAt, recordedByAdminUserId: adminUserId } });
+    await tx.refundRecord.create({ data: { orderId: order.id, afterSaleReturnId: record.id, amountKsh: input.amountKsh, externalReference, evidenceNote, refundedAt, recordedByAdminUserId: adminUserId } });
     // The existing return policy has no negotiated partial-compensation settlement.
     // Keep the case and commission hold open until the sold item's full price is recorded.
     const fullyRefunded = itemRefunded + input.amountKsh === record.orderItem.lineTotalKsh;

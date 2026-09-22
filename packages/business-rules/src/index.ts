@@ -1,6 +1,6 @@
-export const RESERVATION_MINUTES = 15;
+export const RESERVATION_MINUTES = 5;
 export const MAX_ACTIVE_RESERVATIONS_PER_PHONE = 5;
-export const KIKUYU_DELIVERY_FEE_KSH = 0;
+export const KIKUYU_DELIVERY_FEE_KSH = 50;
 export const AFFILIATE_ATTRIBUTION_DAYS = 7;
 export const COMMISSION_CONFIRMATION_HOURS = 24;
 export const RETURN_REQUEST_WINDOW_HOURS = 24;
@@ -34,3 +34,6 @@ export * from "./measurement-board-geometry";
 export * from "./product-detail-measurement-templates";
 
 export * from "./delivery-address";
+export * from "./delivery-economics";
+export * from "./notification-topics";
+export * from "./notification-templates";
