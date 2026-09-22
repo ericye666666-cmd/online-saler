@@ -358,6 +358,7 @@ model Product {
   defects              ProductDefect[]
   reviews              ProductReview[]
   detailProfiles       ProductDetailProfile[]
+  runThroughVideoItems RunThroughVideoItem[]
   detailAssets         ProductDetailAsset[]
   detailGenerationJobs ProductDetailGenerationJob[]
   inventoryItem        InventoryItem?
@@ -1102,6 +1103,7 @@ model Affiliate {
   shareCards        ShareCard[]
   statusPacks       StatusPack[]
   tiktokVideos      TikTokVideo[]
+  runThroughVideos  RunThroughVideo[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
@@ -1305,6 +1307,34 @@ model TikTokVideo {
 
   @@index([affiliateId, createdAt])
   @@index([collectionId, createdAt])
+}
+
+// A silent run-through video of a few pieces, generated for one affiliate.
+// Its items record which pieces each video showed, so the next video can pick
+// the pieces that have been shown least.
+model RunThroughVideo {
+  id           String                @id @default(uuid())
+  affiliateId  String
+  category     String?
+  status       AffiliateAssetStatus  @default(PROCESSING)
+  errorMessage String?
+  affiliate    Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  items        RunThroughVideoItem[]
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([affiliateId, createdAt])
+}
+
+model RunThroughVideoItem {
+  videoId   String
+  productId String
+  position  Int
+  video     RunThroughVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([videoId, productId])
+  @@index([productId])
 }
 
 model Commission {

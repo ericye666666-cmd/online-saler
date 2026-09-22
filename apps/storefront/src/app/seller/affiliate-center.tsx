@@ -41,11 +41,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { Textarea } from "../../components/ui/textarea";
 import { SiteHeader } from "../components/site-header";
+import { RunThroughVideos } from "./run-through-videos";
 
-type CenterTab = "dashboard" | "collections" | "campaigns" | "share-assets" | "analytics" | "commission";
+type CenterTab = "dashboard" | "tiktok-video" | "collections" | "campaigns" | "share-assets" | "analytics" | "commission";
 
 const tabs: Array<{ id: CenterTab; label: string; icon: React.ReactNode }> = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard /> },
+  { id: "tiktok-video", label: "TikTok video", icon: <Video /> },
   { id: "collections", label: "Collections", icon: <FolderHeart /> },
   { id: "campaigns", label: "Campaigns", icon: <Megaphone /> },
   { id: "share-assets", label: "Share Assets", icon: <BookImage /> },
@@ -97,6 +99,7 @@ export function AffiliateCenter() {
           </nav>
           <section className="min-w-0">
             {tab === "dashboard" ? <Dashboard payload={payload} setTab={setTab} /> : null}
+            {tab === "tiktok-video" ? <RunThroughVideos /> : null}
             {tab === "collections" ? <Collections collections={payload.collections ?? []} refresh={refresh} /> : null}
             {tab === "campaigns" ? <Campaigns campaigns={payload.campaigns ?? []} collections={payload.collections ?? []} refresh={refresh} /> : null}
             {tab === "share-assets" ? <ShareAssets payload={payload} /> : null}

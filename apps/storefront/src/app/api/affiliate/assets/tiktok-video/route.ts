@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +7,7 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import QRCode from "qrcode";
 import { affiliateApiError } from "../../../../../affiliate/affiliate-api";
 import { uploadAffiliateAsset } from "../../../../../affiliate/affiliate-asset-storage";
+import { resolveRemotionBundle } from "../../../../../affiliate/remotion-bundle";
 import { requireActiveAffiliate } from "../../../../../affiliate/affiliate-platform-service";
 import { buildAffiliatePath } from "../../../../../affiliate/affiliate-platform";
 import { currentCustomerSession } from "../../../../../auth/customer-auth";
@@ -65,9 +65,3 @@ export async function POST(request: Request) {
   }
 }
 
-function resolveRemotionBundle() {
-  const candidates = [path.join(process.cwd(), "build", "remotion-release"), path.join(process.cwd(), "apps", "storefront", "build", "remotion-release")];
-  const found = candidates.find((candidate) => existsSync(candidate));
-  if (!found) throw new Error("Remotion bundle is missing. Run the Storefront build before rendering video.");
-  return found;
-}
