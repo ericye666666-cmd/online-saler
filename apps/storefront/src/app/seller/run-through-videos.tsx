@@ -19,7 +19,7 @@ type Busy = "picking" | "rendering" | null;
  */
 export function RunThroughVideos() {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
-  const [category, setCategory] = useState("ALL");
+  const [category, setCategory] = useState("");
   const [busy, setBusy] = useState<Busy>(null);
   const [plan, setPlan] = useState<RunThroughPlan | null>(null);
   const [video, setVideo] = useState<{ url: string; file: File } | null>(null);
@@ -28,7 +28,10 @@ export function RunThroughVideos() {
   useEffect(() => {
     void fetch("/api/affiliate/run-through-video", { cache: "no-store" })
       .then((response) => response.json() as Promise<{ categories?: CategoryOption[] }>)
-      .then((payload) => setCategories(payload.categories ?? []))
+      .then((payload) => {
+        setCategories(payload.categories ?? []);
+        setCategory((current) => current || payload.categories?.[0]?.value || "");
+      })
       .catch(() => setCategories([]));
   }, []);
 
@@ -76,20 +79,20 @@ export function RunThroughVideos() {
     <div className="space-y-5">
       <header>
         <h2 className="text-2xl font-bold">TikTok video</h2>
-        <p className="mt-1 text-sm text-muted-foreground">One tap makes a 12-second video of 8 pieces in stock. Each video shows different pieces, so every piece gets its turn and no two videos are the same.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Pick a category and one tap makes a 12-second video of 8 pieces in stock, smallest size first. Each video shows different pieces, so every piece gets its turn and no two videos are the same.</p>
       </header>
 
       <Card>
         <CardContent className="space-y-3 pt-6">
           <Select value={category} onValueChange={setCategory} disabled={Boolean(busy)}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="New in" /></SelectTrigger>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Choose a category" /></SelectTrigger>
             <SelectContent>
-              {(categories.length ? categories : [{ value: "ALL", label: "New in", count: 0 }]).map((option) => (
-                <SelectItem key={option.value} value={option.value}>{option.label}{option.count ? ` · ${option.count} in stock` : ""}</SelectItem>
+              {categories.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label} · {option.count} in stock</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button className="w-full" size="lg" onClick={() => void make()} disabled={Boolean(busy) || (categories.length > 0 && !selected)}>
+          <Button className="w-full" size="lg" onClick={() => void make()} disabled={Boolean(busy) || !selected}>
             {busy ? <LoaderCircle className="animate-spin" /> : <Video />}
             {busy === "picking" ? "Picking pieces…" : busy === "rendering" ? "Making your video (about a minute)…" : "Make my video"}
           </Button>

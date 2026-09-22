@@ -10,9 +10,9 @@ import {
 import { buildAffiliatePath } from "./affiliate-platform";
 import { AffiliatePlatformError } from "./affiliate-platform-service";
 import {
-  RUN_THROUGH_ALL_CATEGORIES,
   RUN_THROUGH_ITEM_COUNT,
   RUN_THROUGH_MIN_ITEMS,
+  compareSizes,
   runThroughCaption,
   runThroughCategoryLabel,
   selectRunThroughProducts,
@@ -39,7 +39,7 @@ export type RunThroughPlan = {
 type Affiliate = { id: string; affiliateCode: string };
 
 // Only pieces a shopper can buy right now, with a finished display image.
-function eligibleWhere(category: string | null): Prisma.ProductWhereInput {
+function eligibleWhere(category?: string): Prisma.ProductWhereInput {
   return {
     status: ProductStatus.PUBLISHED,
     priceKsh: { gt: 0 },
@@ -53,25 +53,21 @@ const displayAssetWhere = { type: ProductDetailAssetType.FRONT_MAIN, status: Pro
 
 const shownWhere = { video: { status: { not: AffiliateAssetStatus.FAILED } } };
 
-/** Categories with enough pieces for a video, most stocked first. */
+/** Categories with enough pieces for a video, most stocked first. Each video is one category. */
 export async function runThroughCategories() {
-  const groups = await prisma.product.groupBy({ by: ["category"], where: eligibleWhere(null), _count: { _all: true } });
-  const total = groups.reduce((sum, group) => sum + group._count._all, 0);
-  return [
-    { value: RUN_THROUGH_ALL_CATEGORIES, label: runThroughCategoryLabel(null), count: total },
-    ...groups
-      .filter((group) => group.category && group._count._all >= RUN_THROUGH_MIN_ITEMS)
-      .sort((a, b) => b._count._all - a._count._all)
-      .map((group) => ({ value: group.category!, label: runThroughCategoryLabel(group.category), count: group._count._all })),
-  ].filter((option) => option.count >= RUN_THROUGH_MIN_ITEMS);
+  const groups = await prisma.product.groupBy({ by: ["category"], where: eligibleWhere(), _count: { _all: true } });
+  return groups
+    .filter((group) => group.category && group._count._all >= RUN_THROUGH_MIN_ITEMS)
+    .sort((a, b) => b._count._all - a._count._all)
+    .map((group) => ({ value: group.category!, label: runThroughCategoryLabel(group.category), count: group._count._all }));
 }
 
 /** Picks the pieces for a new video and records them against the affiliate. */
-export async function planRunThroughVideo(affiliate: Affiliate, requestedCategory: string | undefined): Promise<RunThroughPlan> {
-  const category = requestedCategory && requestedCategory !== RUN_THROUGH_ALL_CATEGORIES ? requestedCategory : null;
+export async function planRunThroughVideo(affiliate: Affiliate, category: string | undefined): Promise<RunThroughPlan> {
+  if (!category) throw new AffiliatePlatformError("Choose a category for the video.");
   const products = await prisma.product.findMany({
     where: eligibleWhere(category),
-    select: { id: true, publishedAt: true },
+    select: { id: true, publishedAt: true, finalSizeLabel: true, tagSize: true },
   });
   if (products.length < RUN_THROUGH_MIN_ITEMS) {
     throw new AffiliatePlatformError(`A video needs at least ${RUN_THROUGH_MIN_ITEMS} pieces in stock. Choose another category.`, 409);
@@ -91,7 +87,7 @@ export async function planRunThroughVideo(affiliate: Affiliate, requestedCategor
   const picked = selectRunThroughProducts(
     products.map((product) => ({ ...product, timesShown: counts.get(product.id) ?? 0, timesShownByAffiliate: ownCounts.get(product.id) ?? 0 })),
     RUN_THROUGH_ITEM_COUNT,
-  );
+  ).sort((a, b) => compareSizes(a.finalSizeLabel || a.tagSize || "", b.finalSizeLabel || b.tagSize || ""));
 
   const video = await prisma.runThroughVideo.create({
     data: {
@@ -146,7 +142,7 @@ export async function loadRunThroughPlan(affiliate: Affiliate, videoId: string):
       link: buildAffiliatePath(`/p/${product.productCode}`, affiliate.affiliateCode, { source: "tiktok", placement: "run-through", campaign: `run-through-${video.id.slice(0, 8)}` }),
     };
   });
-  return { id: video.id, categoryLabel, caption: runThroughCaption(categoryLabel, items.map((item) => item.price)), items };
+  return { id: video.id, categoryLabel, caption: runThroughCaption(categoryLabel, items.map((item) => item.price), items.map((item) => item.size)), items };
 }
 
 export async function markRunThroughVideo(videoId: string, status: AffiliateAssetStatus, errorMessage: string | null = null) {

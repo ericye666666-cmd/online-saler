@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runThroughCaption, runThroughCategoryLabel, selectRunThroughProducts, type RunThroughCandidate } from "./run-through";
+import { compareSizes, runThroughCaption, runThroughCategoryLabel, runThroughSizes, selectRunThroughProducts, type RunThroughCandidate } from "./run-through";
 
 function candidate(id: string, timesShown: number, timesShownByAffiliate = 0, published = "2026-09-01"): RunThroughCandidate {
   return { id, timesShown, timesShownByAffiliate, publishedAt: new Date(published) };
@@ -35,14 +35,23 @@ test("never returns more pieces than exist", () => {
 
 test("categories read as plain words", () => {
   assert.equal(runThroughCategoryLabel("TSHIRTS"), "T-Shirts");
-  assert.equal(runThroughCategoryLabel("ALL"), "New in");
   assert.equal(runThroughCategoryLabel("WINTER_COATS"), "Winter Coats");
 });
 
 test("the caption names the count and the lowest price", () => {
-  const caption = runThroughCaption("T-Shirts", [350, 250, 0]);
+  const caption = runThroughCaption("T-Shirts", [350, 250, 0], ["XL", "M", "XL"]);
   assert.match(caption, /^3 one-of-one t-shirts from KSh 250/);
+  assert.match(caption, /Sizes: M · XL/);
   assert.match(caption, /Comment the number you want/);
+});
+
+test("pieces run from the smallest size to the largest", () => {
+  assert.deepEqual(["XXXL", "M", "2XL", "S", "L", "XL"].sort(compareSizes), ["S", "M", "L", "XL", "2XL", "XXXL"]);
+  assert.deepEqual(["EU 42", "L", "EU 40", "W30"].sort(compareSizes), ["L", "W30", "EU 40", "EU 42"]);
+});
+
+test("the cover lists each size once, smallest first", () => {
+  assert.deepEqual(runThroughSizes(["xl", "L", "XL", "", "m"]), ["M", "L", "XL"]);
 });
 
 function sequence(...values: number[]) {

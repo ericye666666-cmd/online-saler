@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { runThroughSizes } from "../affiliate/run-through";
 import { AbsoluteFill, continueRender, delayRender, Easing, Img, interpolate, Sequence, useCurrentFrame } from "remotion";
 
 /**
@@ -8,8 +9,8 @@ import { AbsoluteFill, continueRender, delayRender, Easing, Img, interpolate, Se
  * is added in TikTok.
  *
  * TikTok's profile grid shows only the middle 3:4 of the first frame, small.
- * Everything on the cover therefore sits inside that band, and the cover shows
- * four pieces large rather than many small.
+ * Everything on the cover therefore sits inside that band: what the pieces
+ * are, which sizes the video has, and four pieces large with their size.
  */
 
 export type RunThroughVideoProps = {
@@ -78,16 +79,28 @@ export function RunThroughVideo({ categoryLabel, shopUrl, products }: RunThrough
 // The first frame is the thumbnail, so the cover is complete at frame 0 and
 // never fades in.
 function Cover({ categoryLabel, products }: Pick<RunThroughVideoProps, "categoryLabel" | "products">) {
-  const tiles = products.slice(0, 4);
-  const tile = 480;
+  // Pieces run smallest to largest, so four evenly spaced ones span the sizes.
+  const tiles = products.length <= 4 ? products : [0, 1, 2, 3].map((step) => products[Math.round((step * (products.length - 1)) / 3)]);
+  const tile = 450;
+  const caption = 56;
   const gridLeft = (WIDTH - tile * 2) / 2;
-  const gridTop = SAFE_TOP + 190;
+  const gridTop = SAFE_TOP + 250;
+  const sizes = runThroughSizes(products.map((product) => product.size));
   const lowest = Math.min(...products.map((product) => product.price).filter((price) => price > 0));
   return (
     <AbsoluteFill style={{ backgroundColor: "#fff" }}>
-      <div style={{ position: "absolute", left: gridLeft, right: gridLeft, top: SAFE_TOP + 60 }}>
-        <div style={{ fontSize: 24, letterSpacing: 7, color: MUTED, textTransform: "uppercase" }}>Direct Loop · {products.length} pieces</div>
-        <div style={{ fontSize: 64, fontWeight: 300, letterSpacing: -1, marginTop: 14 }}>{categoryLabel}</div>
+      <div style={{ position: "absolute", left: gridLeft, right: gridLeft, top: SAFE_TOP + 50 }}>
+        <div style={{ fontSize: 24, letterSpacing: 7, color: MUTED, textTransform: "uppercase" }}>
+          Direct Loop · {products.length} pieces{Number.isFinite(lowest) ? ` · from KSh ${lowest.toLocaleString("en-KE")}` : ""}
+        </div>
+        <div style={{ fontSize: 68, fontWeight: 300, letterSpacing: -1, marginTop: 12 }}>{categoryLabel}</div>
+        {sizes.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 20 }}>
+            {sizes.map((size) => (
+              <span key={size} style={{ padding: "6px 16px", border: `1.5px solid ${INK}`, fontSize: 26, fontWeight: 500, letterSpacing: 2 }}>{size}</span>
+            ))}
+          </div>
+        ) : null}
       </div>
       {tiles.map((product, index) => (
         <div
@@ -95,19 +108,18 @@ function Cover({ categoryLabel, products }: Pick<RunThroughVideoProps, "category
           style={{
             position: "absolute",
             left: gridLeft + (index % 2) * tile,
-            top: gridTop + Math.floor(index / 2) * tile,
+            top: gridTop + Math.floor(index / 2) * (tile + caption),
             width: tile,
-            height: tile,
-            boxShadow: `inset ${index % 2 ? 0 : -1}px ${index < 2 ? -1 : 0}px 0 ${RULE}`,
+            boxShadow: `inset ${index % 2 ? 0 : -1}px 0 0 ${RULE}`,
           }}
         >
-          <Img src={product.image} style={{ width: tile, height: tile, objectFit: "contain" }} />
+          <Img src={product.image} style={{ display: "block", width: tile, height: tile, objectFit: "contain" }} />
+          <div style={{ height: caption, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 28px", fontSize: 24, letterSpacing: 3, textTransform: "uppercase" }}>
+            <span style={{ fontWeight: 500 }}>{product.size ? `Size ${product.size}` : ""}</span>
+            <span style={{ color: MUTED }}>KSh {product.price.toLocaleString("en-KE")}</span>
+          </div>
         </div>
       ))}
-      <div style={{ position: "absolute", left: gridLeft, right: gridLeft, top: gridTop + tile * 2 + 36, display: "flex", justifyContent: "space-between", fontSize: 26, letterSpacing: 4, color: MUTED, textTransform: "uppercase" }}>
-        <span>One of each</span>
-        {Number.isFinite(lowest) ? <span>From KSh {lowest.toLocaleString("en-KE")}</span> : null}
-      </div>
     </AbsoluteFill>
   );
 }

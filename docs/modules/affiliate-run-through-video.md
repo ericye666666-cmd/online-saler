@@ -5,13 +5,14 @@ affiliate posts on TikTok, adding music there.
 
 ## What is in a video
 
-- 8 pieces, 1.2 s each, after a 1 s cover and before a 1.5 s end card: about
+- One category per video, pieces smallest size first. 8 pieces, 1.2 s each, after a 1 s cover and before a 1.5 s end card: about
   12 s, short enough that most viewers watch to the end.
 - Only pieces a shopper can buy now (published, priced, inventory `AVAILABLE`)
   that have a ready `FRONT_MAIN` display image. Images go through `/framed` so
   every piece sits the same size.
 - The cover keeps everything inside the middle 3:4 of the frame, which is all
-  TikTok's profile grid shows, and shows four pieces large.
+  TikTok's profile grid shows: the category, the sizes in the video as chips,
+  and four pieces spanning those sizes, each labelled with size and price.
 - Each piece carries its number (`No. 03 / 08`), price and size. The caption
   asks viewers to comment the number; the affiliate replies with that piece's
   tracked link from the list under the video.
