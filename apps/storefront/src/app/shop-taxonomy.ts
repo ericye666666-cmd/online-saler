@@ -1,54 +1,81 @@
 /**
- * How shoppers browse: department first (Women, Men, Kids, Bags, Shoes,
- * Accessories, Home), then a category inside it — the shape of Vestiaire's
- * web catalogue, cut to what a second-hand shop in Kenya actually stocks.
+ * How shoppers browse, after Vestiaire's Browse screen: Women / Men / Kids
+ * first, then Bags, Clothing, Shoes, Accessories and Home inside each, then
+ * a category ("Hoodies & sweatshirts", "Handbags", "Trainers").
  *
  * The operations taxonomy (category + subcategory codes) is built for intake
  * and size charts, and stays as it is. This module maps each item onto the
- * shopper's menu instead. Unisex clothing is placed in both Women and Men.
+ * shopper's menu instead. Unisex pieces are shelved in both Women and Men;
+ * home textiles, which have no audience, are too.
  */
 
-export const departments = ["Women", "Men", "Kids", "Bags", "Shoes", "Accessories", "Home"] as const;
+export const departments = ["Women", "Men", "Kids"] as const;
 export type Department = (typeof departments)[number];
 
-/** Each department's categories, in menu order. Only stocked ones are shown. */
-export const departmentCategories: Record<Department, readonly string[]> = {
-  Women: [
-    "T-shirts & vests", "Tops", "Shirts", "Hoodies & sweatshirts", "Knitwear", "Jackets", "Coats & puffers",
-    "Dresses", "Skirts", "Trousers", "Jeans", "Shorts", "Jumpsuits", "Two-piece sets", "Sportswear",
-    "Lingerie & shapewear", "Swimwear", "Other clothing"
-  ],
-  Men: [
-    "T-shirts", "Polo shirts", "Shirts", "Hoodies & sweatshirts", "Knitwear", "Jackets", "Coats & puffers", "Suits",
-    "Trousers", "Jeans", "Sweatpants", "Shorts", "Two-piece & tracksuits", "Swimwear", "Other clothing"
-  ],
-  Kids: ["Baby", "Tops", "Hoodies & jackets", "Dresses & skirts", "Trousers & shorts", "Sets", "Pyjamas", "Other clothing"],
-  Bags: [
-    "Handbags", "Shoulder bags", "Crossbody bags", "Tote bags", "Backpacks", "Clutch bags", "Belt bags",
-    "Travel bags", "Wallets & purses", "School bags", "Other bags"
-  ],
-  Shoes: ["Trainers", "Heels", "Flats", "Sandals & slides", "Boots", "Smart shoes", "Kids' shoes", "Other shoes"],
-  Accessories: ["Hats", "Scarves", "Belts", "Sunglasses", "Watches", "Jewellery", "Hair accessories", "Gloves", "Other accessories"],
-  Home: ["Bed sheets", "Blankets", "Curtains", "Other home"]
+export const groups = ["Bags", "Clothing", "Shoes", "Accessories", "Home"] as const;
+export type Group = (typeof groups)[number];
+
+const SHOE_CATEGORIES = ["Trainers", "Heels", "Flats", "Sandals & slides", "Boots", "Smart shoes", "Other shoes"];
+const BAG_CATEGORIES = [
+  "Handbags", "Shoulder bags", "Crossbody bags", "Tote bags", "Backpacks", "Clutch bags", "Belt bags",
+  "Travel bags", "Wallets & purses", "School bags", "Other bags"
+];
+const ACCESSORY_CATEGORIES = ["Jewellery", "Watches", "Hats", "Scarves", "Belts", "Sunglasses", "Hair accessories", "Gloves", "Other accessories"];
+const HOME_CATEGORIES = ["Bed sheets", "Blankets", "Curtains", "Other home"];
+
+/** Each department's groups and their categories, in menu order. Only stocked ones are shown. */
+export const departmentCategories: Record<Department, Record<Group, readonly string[]>> = {
+  Women: {
+    Bags: BAG_CATEGORIES,
+    Clothing: [
+      "T-shirts & vests", "Tops", "Shirts", "Hoodies & sweatshirts", "Knitwear", "Jackets", "Coats & puffers",
+      "Dresses", "Skirts", "Trousers", "Jeans", "Shorts", "Jumpsuits", "Two-piece sets", "Sportswear",
+      "Lingerie & shapewear", "Swimwear", "Other clothing"
+    ],
+    Shoes: SHOE_CATEGORIES,
+    Accessories: ACCESSORY_CATEGORIES,
+    Home: HOME_CATEGORIES
+  },
+  Men: {
+    Bags: BAG_CATEGORIES,
+    Clothing: [
+      "T-shirts", "Polo shirts", "Shirts", "Hoodies & sweatshirts", "Knitwear", "Jackets", "Coats & puffers", "Suits",
+      "Trousers", "Jeans", "Sweatpants", "Shorts", "Two-piece & tracksuits", "Swimwear", "Other clothing"
+    ],
+    Shoes: SHOE_CATEGORIES.filter((category) => category !== "Heels"),
+    Accessories: ACCESSORY_CATEGORIES.filter((category) => category !== "Hair accessories"),
+    Home: HOME_CATEGORIES
+  },
+  Kids: {
+    Bags: BAG_CATEGORIES,
+    Clothing: ["Baby", "Tops", "Hoodies & jackets", "Dresses & skirts", "Trousers & shorts", "Sets", "Pyjamas", "Other clothing"],
+    Shoes: SHOE_CATEGORIES.filter((category) => category !== "Heels"),
+    Accessories: ACCESSORY_CATEGORIES,
+    Home: []
+  }
 };
 
-export type Placement = { department: Department; category: string };
+export type Placement = { department: Department; group: Group; category: string };
 
 export type CatalogDepartment = "All" | Department;
 
 export type BrowseSelection = {
   department: CatalogDepartment;
+  group?: Group | "All";
   shopCategory?: string;
   brand?: string;
 };
 
-/** The catalogue URL for a selection: `?category=<department>&type=<category>`. */
+/** The catalogue URL for a selection: `?category=<department>&group=<group>&type=<category>`. */
 export function browseHref(selection: BrowseSelection, sellerRef?: string): string {
   const params = new URLSearchParams();
   if (selection.department !== "All") params.set("category", selection.department);
+  if (selection.group && selection.group !== "All") params.set("group", selection.group);
   if (selection.shopCategory && selection.shopCategory !== "All") params.set("type", selection.shopCategory);
+  // With nothing chosen this is the whole catalogue, not the home page.
+  if (!params.size) params.set("view", "all");
   if (sellerRef) params.set("ref", sellerRef);
-  return `/${params.size ? `?${params.toString()}` : ""}`;
+  return `/?${params.toString()}`;
 }
 
 export type ClassifiableProduct = {
@@ -143,14 +170,23 @@ const BAG_LABEL: Record<string, string> = {
 };
 
 const SHOE_LABEL: Record<string, string> = {
-  Sneakers: "Trainers", "Sports shoes": "Trainers", "High heels": "Heels", Flats: "Flats", Loafers: "Flats",
-  Sandals: "Sandals & slides", Slippers: "Sandals & slides", Boots: "Boots", "Leather shoes": "Smart shoes",
-  "Kids' shoes": "Kids' shoes"
+  Sneakers: "Trainers", "Sports shoes": "Trainers", "High heels": "Heels", Flats: "Flats", Loafers: "Smart shoes",
+  Sandals: "Sandals & slides", Slippers: "Sandals & slides", Boots: "Boots", "Leather shoes": "Smart shoes"
 };
 
 const SHOE_SUBCATEGORY_LABEL: Record<string, string> = {
-  MEN_SPORT_SHOES: "Trainers", OFFICIAL_SHOES: "Smart shoes", MEN_SHOES: "Smart shoes", KIDS_SHOES: "Kids' shoes"
+  MEN_SPORT_SHOES: "Trainers", OFFICIAL_SHOES: "Smart shoes"
 };
+
+// Shoe types are often left at "Kids' shoes" or "Other"; the title usually says which.
+const SHOE_BY_TITLE: Array<[RegExp, string]> = [
+  [/sandal|slide|slipper|flip.?flop/i, "Sandals & slides"],
+  [/boot/i, "Boots"],
+  [/heel|pump|stiletto/i, "Heels"],
+  [/loafer|oxford|brogue|leather shoe|formal|official|school shoe/i, "Smart shoes"],
+  [/ballet|flat/i, "Flats"],
+  [/sneaker|trainer|sport|running|air max|canvas/i, "Trainers"]
+];
 
 const ACCESSORY_LABEL: Record<string, string> = {
   HATS_CAPS: "Hats", SCARFS: "Scarves", BELTS: "Belts", SUNGLASSES: "Sunglasses", WATCHES: "Watches",
@@ -163,35 +199,44 @@ export function classifyProduct(product: ClassifiableProduct): Placement[] {
   const category = product.category?.toUpperCase() ?? "";
   const subcategory = product.subcategory?.toUpperCase() ?? "";
   const audience = product.audience?.toUpperCase() ?? "";
+  const title = product.title ?? "";
+  const isShoe = product.isShoe || category === "SHOES" || category === "SHOE" || subcategory.endsWith("_SHOES");
+  const kids = audience === "KIDS" || category === "KIDS" || subcategory.startsWith("KIDS_") || subcategory === "NEWBORN"
+    || (isShoe && /\bkids?'?s?\b|child|toddler|baby/i.test(title));
+  const shelves = (group: Group, category: string): Placement[] => audienceDepartments(kids, audience, group)
+    .map((department) => ({ department, group, category: onShelf(department, group, category) }));
 
-  if (product.isShoe || category === "SHOES" || category === "SHOE") {
-    const label = (audience === "KIDS" ? "Kids' shoes" : null)
-      ?? (product.shoeType ? SHOE_LABEL[product.shoeType] : undefined)
+  if (isShoe) {
+    const label = (product.shoeType ? SHOE_LABEL[product.shoeType] : undefined)
       ?? SHOE_SUBCATEGORY_LABEL[subcategory]
+      ?? SHOE_BY_TITLE.find(([pattern]) => pattern.test(title))?.[1]
       ?? "Other shoes";
-    return [{ department: "Shoes", category: label }];
+    return shelves("Shoes", label);
   }
-  if (category === "BAG" || category === "BAGS") {
-    return [{ department: "Bags", category: BAG_LABEL[subcategory] ?? (subcategory === "SCHOOL_BAGS" ? "School bags" : "Other bags") }];
-  }
-  if (category === "TEXTILE" || category === "HOME_TEXTILES") {
-    return [{ department: "Home", category: HOME_LABEL[subcategory] ?? "Other home" }];
-  }
-  if (ACCESSORY_LABEL[subcategory]) {
-    return [{ department: "Accessories", category: ACCESSORY_LABEL[subcategory] }];
-  }
+  if (category === "BAG" || category === "BAGS") return shelves("Bags", BAG_LABEL[subcategory] ?? "Other bags");
+  if (category === "TEXTILE" || category === "HOME_TEXTILES") return shelves("Home", HOME_LABEL[subcategory] ?? "Other home");
+  if (ACCESSORY_LABEL[subcategory]) return shelves("Accessories", ACCESSORY_LABEL[subcategory]);
 
-  const garment = garmentOf(category, subcategory, product.title ?? "");
-  if (category === "OTHERS" && garment === "other") {
-    return [{ department: "Accessories", category: "Other accessories" }];
-  }
-  if (audience === "KIDS" || category === "KIDS") {
-    return [{ department: "Kids", category: KIDS_LABEL[garment] }];
-  }
+  const garment = garmentOf(category, subcategory, title);
+  if (category === "OTHERS" && garment === "other") return shelves("Accessories", "Other accessories");
+  if (kids) return [{ department: "Kids", group: "Clothing", category: KIDS_LABEL[garment] }];
   const placements: Placement[] = [];
-  if (audience !== "MEN") placements.push({ department: "Women", category: WOMEN_LABEL[garment] });
-  if (audience !== "WOMEN") placements.push({ department: "Men", category: MEN_LABEL[garment] });
+  if (audience !== "MEN") placements.push({ department: "Women", group: "Clothing", category: WOMEN_LABEL[garment] });
+  if (audience !== "WOMEN") placements.push({ department: "Men", group: "Clothing", category: MEN_LABEL[garment] });
   return placements;
+}
+
+function audienceDepartments(kids: boolean, audience: string, group: Group): Department[] {
+  if (kids && group !== "Home") return ["Kids"];
+  if (audience === "WOMEN") return ["Women"];
+  if (audience === "MEN") return ["Men"];
+  return ["Women", "Men"];
+}
+
+/** A label a department does not carry (heels on the men's shelf) falls to that group's "Other". */
+function onShelf(department: Department, group: Group, category: string): string {
+  const shelf = departmentCategories[department][group];
+  return shelf.includes(category) ? category : shelf[shelf.length - 1] ?? category;
 }
 
 function garmentOf(category: string, subcategory: string, title: string): Garment {
@@ -205,22 +250,54 @@ export function isDepartment(value: string | null | undefined): value is Departm
   return departments.includes(value as Department);
 }
 
-/** Stocked categories per department, in menu order, with counts. */
-export function stockedMenu(placementsList: Placement[][]): Array<{ department: Department; total: number; categories: Array<{ category: string; count: number }> }> {
+export function isGroup(value: string | null | undefined): value is Group {
+  return groups.includes(value as Group);
+}
+
+export type StockedDepartment = {
+  department: Department;
+  total: number;
+  groups: Array<{ group: Group; total: number; categories: Array<{ category: string; count: number }> }>;
+};
+
+/** Stocked groups and categories per department, in menu order, with counts. */
+export function stockedMenu(placementsList: Placement[][]): StockedDepartment[] {
   return departments
     .map((department) => {
-      const counts = new Map<string, number>();
-      let total = 0;
-      for (const placements of placementsList) {
-        const here = placements.filter((placement) => placement.department === department);
-        if (!here.length) continue;
-        total += 1;
-        for (const placement of here) counts.set(placement.category, (counts.get(placement.category) ?? 0) + 1);
-      }
-      const categories = departmentCategories[department]
-        .filter((category) => counts.has(category))
-        .map((category) => ({ category, count: counts.get(category)! }));
-      return { department, total, categories };
+      const inDepartment = placementsList.map((placements) => placements.filter((placement) => placement.department === department));
+      const stockedGroups = groups
+        .map((group) => {
+          const counts = new Map<string, number>();
+          let total = 0;
+          for (const placements of inDepartment) {
+            const here = placements.filter((placement) => placement.group === group);
+            if (!here.length) continue;
+            total += 1;
+            for (const placement of here) counts.set(placement.category, (counts.get(placement.category) ?? 0) + 1);
+          }
+          const categories = departmentCategories[department][group]
+            .filter((category) => counts.has(category))
+            .map((category) => ({ category, count: counts.get(category)! }));
+          return { group, total, categories };
+        })
+        .filter((entry) => entry.total > 0);
+      return { department, total: inDepartment.filter((placements) => placements.length > 0).length, groups: stockedGroups };
     })
     .filter((entry) => entry.total > 0);
+}
+
+/** Groups with stock across every department, for the home page tiles: Bags, Clothing, Shoes… */
+export function stockedGroups(placementsList: Placement[][]): Array<{ group: Group; total: number }> {
+  return groups
+    .map((group) => ({ group, total: placementsList.filter((placements) => placements.some((placement) => placement.group === group)).length }))
+    .filter((entry) => entry.total > 0);
+}
+
+/** Whether a piece sits on the chosen shelf; "All" at any level matches everything below it. */
+export function onChosenShelf(placements: Placement[] | undefined, department = "All", group = "All", shopCategory = "All"): boolean {
+  if (department === "All" && group === "All") return true;
+  return (placements ?? []).some((placement) =>
+    (department === "All" || placement.department === department)
+      && (group === "All" || placement.group === group)
+      && (shopCategory === "All" || placement.category === shopCategory));
 }

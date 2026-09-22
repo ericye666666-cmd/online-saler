@@ -1,22 +1,23 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { SiteHeader } from "../components/site-header";
 import { listPublishedProducts } from "../../db/catalog";
 import { getStorefrontI18n } from "../../i18n/server";
 import { translateValue } from "../../i18n/dictionary";
-import { browseHref, isDepartment, stockedMenu } from "../shop-taxonomy";
+import { cardImageSrc } from "../storefront-products";
+import { browseHref, isDepartment, isGroup, stockedMenu } from "../shop-taxonomy";
 
 export const dynamic = "force-dynamic";
 
-type BrowseProps = { searchParams: Promise<{ d?: string }> };
+type BrowseProps = { searchParams: Promise<{ d?: string; g?: string }> };
 
 /**
- * Department tabs across the top, that department's categories below — the
- * Vestiaire app's Browse screen. Only departments and categories with
- * something available are listed, so no row leads to an empty page.
+ * Vestiaire's Browse screen: Women / Men / Kids tabs, then "Women home"
+ * and one row per group — Bags, Clothing, Shoes… A group row opens its
+ * categories. Only stocked rows are listed, so none leads to an empty page.
  */
 export default async function CategoriesPage({ searchParams }: BrowseProps) {
-  const [{ d }, products, { locale, t }] = await Promise.all([
+  const [{ d, g }, products, { locale, t }] = await Promise.all([
     searchParams,
     listPublishedProducts(),
     getStorefrontI18n(),
@@ -24,15 +25,15 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
   const available = products.filter((product) => product.status === "Available");
   const menu = stockedMenu(available.map((product) => product.placements ?? []));
   const active = menu.find((entry) => entry.department === (isDepartment(d) ? d : null)) ?? menu[0];
+  const openGroup = active && isGroup(g) ? active.groups.find((entry) => entry.group === g) ?? null : null;
+  const department = active ? translateValue(locale, active.department) : "";
+  const newest = available.find((product) => product.image);
 
   return (
     <main className="browsePage">
       <SiteHeader />
 
       <div className="browseShell">
-        <h1>{t("browse.title")}</h1>
-        <p className="browseIntro">{t("browse.intro", { count: String(available.length) })}</p>
-
         <nav className="browseDepartments" aria-label={t("browse.title")}>
           {menu.map((entry) => (
             <Link
@@ -46,18 +47,23 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
           ))}
         </nav>
 
-        {active ? (
+        {active && openGroup ? (
           <>
-            <Link className="browseAllRow" href={browseHref({ department: active.department })}>
-              <span>{t("header.seeAllIn", { department: translateValue(locale, active.department) })}</span>
-              <span className="browseCount">{active.total}</span>
-              <ChevronRight size={18} aria-hidden="true" />
+            <Link className="browseBack" href={`/categories?d=${encodeURIComponent(active.department)}`}>
+              <ChevronLeft size={18} aria-hidden="true" /> {t("browse.back")}
             </Link>
-
+            <h1 className="browseGroupTitle">{department} · {translateValue(locale, openGroup.group)}</h1>
             <ul className="browseList">
-              {active.categories.map((entry) => (
+              <li>
+                <Link href={browseHref({ department: active.department, group: openGroup.group })}>
+                  <span>{t("browse.allInGroup", { group: translateValue(locale, openGroup.group) })}</span>
+                  <span className="browseCount">{openGroup.total}</span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </Link>
+              </li>
+              {openGroup.categories.map((entry) => (
                 <li key={entry.category}>
-                  <Link href={browseHref({ department: active.department, shopCategory: entry.category })}>
+                  <Link href={browseHref({ department: active.department, group: openGroup.group, shopCategory: entry.category })}>
                     <span>{translateValue(locale, entry.category)}</span>
                     <span className="browseCount">{entry.count}</span>
                     <ChevronRight size={18} aria-hidden="true" />
@@ -65,6 +71,35 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
                 </li>
               ))}
             </ul>
+          </>
+        ) : active ? (
+          <>
+            <ul className="browseList">
+              <li>
+                <Link href={browseHref({ department: active.department })}>
+                  <span>{t("browse.departmentHome", { department })}</span>
+                  <span className="browseCount">{active.total}</span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </Link>
+              </li>
+              {active.groups.map((entry) => (
+                <li key={entry.group}>
+                  <Link href={`/categories?d=${encodeURIComponent(active.department)}&g=${encodeURIComponent(entry.group)}`}>
+                    <span>{translateValue(locale, entry.group)}</span>
+                    <span className="browseCount">{entry.total}</span>
+                    <ChevronRight size={18} aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+
+            <Link className="browsePromo" href={browseHref({ department: "All" })}>
+              <span>
+                <strong>{t("browse.newIn")}</strong>
+                <small>{t("browse.newInBody")}</small>
+              </span>
+              {newest ? <img src={cardImageSrc(newest.image)} alt="" loading="lazy" /> : <b>NEW</b>}
+            </Link>
           </>
         ) : null}
       </div>

@@ -245,6 +245,7 @@ export function SiteHeader({
         <form className="depopMobileSearch" action="/" onSubmit={handleSubmit}>
           <Search size={20} />
           <input
+            name="q"
             value={value}
             onChange={(event) => updateSearch(event.target.value)}
             placeholder={t("header.searchPlaceholder")}
@@ -290,15 +291,23 @@ export function SiteHeader({
           aria-label={`${activeDesktopGroup.department} menu`}
         >
           <div className="depopMegaMenuInner">
-            <div className="depopMegaColumn depopMegaShop">
-              <h2>{t("header.shopByCategory")}</h2>
-              <div className="depopMegaLinks twoColumns">
-                {activeDesktopGroup.categories.map((item) => (
-                  <button type="button" key={item.category} onClick={() => chooseSelection({ department: activeDesktopGroup.department, shopCategory: item.category })}>
-                    {translateValue(locale, item.category)} <small>{item.count}</small>
+            {activeDesktopGroup.groups.map((shelf) => (
+              <div className="depopMegaColumn depopMegaShop" key={shelf.group}>
+                <h2>
+                  <button type="button" onClick={() => chooseSelection({ department: activeDesktopGroup.department, group: shelf.group })}>
+                    {translateValue(locale, shelf.group)}
                   </button>
-                ))}
+                </h2>
+                <div className="depopMegaLinks">
+                  {shelf.categories.map((item) => (
+                    <button type="button" key={item.category} onClick={() => chooseSelection({ department: activeDesktopGroup.department, group: shelf.group, shopCategory: item.category })}>
+                      {translateValue(locale, item.category)} <small>{item.count}</small>
+                    </button>
+                  ))}
+                </div>
               </div>
+            ))}
+            <div className="depopMegaColumn">
               <button className="depopSeeAll" type="button" onClick={() => chooseSelection({ department: activeDesktopGroup.department })}>
                 {t("header.seeAllIn", { department: translateValue(locale, activeDesktopGroup.department) })}
               </button>
@@ -323,11 +332,20 @@ export function SiteHeader({
                     <span>{t("header.seeAllIn", { department: translateValue(locale, activeMobileGroup.department) })}</span>
                     <ArrowRight size={20} />
                   </button>
-                  {activeMobileGroup.categories.map((item) => (
-                    <button className="depopMobileCategoryLink" type="button" key={item.category} onClick={() => chooseSelection({ department: activeMobileGroup.department, shopCategory: item.category })}>
-                      <span>{translateValue(locale, item.category)} <small>{item.count}</small></span>
-                      <ArrowRight size={20} />
-                    </button>
+                  {activeMobileGroup.groups.map((shelf) => (
+                    <div key={shelf.group}>
+                      <h2>{translateValue(locale, shelf.group)}</h2>
+                      <button className="depopMobileCategoryLink" type="button" onClick={() => chooseSelection({ department: activeMobileGroup.department, group: shelf.group })}>
+                        <span>{t("browse.allInGroup", { group: translateValue(locale, shelf.group) })} <small>{shelf.total}</small></span>
+                        <ArrowRight size={20} />
+                      </button>
+                      {shelf.categories.map((item) => (
+                        <button className="depopMobileCategoryLink" type="button" key={item.category} onClick={() => chooseSelection({ department: activeMobileGroup.department, group: shelf.group, shopCategory: item.category })}>
+                          <span>{translateValue(locale, item.category)} <small>{item.count}</small></span>
+                          <ArrowRight size={20} />
+                        </button>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </>

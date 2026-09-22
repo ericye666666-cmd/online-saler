@@ -17,7 +17,7 @@ import {
   shoeConditionGrades,
 } from "../data/products";
 import { catalogSizeOptions, filterCatalogProducts } from "../catalog-filters";
-import { stockedMenu } from "../shop-taxonomy";
+import { browseHref, groups, stockedMenu, stockedGroups, type Department, type Group } from "../shop-taxonomy";
 import { cardImageSrc } from "../storefront-products";
 import { ProductCollectionButton } from "./product-share-sheet";
 import { ReferralTracker } from "./referral-tracker";
@@ -35,6 +35,11 @@ type PopularChoice = BrowseSelection & { label: string };
 const apparelConditionOptions = ["All", ...apparelConditions];
 const shoeConditionOptions = ["All", ...shoeConditionGrades];
 const priceOptions = ["All", "Under KSh 500", "KSh 500–799", "KSh 800+"];
+
+/** Cards rendered at a time; the grid grows by this much as it scrolls. */
+const PAGE_SIZE = 40;
+
+type ShelfOption = { label: string; group: Group; category: string };
 
 type ProductCardProps = {
   product: Product;
@@ -109,26 +114,33 @@ export function CatalogApp({
   initialProducts,
   initialDepartment = "All",
   initialShopCategory = "All",
+  initialGroup = "All",
+  initialQuery = "",
+  scopedDepartment,
   sellerRef,
   source,
   placement,
   campaign,
-  feed,
 }: {
   initialProducts: Product[];
   initialDepartment?: CatalogDepartment;
   initialShopCategory?: string;
+  initialGroup?: Group | "All";
+  initialQuery?: string;
+  /** Set when only this department's pieces were loaded: going elsewhere loads a new page. */
+  scopedDepartment?: Department;
   sellerRef?: string;
   source?: string;
   placement?: string;
   campaign?: string;
-  /** Home rails, rendered above the grid while nothing is filtered. */
-  feed?: ReactNode;
 }) {
   const { locale, t } = useStorefrontI18n();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [department, setDepartment] = useState<CatalogDepartment>(initialDepartment);
   const [shopCategory, setShopCategory] = useState(initialShopCategory);
+  const [group, setGroup] = useState<Group | "All">(initialGroup);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const moreRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState("All");
   const [condition, setCondition] = useState("All");
   const [brand, setBrand] = useState("All");
@@ -160,14 +172,32 @@ export function CatalogApp({
     () => ["All", ...Array.from(new Set(initialProducts.map((product) => product.store))).sort()],
     [initialProducts],
   );
-  const sizeOptions = useMemo(() => catalogSizeOptions(initialProducts, department, shopCategory), [initialProducts, department, shopCategory]);
+  const sizeOptions = useMemo(() => catalogSizeOptions(initialProducts, department, shopCategory, group), [initialProducts, department, shopCategory, group]);
   // Only departments and categories with something in them are offered.
   const menu = useMemo(
     () => stockedMenu(initialProducts.filter((product) => product.status === "Available").map((product) => product.placements ?? [])),
     [initialProducts],
   );
   const departmentOptions: CatalogDepartment[] = ["All", ...menu.map((entry) => entry.department)];
-  const shopCategoryOptions = ["All", ...(menu.find((entry) => entry.department === department)?.categories.map((entry) => entry.category) ?? [])];
+  // Category choices: each stocked group ("Bags"), then its categories ("Handbags"),
+  // within the chosen department — or across all of them when none is chosen.
+  const shelfOptions = useMemo(() => {
+    const inScope = department === "All" ? menu : menu.filter((entry) => entry.department === department);
+    const options: ShelfOption[] = [];
+    for (const name of groups) {
+      if (group !== "All" && group !== name) continue;
+      const stocked = inScope.flatMap((entry) => entry.groups.filter((item) => item.group === name));
+      if (!stocked.length) continue;
+      options.push({ label: name, group: name, category: "All" });
+      const categories = [...new Set(stocked.flatMap((item) => item.categories.map((entry) => entry.category)))];
+      for (const category of categories) options.push({ label: category, group: name, category });
+    }
+    return options;
+  }, [department, group, menu]);
+  const homeGroups = useMemo(
+    () => stockedGroups(initialProducts.filter((product) => product.status === "Available").map((product) => product.placements ?? [])),
+    [initialProducts],
+  );
 
   useEffect(() => {
     const sync = () => setSaved(new Set(readSavedCodes()));
@@ -205,13 +235,27 @@ export function CatalogApp({
   }, [openFilter]);
 
   const filteredProducts = useMemo(() => filterCatalogProducts(initialProducts, {
-    availableOnly, brand, department, shopCategory, color, condition, material, price,
+    availableOnly, brand, department, group, shopCategory, color, condition, material, price,
     query, size, sort, store,
-  }), [availableOnly, brand, department, shopCategory, color, condition, initialProducts, material, price, query, size, sort, store]);
+  }), [availableOnly, brand, department, group, shopCategory, color, condition, initialProducts, material, price, query, size, sort, store]);
 
-  const activeFilterCount = [brand, color, material, price, shopCategory, size, condition, store]
+  // A long catalogue renders in pages: the first PAGE_SIZE cards, then another
+  // page each time the end of the grid scrolls into view (or More is tapped).
+  const shownProducts = filteredProducts.slice(0, visibleCount);
+  useEffect(() => setVisibleCount(PAGE_SIZE), [filteredProducts]);
+  useEffect(() => {
+    const sentinel = moreRef.current;
+    if (!sentinel || visibleCount >= filteredProducts.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setVisibleCount((count) => count + PAGE_SIZE);
+    }, { rootMargin: "600px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visibleCount, filteredProducts.length]);
+
+  const activeFilterCount = [brand, color, material, price, size, condition, store]
     .filter((item) => item !== "All").length + (availableOnly ? 1 : 0);
-  const hasSubcategory = department !== "All";
+  const hasSubcategory = shelfOptions.length > 0;
   const filterTypes: Array<Exclude<FilterMenu, null>> = [
     "category",
     ...(hasSubcategory ? ["subcategory" as const] : []),
@@ -223,59 +267,82 @@ export function CatalogApp({
     "condition",
     "store",
   ];
-  const popularChoices: PopularChoice[] = department === "All"
-    ? menu.map((entry) => ({ label: entry.department, department: entry.department }))
-    : shopCategoryOptions.slice(1).map((item) => ({ label: item, department, shopCategory: item }));
+  const popularChoices: PopularChoice[] = department === "All" && group === "All"
+    ? homeGroups.map((entry) => ({ label: entry.group, department: "All", group: entry.group }))
+    : shelfOptions
+      .filter((option) => group !== "All" ? option.category !== "All" : true)
+      .map((option) => ({ label: option.label, department, group: option.group, shopCategory: option.category }));
 
-  function updateSelectionInUrl(nextDepartment: CatalogDepartment, nextShopCategory = "All") {
+  function updateSelectionInUrl(nextDepartment: CatalogDepartment, nextGroup: Group | "All" = "All", nextShopCategory = "All") {
     const params = new URLSearchParams(window.location.search);
-    if (nextDepartment === "All") params.delete("category");
-    else params.set("category", nextDepartment);
-    if (nextDepartment === "All" || nextShopCategory === "All") params.delete("type");
-    else params.set("type", nextShopCategory);
-    window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params.toString()}` : ""}`);
+    const set = (key: string, value: string) => (value === "All" ? params.delete(key) : params.set(key, value));
+    set("category", nextDepartment);
+    set("group", nextGroup);
+    set("type", nextGroup === "All" ? "All" : nextShopCategory);
+    params.delete("view");
+    params.delete("q");
+    if (!params.has("category") && !params.has("group")) params.set("view", "all");
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }
+
+  function clearFacets() {
+    setSize("All");
+    setCondition("All");
+    setMaterial("All");
+    setStore("All");
+  }
+
+  function leavesScope(nextDepartment: CatalogDepartment) {
+    return Boolean(scopedDepartment) && nextDepartment !== scopedDepartment;
   }
 
   function selectDepartment(nextDepartment: CatalogDepartment) {
+    if (leavesScope(nextDepartment)) {
+      window.location.assign(browseHref({ department: nextDepartment }, sellerRef));
+      return;
+    }
     setDepartment(nextDepartment);
+    setGroup("All");
     setShopCategory("All");
-    setSize("All");
-    setCondition("All");
-    setMaterial("All");
-    setStore("All");
-    if (nextDepartment !== "Shoes") setBrand("All");
+    clearFacets();
+    setBrand("All");
     updateSelectionInUrl(nextDepartment);
   }
 
-  function selectShopCategory(nextShopCategory: string) {
+  function selectShelf(nextGroup: Group | "All", nextShopCategory = "All") {
+    setGroup(nextGroup);
     setShopCategory(nextShopCategory);
     setSize("All");
-    updateSelectionInUrl(department, nextShopCategory);
+    updateSelectionInUrl(department, nextGroup, nextShopCategory);
   }
 
   function applyBrowseSelection(selection: BrowseSelection) {
+    if (leavesScope(selection.department)) {
+      window.location.assign(browseHref(selection, sellerRef));
+      return;
+    }
     setDepartment(selection.department);
+    setGroup(selection.group ?? "All");
     setShopCategory(selection.shopCategory ?? "All");
-    setSize("All");
-    setCondition("All");
+    clearFacets();
     setColor("All");
-    setMaterial("All");
-    setStore("All");
     setPrice("All");
     setBrand(selection.brand ?? "All");
-    updateSelectionInUrl(selection.department, selection.shopCategory);
+    updateSelectionInUrl(selection.department, selection.group ?? "All", selection.shopCategory);
   }
 
   function resetFilters() {
+    if (scopedDepartment) {
+      window.location.assign(browseHref({ department: "All" }, sellerRef));
+      return;
+    }
     setQuery("");
     setDepartment("All");
+    setGroup("All");
     setShopCategory("All");
-    setSize("All");
-    setCondition("All");
+    clearFacets();
     setBrand("All");
     setColor("All");
-    setMaterial("All");
-    setStore("All");
     setPrice("All");
     setAvailableOnly(false);
     setOpenFilter(null);
@@ -297,7 +364,7 @@ export function CatalogApp({
       body: JSON.stringify({
         query: normalizedQuery,
         resultCount: filteredProducts.length,
-        category: department === "All" ? undefined : shopCategory === "All" ? department : `${department} / ${shopCategory}`
+        category: [department, group, shopCategory].filter((part) => part !== "All").join(" / ") || undefined
       }),
       keepalive: true
     }).catch(() => undefined);
@@ -305,7 +372,8 @@ export function CatalogApp({
 
   function filterLabel(type: Exclude<FilterMenu, null>) {
     if (type === "subcategory") {
-      return shopCategory === "All" ? t("filter.subcategory") : translateValue(locale, shopCategory);
+      const chosen = shopCategory !== "All" ? shopCategory : group;
+      return chosen === "All" ? t("filter.subcategory") : translateValue(locale, chosen);
     }
     const values = { category: department, brand, price, size, color, material, condition, store };
     const selected = values[type as keyof typeof values];
@@ -322,11 +390,21 @@ export function CatalogApp({
       );
     }
     if (type === "subcategory") {
-      return shopCategoryOptions.map((item) => (
-        <OptionButton key={item} label={translateValue(locale, item)} active={shopCategory === item} onClick={() => { selectShopCategory(item); setOpenFilter(null); }} />
-      ));
+      return (
+        <>
+          <OptionButton label={translateValue(locale, "All")} active={group === "All"} onClick={() => { selectShelf("All"); setOpenFilter(null); }} />
+          {shelfOptions.map((option) => (
+            <OptionButton
+              key={`${option.group}-${option.category}`}
+              label={option.category === "All" ? translateValue(locale, option.label) : `· ${translateValue(locale, option.label)}`}
+              active={group === option.group && shopCategory === option.category}
+              onClick={() => { selectShelf(option.group, option.category); setOpenFilter(null); }}
+            />
+          ))}
+        </>
+      );
     }
-    const options = type === "brand" ? brands : type === "price" ? priceOptions : type === "size" ? sizeOptions : type === "color" ? colors : type === "material" ? materials : type === "store" ? stores : (department === "Shoes" ? shoeConditionOptions : apparelConditionOptions);
+    const options = type === "brand" ? brands : type === "price" ? priceOptions : type === "size" ? sizeOptions : type === "color" ? colors : type === "material" ? materials : type === "store" ? stores : (group === "Shoes" ? shoeConditionOptions : apparelConditionOptions);
     const selected = type === "brand" ? brand : type === "price" ? price : type === "size" ? size : type === "color" ? color : type === "material" ? material : type === "store" ? store : condition;
     const setters = { brand: setBrand, price: setPrice, size: setSize, color: setColor, material: setMaterial, condition: setCondition, store: setStore };
     const setter = setters[type as keyof typeof setters];
@@ -364,20 +442,19 @@ export function CatalogApp({
         onSelectBrowse={applyBrowseSelection}
       />
 
-      {/* The rails are a way in, not a filter result: once someone has narrowed
-          the catalogue they want the grid, so the feed steps aside. */}
-      {feed && department === "All" && !query.trim() && activeFilterCount === 0 ? feed : null}
-
       <section className="marketShell depopMarketShell" id="catalog">
         <div className="marketResults depopMarketResults">
           <div className="depopCatalogTitle">
             <p>
-              <button type="button" onClick={() => applyBrowseSelection({ department: "All" })}>{t("common.home")}</button><span>/</span>
-              {department === "All" ? t("catalog.allItems") : shopCategory === "All" ? translateValue(locale, department) : (
-                <><button type="button" onClick={() => selectDepartment(department)}>{translateValue(locale, department)}</button><span>/</span>{translateValue(locale, shopCategory)}</>
-              )}
+              <Link href={sellerRef ? `/?ref=${sellerRef}` : "/"}>{t("common.home")}</Link>
+              {department !== "All" ? <><span>/</span><button type="button" onClick={() => selectDepartment(department)}>{translateValue(locale, department)}</button></> : null}
+              {group !== "All" ? <><span>/</span><button type="button" onClick={() => selectShelf(group)}>{translateValue(locale, group)}</button></> : null}
+              {shopCategory !== "All" ? <><span>/</span>{translateValue(locale, shopCategory)}</> : null}
+              {department === "All" && group === "All" ? <><span>/</span>{t("catalog.allItems")}</> : null}
             </p>
-            <h1>{department === "All" ? t("catalog.explore") : translateValue(locale, shopCategory === "All" ? department : shopCategory)}</h1>
+            <h1>{shopCategory !== "All" ? translateValue(locale, shopCategory)
+              : group !== "All" ? (department === "All" ? translateValue(locale, group) : `${translateValue(locale, department)} · ${translateValue(locale, group)}`)
+              : department !== "All" ? translateValue(locale, department) : t("catalog.explore")}</h1>
           </div>
 
           <div className="depopPopularRow" aria-label={t("catalog.popularCategories")}>
@@ -386,8 +463,8 @@ export function CatalogApp({
               {popularChoices.map((choice) => (
                 <button
                   type="button"
-                  key={`${choice.department}-${choice.shopCategory ?? choice.label}`}
-                  className={choice.shopCategory && choice.shopCategory === shopCategory ? "active" : ""}
+                  key={`${choice.department}-${choice.group ?? ""}-${choice.shopCategory ?? choice.label}`}
+                  className={choice.group === group && (choice.shopCategory ?? "All") === shopCategory ? "active" : ""}
                   onClick={() => applyBrowseSelection(choice)}
                 >
                   {translateValue(locale, choice.label)}
@@ -441,7 +518,8 @@ export function CatalogApp({
 
           <div className="activeFilterRow depopActiveFilters">
             {department !== "All" ? <button onClick={() => selectDepartment("All")}>{translateValue(locale, department)} <X size={13} /></button> : null}
-            {shopCategory !== "All" ? <button onClick={() => selectShopCategory("All")}>{translateValue(locale, shopCategory)} <X size={13} /></button> : null}
+            {group !== "All" ? <button onClick={() => selectShelf("All")}>{translateValue(locale, group)} <X size={13} /></button> : null}
+            {shopCategory !== "All" ? <button onClick={() => selectShelf(group)}>{translateValue(locale, shopCategory)} <X size={13} /></button> : null}
             {brand !== "All" ? <button onClick={() => setBrand("All")}>{brand} <X size={13} /></button> : null}
             {price !== "All" ? <button onClick={() => setPrice("All")}>{price} <X size={13} /></button> : null}
             {size !== "All" ? <button onClick={() => setSize("All")}>{size} <X size={13} /></button> : null}
@@ -450,16 +528,24 @@ export function CatalogApp({
             {condition !== "All" ? <button onClick={() => setCondition("All")}>{condition} <X size={13} /></button> : null}
             {store !== "All" ? <button onClick={() => setStore("All")}>{store} <X size={13} /></button> : null}
             {availableOnly ? <button onClick={() => setAvailableOnly(false)}>Available <X size={13} /></button> : null}
-            {activeFilterCount > 0 || department !== "All" ? <button className="clearAll" type="button" onClick={resetFilters}>Clear all</button> : null}
+            {activeFilterCount > 0 || department !== "All" || group !== "All" ? <button className="clearAll" type="button" onClick={resetFilters}>Clear all</button> : null}
           </div>
 
           {filteredProducts.length > 0 ? (
             <div className="marketGrid depopProductGrid">
-              {filteredProducts.map((product, index) => (
+              {shownProducts.map((product, index) => (
                 <ProductCard product={product} key={product.code} isSaved={saved.has(product.code)} onToggleSaved={toggleSaved} sellerRef={sellerRef} source={source} placement={placement} campaign={campaign} priority={index < 6} />
               ))}
             </div>
-          ) : (
+          ) : null}
+          {filteredProducts.length > visibleCount ? (
+            <div className="catalogMore" ref={moreRef}>
+              <button type="button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
+                {t("catalog.showMore", { shown: shownProducts.length, total: filteredProducts.length })}
+              </button>
+            </div>
+          ) : null}
+          {filteredProducts.length > 0 ? null : (
             <div className="emptyResults depopEmptyResults">
               <h2>{t("catalog.noMatches")}</h2>
               <p>{t("catalog.noMatchesHint")}</p>

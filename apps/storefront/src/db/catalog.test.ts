@@ -39,11 +39,11 @@ test("published shoe API data survives JSON loading and actual catalog shoe filt
     assert.equal(products[0]?.size, "UK 8.5");
     assert.equal(products[0]?.condition, "Good");
     assert.deepEqual(filterCatalogProducts(products, {
-      department: "Shoes", shopCategory: "Trainers", size: "UK 8.5", condition: "Good",
+      department: "Men", group: "Shoes", shopCategory: "Trainers", size: "UK 8.5", condition: "Good",
     }).map((product) => product.code), [shoe.barcode]);
-    assert.equal(filterCatalogProducts(products, { department: "Shoes", shopCategory: "Sandals & slides" }).length, 0);
+    assert.equal(filterCatalogProducts(products, { group: "Shoes", shopCategory: "Sandals & slides" }).length, 0);
     assert.equal(filterCatalogProducts(products, { size: "EU 42" }).length, 0);
-    assert.deepEqual(catalogSizeOptions(products, "Shoes"), ["All", "UK 8.5"]);
+    assert.deepEqual(catalogSizeOptions(products, "All", "All", "Shoes"), ["All", "UK 8.5"]);
     assert.ok(shoeConditionGrades.includes(products[0]!.condition as typeof shoeConditionGrades[number]));
   } finally {
     globalThis.fetch = originalFetch;
@@ -131,7 +131,7 @@ test("legacy original shoe systems remain unchanged and discoverable", () => {
     toCatalogProduct({ ...shoe, size: "US Men 9", tagSize: "9", shoeSizeSystem: "US_MEN" }),
   ];
   assert.deepEqual(products.map((product) => product.size), ["EU 42", "US Men 9"]);
-  assert.deepEqual(catalogSizeOptions(products, "Shoes"), ["All", "EU 42", "US Men 9"]);
+  assert.deepEqual(catalogSizeOptions(products, "All", "All", "Shoes"), ["All", "EU 42", "US Men 9"]);
   assert.equal(filterCatalogProducts(products, { size: "EU 42" }).length, 1);
   assert.equal(filterCatalogProducts(products, { size: "US Men 9" }).length, 1);
 });

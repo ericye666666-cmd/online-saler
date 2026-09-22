@@ -124,7 +124,9 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               <span aria-hidden="true">/</span>
               <Link href={browseHref({ department: shelf.department }, sellerRef)}>{translateValue(locale, shelf.department)}</Link>
               <span aria-hidden="true">/</span>
-              <Link href={browseHref({ department: shelf.department, shopCategory: shelf.category }, sellerRef)}>{translateValue(locale, shelf.category)}</Link>
+              <Link href={browseHref({ department: shelf.department, group: shelf.group }, sellerRef)}>{translateValue(locale, shelf.group)}</Link>
+              <span aria-hidden="true">/</span>
+              <Link href={browseHref({ department: shelf.department, group: shelf.group, shopCategory: shelf.category }, sellerRef)}>{translateValue(locale, shelf.category)}</Link>
             </>
           ) : null}
         </nav>
@@ -237,7 +239,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             <div className="homeRail homeProductRail">
               {related.map((item) => <RailCard key={item.code} product={item} locale={locale} href={productHref(item.code)} />)}
             </div>
-            <Link className="homeSeeAllButton" href={shelf ? browseHref({ department: shelf.department, shopCategory: shelf.category }, sellerRef) : "/"}>
+            <Link className="homeSeeAllButton" href={shelf ? browseHref({ department: shelf.department, group: shelf.group, shopCategory: shelf.category }, sellerRef) : "/"}>
               {t("home.seeAll")}
             </Link>
           </section>

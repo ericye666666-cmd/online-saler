@@ -272,3 +272,74 @@
   font-size: 12px;
   font-weight: 400;
 }
+
+/* Browse, after Vestiaire's: tabs, then plain rows, then a promo card. */
+.browseDepartments + .browseList {
+  margin-top: 4px;
+}
+
+.browseList a > span:first-child {
+  font-size: 17px;
+}
+
+.browseBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 14px 0 6px -4px;
+  color: #111;
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.browseGroupTitle {
+  margin: 4px 0 8px !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+}
+
+.browsePromo {
+  display: grid;
+  grid-template-columns: 1fr 42%;
+  min-height: 132px;
+  margin-top: 28px;
+  overflow: hidden;
+  background: #f4f4f4;
+  color: #111;
+  text-decoration: none;
+}
+
+.browsePromo > span {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 18px 16px;
+}
+
+.browsePromo strong {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.browsePromo small {
+  color: #6b6b6b;
+  font-size: 14px;
+}
+
+.browsePromo img,
+.browsePromo b {
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  object-fit: contain;
+}
+
+.browsePromo b {
+  display: grid;
+  place-items: center;
+  background: #1a1a1a;
+  color: #fff;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 30px;
+}

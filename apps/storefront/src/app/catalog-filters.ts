@@ -1,20 +1,19 @@
 import type { Product } from "./data/products";
+import { onChosenShelf } from "./shop-taxonomy";
 
 export type CatalogFilters = Partial<Record<
-  "department" | "shopCategory" | "brand" | "color" | "material" | "store" | "size" | "condition" | "price" | "query" | "sort",
+  "department" | "group" | "shopCategory" | "brand" | "color" | "material" | "store" | "size" | "condition" | "price" | "query" | "sort",
   string
 >> & { availableOnly?: boolean };
 
-/** Whether a product is shelved in a department (and, if given, one of its categories). */
-export function inPlacement(product: Product, department = "All", shopCategory = "All"): boolean {
-  if (department === "All") return true;
-  return (product.placements ?? []).some((placement) =>
-    placement.department === department && (shopCategory === "All" || placement.category === shopCategory));
+/** Whether a product is shelved in a department / group / category; "All" matches everything below it. */
+export function inPlacement(product: Product, department = "All", shopCategory = "All", group = "All"): boolean {
+  return onChosenShelf(product.placements, department, group, shopCategory);
 }
 
-export function catalogSizeOptions(products: Product[], department: string, shopCategory = "All"): string[] {
+export function catalogSizeOptions(products: Product[], department: string, shopCategory = "All", group = "All"): string[] {
   const sizes = products
-    .filter((product) => inPlacement(product, department, shopCategory))
+    .filter((product) => inPlacement(product, department, shopCategory, group))
     .map((product) => product.size)
     .filter((size) => size && size !== "Size not confirmed");
   const letterOrder = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "4XL", "5XL"];
@@ -43,7 +42,7 @@ export function filterCatalogProducts(products: Product[], filters: CatalogFilte
       || (price === "KSh 800+" && product.price >= 800);
     const fields = ["brand", "color", "material", "store", "size", "condition"] as const;
     return matchesQuery && matchesPrice
-      && inPlacement(product, filters.department ?? "All", filters.shopCategory ?? "All")
+      && inPlacement(product, filters.department ?? "All", filters.shopCategory ?? "All", filters.group ?? "All")
       && fields.every((field) => !filters[field] || filters[field] === "All" || product[field] === filters[field])
       && (!filters.availableOnly || product.status === "Available");
   });

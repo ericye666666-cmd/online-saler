@@ -1,52 +1,63 @@
 import assert from "node:assert/strict";
-import { browseHref, classifyProduct, departmentCategories, stockedMenu } from "./shop-taxonomy";
+import { browseHref, classifyProduct, departmentCategories, onChosenShelf, stockedGroups, stockedMenu } from "./shop-taxonomy";
 
 const where = (product: Parameters<typeof classifyProduct>[0]) =>
-  classifyProduct(product).map((placement) => `${placement.department}: ${placement.category}`);
+  classifyProduct(product).map((placement) => `${placement.department} > ${placement.group} > ${placement.category}`);
 
-// Unisex clothing is shelved in both Women and Men; gendered items in one.
-assert.deepEqual(where({ category: "TSHIRTS", subcategory: "BASIC_TSHIRT", audience: "UNISEX" }), ["Women: T-shirts & vests", "Men: T-shirts"]);
-assert.deepEqual(where({ category: "JACKETS", subcategory: "HOODIES", audience: "MEN" }), ["Men: Hoodies & sweatshirts"]);
-assert.deepEqual(where({ category: "LADY_TOPS", subcategory: "FANCY_TOPS", audience: "WOMEN" }), ["Women: Tops"]);
+// Women / Men / Kids first; unisex pieces are shelved in both Women and Men.
+assert.deepEqual(where({ category: "TSHIRTS", subcategory: "BASIC_TSHIRT", audience: "UNISEX" }), ["Women > Clothing > T-shirts & vests", "Men > Clothing > T-shirts"]);
+assert.deepEqual(where({ category: "JACKETS", subcategory: "HOODIES", audience: "MEN" }), ["Men > Clothing > Hoodies & sweatshirts"]);
+assert.deepEqual(where({ category: "LADY_TOPS", subcategory: "FANCY_TOPS", audience: "WOMEN" }), ["Women > Clothing > Tops"]);
 
-// Hoodies filed under OTHER or accessories, and a blazer under women's tops,
-// still reach the shelf a shopper would look on.
-assert.deepEqual(where({ category: "OTHERS", subcategory: "OTHER", audience: "UNISEX", title: "Hooded Sweatshirt" }), ["Women: Hoodies & sweatshirts", "Men: Hoodies & sweatshirts"]);
-assert.deepEqual(where({ category: "OTHER", subcategory: "OTHER", audience: "WOMEN", title: "Hooded Zip Jacket" }), ["Women: Hoodies & sweatshirts"]);
-assert.deepEqual(where({ category: "LADY_TOPS", subcategory: "OTHER", audience: "WOMEN", title: "Blazer" }), ["Women: Jackets"]);
-assert.deepEqual(where({ category: "TSHIRTS", subcategory: "POLO_SHIRTS", audience: "UNISEX" }), ["Women: Shirts", "Men: Polo shirts"]);
+// Misfiled pieces still reach the shelf a shopper would look on.
+assert.deepEqual(where({ category: "OTHERS", subcategory: "OTHER", audience: "UNISEX", title: "Hooded Sweatshirt" }), ["Women > Clothing > Hoodies & sweatshirts", "Men > Clothing > Hoodies & sweatshirts"]);
+assert.deepEqual(where({ category: "LADY_TOPS", subcategory: "OTHER", audience: "WOMEN", title: "Blazer" }), ["Women > Clothing > Jackets"]);
+assert.deepEqual(where({ category: "TSHIRTS", subcategory: "POLO_SHIRTS", audience: "UNISEX" }), ["Women > Clothing > Shirts", "Men > Clothing > Polo shirts"]);
 
-// Non-clothing departments ignore audience.
-assert.deepEqual(where({ category: "BAG", subcategory: "CLUTCH_BAG", audience: "KIDS" }), ["Bags: Clutch bags"]);
-assert.deepEqual(where({ category: "BAG", subcategory: "OTHER" }), ["Bags: Other bags"]);
-assert.deepEqual(where({ category: "SHOES", shoeType: "High heels", audience: "WOMEN", isShoe: true }), ["Shoes: Heels"]);
-assert.deepEqual(where({ category: "SHOES", subcategory: "KIDS_SHOES", audience: "KIDS", isShoe: true }), ["Shoes: Kids' shoes"]);
-assert.deepEqual(where({ category: "OTHERS", subcategory: "HATS_CAPS" }), ["Accessories: Hats"]);
-assert.deepEqual(where({ category: "OTHERS", subcategory: "OTHER", title: "Leather key ring" }), ["Accessories: Other accessories"]);
-assert.deepEqual(where({ category: "TEXTILE", subcategory: "CURTAINS" }), ["Home: Curtains"]);
-assert.deepEqual(where({ category: "KIDS", subcategory: "KIDS_HOODIES", audience: "KIDS" }), ["Kids: Hoodies & jackets"]);
-assert.deepEqual(where({ category: "KIDS", subcategory: "NEWBORN", audience: "KIDS" }), ["Kids: Baby"]);
+// Bags, shoes and accessories sit inside a department too, by audience.
+assert.deepEqual(where({ category: "BAG", subcategory: "HANDBAG", audience: "WOMEN" }), ["Women > Bags > Handbags"]);
+assert.deepEqual(where({ category: "BAG", subcategory: "CLUTCH_BAG", audience: "KIDS" }), ["Kids > Bags > Clutch bags"]);
+assert.deepEqual(where({ category: "BAG", subcategory: "OTHER", audience: "UNISEX" }), ["Women > Bags > Other bags", "Men > Bags > Other bags"]);
+assert.deepEqual(where({ category: "SHOES", shoeType: "High heels", audience: "WOMEN", isShoe: true }), ["Women > Shoes > Heels"]);
+// Men carry no heels shelf, so a men's heel falls to Other shoes.
+assert.deepEqual(where({ category: "SHOES", shoeType: "High heels", audience: "MEN", isShoe: true }), ["Men > Shoes > Other shoes"]);
+assert.deepEqual(where({ category: "SHOES", subcategory: "KIDS_SHOES", audience: "KIDS", title: "Kids' Sandals", isShoe: true }), ["Kids > Shoes > Sandals & slides"]);
+// "Kids' Sandals" filed as a women's shoe still goes to Kids.
+assert.deepEqual(where({ category: "SHOES", subcategory: "LADIES_SHOES", audience: "WOMEN", title: "Kids' Sandals", isShoe: true }), ["Kids > Shoes > Sandals & slides"]);
+assert.deepEqual(where({ category: "OTHERS", subcategory: "HATS_CAPS", audience: "UNISEX" }), ["Women > Accessories > Hats", "Men > Accessories > Hats"]);
+assert.deepEqual(where({ category: "TEXTILE", subcategory: "CURTAINS" }), ["Women > Home > Curtains", "Men > Home > Curtains"]);
+assert.deepEqual(where({ category: "KIDS", subcategory: "NEWBORN", audience: "KIDS" }), ["Kids > Clothing > Baby"]);
 
-// Every label the classifier can return is on its department's menu.
-for (const category of ["TSHIRTS", "SHIRTS", "LADY_TOPS", "JACKETS", "PANTS", "SHORT", "DRESSES", "TWO_PIECE", "OTHER", "OTHERS", "KIDS", "BAG", "TEXTILE"]) {
+// Every label the classifier can return is on its shelf's menu.
+for (const category of ["TSHIRTS", "SHIRTS", "LADY_TOPS", "JACKETS", "PANTS", "SHORT", "DRESSES", "TWO_PIECE", "OTHER", "OTHERS", "KIDS", "BAG", "TEXTILE", "SHOES"]) {
   for (const audience of ["WOMEN", "MEN", "UNISEX", "KIDS", null]) {
-    for (const placement of classifyProduct({ category, subcategory: "OTHER", audience })) {
-      assert.ok(departmentCategories[placement.department].includes(placement.category), `${placement.department} lacks ${placement.category}`);
+    for (const placement of classifyProduct({ category, subcategory: "OTHER", audience, shoeType: "High heels" })) {
+      assert.ok(departmentCategories[placement.department][placement.group].includes(placement.category), `${placement.department}/${placement.group} lacks ${placement.category}`);
     }
   }
 }
 
-// The menu lists stocked departments and categories only, in menu order;
-// a unisex item counts once per department.
-const menu = stockedMenu([
+// The menu lists stocked departments, groups and categories only, in menu order.
+const stock = [
   classifyProduct({ category: "TSHIRTS", subcategory: "BASIC_TSHIRT", audience: "UNISEX" }),
   classifyProduct({ category: "JACKETS", subcategory: "HOODIES", audience: "WOMEN" }),
-  classifyProduct({ category: "BAG", subcategory: "HANDBAG" }),
-]);
-assert.deepEqual(menu.map((entry) => [entry.department, entry.total]), [["Women", 2], ["Men", 1], ["Bags", 1]]);
-assert.deepEqual(menu[0]!.categories, [{ category: "T-shirts & vests", count: 1 }, { category: "Hoodies & sweatshirts", count: 1 }]);
+  classifyProduct({ category: "BAG", subcategory: "HANDBAG", audience: "WOMEN" }),
+];
+const menu = stockedMenu(stock);
+assert.deepEqual(menu.map((entry) => [entry.department, entry.total]), [["Women", 3], ["Men", 1]]);
+assert.deepEqual(menu[0]!.groups.map((entry) => [entry.group, entry.total]), [["Bags", 1], ["Clothing", 2]]);
+assert.deepEqual(menu[0]!.groups[1]!.categories, [{ category: "T-shirts & vests", count: 1 }, { category: "Hoodies & sweatshirts", count: 1 }]);
+assert.deepEqual(stockedGroups(stock), [{ group: "Bags", total: 1 }, { group: "Clothing", total: 2 }]);
 
-assert.equal(browseHref({ department: "Women", shopCategory: "Hoodies & sweatshirts" }), "/?category=Women&type=Hoodies+%26+sweatshirts");
-assert.equal(browseHref({ department: "All" }, "SELLER1"), "/?ref=SELLER1");
+// "All" at any level matches everything below it.
+assert.ok(onChosenShelf(stock[2], "All", "Bags"));
+assert.ok(onChosenShelf(stock[2], "Women", "Bags", "Handbags"));
+assert.ok(!onChosenShelf(stock[2], "Men"));
+assert.ok(onChosenShelf(stock[0], "Men", "Clothing", "T-shirts"));
+
+assert.equal(browseHref({ department: "Women", group: "Clothing", shopCategory: "Hoodies & sweatshirts" }), "/?category=Women&group=Clothing&type=Hoodies+%26+sweatshirts");
+assert.equal(browseHref({ department: "All", group: "Bags" }), "/?group=Bags");
+assert.equal(browseHref({ department: "All" }), "/?view=all");
+assert.equal(browseHref({ department: "All" }, "SELLER1"), "/?view=all&ref=SELLER1");
 
 console.log("Shop taxonomy tests passed");
