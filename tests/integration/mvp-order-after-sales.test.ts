@@ -33,6 +33,7 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
   const createdPermissionIds: string[] = [];
   const affiliateIds: string[] = [];
   const locationIds: string[] = [];
+  const nodeIds: string[] = [];
   const returnIds: string[] = [];
   const orderIds: string[] = [];
   const callbackId = `${key}-provider`;
@@ -101,9 +102,13 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
       products.push(product);
       productIds.push(product.id);
     }
+    const node = await prisma.fulfillmentNode.create({
+      data: { code: `${key}-node`, name: "Integration pickup point", type: "STORE" }
+    });
+    nodeIds.push(node.id);
     const checkout = await startCheckout({
       customerId: customer.id, productIds: products.map((product) => product.id), phone: "0712345679", fulfillmentMethod: "PICKUP",
-      attribution: { affiliateCode, source: "integration" }
+      fulfillmentNodeId: node.id, attribution: { affiliateCode, source: "integration" }
     });
     orderIds.push(checkout.orderId);
     assert.equal(checkout.totalKsh, 500);
@@ -206,7 +211,7 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     assert.equal(returnedProduct.publishedAt, null);
     assert.equal((await prisma.inventoryItem.findUniqueOrThrow({ where: { productId: itemA.productId } })).status, "AVAILABLE");
     assert.equal(await prisma.inventoryMovement.count({ where: { productId: itemA.productId, movementType: "STOCK_IN" } }), 1);
-    await assert.rejects(startCheckout({ customerId: customer.id, productIds: [itemA.productId], phone: "0712345679", fulfillmentMethod: "PICKUP" }), /changed before payment/);
+    await assert.rejects(startCheckout({ customerId: customer.id, productIds: [itemA.productId], phone: "0712345679", fulfillmentMethod: "PICKUP", fulfillmentNodeId: nodeIds[0] }), /changed before payment/);
 
     const returnB = await requestAndReceive(itemB, "b");
     await assert.rejects(afterSales.execute(order.id, returnB.id, "REFUND", refundInput("b-reused-reference", 1, remainingRefund.externalReference), actorId), /already been recorded/);
@@ -235,10 +240,11 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     // foreign keys; this deletion is only valid in the disposable test database.
     await prisma.afterSaleEvent.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.commissionAdjustment.deleteMany({ where: { afterSaleReturnId: { in: returnIds } } });
-    await prisma.refundRecord.deleteMany({ where: { afterSaleReturnId: { in: returnIds } } });
+    await prisma.refundRecord.deleteMany({ where: { OR: [{ afterSaleReturnId: { in: returnIds } }, { orderId: { in: orderIds } }] } });
     await prisma.afterSaleReturn.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.customerServiceCase.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.mpesaCallback.deleteMany({ where: { providerCheckoutRequestId: callbackId } });
+    await prisma.notification.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
     await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
@@ -250,6 +256,7 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     await prisma.role.deleteMany({ where: { id: { in: roleIds } } });
     await prisma.permission.deleteMany({ where: { id: { in: createdPermissionIds } } });
     await prisma.warehouseLocation.deleteMany({ where: { id: { in: locationIds } } });
+    await prisma.fulfillmentNode.deleteMany({ where: { id: { in: nodeIds } } });
     await prisma.$disconnect();
     globalThis.fetch = originalFetch;
   }

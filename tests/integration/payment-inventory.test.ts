@@ -43,8 +43,19 @@ async function main() {
     if (!productId) products.push(product.id);
     return { customer, product };
   }
+  async function pickupNode() {
+    return prisma.fulfillmentNode.upsert({
+      where: { code: `${prefix}-node` },
+      update: {},
+      create: { code: `${prefix}-node`, name: "Integration pickup point", type: "STORE" }
+    });
+  }
   async function checkout(f: Awaited<ReturnType<typeof fixture>>) {
-    return startCheckout({ customerId: f.customer.id, productIds: [f.product.id], phone: "0712345678", fulfillmentMethod: "PICKUP" });
+    const node = await pickupNode();
+    return startCheckout({
+      customerId: f.customer.id, productIds: [f.product.id], phone: "0712345678",
+      fulfillmentMethod: "PICKUP", fulfillmentNodeId: node.id
+    });
   }
   function provider(error?: Error) {
     let calls = 0;
@@ -91,7 +102,8 @@ async function main() {
     await test("an active reservation cannot be silently moved to another payment phone", async () => {
       const f = await fixture();
       await checkout(f);
-      await assert.rejects(startCheckout({ customerId: f.customer.id, productIds: [f.product.id], phone: "0799999999", fulfillmentMethod: "PICKUP" }), /before changing/);
+      const node = await pickupNode();
+      await assert.rejects(startCheckout({ customerId: f.customer.id, productIds: [f.product.id], phone: "0799999999", fulfillmentMethod: "PICKUP", fulfillmentNodeId: node.id }), /before changing/);
       assert.equal((await prisma.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).phone, "254712345678");
       await releaseCustomerCheckoutReservations(f.customer.id, [f.product.id]);
     });
@@ -231,9 +243,11 @@ async function main() {
   } finally {
     // Delete only records created by this suite, never truncate a shared table.
     await prisma.mpesaCallback.deleteMany({ where: { providerCheckoutRequestId: { in: callbackKeys } } });
+    await prisma.notification.deleteMany({ where: { order: { is: { customerId: { in: customers } } } } });
     await prisma.order.deleteMany({ where: { customerId: { in: customers } } });
     await prisma.customer.deleteMany({ where: { id: { in: customers } } });
     await prisma.product.deleteMany({ where: { id: { in: products } } });
+    await prisma.fulfillmentNode.deleteMany({ where: { code: `${prefix}-node` } });
     await prisma.$disconnect();
   }
 }
