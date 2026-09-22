@@ -1,133 +1,119 @@
 {
- "title": "T-Shirts",
- "subtitle": "Short sleeves · new in at Direct Loop",
  "shopUrl": "dloop.co.ke",
  "products": [
   {
    "title": "Graphic T-Shirt",
    "size": "XL",
    "price": 250,
-   "image": "https://dloop.co.ke/api-proxy/products/2a6068a3-98f0-4c11-853b-b073b95b9adf/images/447bb709-f1ec-4a68-8caa-629a0e4b6707/content"
+   "image": "https://dloop.co.ke/framed/products/2a6068a3-98f0-4c11-853b-b073b95b9adf/image-assets/8e0eaf14-2bd1-4373-a47e-704631ab0249/content"
   },
   {
    "title": "Graphic T-Shirt",
    "size": "L",
    "price": 250,
-   "image": "https://dloop.co.ke/api-proxy/products/50f2548e-03d6-4f64-a8bd-d582a1aaaa37/images/556a76f5-2910-4dd7-b57e-aeac4c14f85f/content"
+   "image": "https://dloop.co.ke/framed/products/50f2548e-03d6-4f64-a8bd-d582a1aaaa37/image-assets/074af16c-348a-4411-9a7c-7c6c20c012d5/content"
   },
   {
    "title": "Stylish T-Shirt",
    "size": "L",
    "price": 250,
-   "image": "https://dloop.co.ke/api-proxy/products/73d97c52-9bc8-4c5f-9a4d-12db9c717e7d/images/ee85a313-fd48-46f2-9dc8-975f74f5b037/content"
+   "image": "https://dloop.co.ke/framed/products/73d97c52-9bc8-4c5f-9a4d-12db9c717e7d/image-assets/be5cfcc1-24bc-4bdf-8caa-4fbafdb793a0/content"
   },
   {
    "title": "Striped T-Shirt",
    "size": "L",
    "price": 250,
-   "image": "https://dloop.co.ke/api-proxy/products/e9e871fd-a3b7-4df7-9b31-9f77905a4095/images/10a2c1c6-5162-4374-9e8a-90483e8067ef/content"
+   "image": "https://dloop.co.ke/framed/products/e9e871fd-a3b7-4df7-9b31-9f77905a4095/image-assets/50a006c6-08d3-4867-a29a-52a68facfcef/content"
   },
   {
    "title": "Polo Shirt",
    "size": "XXXL",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/c6a71bb4-267b-4c97-8547-1fd3a9ff24e0/images/44ca7c06-066c-403b-8fd0-c4d9ab596320/content"
+   "image": "https://dloop.co.ke/framed/products/c6a71bb4-267b-4c97-8547-1fd3a9ff24e0/image-assets/1001b792-9af5-4be0-b1fd-51337a1b7eac/content"
   },
   {
    "title": "Graphic T-Shirt",
    "size": "XXXL",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/b05d04b3-449b-4180-af02-22476696d2ad/images/29872b40-bac9-4aad-99af-6af356f6b128/content"
+   "image": "https://dloop.co.ke/framed/products/b05d04b3-449b-4180-af02-22476696d2ad/image-assets/7289b183-4c97-4b3e-9599-7626d8f472f3/content"
   },
   {
    "title": "Graphic T-shirt",
    "size": "XXXL",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/3bbd5045-6453-4003-ba4b-f8a2eb331d09/images/1ecea1bd-4092-45b4-a557-c6e08e6766ed/content"
+   "image": "https://dloop.co.ke/framed/products/3bbd5045-6453-4003-ba4b-f8a2eb331d09/image-assets/3d242e5d-d411-4c41-ab06-e6105754a53b/content"
   },
   {
    "title": "Graphic Print T-shirt",
    "size": "XXXL",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/c4b5c8ac-a1b0-472f-ae6d-18181ba820d7/images/e6585afc-a2b6-41d8-9bee-040c3605c0d3/content"
+   "image": "https://dloop.co.ke/framed/products/c4b5c8ac-a1b0-472f-ae6d-18181ba820d7/image-assets/b2fd0bf5-48c0-40ce-9d61-14a9c1a98185/content"
   },
   {
    "title": "US Military Gear T-Shirt",
    "size": "XXXL",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/7cb96657-96ec-418c-8cda-c24ee9f016ce/images/8db98685-cef9-4567-a943-63377663c2fd/content"
+   "image": "https://dloop.co.ke/framed/products/7cb96657-96ec-418c-8cda-c24ee9f016ce/image-assets/b3f2785f-96cc-43cf-84ba-999e5eee05cc/content"
   },
   {
    "title": "Graphic T-Shirt",
    "size": "XXXL",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/1904cfd4-59be-4805-9bc8-06f99e3866b1/images/f0ea346e-54a0-4b90-a735-3f246f29dcc9/content"
+   "image": "https://dloop.co.ke/framed/products/1904cfd4-59be-4805-9bc8-06f99e3866b1/image-assets/06e0c35e-94b4-4514-8c80-b85c144ea770/content"
   },
   {
    "title": "Graphic T-shirt",
    "size": "XXXL",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/0f1c16a5-e234-432d-8489-58942b7eff48/images/71badc7a-f914-478b-b2d5-ecd208a2d108/content"
+   "image": "https://dloop.co.ke/framed/products/0f1c16a5-e234-432d-8489-58942b7eff48/image-assets/acfd63a9-5fac-44a3-bd53-c5681794bbba/content"
   },
   {
    "title": "WOOENIR Graphic T-Shirt",
    "size": "XXXL",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/45163213-4c86-438c-bae6-230029d5b85d/images/04fb061f-ac43-4d28-a1a3-6a86491f814b/content"
+   "image": "https://dloop.co.ke/framed/products/45163213-4c86-438c-bae6-230029d5b85d/image-assets/c9ffb1f3-7018-494f-babb-24346bfee8d3/content"
   },
   {
    "title": "Graphic T-Shirt",
    "size": "L",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/5b5337ef-666d-4852-810b-749aaad688b5/images/b592a839-6d9d-4252-968e-8f487fcc2b29/content"
+   "image": "https://dloop.co.ke/framed/products/5b5337ef-666d-4852-810b-749aaad688b5/image-assets/3facfe82-96de-4c17-b704-af5d2e38c4e1/content"
   },
   {
    "title": "Champion Graphic T-Shirt",
    "size": "L",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/528d70fd-b9ac-4506-8925-f8db72542eaf/images/a7ca2317-b718-4d69-8706-57cebbbde7d7/content"
+   "image": "https://dloop.co.ke/framed/products/528d70fd-b9ac-4506-8925-f8db72542eaf/image-assets/bed2ec46-36fb-4338-a48a-cc62dcde8b55/content"
   },
   {
    "title": "Don't Sleep Graphic T-Shirt",
    "size": "L",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/b89a1a10-f929-44ca-b4a1-99c160ab34e2/images/5aabfd54-dec4-417f-814a-2a56f06ff18c/content"
+   "image": "https://dloop.co.ke/framed/products/b89a1a10-f929-44ca-b4a1-99c160ab34e2/image-assets/c4c814a8-b92a-40e0-b12e-b31bdeb2f1d9/content"
   },
   {
    "title": "Graphic T-Shirt",
    "size": "L",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/2c6ee371-3398-48e2-b0ec-58b894b7344d/images/82e7c713-3b3d-41f1-bd45-270dbe62d3b3/content"
+   "image": "https://dloop.co.ke/framed/products/2c6ee371-3398-48e2-b0ec-58b894b7344d/image-assets/ea74a19c-13bf-43a3-b6e1-4837e0dea647/content"
   },
   {
    "title": "T-shirt with Tiger Print",
    "size": "L",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/e63dfda1-558c-4504-b4fc-262c4a17dab7/images/ba46b0d6-2bde-44b5-9c25-2dcad3e0314c/content"
+   "image": "https://dloop.co.ke/framed/products/e63dfda1-558c-4504-b4fc-262c4a17dab7/image-assets/3b250c38-c182-4d6a-a2bd-7317c14d68b9/content"
   },
   {
    "title": "Graphic T-Shirt",
    "size": "L",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/f4fb6115-b3e0-4ade-bff4-3e451689a1a8/images/b0f593e5-8490-4be0-8c86-6d83c650d1e3/content"
+   "image": "https://dloop.co.ke/framed/products/f4fb6115-b3e0-4ade-bff4-3e451689a1a8/image-assets/52b06249-1999-439d-8cd3-f82ae07dfdec/content"
   },
   {
    "title": "Graphic T-Shirt",
    "size": "L",
    "price": 350,
-   "image": "https://dloop.co.ke/api-proxy/products/7c343c7e-f33d-4170-9b41-5221a9b999bd/images/492977df-6752-42f2-8fe7-3b319150f10d/content"
-  },
-  {
-   "title": "Black Crew Neck Basic T-Shirt",
-   "size": "XL",
-   "price": 300,
-   "image": "https://dloop.co.ke/api-proxy/products/28f42c7f-1811-4b5b-955c-001aecf81cb4/images/11d71b58-8c1a-4797-9878-d21ab9551961/content"
-  },
-  {
-   "title": "Black Crew-Neck Basic T-Shirt",
-   "size": "XL",
-   "price": 300,
-   "image": "https://dloop.co.ke/api-proxy/products/e638615e-5807-4d9b-ae23-0740ebe4e7b4/images/87dae7fd-f22b-447f-a510-a5d4559e9a95/content"
+   "image": "https://dloop.co.ke/framed/products/7c343c7e-f33d-4170-9b41-5221a9b999bd/image-assets/d6d656cc-b270-4bdd-ab5d-86e35d2e44e0/content"
   }
  ]
 }

@@ -10,8 +10,6 @@ const defaultProps: AffiliateTikTokVideoProps = {
 };
 
 const runThroughDefaultProps: RunThroughVideoProps = {
-  title: "T-Shirts",
-  subtitle: "New in at Direct Loop",
   shopUrl: "dloop.co.ke",
   products: [],
 };
