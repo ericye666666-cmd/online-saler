@@ -17,7 +17,8 @@ const baseline = "e319fe94febb0479fe143914c0e2b6f6d87b764d";
 const migrations = [
   "20260906140000_add_manual_after_sales",
   "20260906180000_shoe_intake",
-  "20260917120000_guest_phone_checkout"
+  "20260917120000_guest_phone_checkout",
+  "20260922150000_run_through_videos"
 ];
 const raw = process.env.MVP_INTEGRATION_DATABASE_URL;
 if (!raw) throw new Error("MVP_INTEGRATION_DATABASE_URL must name a disposable local test database.");
