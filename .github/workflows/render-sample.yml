@@ -17,10 +17,11 @@ jobs:
       - run: npm install --no-audit --no-fund --loglevel=error
       - run: |
           mkdir -p out
-          npx remotion still src/index.ts RunThroughVideo out/cover.png --props=props.json --frame=0
-          npx remotion still src/index.ts RunThroughVideo out/item.png --props=props.json --frame=80
-          npx remotion still src/index.ts RunThroughVideo out/end.png --props=props.json --frame=350
-          npx remotion render src/index.ts RunThroughVideo out/tshirts-run-through.mp4 --props=props.json --codec=h264
+          for v in grid hero strip; do
+            npx remotion still src/index.ts RunThroughVideo out/cover-$v.png --props=props-$v.json --frame=0
+            npx remotion still src/index.ts RunThroughVideo out/item-$v.png --props=props-$v.json --frame=36
+          done
+          npx remotion render src/index.ts RunThroughVideo out/sample-hero.mp4 --props=props-hero.json --codec=h264
       - uses: actions/upload-artifact@v4
         with:
           name: run-through
