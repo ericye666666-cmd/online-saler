@@ -23,14 +23,6 @@ type ProductListQuery = {
   q?: string;
 };
 
-/**
- * The storefront builds its home rails, department menu, Browse counts and
- * search from this one list, so anything past the limit is invisible to
- * shoppers. It was 60 — with 229 pieces live, every bag and T-shirt had
- * dropped off the site. The MVP catalogue is 1,000 pieces; list them all.
- */
-export const PUBLIC_LIST_LIMIT = 1000;
-
 @Controller("public/products")
 export class StorefrontProductsController {
   @Get()
@@ -40,8 +32,10 @@ export class StorefrontProductsController {
     const products = await prisma.product.findMany({
       where: productWhere(query),
       include: productInclude(),
-      orderBy: productOrder(query.sort),
-      take: PUBLIC_LIST_LIMIT
+      // No row limit: every published, available piece is listed. A limit of
+      // 60 once hid 169 of 229 live pieces, because the storefront's menu,
+      // rails and search are all built from this one list.
+      orderBy: productOrder(query.sort)
     });
 
     return products.map(publicProduct);
@@ -62,8 +56,7 @@ export class StorefrontProductsController {
         tagSize: true,
         shoeSizeSystem: true,
         priceKsh: true
-      },
-      take: 1000
+      }
     });
 
     const prices = products

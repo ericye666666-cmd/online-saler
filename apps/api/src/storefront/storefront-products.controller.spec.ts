@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ProductDetailStatus } from "@online-saler/database";
-import { PUBLIC_LIST_LIMIT, publicDetail, publicProduct, publicDetailWhere } from "./storefront-products.controller";
+import { publicDetail, publicProduct, publicDetailWhere } from "./storefront-products.controller";
 
 test("public product remains available when no approved detail exists", () => {
   const product = publicProduct({
@@ -164,7 +166,8 @@ test("paid and reserved detail preserves public display but never claims availab
   assert.deepEqual(statuses, ["AVAILABLE", "RESERVED", "PAID", "PICKED", "PACKED", "DELIVERED"]);
 });
 
-test("the public list covers the whole MVP catalogue, not just the newest pieces", () => {
+test("the public list and filters take every published piece, with no row limit", () => {
+  const source = readFileSync(join(__dirname, "storefront-products.controller.ts"), "utf8");
   // The storefront's menu, rails and search are built from this list alone.
-  assert.ok(PUBLIC_LIST_LIMIT >= 1000);
+  assert.doesNotMatch(source, /take:\s*(?:[2-9]|\d{2,})/);
 });
