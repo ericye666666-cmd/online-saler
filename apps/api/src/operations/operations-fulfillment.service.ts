@@ -121,6 +121,9 @@ export type OrderCenterListInput = {
   packerEmployeeId?: string;
   rider?: string;
   affiliate?: string;
+  /** Narrows the list to one store's packages, for the node workbench. */
+  nodeId?: string;
+  packageCode?: string;
 };
 
 export type AdminInput = { adminUserId?: string; note?: string };
@@ -1408,6 +1411,8 @@ export class OperationsFulfillmentService {
     if (input.fulfillmentMethod && Object.values(FulfillmentMethod).includes(input.fulfillmentMethod)) and.push({ fulfillmentMethod: input.fulfillmentMethod });
     if (input.paymentStatus && Object.values(PaymentStatus).includes(input.paymentStatus)) and.push({ payments: { some: { status: input.paymentStatus } } });
     if (input.orderStatus && Object.values(OrderStatus).includes(input.orderStatus)) and.push({ status: input.orderStatus });
+    if (input.nodeId?.trim()) and.push({ fulfillment: { is: { fulfillmentNodeId: input.nodeId.trim() } } });
+    if (input.packageCode?.trim()) and.push({ fulfillment: { is: { packageCode: { contains: input.packageCode.trim(), mode: "insensitive" } } } });
     if (input.pickerEmployeeId?.trim()) and.push({ fulfillment: { is: { assignedPickerEmployeeId: input.pickerEmployeeId.trim() } } });
     if (input.packerEmployeeId?.trim()) and.push({ fulfillment: { is: { packedByEmployeeId: input.packerEmployeeId.trim() } } });
     if (input.rider?.trim()) {

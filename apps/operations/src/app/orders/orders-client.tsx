@@ -49,6 +49,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ORDER_STATUS_TABS, type OrderStatusTab } from "./order-center-routes";
 import { AfterSalesPanel } from "./after-sales-panel";
+import { operationsRequester } from "@/lib/operations-request";
 import { operationsFormatLocale, t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
@@ -86,6 +87,17 @@ type FulfillmentEvent = {
   deliveryRider?: DeliveryRider | null;
   orderItem?: { snapshot?: { title?: string | null } | null } | null;
 };
+type NodeOption = {
+  id: string;
+  code: string;
+  name: string;
+  type: "WAREHOUSE" | "STORE";
+  supportsPickup: boolean;
+  supportsDelivery: boolean;
+};
+
+type OrderNode = { id: string; code: string; name: string; type: "WAREHOUSE" | "STORE" };
+
 type OrderRow = {
   id: string;
   orderNumber: string;
@@ -93,6 +105,9 @@ type OrderRow = {
   centerTab: OrderStatusTab;
   fulfillmentMethod: "PICKUP" | "KIKUYU_LOCAL_DELIVERY";
   pickupCode?: string | null;
+  fulfillmentNode?: OrderNode | null;
+  whatsappPhone?: string | null;
+  refunds?: Array<{ id: string; amountKsh: number; externalReference: string; refundedAt: string }>;
   totalKsh: number;
   deliveryFeeKsh: number;
   deliveryAddress?: string | null;
@@ -128,8 +143,15 @@ type OrderRow = {
     pickupConfirmedBy?: FulfillmentEmployee | null;
     afterSaleOwner?: FulfillmentEmployee | null;
     deliveryRider?: DeliveryRider | null;
+    fulfillmentNode?: OrderNode | null;
+    packageCode?: string | null;
+    sentToNodeAt?: string | null;
+    arrivedAtNodeAt?: string | null;
+    actualDeliveryCostKsh?: number | null;
+    deliveryRiderName?: string | null;
     exceptionReason?: string | null;
     exceptionNote?: string | null;
+    exceptionFromStatus?: string | null;
     items: FulfillmentItem[];
     events: FulfillmentEvent[];
   } | null;
@@ -166,7 +188,7 @@ type Filters = {
 };
 
 type Scope = "workbench" | "all" | "after-sales" | "exceptions";
-type DialogKind = "assign-picker" | "scan" | "start-packing" | "complete-packing" | "assign-rider" | "confirm-pickup" | "exception" | "assign-after-sale" | "cancel";
+type DialogKind = "assign-picker" | "scan" | "start-packing" | "complete-packing" | "assign-rider" | "confirm-pickup" | "exception" | "assign-after-sale" | "cancel" | "assign-node" | "write-off" | "refund" | "resolve-exception";
 type DialogState = { kind: DialogKind; order: OrderRow; item?: OrderRow["items"][number] } | null;
 type RequestOptions = RequestInit & { query?: Record<string, string | undefined> };
 
@@ -618,15 +640,34 @@ function OrderActions({ order, session, busy, onDialog, onDirect }: {
   if (status === "PAID" && hasPermission(session, "orders.pick")) actions.push(<Button key="claim" disabled={busy} onClick={() => void onDirect(order, "claim-picking")}><ClipboardCheckIcon data-icon="inline-start" />{t("领取拣货任务")}</Button>);
   if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && !order.fulfillment?.packingStartedAt) actions.push(<Button key="start-pack" disabled={busy} onClick={() => onDialog({ kind: "start-packing", order })}><BoxIcon data-icon="inline-start" />{t("开始打包")}</Button>);
   if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && order.fulfillment?.packingStartedAt) actions.push(<Button key="pack" disabled={busy} onClick={() => onDialog({ kind: "complete-packing", order })}><PackageCheckIcon data-icon="inline-start" />{t("完成打包")}</Button>);
-  if (status === "PACKED" && order.fulfillmentMethod === "PICKUP" && hasPermission(session, "orders.pack")) actions.push(<Button key="pickup-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-pickup")}><ClipboardCheckIcon data-icon="inline-start" />{t("设为待自提")}</Button>);
-  if (status === "PACKED" && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="dispatch-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-dispatch")}><TruckIcon data-icon="inline-start" />{t("设为待发货")}</Button>);
+  const nodeType = order.fulfillment?.fulfillmentNode?.type ?? order.fulfillmentNode?.type ?? null;
+  const atStoreNode = nodeType === "STORE";
+  if (status && !["COMPLETED", "IN_TRANSIT_TO_NODE", "ARRIVED_AT_NODE", "READY_FOR_PICKUP", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY"].includes(status) && hasPermission(session, "orders.assign-node")) {
+    actions.push(<Button key="node" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-node", order })}><TruckIcon data-icon="inline-start" />{order.fulfillmentNode ? t("改派履约点") : t("指定履约点")}</Button>);
+  }
+  if (status === "PACKED" && atStoreNode && hasPermission(session, "orders.assign-node")) actions.push(<Button key="send-node" disabled={busy} onClick={() => void onDirect(order, "send-to-node")}><TruckIcon data-icon="inline-start" />{t("发往门店")}</Button>);
+  if (status === "IN_TRANSIT_TO_NODE" && hasPermission(session, "orders.node-receive")) actions.push(<Button key="receive-node" disabled={busy} onClick={() => void onDirect(order, "receive-at-node")}><PackageCheckIcon data-icon="inline-start" />{t("确认到店")}</Button>);
+  if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && order.fulfillmentMethod === "PICKUP" && hasPermission(session, "orders.pack")) actions.push(<Button key="pickup-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-pickup")}><ClipboardCheckIcon data-icon="inline-start" />{t("设为待自提")}</Button>);
+  if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="dispatch-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-dispatch")}><TruckIcon data-icon="inline-start" />{t("设为待发货")}</Button>);
   if (status === "READY_FOR_DISPATCH" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="rider" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-rider", order })}><TruckIcon data-icon="inline-start" />{t("分配配送员")}</Button>);
   if (status === "READY_FOR_DISPATCH" && order.fulfillment?.deliveryRiderId && hasPermission(session, "orders.dispatch")) actions.push(<Button key="dispatch" disabled={busy} onClick={() => void onDirect(order, "dispatch")}><TruckIcon data-icon="inline-start" />{t("已交给配送员")}</Button>);
   if (status === "READY_FOR_PICKUP" && hasPermission(session, "orders.complete")) actions.push(<Button key="pickup" disabled={busy} onClick={() => onDialog({ kind: "confirm-pickup", order })}><CheckCircle2Icon data-icon="inline-start" />{t("确认已取货")}</Button>);
   if (status === "OUT_FOR_DELIVERY" && hasPermission(session, "orders.complete")) actions.push(<Button key="delivered" disabled={busy} onClick={() => void onDirect(order, "complete-delivery")}><CheckCircle2Icon data-icon="inline-start" />{t("确认送达")}</Button>);
   if (order.customerServiceCases.some((item) => item.issueType === "AFTER_SALE") && hasPermission(session, "orders.after-sale")) actions.push(<Button key="after-sale" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-after-sale", order })}>{t("处理售后")}</Button>);
   if (status && !["COMPLETED", "EXCEPTION"].includes(status) && ["orders.pick", "orders.pack", "orders.dispatch"].some((permission) => hasPermission(session, permission))) actions.push(<Button key="exception" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "exception", order })}><AlertTriangleIcon data-icon="inline-start" />{t("提交异常事实")}</Button>);
-  if (!["COMPLETED", "CANCELLED", "EXPIRED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.cancel")) actions.push(<Button key="cancel" variant="destructive" disabled={busy} onClick={() => onDialog({ kind: "cancel", order })}>{t("取消订单")}</Button>);
+  if (status === "EXCEPTION" && order.fulfillment?.exceptionFromStatus && !["CANCELLED", "REFUNDED"].includes(order.status) && ["orders.pick", "orders.pack", "orders.dispatch", "orders.node-receive"].some((permission) => hasPermission(session, permission))) {
+    actions.push(<Button key="resolve-exception" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "resolve-exception", order })}><CheckCircle2Icon data-icon="inline-start" />{t("异常已解决，回到原步骤")}</Button>);
+  }
+  // A paid order cannot simply be cancelled: the garment has to be accounted
+  // for and the money has to be given back.
+  const paid = Boolean(order.payments?.some((payment) => payment.status === "SUCCESS"));
+  if (paid && !["COMPLETED", "CANCELLED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.write-off")) {
+    actions.push(<Button key="write-off" variant="destructive" disabled={busy} onClick={() => onDialog({ kind: "write-off", order })}><AlertTriangleIcon data-icon="inline-start" />{t("无法履约，作废订单")}</Button>);
+  }
+  if (paid && ["CANCELLED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.refund")) {
+    actions.push(<Button key="refund" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "refund", order })}>{t("登记退款")}</Button>);
+  }
+  if (!paid && !["COMPLETED", "CANCELLED", "EXPIRED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.cancel")) actions.push(<Button key="cancel" variant="destructive" disabled={busy} onClick={() => onDialog({ kind: "cancel", order })}>{t("取消订单")}</Button>);
   return actions;
 }
 
@@ -651,6 +692,11 @@ function OrderActionDialog(props: {
   const [verificationMethod, setVerificationMethod] = useState("ORDER_NUMBER");
   const [verificationValue, setVerificationValue] = useState("");
   const [exceptionReason, setExceptionReason] = useState("ITEM_NOT_FOUND");
+  const [nodeId, setNodeId] = useState("");
+  const [nodes, setNodes] = useState<NodeOption[]>([]);
+  const [inventoryOutcome, setInventoryOutcome] = useState("LOST");
+  const [refundAmountKsh, setRefundAmountKsh] = useState("");
+  const [refundReference, setRefundReference] = useState("");
   const [afterSaleStatus, setAfterSaleStatus] = useState("OPEN");
   const [afterSaleReason, setAfterSaleReason] = useState("");
   const [customerRequest, setCustomerRequest] = useState("");
@@ -676,7 +722,22 @@ function OrderActionDialog(props: {
     setRequiresRefund(String(Boolean(afterSale?.requiresRefund)));
     setAffectsAffiliateCommission(String(Boolean(afterSale?.affectsAffiliateCommission)));
     setExceptionReason("ITEM_NOT_FOUND"); setNote(""); setError(null);
+    setNodeId(state.order.fulfillmentNode?.id ?? "");
+    setInventoryOutcome("LOST");
+    setRefundAmountKsh(String(state.order.totalKsh ?? ""));
+    setRefundReference("");
   }, [session, state]);
+
+  useEffect(() => {
+    if (state?.kind !== "assign-node" || !session?.accessToken) return;
+    void (async () => {
+      try {
+        setNodes(await operationsRequester(session.accessToken ?? "")<NodeOption[]>("/operations/orders/nodes"));
+      } catch {
+        // The select stays empty; the dialog still shows why nothing is listed.
+      }
+    })();
+  }, [session?.accessToken, state?.kind]);
 
   async function submit() {
     if (!state) return;
@@ -691,6 +752,13 @@ function OrderActionDialog(props: {
     if (state.kind === "assign-rider") { path = "assign-rider"; body = { ...body, riderType, employeeId: riderType === "INTERNAL" ? employeeId : undefined, name, phone, company, vehicle, estimatedDeliveryAt: estimatedDeliveryAt ? new Date(estimatedDeliveryAt).toISOString() : undefined }; }
     if (state.kind === "confirm-pickup") { path = "confirm-pickup"; body = { ...body, verificationMethod, verificationValue }; }
     if (state.kind === "exception") { path = "exception"; body.reason = exceptionReason; }
+    if (state.kind === "assign-node") { path = "assign-node"; body.nodeId = nodeId; }
+    if (state.kind === "resolve-exception") { path = "resolve-exception"; }
+    if (state.kind === "write-off") { path = "write-off"; body.inventoryOutcome = inventoryOutcome; }
+    if (state.kind === "refund") {
+      path = "refund";
+      body = { ...body, amountKsh: Number(refundAmountKsh), externalReference: refundReference, evidenceNote: note };
+    }
     if (state.kind === "assign-after-sale") {
       path = "assign-after-sale";
       const afterSale = state.order.customerServiceCases.find((item) => item.issueType === "AFTER_SALE");
@@ -751,6 +819,40 @@ function OrderActionDialog(props: {
             ) : null}
             {state.kind === "confirm-pickup" ? <><SelectFilter label={t("核对方式")} value={verificationMethod} onChange={setVerificationMethod} options={[["ORDER_NUMBER", t("订单号")], ["PHONE", t("手机号")], ["PICKUP_CODE", t("自提码")]]} /><TextFilter label={t("核对值")} value={verificationValue} onChange={setVerificationValue} /></> : null}
             {state.kind === "exception" ? <SelectFilter label={t("异常类型")} value={exceptionReason} onChange={setExceptionReason} options={EXCEPTION_OPTIONS} /> : null}
+            {state.kind === "assign-node" ? (
+              <>
+                <Alert><TruckIcon /><AlertTitle>{t("这单在哪里交给顾客？")}</AlertTitle><AlertDescription>{t("选门店时，打包后需要先发往门店、门店扫码签收，才能交给顾客或叫 Bolt。选中央仓则在仓库直接交付。")}</AlertDescription></Alert>
+                <SelectFilter
+                  label={t("履约点")}
+                  value={nodeId}
+                  onChange={setNodeId}
+                  options={nodes
+                    .filter((node) => state.order.fulfillmentMethod === "PICKUP" ? node.supportsPickup : node.supportsDelivery)
+                    .map((node) => [node.id, node.type === "WAREHOUSE" ? `${node.name}（${t("中央仓")}）` : node.name] as [string, string])}
+                />
+              </>
+            ) : null}
+            {state.kind === "resolve-exception" ? (
+              <Alert><CheckCircle2Icon /><AlertTitle>{t("回到")} {statusLabel(state.order.fulfillment?.exceptionFromStatus ?? "")}</AlertTitle><AlertDescription>{t("写清楚问题是怎么解决的，订单会回到异常发生前的那一步继续。")}</AlertDescription></Alert>
+            ) : null}
+            {state.kind === "write-off" ? (
+              <>
+                <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{t("这单的钱已经收了")}</AlertTitle><AlertDescription>{t("作废后订单会被取消、佣金冲回、商品按你选择的方式处理，并进入待退款列表。退款要在 M-Pesa 里操作完再回来登记凭证。")}</AlertDescription></Alert>
+                <SelectFilter
+                  label={t("商品怎么处理")}
+                  value={inventoryOutcome}
+                  onChange={setInventoryOutcome}
+                  options={[["LOST", t("找不到 / 已损坏 / 已线下卖掉 —— 记为丢失")], ["RESTOCK", t("商品还在，重新上架销售")]]}
+                />
+              </>
+            ) : null}
+            {state.kind === "refund" ? (
+              <>
+                <Alert><AlertTriangleIcon /><AlertTitle>{t("只登记，不转账")}</AlertTitle><AlertDescription>{t("先在 M-Pesa 里把钱退给顾客，再回到这里登记金额和凭证号。系统不会自动转账。")}</AlertDescription></Alert>
+                <TextFilter label={t("退款金额 KSh")} type="number" value={refundAmountKsh} onChange={setRefundAmountKsh} />
+                <TextFilter label={t("M-Pesa 冲正 / 付款凭证号")} value={refundReference} onChange={setRefundReference} />
+              </>
+            ) : null}
             {state.kind === "assign-after-sale" && !managedAfterSale ? <><TextFilter label={t("售后原因")} value={afterSaleReason} onChange={setAfterSaleReason} /><TextFilter label={t("顾客要求")} value={customerRequest} onChange={setCustomerRequest} /><SelectFilter label={t("当前售后状态")} value={afterSaleStatus} onChange={setAfterSaleStatus} options={[["OPEN", t("待处理")], ["IN_PROGRESS", t("处理中")], ["RESOLVED", t("已解决")], ["CLOSED", t("已关闭")]]} /><SelectFilter label={t("是否需要退货")} value={requiresReturn} onChange={setRequiresReturn} options={[["false", t("不需要")], ["true", t("需要")]]} /><SelectFilter label={t("是否需要退款")} value={requiresRefund} onChange={setRequiresRefund} options={[["false", t("不需要")], ["true", t("需要")]]} /><SelectFilter label={t("是否影响 Affiliate 佣金")} value={affectsAffiliateCommission} onChange={setAffectsAffiliateCommission} options={[["false", t("否")], ["true", t("是")]]} /></> : null}
             {state.kind === "assign-after-sale" && managedAfterSale ? <p className="text-muted-foreground text-sm">{t("此处仅分配售后负责人。审批、验收、退款和入库请在订单详情的“退货与退款”区域处理。")}</p> : null}
             {state.kind === "cancel" ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{t("确认取消这张订单？")}</AlertTitle><AlertDescription>{t("取消会写入状态事件；已经完成或退款的订单不能在此取消。")}</AlertDescription></Alert> : null}
@@ -821,7 +923,7 @@ function barcodeErrorDescription(details?: Record<string, unknown>) {
 }
 
 function dialogTitle(kind: DialogKind) {
-  return ({ "assign-picker": t("分配拣货员工"), scan: t("逐件 Barcode 核对"), "start-packing": t("开始打包"), "complete-packing": t("完成打包"), "assign-rider": t("分配配送员"), "confirm-pickup": t("确认顾客已取货"), exception: t("提交异常事实"), "assign-after-sale": t("处理售后订单"), cancel: t("取消订单") } as Record<DialogKind, string>)[kind];
+  return ({ "assign-picker": t("分配拣货员工"), scan: t("逐件 Barcode 核对"), "start-packing": t("开始打包"), "complete-packing": t("完成打包"), "assign-rider": t("分配配送员"), "confirm-pickup": t("确认顾客已取货"), exception: t("提交异常事实"), "assign-after-sale": t("处理售后订单"), cancel: t("取消订单"), "assign-node": t("指定履约点"), "resolve-exception": t("解决异常"), "write-off": t("作废订单并处理库存"), refund: t("登记已完成的退款") } as Record<DialogKind, string>)[kind];
 }
 
 function employeeLabel(kind: DialogKind) {
@@ -837,7 +939,7 @@ function actionLabel(action: string) {
 }
 
 function statusLabel(status: string) {
-  return ({ DRAFT: t("草稿"), PENDING_PAYMENT: t("待付款"), PAYMENT_PROCESSING: t("支付处理中"), PAID: t("待拣货"), PICKING: t("拣货中"), READY_TO_PACK: t("待打包"), PACKED: t("已打包"), READY_FOR_PICKUP: t("待自提"), READY_FOR_DISPATCH: t("待发货"), OUT_FOR_DELIVERY: t("配送中"), COMPLETED: t("已完成"), AFTER_SALE: t("售后中"), CANCELLED: t("已取消"), EXPIRED: t("已取消"), REFUNDED: t("已退款"), SUCCESS: t("支付成功"), FAILED: t("支付失败"), MANUAL_REVIEW: t("人工复核"), NO_PAYMENT: t("无支付"), EXCEPTION: t("异常"), ITEM_NOT_FOUND: t("商品找不到"), BARCODE_MISMATCH: t("Barcode 不匹配"), ITEM_DAMAGED: t("商品损坏"), DELIVERY_FAILED: t("配送失败"), CUSTOMER_CANCELLED: t("顾客取消"), OTHER: t("其他异常"), OPEN: t("待处理"), IN_PROGRESS: t("处理中"), RESOLVED: t("已解决"), CLOSED: t("已关闭") } as Record<string, string>)[status] ?? status;
+  return ({ DRAFT: t("草稿"), PENDING_PAYMENT: t("待付款"), PAYMENT_PROCESSING: t("支付处理中"), PAID: t("待拣货"), PICKING: t("拣货中"), READY_TO_PACK: t("待打包"), PACKED: t("已打包"), IN_TRANSIT_TO_NODE: t("发往门店中"), ARRIVED_AT_NODE: t("已到店"), READY_FOR_PICKUP: t("待自提"), READY_FOR_DISPATCH: t("待发货"), OUT_FOR_DELIVERY: t("配送中"), COMPLETED: t("已完成"), AFTER_SALE: t("售后中"), CANCELLED: t("已取消"), EXPIRED: t("已取消"), REFUNDED: t("已退款"), SUCCESS: t("支付成功"), FAILED: t("支付失败"), MANUAL_REVIEW: t("人工复核"), NO_PAYMENT: t("无支付"), EXCEPTION: t("异常"), ITEM_NOT_FOUND: t("商品找不到"), BARCODE_MISMATCH: t("Barcode 不匹配"), ITEM_DAMAGED: t("商品损坏"), ITEM_SOLD_OFFLINE: t("已线下卖掉"), NODE_NOT_RECEIVED: t("门店未收到"), WRONG_NODE: t("发错门店"), CUSTOMER_UNREACHABLE: t("联系不上顾客"), DELIVERY_FAILED: t("配送失败"), CUSTOMER_CANCELLED: t("顾客取消"), OTHER: t("其他异常"), OPEN: t("待处理"), IN_PROGRESS: t("处理中"), RESOLVED: t("已解决"), CLOSED: t("已关闭") } as Record<string, string>)[status] ?? status;
 }
 
 function formatDate(value: string) { return new Date(value).toLocaleString(operationsFormatLocale(), { hour12: false }); }
@@ -845,4 +947,4 @@ function money(value: number) { return `${value.toLocaleString("en-KE")} KSh`; }
 
 const PAYMENT_OPTIONS = [["PENDING", "待处理"], ["SUCCESS", "支付成功"], ["FAILED", "支付失败"], ["CANCELLED", "已取消"], ["TIMEOUT", "超时"], ["EXPIRED", "过期"], ["MANUAL_REVIEW", "人工复核"]] as const;
 const ORDER_OPTIONS = [["DRAFT", "草稿"], ["PENDING_PAYMENT", "待付款"], ["PAYMENT_PROCESSING", "支付处理中"], ["PAID", "已付款"], ["FULFILLING", "履约中"], ["COMPLETED", "已完成"], ["CANCELLED", "已取消"], ["EXPIRED", "已过期"], ["REFUNDED", "已退款"]] as const;
-const EXCEPTION_OPTIONS = [["ITEM_NOT_FOUND", "商品找不到"], ["BARCODE_MISMATCH", "Barcode 不匹配"], ["ITEM_DAMAGED", "商品损坏"], ["DELIVERY_FAILED", "配送失败"], ["CUSTOMER_CANCELLED", "顾客取消"], ["OTHER", "其他异常"]] as const;
+const EXCEPTION_OPTIONS = [["ITEM_NOT_FOUND", "商品找不到"], ["BARCODE_MISMATCH", "Barcode 不匹配"], ["ITEM_DAMAGED", "商品损坏"], ["ITEM_SOLD_OFFLINE", "已线下卖掉"], ["NODE_NOT_RECEIVED", "门店未收到"], ["WRONG_NODE", "发错门店"], ["CUSTOMER_UNREACHABLE", "联系不上顾客"], ["DELIVERY_FAILED", "配送失败"], ["CUSTOMER_CANCELLED", "顾客取消"], ["OTHER", "其他异常"]] as const;

@@ -133,6 +133,9 @@ export const operationsModules: ModuleNav[] = [
     permission: "module.orders",
     items: [
       { label: "订单工作台", href: "/orders", icon: LayoutDashboardIcon, permission: "page.orders.workbench" },
+      { label: "门店履约台", href: "/orders/node", icon: TruckIcon, permission: "page.orders.node" },
+      { label: "支付复核", href: "/orders/payment-review", icon: CircleDollarSignIcon, permission: "page.orders.payment-review" },
+      { label: "财务汇总", href: "/orders/finance", icon: BarChart3Icon, permission: "page.orders.finance" },
       { label: "全部订单", href: "/orders/all", icon: BriefcaseBusinessIcon, permission: "page.orders.all" },
       { label: "售后订单", href: "/orders/after-sales", icon: HeadphonesIcon, permission: "page.orders.after-sale" },
       { label: "异常订单", href: "/orders/exceptions", icon: XCircleIcon, permission: "page.orders.exceptions" }
