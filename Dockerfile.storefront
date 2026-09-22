@@ -42,5 +42,8 @@ COPY --from=builder /app/apps/storefront/.next/standalone ./
 COPY --from=builder /app/apps/storefront/.next/static ./apps/storefront/.next/static
 COPY --from=builder /app/apps/storefront/public ./apps/storefront/public
 COPY --from=builder /app/apps/storefront/build/remotion-release ./apps/storefront/build/remotion-release
+# Remotion loads its renderer binary at runtime, so Next's standalone output
+# does not trace it. Without it, video rendering fails with ENOENT.
+COPY --from=builder /app/node_modules/@remotion/compositor-linux-x64-gnu ./node_modules/@remotion/compositor-linux-x64-gnu
 EXPOSE 3000
 CMD ["node", "apps/storefront/server.js"]

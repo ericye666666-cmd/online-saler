@@ -237,7 +237,9 @@ export async function claimNextRender(day: string = nairobiDay()) {
   const candidates = await prisma.runThroughVideo.findMany({
     where: {
       day,
-      status: AffiliateAssetStatus.PROCESSING,
+      // A failed render of today is tried again once its lease has run out:
+      // it usually failed on something temporary.
+      status: { in: [AffiliateAssetStatus.PROCESSING, AffiliateAssetStatus.FAILED] },
       storageObjectKey: null,
       OR: [{ renderStartedAt: null }, { renderStartedAt: { lt: staleBefore } }],
     },
