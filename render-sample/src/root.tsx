@@ -10,6 +10,7 @@ const defaultProps: AffiliateTikTokVideoProps = {
 };
 
 const runThroughDefaultProps: RunThroughVideoProps = {
+  categoryLabel: "New in",
   shopUrl: "dloop.co.ke",
   products: [],
 };
