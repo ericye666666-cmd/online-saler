@@ -676,6 +676,7 @@ export const enDictionary: Record<string, string> = {
   "防风外套": "Windbreaker",
   "防泼水": "Water-repellent",
   "放大{label}": "Zoom in on {label}",
+  "AI 推荐分类（点一下即可选择）": "AI suggested categories (tap one to choose)",
   "分类": "Category",
   "分类表现": "Category performance",
   "分类待确认": "Category not confirmed yet",

@@ -146,6 +146,7 @@ export class OpenAIVisionProvider implements AIProvider {
                   `category enum: ${runtimeTaxonomy.categories.join(", ")}`,
                   `subcategory enum: ${runtimeTaxonomy.subcategories.join(", ")}`,
                   `category and subcategory must be a matching pair: ${runtimeTaxonomy.subcategoriesByCategory}`,
+                  "Also return categoryOptions: { value: [{ category, subcategory }, ...], confidence } with 2 or 3 matching pairs a staff member might choose for this item, most likely first; the first pair equals category and subcategory. Offer genuine alternatives (for a hooded zip jacket: JACKETS/HOODIES, JACKETS/UNISEX_JACKETS), never repeat a pair.",
                   "Hoodies, hooded jackets and sweatshirts are category JACKETS with subcategory HOODIES or SWEATSHIRTS (KIDS_HOODIES for children). Blazers are JACKETS/BLAZERS. Polo shirts are SHIRTS/POLO_SHIRTS. OTHERS is only for accessories, underwear and swimwear; OTHER is a last resort when no category fits.",
                   `primaryColor enum: ${runtimeTaxonomy.colors.join(", ")}`,
                   `material enum: ${runtimeTaxonomy.materials.join(", ")}`,

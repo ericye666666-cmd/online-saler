@@ -14,8 +14,10 @@ import {
   PRODUCT_FIT_TYPES,
   PRODUCT_MATERIAL_OPTIONS,
   PRODUCT_STRETCH_LEVELS,
+  PRODUCT_SUBCATEGORIES_BY_CATEGORY,
   PRODUCT_SUBCATEGORY_OPTIONS,
   PRODUCT_TAG_OPTIONS,
+  type AICategoryOption,
   type AIAudience,
   type AIColor,
   type AIExtractionNormalizedOutput,
@@ -213,6 +215,7 @@ export function normalizeOpenAIVisionOutput(
     legOpeningCm: numberField(record, ["legOpeningCm", "leg_opening_cm"], evidenceImageIds),
     inseamCm: numberField(record, ["inseamCm", "inseam_cm"], evidenceImageIds)
   };
+  output.categoryOptions = categoryOptionsField(record, output, categorySet, subcategorySet, evidenceImageIds);
   if (isShoeCategory(categoryHint) || isShoeProduct(output.category.value, output.subcategory.value)) {
     return normalizeShoeExtraction(output);
   }
@@ -375,6 +378,41 @@ function enumField<T extends string>(
   const normalizedValue = aliases[rawValue] ?? rawValue;
   const value = allowed.has(normalizedValue) ? (normalizedValue as T) : fallback;
   return { value, confidence: confidence(field.confidence), evidenceImageIds };
+}
+
+/**
+ * The pairs staff can pick with one tap: the AI's own answer first, then its
+ * alternatives. A pair whose subcategory belongs to another category, or that
+ * the taxonomy does not know, is dropped rather than offered.
+ */
+function categoryOptionsField(
+  record: RawExtraction,
+  output: AIExtractionNormalizedOutput,
+  categorySet: Set<string>,
+  subcategorySet: Set<string>,
+  evidenceImageIds: string[]
+): AIFieldValue<AICategoryOption[]> {
+  const field = firstField(record, ["categoryOptions", "category_options", "categoryAlternatives"]);
+  const owners = PRODUCT_SUBCATEGORIES_BY_CATEGORY as Record<string, readonly string[]>;
+  const code = (value: unknown, aliases: Partial<Record<string, string>>) => {
+    const raw = String(value ?? "").trim().toUpperCase().replaceAll(" ", "_").replaceAll("-", "_");
+    return aliases[raw] ?? raw;
+  };
+  const pairs: AICategoryOption[] = [];
+  const offer = (rawCategory: unknown, rawSubcategory: unknown) => {
+    const category = code(rawCategory, CATEGORY_ALIASES);
+    const subcategory = code(rawSubcategory, SUBCATEGORY_ALIASES) || "OTHER";
+    if (!categorySet.has(category) || !subcategorySet.has(subcategory)) return;
+    if (subcategory !== "OTHER" && owners[category] && !owners[category].includes(subcategory)) return;
+    if (pairs.some((pair) => pair.category === category && pair.subcategory === subcategory)) return;
+    pairs.push({ category: category as AICategoryOption["category"], subcategory: subcategory as AICategoryOption["subcategory"] });
+  };
+  offer(output.category.value, output.subcategory.value);
+  for (const item of Array.isArray(field.value) ? field.value : []) {
+    const pair = asRecord(item);
+    offer(pair.category, pair.subcategory);
+  }
+  return { value: pairs.slice(0, 3), confidence: confidence(field.confidence), evidenceImageIds };
 }
 
 function stringField(record: RawExtraction, keys: string[], evidenceImageIds: string[]): AIFieldValue<string> {

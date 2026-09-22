@@ -330,6 +330,12 @@ export function ProductBatchCalibrationPage({
     setNotice("");
   }
 
+  function pickCategoryPair(category: string, subcategory: string) {
+    setForm((current) => syncSizeFields(normalizeWorkspaceForm({ ...current, category, subcategory }, current.category), "category"));
+    setActiveImage("original-FRONT");
+    setNotice("");
+  }
+
   function updateTags(tag: string, checked: boolean) {
     setForm((current) => ({
       ...current,
@@ -526,6 +532,27 @@ export function ProductBatchCalibrationPage({
           <div className="grid gap-4 sm:grid-cols-2">
             <FormSelect fieldKey="category" label={t("分类")} value={form.category} values={categoryOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "category")} onChange={(value) => updateForm("category", value)} />
             <FormSelect fieldKey="subcategory" label={form.category === "BAG" ? t("包款式") : t("子分类")} value={form.subcategory} values={form.category === "BAG" ? BAG_STYLES : subcategoryOptions} labels={form.category === "BAG" ? BAG_STYLE_LABELS : taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "subcategory")} onChange={(value) => updateForm("subcategory", value)} />
+            {!readOnly && aiCategoryOptions(aiOutput).length > 1 ? (
+              <div className="sm:col-span-2" data-field-key="categoryOptions">
+                <p className="mb-2 text-sm font-medium">{t("AI 推荐分类（点一下即可选择）")}</p>
+                <div className="flex flex-wrap gap-2">
+                  {aiCategoryOptions(aiOutput).map((option) => {
+                    const chosen = form.category === option.category && form.subcategory === option.subcategory;
+                    return (
+                      <button
+                        key={`${option.category}-${option.subcategory}`}
+                        type="button"
+                        aria-pressed={chosen}
+                        className={`rounded-full border px-3 py-1.5 text-sm transition ${chosen ? "border-foreground bg-foreground text-background" : "border-input bg-background hover:border-foreground"}`}
+                        onClick={() => pickCategoryPair(option.category, option.subcategory)}
+                      >
+                        {taxonomyLabels[option.category] ?? enumLabel(option.category)} › {taxonomyLabels[option.subcategory] ?? enumLabel(option.subcategory)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             <FormSelect fieldKey="audience" label={t("适用人群")} value={form.audience} values={AI_AUDIENCES} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "audience")} onChange={(value) => updateForm("audience", value)} />
             <FormSelect fieldKey="color" label={t("颜色")} value={form.color} values={colorOptions} labels={taxonomyLabels} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "primaryColor")} onChange={(value) => updateForm("color", value)} />
             {!shoes && form.category !== "BAG" && form.audience === "KIDS" ? <FormSelect fieldKey="kidsAgeRange" label={t("儿童年龄段")} value={form.kidsAgeRange} values={AI_KIDS_AGE_RANGES} labels={kidsAgeRangeLabels()} required disabled={readOnly} suggestion={aiSuggestion(aiOutput, "kidsAgeRange")} onChange={(value) => updateForm("kidsAgeRange", value)} /> : null}
@@ -807,6 +834,19 @@ function activeSubcategories(taxonomy: ProductTaxonomy, category: string, curren
 function taxonomyLabelMap(taxonomy: ProductTaxonomy | null) {
   if (!taxonomy) return {};
   return Object.fromEntries(Object.values(taxonomy.groups).flat().map((option) => [option.code, option.displayName]));
+}
+
+/** The category + subcategory pairs the AI offers, most likely first (see categoryOptions in the AI contract). */
+function aiCategoryOptions(output: JsonRecord | null): Array<{ category: string; subcategory: string }> {
+  const field = output?.categoryOptions;
+  if (!field || typeof field !== "object" || Array.isArray(field)) return [];
+  const value = (field as JsonRecord).value;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const { category, subcategory } = item as JsonRecord;
+    return typeof category === "string" && typeof subcategory === "string" ? [{ category, subcategory }] : [];
+  });
 }
 
 function aiSuggestion(output: JsonRecord | null, key: string) {

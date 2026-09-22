@@ -406,6 +406,12 @@ export interface AIMeasurementGeometry {
   lines: Partial<Record<AIMeasurementField, AIMeasurementLine>>;
 }
 
+/** One category + subcategory pair the AI offers staff to pick with a single tap. */
+export type AICategoryOption = {
+  category: AIProductCategory;
+  subcategory: ProductSubcategoryOption;
+};
+
 export interface AIExtractionNormalizedOutput {
   category: AIFieldValue<AIProductCategory>;
   subcategory: AIFieldValue<ProductSubcategoryOption>;
@@ -435,6 +441,12 @@ export interface AIExtractionNormalizedOutput {
   legOpeningCm: AIFieldValue<number>;
   inseamCm: AIFieldValue<number>;
   measurementGeometry?: AIMeasurementGeometry;
+  /**
+   * Up to three valid category + subcategory pairs, most likely first, so
+   * staff can correct a wrong guess with one tap. Not a field decision of
+   * its own: the chosen pair lands in category and subcategory.
+   */
+  categoryOptions?: AIFieldValue<AICategoryOption[]>;
 }
 
 export interface AIExtractionRequest {

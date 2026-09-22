@@ -312,3 +312,35 @@ test("server shoe intake hint overrides misclassified clothing and never accepts
   assert.equal(output.shoeSizeSystem?.value, null);
   assert.equal(output.shoulderWidthCm.value, null);
 });
+
+test("offers staff up to three valid category pairs, the AI's own answer first", () => {
+  const output = normalizeOpenAIVisionOutput(
+    {
+      category: { value: "JACKETS", confidence: 0.8 },
+      subcategory: { value: "HOODIES", confidence: 0.7 },
+      categoryOptions: {
+        value: [
+          { category: "JACKETS", subcategory: "HOODIES" },
+          { category: "JACKETS", subcategory: "UNISEX_JACKETS" },
+          // A subcategory filed under the wrong category is never offered.
+          { category: "OTHERS", subcategory: "HOODIES" },
+          { category: "unknown", subcategory: "OTHER" },
+          { category: "LADY_TOPS", subcategory: "SWEATERS" },
+          { category: "TSHIRTS", subcategory: "GRAPHIC_TSHIRT" }
+        ],
+        confidence: 0.6
+      }
+    },
+    ["front"]
+  );
+  assert.deepEqual(output.categoryOptions?.value, [
+    { category: "JACKETS", subcategory: "HOODIES" },
+    { category: "JACKETS", subcategory: "UNISEX_JACKETS" },
+    { category: "LADY_TOPS", subcategory: "SWEATERS" }
+  ]);
+});
+
+test("still offers the AI's own pair when it returns no alternatives", () => {
+  const output = normalizeOpenAIVisionOutput({ category: { value: "BAG" }, subcategory: { value: "HANDBAG" } }, ["front"]);
+  assert.deepEqual(output.categoryOptions?.value, [{ category: "BAG", subcategory: "HANDBAG" }]);
+});
