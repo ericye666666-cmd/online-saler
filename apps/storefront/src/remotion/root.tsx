@@ -29,7 +29,7 @@ export function RemotionRoot() {
         width={1080}
         height={1920}
         defaultProps={runThroughDefaultProps}
-        calculateMetadata={({ props }) => ({ durationInFrames: runThroughDurationInFrames(props.products.length, props.variant.itemFrames) })}
+        calculateMetadata={({ props }: { props: RunThroughVideoProps }) => ({ durationInFrames: runThroughDurationInFrames(props.products.length, props.variant.itemFrames) })}
       />
     </>
   );
