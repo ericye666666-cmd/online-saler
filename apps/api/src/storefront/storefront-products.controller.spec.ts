@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ProductDetailStatus } from "@online-saler/database";
-import { publicDetail, publicProduct, publicDetailWhere } from "./storefront-products.controller";
+import { PUBLIC_LIST_LIMIT, publicDetail, publicProduct, publicDetailWhere } from "./storefront-products.controller";
 
 test("public product remains available when no approved detail exists", () => {
   const product = publicProduct({
@@ -162,4 +162,9 @@ test("paid and reserved detail preserves public display but never claims availab
   assert.equal(where.status, "PUBLISHED", "draft, withdrawn and archived goods stay private");
   const statuses = (where.inventoryItem as { is: { status: { in: string[] } } }).is.status.in;
   assert.deepEqual(statuses, ["AVAILABLE", "RESERVED", "PAID", "PICKED", "PACKED", "DELIVERED"]);
+});
+
+test("the public list covers the whole MVP catalogue, not just the newest pieces", () => {
+  // The storefront's menu, rails and search are built from this list alone.
+  assert.ok(PUBLIC_LIST_LIMIT >= 1000);
 });

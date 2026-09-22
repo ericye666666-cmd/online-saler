@@ -23,6 +23,14 @@ type ProductListQuery = {
   q?: string;
 };
 
+/**
+ * The storefront builds its home rails, department menu, Browse counts and
+ * search from this one list, so anything past the limit is invisible to
+ * shoppers. It was 60 — with 229 pieces live, every bag and T-shirt had
+ * dropped off the site. The MVP catalogue is 1,000 pieces; list them all.
+ */
+export const PUBLIC_LIST_LIMIT = 1000;
+
 @Controller("public/products")
 export class StorefrontProductsController {
   @Get()
@@ -33,7 +41,7 @@ export class StorefrontProductsController {
       where: productWhere(query),
       include: productInclude(),
       orderBy: productOrder(query.sort),
-      take: 60
+      take: PUBLIC_LIST_LIMIT
     });
 
     return products.map(publicProduct);
