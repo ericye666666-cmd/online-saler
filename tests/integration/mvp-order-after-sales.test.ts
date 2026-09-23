@@ -251,6 +251,9 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     // Restrict cleanup to this run's records and respect append-only financial
     // foreign keys; this deletion is only valid in the disposable test database.
     await prisma.afterSaleEvent.deleteMany({ where: { orderId: { in: orderIds } } });
+    // RefundRequest restricts deletion of its order, so it goes before the
+    // refunds it points at and well before the orders themselves.
+    await prisma.refundRequest.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.commissionAdjustment.deleteMany({ where: { afterSaleReturnId: { in: returnIds } } });
     await prisma.refundRecord.deleteMany({ where: { OR: [{ afterSaleReturnId: { in: returnIds } }, { orderId: { in: orderIds } }] } });
     await prisma.afterSaleReturn.deleteMany({ where: { orderId: { in: orderIds } } });
