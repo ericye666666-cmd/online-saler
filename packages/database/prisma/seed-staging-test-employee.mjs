@@ -109,6 +109,22 @@ const permissions = [
     description: "Open role management."
   },
   {
+    code: "page.customer-service.cases",
+    module: "customer-service",
+    scope: "PAGE",
+    page: "customer-service-cases",
+    action: "view",
+    description: "Open the customer service case queue."
+  },
+  {
+    code: "page.customer-service.refunds",
+    module: "customer-service",
+    scope: "PAGE",
+    page: "customer-service-refunds",
+    action: "view",
+    description: "Open refund requests waiting for finance approval."
+  },
+  {
     code: "page.system.permissions",
     module: "system",
     scope: "PAGE",
@@ -135,6 +151,13 @@ const permissions = [
     ["orders.complete", "orders", "complete", "Confirm delivery or customer pickup completion."],
     ["orders.cancel", "orders", "cancel", "Cancel an eligible order."],
     ["orders.after-sale", "orders", "after-sale", "Manage after-sale ownership and status."],
+    ["orders.resend-code", "orders", "resend-code", "Send the customer a replacement delivery code."],
+    ["customer-service.assign", "customer-service", "assign", "Give a customer service case an owner."],
+    ["customer-service.escalate", "customer-service", "escalate", "Hand a case to fulfillment, finance or an administrator."],
+    ["customer-service.contact-update", "customer-service", "contact-update", "Correct a customer phone, WhatsApp number or delivery address."],
+    ["customer-service.refund-request", "customer-service", "refund-request", "Ask finance to approve a refund. Never moves money."],
+    ["customer-service.refund-approve", "customer-service", "refund-approve", "Approve or reject a refund request. Finance only."],
+    ["orders.refund", "orders", "refund", "Record a refund that was already executed in M-Pesa."],
     ["warehouse-locations.view", "product", "view", "View warehouse locations and their products."],
     ["warehouse-locations.manage", "product", "manage", "Create, enable, and disable warehouse locations."],
     ["warehouse-locations.edit-capacity", "product", "edit-capacity", "Edit warehouse location capacity."],
@@ -237,13 +260,13 @@ const roles = [
     code: "CUSTOMER_SERVICE",
     name: "Customer Service",
     description: "Customer support, return intake, and delivery exception handling.",
-    permissions: ["module.customer-service", "module.orders", "page.orders.all", "page.orders.after-sale", "action.customer-service.view", "action.customer-service.create", "action.customer-service.edit", "action.orders.view", "orders.view", "orders.after-sale"]
+    permissions: ["module.customer-service", "module.orders", "page.orders.all", "page.orders.after-sale", "page.customer-service.cases", "page.customer-service.refunds", "action.customer-service.view", "action.customer-service.create", "action.customer-service.edit", "customer-service.assign", "customer-service.escalate", "customer-service.contact-update", "customer-service.refund-request", "action.orders.view", "orders.view", "orders.after-sale", "orders.resend-code"]
   },
   {
     code: "FINANCE",
     name: "Finance",
     description: "Payment, payout, commission, and export access.",
-    permissions: ["module.orders", "module.affiliate", "module.analytics", "action.orders.view", "orders.view", "action.orders.export", "action.affiliate.view", "action.affiliate.approve", "action.affiliate.export", "action.analytics.view", "action.analytics.export", "analytics.warehouse.view"]
+    permissions: ["module.orders", "module.affiliate", "module.analytics", "module.customer-service", "action.orders.view", "orders.view", "action.orders.export", "action.affiliate.view", "action.affiliate.approve", "action.affiliate.export", "action.analytics.view", "action.analytics.export", "analytics.warehouse.view", "action.customer-service.view", "page.customer-service.refunds", "customer-service.refund-approve", "orders.refund"]
   },
   {
     code: "DATA_ANALYST",
