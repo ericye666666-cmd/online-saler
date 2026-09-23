@@ -542,6 +542,19 @@ export class OperationsFulfillmentService {
         throw new ConflictException("Order or packing task changed. Refresh before completing packing.");
       }
       await this.assertOwnedInventory(tx, orderId, current.items.length, InventoryItemStatus.PICKED);
+      // The package code is minted here, not when the parcel is sent, because
+      // the label goes on the parcel and the parcel is sealed now. Minting it at
+      // dispatch meant a packer had to press 发往门店 before the sticker existed
+      // — recording that a parcel had left in order to be allowed to label it.
+      //
+      // It needs the destination, which is in the code. A delivery order that has
+      // not been routed yet has none, so it keeps getting its code at dispatch
+      // and the screens say to route it first. A placeholder would be worse than
+      // nothing: `send-to-node` keeps an existing code, so a wrong one would
+      // survive onto the shelf the store scans.
+      const node = current.fulfillmentNode;
+      const packageCode = current.fulfillment.packageCode
+        || (node && requiresNodeTransit(node.type) ? buildPackageCode(current.orderNumber, node.code) : null);
       await tx.orderFulfillment.update({
         where: { id: fulfillment.id },
         data: {
@@ -551,7 +564,8 @@ export class OperationsFulfillmentService {
           packagingMethod,
           packageCount,
           packingStatus: packagingMethod,
-          packingNote: input.note?.trim() || null
+          packingNote: input.note?.trim() || null,
+          ...(packageCode ? { packageCode } : {})
         }
       });
       const changed = await tx.inventoryItem.updateMany({

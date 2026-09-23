@@ -60,12 +60,18 @@ export function PackingView({ orders, busy, onStart, onComplete, onLabel }: {
           {packed.map((order) => (
             <div key={order.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
               <div>
-                <p className="font-mono font-semibold">{order.fulfillment?.packageCode ?? order.orderNumber}</p>
+                <p className="font-mono font-semibold">{order.fulfillment?.packageCode ?? t("未生成包裹号")}</p>
                 <p className="text-muted-foreground text-sm">{order.orderNumber} · {t("{count} 件", { count: order.items.length })}</p>
               </div>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => onLabel(order)}>
-                <PrinterIcon data-icon="inline-start" />{t("打面单")}
-              </Button>
+              {order.fulfillment?.packageCode ? (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => onLabel(order)}>
+                  <PrinterIcon data-icon="inline-start" />{t("打面单")}
+                </Button>
+              ) : (
+                // No destination, no routing sticker. Saying so here beats a
+                // print dialog that opens and then cannot print anything.
+                <span className="text-destructive text-xs">{t("没有履约点，打不出面单")}</span>
+              )}
             </div>
           ))}
           <p className="text-muted-foreground text-xs">

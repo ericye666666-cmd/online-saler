@@ -505,8 +505,8 @@ function BatchBar({ orders, session, busy, onClear, onPickingSheet, onLabels, on
 const DISPATCH_STEPS = [
   { key: "pick", label: "① 打单拣货", statuses: ["PAID"], hint: "先打一张拣货单，按货架位走一遍。领取拣货后这些单进入下一步。" },
   { key: "scan", label: "② 逐件核对", statuses: ["PICKING"], hint: "拿回来的每一件都要扫码核对。全部核对完，订单自动进入待打包。" },
-  { key: "pack", label: "③ 打包", statuses: ["READY_TO_PACK"], hint: "开始打包 → 完成打包。打包完会生成包裹号，就能打面单了。" },
-  { key: "dispatch", label: "④ 发车", statuses: ["PACKED"], hint: "面单贴好，按门店分堆，整组发往门店。没有履约点的单要先指定。" }
+  { key: "pack", label: "③ 打包", statuses: ["READY_TO_PACK"], hint: "开始打包 → 完成打包。填包装方式和包裹数量，完成时生成包裹号。" },
+  { key: "dispatch", label: "④ 打面单发车", statuses: ["PACKED"], hint: "先勾上整组打面单，第 1 张贴箱子、其余放进去，然后整组发往门店。没有履约点的单打不出面单——没有目的地就没有路由贴纸，要先指定。" }
 ] as const;
 
 type DispatchStep = (typeof DISPATCH_STEPS)[number]["key"];

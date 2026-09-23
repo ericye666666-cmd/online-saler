@@ -279,6 +279,12 @@ function pickingLabel(
  * item delivery is five.
  */
 export function renderFulfillmentLabels(input: FulfillmentLabelInput): FulfillmentLabelSheet[] {
+  // The routing sticker is a QR of the package code and nothing else. Without
+  // one there is no label to print, and the QR encoder's own complaint ("No
+  // input text") tells a packer nothing about what to do next.
+  if (!input.packageCode?.trim()) {
+    throw new Error(`${input.orderNumber || "This order"} has no package code yet. Route it to a store and pack it, then the label can print.`);
+  }
   const items = input.items ?? [];
   const pages: FulfillmentLabelItem[][] = [];
   for (let start = 0; start < items.length; start += ITEMS_PER_LABEL) {

@@ -183,7 +183,9 @@ export function FulfillmentLabelPrinter({ labels, onClose }: { labels: Fulfillme
             ))}
           </div>
         ) : (
-          <p className="bg-muted/40 p-4 text-sm">{t("无法生成面单，请检查包裹号。")}</p>
+          <p className="bg-amber-50 p-4 text-sm text-amber-900">
+            {t("这些单还没有包裹号，所以还没有面单可打。包裹号是打包完成时生成的，而且要先指定履约点——没有目的地就没有路由贴纸。先去「每日打单配送」指定履约点，再打包。")}
+          </p>
         )}
 
         {printers.length > 1 ? (

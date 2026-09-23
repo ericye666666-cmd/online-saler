@@ -47,8 +47,16 @@ PAID → PICKING → READY_TO_PACK → PACKED
 `IN_TRANSIT_TO_NODE` and `ARRIVED_AT_NODE` exist only for store nodes. The
 warehouse hands over on the spot and skips both.
 
-Sending a package stamps it with a **package code** — `PKG-<NODE>-<ORDER>` — and
-the store scans that code in on arrival. The scan records who received it and
+A parcel is stamped with a **package code** — `PKG-<NODE>-<ORDER>` — when packing
+completes, and the store scans that code in on arrival. It is minted at packing
+rather than at dispatch because the label goes on the parcel and the parcel is
+sealed then; minting it at dispatch meant pressing 发往门店, and so recording that
+a parcel had left, in order to be allowed to print the sticker for it.
+
+The code carries the destination, so an order that has not been routed yet gets
+no code at packing and no label — the screens say to route it first. A
+placeholder would be worse than none: sending keeps any existing code, so a
+wrong one would survive onto the shelf the store scans. The scan records who received it and
 when, which is what settles "the warehouse says it shipped, the store says it
 never came".
 
