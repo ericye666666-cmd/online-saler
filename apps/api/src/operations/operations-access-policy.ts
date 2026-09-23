@@ -154,6 +154,14 @@ const pagePermissions: OperationsPermission[] = [
     description: "Open payments and M-Pesa callbacks waiting for manual review."
   },
   {
+    code: "page.orders.deposits",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-deposits",
+    action: "view",
+    description: "Open the deposit board: garments held against a 50% deposit and the balances coming due."
+  },
+  {
     code: "page.orders.finance",
     module: "orders",
     scope: "PAGE",
@@ -359,6 +367,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "page.orders.node",
       "page.orders.riders",
       "page.orders.payment-review",
+      "page.orders.deposits",
       "page.orders.finance",
       "page.system.nodes",
       "page.system.notifications",
@@ -478,6 +487,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "page.orders.node",
       "page.orders.riders",
       "page.orders.payment-review",
+      "page.orders.deposits",
       "nodes.view",
       "notifications.view",
       "notifications.retry",
@@ -544,6 +554,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "page.orders.all",
       "page.orders.finance",
       "page.orders.payment-review",
+      "page.orders.deposits",
       "orders.payment-review",
       "orders.refund",
       // Finance is the only role that can approve a refund request, and the

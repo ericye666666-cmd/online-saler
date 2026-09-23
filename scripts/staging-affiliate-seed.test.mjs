@@ -21,7 +21,40 @@ function database() {
       }
     };
   }
+
+  // The codes the database already held when the run started. The seed reads
+  // this to tell a permission it has never seen from one an operator removed.
+  client.permission.findMany = async () => [...rows.permission.keys()].map((code) => ({ code }));
+  client.role.findMany = async () => [...rows.role.keys()].map((code) => ({ code }));
+
+  // Role grants added after the role row exists. Only creates and reads, so a
+  // seed that ever tried to revoke one would fail here rather than in production.
+  rows.rolePermission = new Map();
+  client.rolePermission = {
+    async findMany({ where }) {
+      const roleCode = where.role.code;
+      return [...rows.rolePermission.values()]
+        .filter((row) => row.roleCode === roleCode)
+        .map((row) => ({ permission: { code: row.permissionCode } }));
+    },
+    async create({ data }) {
+      const roleCode = data.role.connect.code;
+      const permissionCode = data.permission.connect.code;
+      const row = { roleCode, permissionCode };
+      rows.rolePermission.set(`${roleCode}:${permissionCode}`, row);
+      return structuredClone(row);
+    }
+  };
+
   return { client, rows };
+}
+
+/** The permission codes a role picked up after its row already existed. */
+function toppedUp(rows, roleCode) {
+  return [...rows.rolePermission.values()]
+    .filter((row) => row.roleCode === roleCode)
+    .map((row) => row.permissionCode)
+    .sort();
 }
 
 test("fresh baseline supplies linked staff and default roles without putting affiliate fields on staff", async () => {
@@ -77,4 +110,41 @@ test("new missing roles can be created without expanding an existing empty role"
   await seedStagingBaseline(client);
   assert.deepEqual(rows.role.get("PRODUCT_DIGITIZATION").permissions, []);
   assert.ok(rows.role.get("WAREHOUSE_FULFILLMENT").permissions.create.length > 0);
+});
+
+test("a role gains permission codes the database has never seen, and only those", async () => {
+  const { client, rows } = database();
+
+  // A database from before store hand-off shipped: the roles exist, but the
+  // codes those screens check for have never been created. One code that does
+  // already exist was taken off the role on purpose.
+  rows.permission.set("orders.view", { id: "permission-orders.view", code: "orders.view" });
+  rows.role.set("STORE_MANAGER", { id: "role-STORE_MANAGER", code: "STORE_MANAGER", permissions: [] });
+
+  await seedStagingBaseline(client);
+
+  const granted = toppedUp(rows, "STORE_MANAGER");
+  assert.ok(granted.includes("orders.node-receive"), "the store cannot receive a package without this");
+  assert.ok(granted.includes("page.orders.node"), "nor open the screen it receives it on");
+  assert.equal(
+    granted.includes("orders.view"),
+    false,
+    "a code that already existed was withheld deliberately and stays withheld"
+  );
+});
+
+test("a role that is already complete is not written to again", async () => {
+  const { client, rows } = database();
+  await seedStagingBaseline(client);
+  const first = toppedUp(rows, "STORE_MANAGER");
+
+  // Second deployment, nothing new in the policy: the role row already carries
+  // its permissions from the create, so there is nothing to add.
+  const { client: second, rows: secondRows } = database();
+  for (const [code] of rows.permission) secondRows.permission.set(code, { id: `permission-${code}`, code });
+  for (const [code, value] of rows.role) secondRows.role.set(code, value);
+  await seedStagingBaseline(second);
+
+  assert.deepEqual(first, [], "a freshly created role gets its permissions from the create, not a top-up");
+  assert.deepEqual(toppedUp(secondRows, "STORE_MANAGER"), [], "and a second run adds nothing");
 });

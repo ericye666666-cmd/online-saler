@@ -85,3 +85,42 @@ test("operations access tokens are signed, expire, and reject tampering", () => 
   assert.equal(bearerOperationsAccessToken(`Bearer ${issued.accessToken}`), issued.accessToken);
   assert.equal(bearerOperationsAccessToken("admin-123"), null);
 });
+
+/**
+ * The policy in this file decides what an API call is allowed to do. The seed in
+ * packages/database decides what the database actually grants. They were two
+ * hand-maintained lists, and they drifted: nineteen permission codes and two
+ * whole roles -- store manager and delivery rider -- existed only here, so the
+ * store hand-off, the rider screen, payment review and the notification outbox
+ * shipped to a database that could not reach any of them.
+ *
+ * Drift is invisible in code review and only shows up as "the button is missing"
+ * days later, which is why it is a test rather than a note.
+ */
+test("the staging seed grants exactly what this policy defines", async () => {
+  const seed = await import("../../../../packages/database/prisma/seed-staging-test-employee.mjs") as {
+    permissions: Array<{ code: string }>;
+    roles: Array<{ code: string; permissions: string[] }>;
+  };
+
+  assert.deepEqual(
+    uniquePermissionCodes(seed.permissions.map((permission) => permission.code)),
+    uniquePermissionCodes(OPERATIONS_PERMISSIONS.map((permission) => permission.code)),
+    "every permission code in the policy must also be seeded"
+  );
+
+  assert.deepEqual(
+    seed.roles.map((role) => role.code).sort(),
+    OPERATIONS_ROLE_BLUEPRINTS.map((role) => role.code).sort(),
+    "every role in the policy must also be seeded"
+  );
+
+  for (const blueprint of OPERATIONS_ROLE_BLUEPRINTS) {
+    const seeded = seed.roles.find((role) => role.code === blueprint.code)!;
+    assert.deepEqual(
+      uniquePermissionCodes(seeded.permissions),
+      uniquePermissionCodes(blueprint.permissions),
+      `role ${blueprint.code} is seeded with different permissions than the policy grants it`
+    );
+  }
+});
