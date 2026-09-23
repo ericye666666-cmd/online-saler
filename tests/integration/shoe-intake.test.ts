@@ -102,10 +102,11 @@ test("shoe batch, human calibration and guarded approval/publication persist in 
       before: { status: ProductStatus.REVIEW_PENDING, barcode }, after: { status: ProductStatus.APPROVED, barcode }
     }
   };
-  await assert.rejects(repository.saveStateChange(approval), /LABEL/);
-  assert.equal(await prisma.productReview.count({ where: { productId } }), 0);
-  assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: productId } })).status, "REVIEW_PENDING");
-  await prisma.productImage.create({ data: { productId, type: "LABEL", originalUrl: `https://example.invalid/${key}/label.jpg` } });
+  // A LABEL photo is not required to approve a shoe. Second-hand shoes often
+  // reach us with the tag long gone, and blocking approval on a photo that
+  // cannot be taken would strand the piece rather than improve the listing.
+  // The user decided this on 2026-09-23; the assertion that approval is
+  // rejected without one was left behind by an earlier rule and is gone.
   await repository.saveStateChange(approval);
   assert.equal(await prisma.productReview.count({ where: { productId, result: "APPROVED" } }), 1);
   const location = await prisma.warehouseLocation.create({ data: { locationCode: key } });
