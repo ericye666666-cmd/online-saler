@@ -200,6 +200,8 @@ function AfterSaleDialog({ action, order, eligibleItems, token, onClose, onDone 
 }) {
   const [itemId, setItemId] = useState(eligibleItems[0]?.id ?? "");
   const [reason, setReason] = useState("");
+  const [returnNodeId, setReturnNodeId] = useState("");
+  const [nodes, setNodes] = useState<Array<{ id: string; name: string; type: string }>>([]);
   const [difference, setDifference] = useState("");
   const [barcode, setBarcode] = useState("");
   const [restockable, setRestockable] = useState("");
@@ -213,6 +215,23 @@ function AfterSaleDialog({ action, order, eligibleItems, token, onClose, onDone 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submitting = useRef(false);
+
+  // The store the customer is told to bring the item back to. A store that
+  // cannot be listed is not a reason to block the request: the return simply
+  // goes back to the central warehouse, which is where they all went before.
+  useEffect(() => {
+    if (action.kind !== "request" || !token) return;
+    void (async () => {
+      try {
+        const response = await operationsFetch("/api-proxy/operations/orders/nodes", { headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) return;
+        setNodes(await response.json() as Array<{ id: string; name: string; type: string }>);
+      } catch {
+        setNodes([]);
+      }
+    })();
+  }, [action.kind, token]);
+
   const retry = useRef<{ payload: string; key: string } | null>(null);
   const remaining = action.record ? action.record.orderItem.lineTotalKsh - action.record.refunds.reduce((sum, refund) => sum + refund.amountKsh, 0) : 0;
 
@@ -225,7 +244,7 @@ function AfterSaleDialog({ action, order, eligibleItems, token, onClose, onDone 
     let suffix = action.record ? `/${encodeURIComponent(action.record.id)}` : "";
     if (action.kind === "request") {
       if (!itemId || !reason) { setError(t("请选择商品和售后原因。")); return; }
-      Object.assign(body, { orderItemId: itemId, reason });
+      Object.assign(body, { orderItemId: itemId, reason, ...(returnNodeId ? { returnNodeId } : {}) });
       if (reason === "MEASUREMENT_DIFFERENCE") {
         const measured = Number(difference);
         if (!Number.isFinite(measured) || measured <= 3) { setError(t("尺寸差异必须超过 3 cm。")); return; }
@@ -279,6 +298,8 @@ function AfterSaleDialog({ action, order, eligibleItems, token, onClose, onDone 
               <Choice id="after-sale-item" label={t("退货商品")} value={itemId} onChange={setItemId} options={eligibleItems.map((candidate) => [candidate.id, `${candidate.snapshot?.title ?? candidate.id} · ${money(candidate.unitPriceKsh * candidate.quantity)}`])} disabled={busy} />
               <Choice id="after-sale-reason" label={t("售后原因")} value={reason} onChange={setReason} options={REASONS} disabled={busy} />
               {reason === "MEASUREMENT_DIFFERENCE" ? <Field><FieldLabel htmlFor="after-sale-difference">{t("实际差异（cm，需超过 3）")}</FieldLabel><Input id="after-sale-difference" type="number" min="3.01" step="0.01" required value={difference} onChange={(event) => setDifference(event.target.value)} disabled={busy} /></Field> : null}
+              <Choice id="after-sale-return-node" label={t("顾客退回门店")} value={returnNodeId} onChange={setReturnNodeId} options={[["", t("中央仓（默认）")], ...nodes.map((node) => [node.id, node.name] as [string, string])]} disabled={busy} />
+              <p className="text-muted-foreground text-sm">{t("选定门店后，这笔退货会出现在该门店履约台的「待收退货」里。")}</p>
               <p className="text-muted-foreground text-sm">{t("申请需在完成交付后 24 小时内提交；系统按实际交付时间核验。")}</p>
             </> : null}
             {action.kind === "receive" ? <>

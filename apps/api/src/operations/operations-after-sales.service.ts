@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { ActorType, AfterSaleReturnReason, AfterSaleReturnStatus, CommissionAdjustmentKind, CommissionStatus, CustomerServiceCaseStatus, CustomerServiceIssueType, InventoryItemStatus, InventoryMovementType, OrderStatus, PaymentStatus, Prisma, ProductStatus, SourceApp, WarehouseLocationStatus, prisma } from "@online-saler/database";
+import { ActorType, AfterSaleReturnReason, AfterSaleReturnStatus, CommissionAdjustmentKind, CommissionStatus, CustomerServiceCaseStatus, CustomerServiceCaseType, CustomerServiceIssueType, FulfillmentNodeStatus, InventoryItemStatus, InventoryMovementType, OrderStatus, PaymentStatus, Prisma, ProductStatus, SourceApp, WarehouseLocationStatus, prisma } from "@online-saler/database";
 import { OperationsAccessService } from "./operations-access.service";
 import { assertRefundAmount, assertReturnWindow, commissionShares, requiredText, RETURN_REASONS } from "./operations-after-sales.rules";
 import { refreshWarehouseLocationStatuses, WAREHOUSE_OCCUPYING_STATUSES } from "./warehouse-capacity";
@@ -9,6 +9,8 @@ export type AfterSalesInput = {
   idempotencyKey?: string; note?: string; orderItemId?: string; reason?: string; measurementDifferenceCm?: number;
   approved?: boolean; receivedBarcode?: string; restockable?: boolean; amountKsh?: number; externalReference?: string;
   evidenceNote?: string; refundedAt?: string; locationCode?: string;
+  /** The store the customer is told to bring the item back to. */
+  returnNodeId?: string;
 };
 type Action = "REQUEST" | "DECISION" | "RECEIVE" | "REFUND" | "RESTOCK";
 const RETURN_INCLUDE = { orderItem: { include: { snapshot: true } }, refunds: { orderBy: { recordedAt: "asc" as const } }, commissionAdjustment: true, events: { orderBy: { createdAt: "asc" as const } } } as const;
@@ -24,6 +26,28 @@ export class OperationsAfterSalesService {
     await this.access.requirePermission(adminUserId, "orders.view");
     if (!await prisma.order.findUnique({ where: { id: orderId }, select: { id: true } })) throw new NotFoundException("Order was not found.");
     return { returns: await prisma.afterSaleReturn.findMany({ where: { orderId }, include: RETURN_INCLUDE, orderBy: { requestedAt: "asc" } }) };
+  }
+
+  /**
+   * What a store should expect back over its counter.
+   *
+   * Only approved returns appear: a return the customer has merely asked for is
+   * not yet something the store should accept, and one already received is not
+   * something it is still waiting for.
+   */
+  async returnsToReceive(nodeId: string, adminUserId: string) {
+    await this.access.requirePermission(adminUserId, "orders.view");
+    return {
+      returns: await prisma.afterSaleReturn.findMany({
+        where: { returnNodeId: nodeId, status: AfterSaleReturnStatus.APPROVED },
+        include: {
+          orderItem: { include: { snapshot: { select: { title: true, barcode: true, imageUrl: true } } } },
+          order: { select: { id: true, orderNumber: true, customer: { select: { displayName: true, phone: true } } } },
+          returnNode: { select: { id: true, code: true, name: true } }
+        },
+        orderBy: { decidedAt: "asc" }
+      })
+    };
   }
 
   async execute(orderId: string, returnId: string | undefined, action: Action, input: AfterSalesInput, adminUserId: string) {
@@ -83,8 +107,15 @@ export class OperationsAfterSalesService {
     const item = order.items.find((row) => row.id === input.orderItemId);
     if (!item || item.quantity !== 1) throw new BadRequestException("Select one unique item belonging to this order.");
     if (order.afterSaleReturns.some((row) => row.orderItemId === item.id)) throw new ConflictException("This sold item already has an after-sales record; continue that record.");
-    const ticket = await tx.customerServiceCase.create({ data: { orderId: order.id, customerId: order.customerId, createdByAdminUserId: adminUserId, issueType: CustomerServiceIssueType.AFTER_SALE, title: `Return: ${item.snapshot?.title ?? item.id}`, description: note, afterSaleReason: input.reason, customerRequest: note, requiresReturn: true, requiresRefund: true, affectsAffiliateCommission: true } });
-    return tx.afterSaleReturn.create({ data: { orderId: order.id, orderItemId: item.id, serviceCaseId: ticket.id, reason: input.reason as AfterSaleReturnReason, measurementDifferenceCm: input.reason === "MEASUREMENT_DIFFERENCE" ? input.measurementDifferenceCm : null, requestNote: note, requestedByAdminUserId: adminUserId, requestedAt: now }, include: RETURN_INCLUDE });
+    // A named store is where the customer is told to bring the item; it also
+    // puts the return on that store's "to receive" list. Null keeps the old
+    // behaviour, which was always the warehouse.
+    const returnNodeId = input.returnNodeId?.trim() || null;
+    if (returnNodeId && !await tx.fulfillmentNode.findFirst({ where: { id: returnNodeId, status: FulfillmentNodeStatus.ACTIVE }, select: { id: true } })) {
+      throw new BadRequestException("Choose an active fulfillment node for the customer to return the item to.");
+    }
+    const ticket = await tx.customerServiceCase.create({ data: { orderId: order.id, customerId: order.customerId, createdByAdminUserId: adminUserId, issueType: CustomerServiceIssueType.AFTER_SALE, caseType: CustomerServiceCaseType.RETURN_REQUEST, title: `Return: ${item.snapshot?.title ?? item.id}`, description: note, afterSaleReason: input.reason, customerRequest: note, requiresReturn: true, requiresRefund: true, affectsAffiliateCommission: true } });
+    return tx.afterSaleReturn.create({ data: { orderId: order.id, orderItemId: item.id, serviceCaseId: ticket.id, reason: input.reason as AfterSaleReturnReason, measurementDifferenceCm: input.reason === "MEASUREMENT_DIFFERENCE" ? input.measurementDifferenceCm : null, requestNote: note, returnNodeId, requestedByAdminUserId: adminUserId, requestedAt: now }, include: RETURN_INCLUDE });
   }
 
   private async refund(tx: Prisma.TransactionClient, order: Order, record: Return, input: AfterSalesInput, adminUserId: string, now: Date) {

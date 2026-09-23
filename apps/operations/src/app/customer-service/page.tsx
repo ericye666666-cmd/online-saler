@@ -1,5 +1,5 @@
-import { CustomerServiceWorkbenchPage } from "./customer-service-client";
+import { CustomerServiceDeskPage } from "./service-desk-client";
 
 export default function CustomerServicePage() {
-  return <CustomerServiceWorkbenchPage view="customers" />;
+  return <CustomerServiceDeskPage />;
 }

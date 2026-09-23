@@ -175,7 +175,10 @@ export const operationsModules: ModuleNav[] = [
     icon: HeadphonesIcon,
     permission: "module.customer-service",
     items: [
-      { label: "顾客搜索", href: "/customer-service", icon: SearchIcon, permission: "action.customer-service.view" },
+      { label: "客服看板", href: "/customer-service", icon: SearchIcon, permission: "action.customer-service.view" },
+      { label: "客服工单", href: "/customer-service/cases", icon: ClipboardCheckIcon, permission: "page.customer-service.cases" },
+      { label: "退款审批", href: "/customer-service/refunds", icon: CircleDollarSignIcon, permission: "page.customer-service.refunds" },
+      { label: "顾客搜索", href: "/customer-service/customers", icon: UsersIcon, permission: "action.customer-service.view" },
       { label: "订单查询", href: "/customer-service/orders", icon: BriefcaseBusinessIcon, permission: "action.customer-service.view" },
       { label: "支付问题", href: "/customer-service/payments", icon: CircleDollarSignIcon, permission: "action.customer-service.view" },
       { label: "自提问题", href: "/customer-service/pickup", icon: ClipboardCheckIcon, permission: "action.customer-service.view" },

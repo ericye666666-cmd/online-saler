@@ -42,6 +42,15 @@ type NodeRider = {
   openDeliveries: number;
 };
 
+type NodeReturn = {
+  id: string;
+  status: string;
+  reason: string;
+  decidedAt: string | null;
+  orderItem?: { snapshot?: { title?: string | null; barcode?: string | null } | null } | null;
+  order: { id: string; orderNumber: string; customer?: { displayName: string | null; phone: string | null } | null };
+};
+
 type NodeOrder = {
   id: string;
   orderNumber: string;
@@ -97,6 +106,7 @@ export function NodeWorkbenchPage() {
   const [riders, setRiders] = useState<NodeRider[]>([]);
   const [nodeId, setNodeId] = useState("");
   const [orders, setOrders] = useState<NodeOrder[]>([]);
+  const [returnsToReceive, setReturnsToReceive] = useState<NodeReturn[]>([]);
   const [scan, setScan] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState("");
@@ -131,6 +141,23 @@ export function NodeWorkbenchPage() {
       setLoading(false);
     }
   }, [accessToken, nodeId, request]);
+
+  // Returns the customer is bringing back to this store. A store with no
+  // returns pending is the normal case, so a failure here stays quiet rather
+  // than blocking the packages the store still has to hand out.
+  const loadReturns = useCallback(async () => {
+    if (!accessToken || !nodeId) return;
+    try {
+      const payload = await request<{ returns: NodeReturn[] }>(`/operations/nodes/${nodeId}/returns`);
+      setReturnsToReceive(payload.returns);
+    } catch {
+      setReturnsToReceive([]);
+    }
+  }, [accessToken, nodeId, request]);
+
+  useEffect(() => {
+    void loadReturns();
+  }, [loadReturns]);
 
   // The dispatch dropdown lists this store's active riders and nobody else's.
   const loadRiders = useCallback(async () => {
@@ -235,6 +262,43 @@ export function NodeWorkbenchPage() {
           ) : null}
           {error ? <p className="text-destructive text-sm">{error}</p> : null}
           {message ? <p className="text-sm text-emerald-600">{message}</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PackageCheckIcon size={18} />
+            {t("待收退货")} ({returnsToReceive.length})
+          </CardTitle>
+          <CardDescription>
+            {t("客服已批准、顾客会送回本店的商品。顾客到店后扫码核对 Barcode，再在订单页完成验收。")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {returnsToReceive.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("目前没有等待退回本店的商品。")}</p>
+          ) : returnsToReceive.map((row) => (
+            <div key={row.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-4">
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link className="font-semibold underline" href={`/orders/${row.order.id}`}>{row.order.orderNumber}</Link>
+                  <Badge variant="outline">{row.reason}</Badge>
+                  {/* The barcode is how the store checks it is the same garment
+                      that was sold; every item here is one of one. */}
+                  <Badge variant="secondary" className="font-mono">{row.orderItem?.snapshot?.barcode ?? t("无Barcode")}</Badge>
+                </div>
+                <span className="text-sm">{row.orderItem?.snapshot?.title ?? t("未命名商品")}</span>
+                <span className="text-muted-foreground text-xs">
+                  {row.order.customer?.displayName ?? t("访客顾客")} · {row.order.customer?.phone ?? "-"}
+                  {row.decidedAt ? ` · ${formatMoment(row.decidedAt)}` : ""}
+                </span>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/orders/${row.order.id}`}>{t("去验收")}</Link>
+              </Button>
+            </div>
+          ))}
         </CardContent>
       </Card>
 

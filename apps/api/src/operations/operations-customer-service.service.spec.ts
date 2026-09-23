@@ -6,6 +6,8 @@ import { prisma, type CustomerServiceCase, type Prisma } from "@online-saler/dat
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsCustomerServiceController } from "./operations-customer-service.controller";
 import { OperationsCustomerServiceDeskService } from "./operations-customer-service-desk.service";
+import { OperationsRefundRequestController } from "./operations-refund-request.controller";
+import { OperationsRefundRequestService } from "./operations-refund-request.service";
 import { OperationsCustomerServiceService } from "./operations-customer-service.service";
 import { OperationsFulfillmentService } from "./operations-fulfillment.service";
 import { ProductImageStorageService } from "../product/product-image-storage.service";
@@ -240,6 +242,90 @@ test("all legacy customer-service routes require a verified token and mutations 
   assert.equal(calls.length, 0);
   for (const request of invoke("Bearer signed-session")) await request();
   assert.equal(calls.length, 8);
+  assert.ok(calls.every((call) => call.actor === "verified-admin"));
+});
+
+test("the new desk routes also require a verified token and ignore a forged body actor", async () => {
+  const calls: Array<{ method: string; actor?: string }> = [];
+  const record = (method: string) => async (...args: unknown[]) => {
+    // Every desk method takes the actor either as a bare argument or on the
+    // input object; both forms have to end up as the verified admin.
+    const last = args.at(-1);
+    const actor = typeof last === "string" ? last : (last as { adminUserId?: string } | undefined)?.adminUserId;
+    calls.push({ method, actor });
+    return {};
+  };
+  const caseService = {
+    caseDetail: record("caseDetail"),
+    caseOptions: record("caseOptions"),
+    assignees: record("assignees"),
+    assignCase: record("assignCase"),
+    escalateCase: record("escalateCase"),
+    updateCustomerContact: record("updateCustomerContact")
+  } as unknown as OperationsCustomerServiceService;
+  const desk = {
+    dashboard: record("dashboard"),
+    search: record("search"),
+    order360: record("order360"),
+    order360ByNumber: record("order360ByNumber")
+  } as unknown as OperationsCustomerServiceDeskService;
+  const access = { requireAccessToken: async (authorization?: string) => {
+    if (authorization !== "Bearer signed-session") throw new UnauthorizedException();
+    return "verified-admin";
+  } } as OperationsAccessService;
+  const controller = new OperationsCustomerServiceController(caseService, desk, access);
+  const invoke = (authorization?: string) => [
+    () => controller.dashboard(authorization),
+    () => controller.search(authorization, "0712345678"),
+    () => controller.order360(authorization, "order-1"),
+    () => controller.order360ByNumber(authorization, "DL-1001"),
+    () => controller.caseOptions(authorization),
+    () => controller.assignees(authorization),
+    () => controller.caseDetail(authorization, "case-1"),
+    () => controller.assignCase(authorization, "case-1", { adminUserId: "forged-admin", assignedAdminUserId: "someone" }),
+    () => controller.escalateCase(authorization, "case-1", { adminUserId: "forged-admin", escalatedTo: "FINANCE", note: "why" }),
+    () => controller.updateContact(authorization, { adminUserId: "forged-admin", customerId: "customer-1", phone: "0712345678", reason: "typo" })
+  ];
+  for (const request of invoke()) await assert.rejects(request(), UnauthorizedException);
+  for (const request of invoke("Bearer forged-admin")) await assert.rejects(request(), UnauthorizedException);
+  assert.equal(calls.length, 0, "an unverified request never reaches the service");
+  for (const request of invoke("Bearer signed-session")) await request();
+  assert.equal(calls.length, 10);
+  assert.ok(calls.every((call) => call.actor === "verified-admin"), "the forged body actor is always replaced");
+});
+
+test("every refund route requires a verified token and ignores a forged body actor", async () => {
+  const calls: Array<{ method: string; actor?: string }> = [];
+  const record = (method: string) => async (...args: unknown[]) => {
+    const last = args.at(-1);
+    calls.push({ method, actor: (last as { adminUserId?: string } | undefined)?.adminUserId });
+    return {};
+  };
+  const refunds = {
+    list: record("list"),
+    create: record("create"),
+    review: record("review"),
+    complete: record("complete"),
+    cancel: record("cancel")
+  } as unknown as OperationsRefundRequestService;
+  const access = { requireAccessToken: async (authorization?: string) => {
+    if (authorization !== "Bearer signed-session") throw new UnauthorizedException();
+    return "verified-admin";
+  } } as OperationsAccessService;
+  const controller = new OperationsRefundRequestController(refunds, access);
+  const forged = { adminUserId: "forged-admin" };
+  const invoke = (authorization?: string) => [
+    () => controller.list(authorization, "PENDING_APPROVAL"),
+    () => controller.create(authorization, { ...forged, orderId: "order-1", amountKsh: 100, reason: "torn" }),
+    () => controller.review(authorization, "request-1", { ...forged, approved: true, reviewNote: "ok" }),
+    () => controller.complete(authorization, "request-1", { ...forged, externalReference: "QK1", evidenceNote: "sent", refundedAt: "2026-09-23T10:00:00Z" }),
+    () => controller.cancel(authorization, "request-1", { ...forged, reason: "mistake" })
+  ];
+  for (const request of invoke()) await assert.rejects(request(), UnauthorizedException);
+  for (const request of invoke("Bearer forged-admin")) await assert.rejects(request(), UnauthorizedException);
+  assert.equal(calls.length, 0);
+  for (const request of invoke("Bearer signed-session")) await request();
+  assert.equal(calls.length, 5);
   assert.ok(calls.every((call) => call.actor === "verified-admin"));
 });
 

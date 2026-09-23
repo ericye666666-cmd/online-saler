@@ -2,6 +2,17 @@ import { Body, Controller, Get, Headers, Param, Post } from "@nestjs/common";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsAfterSalesService, type AfterSalesInput } from "./operations-after-sales.service";
 
+/** What a store is still waiting to get back over the counter. */
+@Controller("operations/nodes/:nodeId/returns")
+export class OperationsNodeReturnsController {
+  constructor(private readonly service: OperationsAfterSalesService, private readonly access: OperationsAccessService) {}
+
+  @Get()
+  async toReceive(@Headers("authorization") authorization: string | undefined, @Param("nodeId") nodeId: string) {
+    return this.service.returnsToReceive(nodeId, await this.access.requireAccessToken(authorization));
+  }
+}
+
 @Controller("operations/orders/:orderId/after-sales")
 export class OperationsAfterSalesController {
   constructor(private readonly service: OperationsAfterSalesService, private readonly access: OperationsAccessService) {}
