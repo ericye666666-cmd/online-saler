@@ -8,6 +8,12 @@ import { clampNotificationBody, type NotificationTopicName } from "./notificatio
 
 export type NotificationTemplateInput = {
   orderNumber: string;
+  /**
+   * The only place a delivery code is ever written. It reaches this function
+   * inside the dispatch transaction and goes straight into an SMS body; it is
+   * never persisted, returned by an API or shown on an operations screen.
+   */
+  deliveryCode?: string | null;
   customerName?: string | null;
   nodeName?: string | null;
   nodeMapsUrl?: string | null;
@@ -38,6 +44,12 @@ const templates: Record<NotificationTopicName, (input: NotificationTemplateInput
     `Direct Loop: order ${input.orderNumber} is ready for pickup at ${input.nodeName ?? "our store"}. ${input.nodeMapsUrl ?? ""} Pickup code ${input.pickupCode ?? input.orderNumber}. ${input.supportPhone ?? ""}`,
   CUSTOMER_ORDER_DISPATCHED: (input) =>
     `Direct Loop: order ${input.orderNumber} is on the way${input.riderName ? ` with ${input.riderName}` : ""}. Please keep your phone on. ${input.supportPhone ?? ""}`,
+  // The instruction matters as much as the digits: a code given before the goods
+  // are in hand is the one way this check can be defeated.
+  CUSTOMER_DELIVERY_CODE: (input) =>
+    `Direct Loop: order ${input.orderNumber} is out for delivery${input.riderName ? ` with ${input.riderName}` : ""}. Delivery code ${input.deliveryCode ?? ""}. Give this code to the rider only after you have received your order. ${input.supportPhone ?? ""}`,
+  CUSTOMER_DELIVERY_FAILED: (input) =>
+    `Direct Loop: we could not deliver order ${input.orderNumber} today${input.reason ? ` (${input.reason})` : ""}. Your payment is safe and we will try again. ${input.supportPhone ?? ""}`,
   CUSTOMER_ORDER_COMPLETED: (input) =>
     `Direct Loop: order ${input.orderNumber} is complete. If anything is wrong, tell us within 24 hours on ${input.supportPhone ?? "WhatsApp"}.`,
   CUSTOMER_REFUND_RECORDED: (input) =>

@@ -93,7 +93,15 @@ export function customerFulfillmentProgress(input: {
   let currentIndex = 0;
 
   if (status === FulfillmentStatus.COMPLETED || input.orderStatus === OrderStatus.COMPLETED) currentIndex = 3;
-  else if (status === FulfillmentStatus.READY_FOR_PICKUP || status === FulfillmentStatus.OUT_FOR_DELIVERY) currentIndex = 2;
+  // A failed attempt, and the ride back to the store, stay on the handover step.
+  // The customer has had an SMS explaining it; showing the tracker fall back to
+  // "Preparing" would read as though the order had been un-shipped.
+  else if (
+    status === FulfillmentStatus.READY_FOR_PICKUP
+    || status === FulfillmentStatus.OUT_FOR_DELIVERY
+    || status === FulfillmentStatus.DELIVERY_FAILED
+    || status === FulfillmentStatus.RETURNING_TO_NODE
+  ) currentIndex = 2;
   else if (
     status === FulfillmentStatus.PICKING
     || status === FulfillmentStatus.READY_TO_PACK

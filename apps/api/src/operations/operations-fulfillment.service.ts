@@ -2,8 +2,11 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import {
   ActorType,
   SourceApp,
+  CustomerCodePurpose,
   CustomerServiceCaseStatus,
   CustomerServiceIssueType,
+  DeliveryCompletionMethod,
+  DeliveryFailureReason,
   DeliveryRiderType,
   EmployeeStatus,
   FulfillmentExceptionReason,
@@ -31,17 +34,25 @@ import {
   type InventoryOutcome
 } from "@online-saler/database";
 import {
+  CUSTOMER_CODE_MAX_ATTEMPTS,
   SUPPORT_PHONE_LABEL,
+  customerCodeFailureMessage,
+  generateCustomerCode,
+  hashCustomerCode,
+  normalizeCustomerCode,
   isValidActualDeliveryCost,
   notificationBody,
   notificationDedupeKey,
+  verifyCustomerCode,
   type NotificationTopicName
 } from "@online-saler/business-rules";
+import { ProductImageStorageService } from "../product/product-image-storage.service";
 import { OperationsAccessService } from "./operations-access.service";
 import {
   buildPackageCode,
   canResolveFulfillmentException,
   canTransitionFulfillment,
+  holderForStatus,
   maskCustomerPhone,
   orderCenterTab,
   requiresNodeTransit,
@@ -141,6 +152,44 @@ export type RiderInput = AdminInput & {
   estimatedDeliveryAt?: string;
 };
 export type ExceptionInput = AdminInput & { reason?: FulfillmentExceptionReason };
+/** Hands a package at a node to one of that node's riders, in one step. */
+export type DispatchToRiderInput = AdminInput & { deliveryRiderId?: string; estimatedDeliveryAt?: string };
+/** Everything a rider submits to close or fail a delivery. */
+export type DeliveryCodeInput = AdminInput & { code?: string };
+export type DropOffInput = DeliveryCodeInput & {
+  photoBase64?: string;
+  photoContentType?: string;
+  dropOffNote?: string;
+};
+export type DeliveryFailureInput = AdminInput & { reason?: DeliveryFailureReason };
+/**
+ * Exactly the fields a rider is allowed to be shown. Declaring it structurally
+ * rather than as a Prisma payload means a rider-facing query can select these
+ * columns and nothing else, and adding a money column to Order later cannot
+ * silently widen what the rider portal returns.
+ */
+export type RiderVisibleOrder = {
+  id: string;
+  orderNumber: string;
+  deliveryAddress: string | null;
+  deliveryNote: string | null;
+  customer: { displayName: string | null; phone: string | null };
+  items: ReadonlyArray<{ snapshot: { title: string; sizeLabel: string | null } | null }>;
+  fulfillment: {
+    packageCode: string | null;
+    status: FulfillmentStatus;
+    outForDeliveryAt: Date | null;
+    completedAt: Date | null;
+    deliveryAttemptCount: number;
+    customerCodeFailedAttempts: number;
+    customerCodeLockedAt: Date | null;
+    deliveryFailureReason: DeliveryFailureReason | null;
+    fulfillmentNode: { name: string } | null;
+  } | null;
+};
+
+/** A rider acting on their own delivery, resolved from their login. */
+export type RiderActor = { id: string; name: string; employeeId: string | null };
 export type NodeInput = AdminInput & { nodeId?: string };
 export type DeliveryCostInput = AdminInput & { actualDeliveryCostKsh?: number };
 export type WriteOffInput = AdminInput & { inventoryOutcome?: InventoryOutcome };
@@ -182,7 +231,10 @@ type EventInput = {
 
 @Injectable()
 export class OperationsFulfillmentService {
-  constructor(private readonly access: OperationsAccessService) {}
+  constructor(
+    private readonly access: OperationsAccessService,
+    private readonly photos: ProductImageStorageService
+  ) {}
 
   async summary(input: OrderCenterListInput) {
     await this.access.requirePermission(input.adminUserId, "orders.view");
@@ -207,6 +259,8 @@ export class OperationsFulfillmentService {
       "ready-for-pickup": 0,
       "ready-for-dispatch": 0,
       "out-for-delivery": 0,
+      "delivery-failed": 0,
+      "returning-to-node": 0,
       completed: 0,
       "after-sale": 0,
       cancelled: 0
@@ -589,73 +643,386 @@ export class OperationsFulfillmentService {
     return this.orderDetail(orderId, input.adminUserId);
   }
 
+  /**
+   * The older two-step route, kept for the external-rider flow: a rider is
+   * registered with `assignRider`, then the handover is confirmed here. It goes
+   * through the same step as one-tap dispatch, so it mints and texts a delivery
+   * code too rather than leaving an uncompletable order behind.
+   */
   async dispatch(orderId: string, input: AdminInput) {
     const actor = await this.employeeForPermission(input.adminUserId, "orders.dispatch");
     const order = await this.requireOrderWithTask(orderId);
     const fulfillment = order.fulfillment!;
     if (fulfillment.status === FulfillmentStatus.OUT_FOR_DELIVERY) return this.orderDetail(orderId, input.adminUserId);
     this.assertTransition(order, FulfillmentStatus.OUT_FOR_DELIVERY);
-    await prisma.$transaction(async (tx) => {
-      await tx.orderFulfillment.update({
-        where: { id: fulfillment.id },
-        data: {
-          status: FulfillmentStatus.OUT_FOR_DELIVERY,
-          dispatchedByEmployeeId: actor.actorEmployeeId,
-          dispatchedAt: new Date(),
-          outForDeliveryAt: new Date()
-        }
-      });
-      await this.createEvent(tx, {
-        idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.OUT_FOR_DELIVERY}`,
-        fulfillmentId: fulfillment.id,
-        orderId,
-        ...actor,
-        relatedEmployeeId: actor.actorEmployeeId,
-        deliveryRiderId: fulfillment.deliveryRiderId,
-        action: "HAND_TO_DELIVERY_RIDER",
-        oldStatus: fulfillment.status,
-        newStatus: FulfillmentStatus.OUT_FOR_DELIVERY,
-        note: input.note
-      });
-      await this.queueCustomerNotification(tx, orderId, "CUSTOMER_ORDER_DISPATCHED", {
-        riderName: fulfillment.deliveryRiderName ?? fulfillment.deliveryRider?.name ?? null
-      });
-    });
+    const rider = fulfillment.deliveryRider;
+    if (!rider) throw new BadRequestException("Assign a rider before confirming the handover.");
+    const latest = fulfillment.deliveryAssignments[0];
+    await this.handToRider(order, rider, actor, input.note, latest?.estimatedDeliveryAt ?? null);
     return this.orderDetail(orderId, input.adminUserId);
   }
 
+  /**
+   * Customer pickup. The customer reads out the pickup code they were texted;
+   * the order number and phone number are no longer proof on their own, because
+   * both are printed on the package sitting on the counter.
+   */
   async confirmPickup(orderId: string, input: PickupInput) {
     const actor = await this.employeeForPermission(input.adminUserId, "orders.complete");
     const order = await this.requireOrderWithTask(orderId);
     const fulfillment = order.fulfillment!;
     if (fulfillment.status === FulfillmentStatus.COMPLETED) return this.orderDetail(orderId, input.adminUserId);
     if (order.fulfillmentMethod !== FulfillmentMethod.PICKUP) throw new BadRequestException("Delivery orders cannot be completed as pickup.");
-    this.assertTransition(order, FulfillmentStatus.COMPLETED);
-    const method = input.verificationMethod && Object.values(PickupVerificationMethod).includes(input.verificationMethod)
-      ? input.verificationMethod
-      : null;
-    const value = input.verificationValue?.trim() || "";
-    if (!method || !value || !pickupVerificationMatches(order, method, value)) {
-      throw new BadRequestException("Pickup verification does not match the order number, customer phone, or pickup code.");
-    }
+
+    await this.consumePickupCode(order, input.verificationValue, { actorAdminUserId: actor.actorAdminUserId });
     await this.completeOrder(order, actor, "CONFIRM_CUSTOMER_PICKUP", input.note, {
       pickupConfirmedByEmployeeId: actor.actorEmployeeId,
-      pickupVerificationMethod: method,
-      pickupVerificationValue: value,
-      pickupNote: input.note?.trim() || null
-    });
+      pickupVerificationMethod: PickupVerificationMethod.PICKUP_CODE,
+      // The code itself is not kept; only the fact that it matched.
+      pickupVerificationValue: "VERIFIED",
+      pickupNote: input.note?.trim() || null,
+      customerCodeVerifiedAt: new Date()
+    }, { customerCodeVerified: true });
     return this.orderDetail(orderId, input.adminUserId);
   }
 
-  async completeDelivery(orderId: string, input: AdminInput) {
+  /**
+   * Completing a delivery from an operations screen rather than the rider's
+   * phone. It still needs the customer's code: a store or an admin recognising
+   * the buyer is not a substitute for the customer reading out four digits.
+   */
+  async completeDelivery(orderId: string, input: DeliveryCodeInput) {
     const actor = await this.employeeForPermission(input.adminUserId, "orders.complete");
     const order = await this.requireOrderWithTask(orderId);
     if (order.fulfillment?.status === FulfillmentStatus.COMPLETED) return this.orderDetail(orderId, input.adminUserId);
     if (order.fulfillmentMethod !== FulfillmentMethod.KIKUYU_LOCAL_DELIVERY) {
       throw new BadRequestException("Pickup orders cannot be completed as delivery.");
     }
-    this.assertTransition(order, FulfillmentStatus.COMPLETED);
-    await this.completeOrder(order, actor, "CONFIRM_DELIVERY", input.note, {});
+    await this.consumeDeliveryCode(order, input.code, { actorAdminUserId: actor.actorAdminUserId });
+    await this.completeOrder(order, actor, "CONFIRM_DELIVERY", input.note, {
+      deliveryCompletionMethod: DeliveryCompletionMethod.HANDED_TO_CUSTOMER,
+      customerCodeVerifiedAt: new Date()
+    }, { customerCodeVerified: true });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * The store hands a package to one of its own riders. Everything the flow
+   * needs happens in one transaction -- rider assigned, code minted, status
+   * moved, SMS queued, event written -- so a crash halfway cannot leave a
+   * package out for delivery with no code the customer could ever read out.
+   */
+  async dispatchToRider(orderId: string, input: DispatchToRiderInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.dispatch");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (order.fulfillmentMethod !== FulfillmentMethod.KIKUYU_LOCAL_DELIVERY) {
+      throw new BadRequestException("Pickup orders are not dispatched to a rider.");
+    }
+    // A second tap on Dispatch must not mint a second code or send a second SMS.
+    if (fulfillment.status === FulfillmentStatus.OUT_FOR_DELIVERY) return this.orderDetail(orderId, input.adminUserId);
+    if (fulfillment.status !== FulfillmentStatus.ARRIVED_AT_NODE && fulfillment.status !== FulfillmentStatus.READY_FOR_DISPATCH) {
+      throw new BadRequestException("The package has to be received at its node before it goes out for delivery.");
+    }
+    await this.employeeBelongsToNode(actor.actorEmployeeId, fulfillment.fulfillmentNodeId);
+
+    const rider = await this.requireNodeRider(input.deliveryRiderId, fulfillment.fulfillmentNodeId);
+    const estimatedDeliveryAt = input.estimatedDeliveryAt ? validDate(input.estimatedDeliveryAt, "Estimated delivery time") : null;
+    await this.handToRider(order, rider, actor, input.note, estimatedDeliveryAt);
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * Hands a package to a rider: assign, mint the code, move the status, text the
+   * customer, write the event -- all or nothing.
+   *
+   * Both dispatch routes come through here. That matters: an order that reached
+   * OUT_FOR_DELIVERY without a code could never be completed, because completion
+   * needs one, so a second route that skipped this step would strand a paid order
+   * with nobody able to close it.
+   */
+  private async handToRider(
+    order: OrderDetail,
+    rider: { id: string; name: string; phone: string | null; employeeId: string | null },
+    actor: Pick<EventInput, "actorAdminUserId" | "actorEmployeeId">,
+    note: string | undefined,
+    estimatedDeliveryAt: Date | null
+  ) {
+    const fulfillment = order.fulfillment!;
+    const attempt = fulfillment.deliveryAttemptCount + 1;
+    const code = generateCustomerCode();
+
+    await prisma.$transaction(async (tx) => {
+      // Re-read under the row lock: two store screens dispatching at once must
+      // not both get past the status check above.
+      await lockReservationOrder(tx, order.id);
+      const current = await tx.orderFulfillment.findUnique({ where: { id: fulfillment.id } });
+      if (!current) throw new NotFoundException("Fulfillment was not found.");
+      if (current.status === FulfillmentStatus.OUT_FOR_DELIVERY) return;
+      if (current.status !== FulfillmentStatus.ARRIVED_AT_NODE && current.status !== FulfillmentStatus.READY_FOR_DISPATCH) {
+        throw new ConflictException("This package moved before dispatch. Refresh and scan it again.");
+      }
+
+      if (current.status === FulfillmentStatus.ARRIVED_AT_NODE) {
+        await tx.orderFulfillment.update({
+          where: { id: fulfillment.id },
+          data: { status: FulfillmentStatus.READY_FOR_DISPATCH, readyForDispatchAt: current.readyForDispatchAt ?? new Date() }
+        });
+        await this.createEvent(tx, {
+          idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.READY_FOR_DISPATCH}:${attempt}`,
+          fulfillmentId: fulfillment.id,
+          orderId: order.id,
+          ...actor,
+          action: "READY_FOR_DISPATCH",
+          oldStatus: current.status,
+          newStatus: FulfillmentStatus.READY_FOR_DISPATCH
+        });
+      }
+
+      await tx.deliveryAssignment.create({
+        data: {
+          fulfillmentId: fulfillment.id,
+          orderId: order.id,
+          deliveryRiderId: rider.id,
+          assignedByAdminUserId: actor.actorAdminUserId ?? null,
+          estimatedDeliveryAt,
+          note: note?.trim() || null
+        }
+      });
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          status: FulfillmentStatus.OUT_FOR_DELIVERY,
+          deliveryRiderId: rider.id,
+          deliveryRiderName: rider.name,
+          deliveryRiderPhone: rider.phone,
+          dispatchedByEmployeeId: actor.actorEmployeeId,
+          dispatchedAt: new Date(),
+          outForDeliveryAt: new Date(),
+          deliveryAttemptCount: attempt,
+          // A new attempt gets a new code and a clean attempt budget; the old
+          // code dies the moment this hash is overwritten.
+          deliveryCodeHash: hashCustomerCode(code),
+          deliveryCodeIssuedAt: new Date(),
+          deliveryCodeSentCount: { increment: 1 },
+          customerCodeVerifiedAt: null,
+          customerCodeFailedAttempts: 0,
+          customerCodeLockedAt: null,
+          deliveryFailureReason: null,
+          deliveryFailureNote: null,
+          deliveryFailedAt: null,
+          returningToNodeAt: null,
+          ...this.holderData({
+            status: FulfillmentStatus.OUT_FOR_DELIVERY,
+            deliveryRiderId: rider.id,
+            riderName: rider.name
+          })
+        }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `dispatch-rider:${fulfillment.id}:${attempt}`,
+        fulfillmentId: fulfillment.id,
+        orderId: order.id,
+        ...actor,
+        relatedEmployeeId: rider.employeeId,
+        deliveryRiderId: rider.id,
+        action: "DISPATCH_TO_RIDER",
+        oldStatus: FulfillmentStatus.READY_FOR_DISPATCH,
+        newStatus: FulfillmentStatus.OUT_FOR_DELIVERY,
+        note: `Handed to ${rider.name}; delivery code sent to the customer (attempt ${attempt}).`
+      });
+      await this.queueCustomerNotification(tx, order.id, "CUSTOMER_DELIVERY_CODE", {
+        riderName: rider.name,
+        deliveryCode: code,
+        dedupeSuffix: `attempt-${attempt}`
+      });
+    });
+  }
+
+  /**
+   * Sends the customer a code again when the first SMS never arrived.
+   *
+   * It is a new code, not the old one, because the old one is only stored as a
+   * hash and nobody -- not this API, not customer service -- can read it back.
+   * That is the point: a resend cannot leak the code to whoever asked for it.
+   */
+  async resendDeliveryCode(orderId: string, input: AdminInput) {
+    const actor = await this.employeeForAnyPermission(input.adminUserId, ["orders.resend-code", "orders.dispatch", "orders.after-sale"]);
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status !== FulfillmentStatus.OUT_FOR_DELIVERY) {
+      throw new BadRequestException("A delivery code can only be resent while the order is out for delivery.");
+    }
+    const code = generateCustomerCode();
+    const sendCount = fulfillment.deliveryCodeSentCount + 1;
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          deliveryCodeHash: hashCustomerCode(code),
+          deliveryCodeIssuedAt: new Date(),
+          deliveryCodeSentCount: sendCount,
+          // Resending is also how a locked-out order is rescued.
+          customerCodeFailedAttempts: 0,
+          customerCodeLockedAt: null
+        }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `resend-code:${fulfillment.id}:${sendCount}`,
+        fulfillmentId: fulfillment.id,
+        orderId: order.id,
+        ...actor,
+        deliveryRiderId: fulfillment.deliveryRiderId,
+        action: "RESEND_DELIVERY_CODE",
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
+        note: input.note?.trim() || "A new delivery code replaced the previous one and was sent to the customer."
+      });
+      await this.queueCustomerNotification(tx, order.id, "CUSTOMER_DELIVERY_CODE", {
+        riderName: fulfillment.deliveryRiderName,
+        deliveryCode: code,
+        dedupeSuffix: `send-${sendCount}`
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * Authorized drop-off: the customer is not there but agreed to the package
+   * being left with security, at reception or at the door. It needs both a photo
+   * of where it was left and the customer's code, because the code read out over
+   * the phone is what makes it the customer's decision rather than the rider's.
+   */
+  async completeAuthorizedDropOff(orderId: string, input: DropOffInput, rider: RiderActor) {
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (order.fulfillmentMethod !== FulfillmentMethod.KIKUYU_LOCAL_DELIVERY) {
+      throw new BadRequestException("Only delivery orders can be dropped off.");
+    }
+    if (fulfillment.deliveryRiderId !== rider.id) throw new ForbiddenException("This delivery is assigned to another rider.");
+    if (fulfillment.status === FulfillmentStatus.COMPLETED) return this.riderDeliveryView(order);
+
+    // The photo is stored first: a valid code with no proof of where the package
+    // was left is exactly the gap this rule exists to close.
+    const photoObject = await this.storeDropOffPhoto(order.id, fulfillment.id, input);
+    await this.consumeDeliveryCode(order, input.code, { deliveryRiderId: rider.id });
+
+    const actor = { actorAdminUserId: null, actorEmployeeId: rider.employeeId };
+    await this.completeOrder(order, actor, "AUTHORIZED_DROP_OFF", input.dropOffNote || input.note, {
+      deliveryCompletionMethod: DeliveryCompletionMethod.AUTHORIZED_DROP_OFF,
+      dropOffPhotoObject: photoObject,
+      dropOffNote: input.dropOffNote?.trim() || null,
+      customerCodeVerifiedAt: new Date()
+    }, { customerCodeVerified: true });
+    return this.riderDeliveryView(await this.requireOrderWithTask(orderId));
+  }
+
+  /** A rider hands the package to the customer and closes the order. */
+  async completeRiderDelivery(orderId: string, input: DeliveryCodeInput, rider: RiderActor) {
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (order.fulfillmentMethod !== FulfillmentMethod.KIKUYU_LOCAL_DELIVERY) {
+      throw new BadRequestException("Only delivery orders are completed by a rider.");
+    }
+    if (fulfillment.deliveryRiderId !== rider.id) throw new ForbiddenException("This delivery is assigned to another rider.");
+    if (fulfillment.status === FulfillmentStatus.COMPLETED) return this.riderDeliveryView(order);
+
+    await this.consumeDeliveryCode(order, input.code, { deliveryRiderId: rider.id });
+    await this.completeOrder(order, { actorAdminUserId: null, actorEmployeeId: rider.employeeId }, "CONFIRM_DELIVERY", input.note, {
+      deliveryCompletionMethod: DeliveryCompletionMethod.HANDED_TO_CUSTOMER,
+      customerCodeVerifiedAt: new Date()
+    }, { customerCodeVerified: true });
+    return this.riderDeliveryView(await this.requireOrderWithTask(orderId));
+  }
+
+  /**
+   * The rider could not hand the package over. The order is never cancelled:
+   * the customer has paid, so the package comes back and waits for another try.
+   */
+  async markDeliveryFailed(orderId: string, input: DeliveryFailureInput, rider?: RiderActor) {
+    const actor = rider
+      ? { actorAdminUserId: null, actorEmployeeId: rider.employeeId }
+      : await this.employeeForAnyPermission(input.adminUserId, ["orders.dispatch", "orders.complete"]);
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (rider && fulfillment.deliveryRiderId !== rider.id) throw new ForbiddenException("This delivery is assigned to another rider.");
+    if (fulfillment.status === FulfillmentStatus.DELIVERY_FAILED) return this.orderDetail(orderId, input.adminUserId);
+    this.assertTransition(order, FulfillmentStatus.DELIVERY_FAILED);
+    const reason = input.reason && Object.values(DeliveryFailureReason).includes(input.reason)
+      ? input.reason
+      : DeliveryFailureReason.OTHER;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          status: FulfillmentStatus.DELIVERY_FAILED,
+          deliveryFailureReason: reason,
+          deliveryFailureNote: input.note?.trim() || null,
+          deliveryFailedAt: new Date(),
+          // The code dies with the attempt. A retry gets a fresh one.
+          deliveryCodeHash: null,
+          customerCodeFailedAttempts: 0,
+          customerCodeLockedAt: null,
+          ...this.holderData({
+            status: FulfillmentStatus.DELIVERY_FAILED,
+            deliveryRiderId: fulfillment.deliveryRiderId,
+            riderName: fulfillment.deliveryRiderName
+          })
+        }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `delivery-failed:${fulfillment.id}:${fulfillment.deliveryAttemptCount}`,
+        fulfillmentId: fulfillment.id,
+        orderId: order.id,
+        ...actor,
+        deliveryRiderId: fulfillment.deliveryRiderId,
+        action: "DELIVERY_FAILED",
+        oldStatus: fulfillment.status,
+        newStatus: FulfillmentStatus.DELIVERY_FAILED,
+        note: `${reason}${input.note?.trim() ? `: ${input.note.trim()}` : ""}`
+      });
+      await this.queueCustomerNotification(tx, order.id, "CUSTOMER_DELIVERY_FAILED", {
+        reason: failureReasonLabel(reason),
+        dedupeSuffix: `attempt-${fulfillment.deliveryAttemptCount}`
+      });
+      await this.queueAdminAlert(tx, order, "ADMIN_FULFILLMENT_EXCEPTION", `delivery failed - ${reason}`);
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /** The rider sets off back to the store with the package still in hand. */
+  async startReturnToNode(orderId: string, input: AdminInput, rider?: RiderActor) {
+    const actor = rider
+      ? { actorAdminUserId: null, actorEmployeeId: rider.employeeId }
+      : await this.employeeForAnyPermission(input.adminUserId, ["orders.dispatch", "orders.node-receive"]);
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (rider && fulfillment.deliveryRiderId !== rider.id) throw new ForbiddenException("This delivery is assigned to another rider.");
+    if (fulfillment.status === FulfillmentStatus.RETURNING_TO_NODE) return this.orderDetail(orderId, input.adminUserId);
+    this.assertTransition(order, FulfillmentStatus.RETURNING_TO_NODE);
+    await this.moveWithEvent(order, FulfillmentStatus.RETURNING_TO_NODE, actor, "RETURN_TO_NODE_STARTED", input.note, {
+      returningToNodeAt: new Date()
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /** The store has the package back on the shelf and can dispatch it again. */
+  async confirmReturnAtNode(orderId: string, input: AdminInput) {
+    const actor = await this.employeeForPermission(input.adminUserId, "orders.node-receive");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status === FulfillmentStatus.ARRIVED_AT_NODE) return this.orderDetail(orderId, input.adminUserId);
+    await this.employeeBelongsToNode(actor.actorEmployeeId, fulfillment.fulfillmentNodeId);
+    this.assertTransition(order, FulfillmentStatus.ARRIVED_AT_NODE);
+    await this.moveWithEvent(order, FulfillmentStatus.ARRIVED_AT_NODE, actor, "RETURN_RECEIVED_AT_NODE", input.note, {
+      arrivedAtNodeByEmployeeId: actor.actorEmployeeId,
+      arrivedAtNodeAt: new Date(),
+      // The package is the store's problem again, not the rider's.
+      deliveryRiderId: null,
+      deliveryRiderName: null,
+      deliveryRiderPhone: null
+    });
     return this.orderDetail(orderId, input.adminUserId);
   }
 
@@ -1228,7 +1595,19 @@ export class OperationsFulfillmentService {
     tx: Prisma.TransactionClient,
     orderId: string,
     topic: NotificationTopicName,
-    extra: { amountKsh?: number | null; riderName?: string | null } = {}
+    extra: {
+      amountKsh?: number | null;
+      riderName?: string | null;
+      /** Plaintext only ever passes through here into the SMS body. */
+      deliveryCode?: string | null;
+      reason?: string | null;
+      /**
+       * A re-dispatch has to text a second, different code, so the dedupe key
+       * needs the attempt number. Without it the outbox would treat the new code
+       * as a duplicate of the old one and silently drop it.
+       */
+      dedupeSuffix?: string | null;
+    } = {}
   ) {
     const order = await tx.order.findUnique({
       where: { id: orderId },
@@ -1238,7 +1617,7 @@ export class OperationsFulfillmentService {
     await enqueueNotification(tx, {
       topic,
       audience: NotificationAudience.CUSTOMER,
-      dedupeKey: notificationDedupeKey(topic, orderId),
+      dedupeKey: notificationDedupeKey(topic, extra.dedupeSuffix ? `${orderId}:${extra.dedupeSuffix}` : orderId),
       recipientPhone: order.whatsappPhone || order.customer.phone,
       recipientLabel: order.customer.displayName ?? null,
       orderId,
@@ -1251,6 +1630,8 @@ export class OperationsFulfillmentService {
         itemCount: order.items.length,
         amountKsh: extra.amountKsh ?? null,
         riderName: extra.riderName ?? null,
+        deliveryCode: extra.deliveryCode ?? null,
+        reason: extra.reason ?? null,
         pickupCode: order.pickupCode,
         supportPhone: SUPPORT_PHONE_LABEL
       })
@@ -1344,7 +1725,8 @@ export class OperationsFulfillmentService {
     actor: Pick<EventInput, "actorAdminUserId" | "actorEmployeeId">,
     action: string,
     note: string | undefined,
-    fulfillmentData: Prisma.OrderFulfillmentUncheckedUpdateInput
+    fulfillmentData: Prisma.OrderFulfillmentUncheckedUpdateInput,
+    options: { customerCodeVerified: boolean }
   ) {
     await prisma.$transaction(async (tx) => {
       await lockReservationOrder(tx, order.id);
@@ -1353,7 +1735,7 @@ export class OperationsFulfillmentService {
       // A delayed completion retry must not touch a refunded/relisted garment or reset the return window.
       if (current.status === OrderStatus.COMPLETED || current.status === OrderStatus.REFUNDED) return;
       if (current.status !== OrderStatus.PAID && current.status !== OrderStatus.FULFILLING) throw new ConflictException("Order state changed before handover. Refresh before continuing.");
-      this.assertTransition(current, FulfillmentStatus.COMPLETED);
+      this.assertTransition(current, FulfillmentStatus.COMPLETED, { customerCodeVerified: options.customerCodeVerified });
       const fulfillment = current.fulfillment!;
       const successfulPayments = await tx.payment.findMany({ where: { orderId: current.id, status: PaymentStatus.SUCCESS }, select: { amountKsh: true } });
       if (successfulPayments.reduce((sum, payment) => sum + payment.amountKsh, 0) < current.totalKsh) throw new BadRequestException("Verified successful payment must cover the order before handover.");
@@ -1366,7 +1748,12 @@ export class OperationsFulfillmentService {
       await tx.order.update({ where: { id: current.id }, data: { status: OrderStatus.COMPLETED } });
       await tx.orderFulfillment.update({
         where: { id: fulfillment.id },
-        data: { ...fulfillmentData, status: FulfillmentStatus.COMPLETED, completedAt: new Date() }
+        data: {
+          ...fulfillmentData,
+          status: FulfillmentStatus.COMPLETED,
+          completedAt: new Date(),
+          ...this.holderData({ status: FulfillmentStatus.COMPLETED })
+        }
       });
       await this.createEvent(tx, {
         idempotencyKey: `transition:${fulfillment.id}:${FulfillmentStatus.COMPLETED}`,
@@ -1452,15 +1839,37 @@ export class OperationsFulfillmentService {
     return order;
   }
 
-  private assertTransition(order: OrderDetail, to: FulfillmentStatus) {
+  private assertTransition(order: OrderDetail, to: FulfillmentStatus, extra: { customerCodeVerified?: boolean } = {}) {
     const fulfillment = order.fulfillment;
     if (!fulfillment || !canTransitionFulfillment({
       from: fulfillment.status,
       to,
       fulfillmentMethod: order.fulfillmentMethod,
       hasDeliveryRider: Boolean(fulfillment.deliveryRiderId),
-      nodeType: nodeTypeFor(order)
-    })) throw new BadRequestException(`Fulfillment cannot move from ${fulfillment?.status ?? "NONE"} to ${to}.`);
+      nodeType: nodeTypeFor(order),
+      customerCodeVerified: extra.customerCodeVerified
+    })) {
+      // Completion without a verified code is the one failure worth naming, so
+      // the rider's screen says what to do instead of "cannot move".
+      if (to === FulfillmentStatus.COMPLETED && !extra.customerCodeVerified && fulfillment) {
+        throw new BadRequestException("This order cannot be completed without the customer's code.");
+      }
+      throw new BadRequestException(`Fulfillment cannot move from ${fulfillment?.status ?? "NONE"} to ${to}.`);
+    }
+  }
+
+  /**
+   * Records the holder alongside a status change. Kept next to the transition so
+   * a new step cannot forget it and leave "who has the package" stale.
+   */
+  private holderData(input: {
+    status: FulfillmentStatus;
+    fulfillmentNodeId?: string | null;
+    nodeName?: string | null;
+    deliveryRiderId?: string | null;
+    riderName?: string | null;
+  }): Prisma.OrderFulfillmentUncheckedUpdateInput {
+    return holderForStatus(input);
   }
 
   private async ensurePaidFulfillments(orderId?: string) {
@@ -1517,6 +1926,17 @@ export class OperationsFulfillmentService {
     const byProduct = new Map(inventory.map((item) => [item.productId, item]));
     return orders.map((order) => ({
       ...order,
+      // Neither code ever leaves the API.
+      //
+      // The pickup code is the customer's proof at the counter; the delivery code
+      // is theirs at the door. A store screen that displayed either would let
+      // staff complete an order the customer never turned up for -- which is the
+      // whole thing the codes exist to prevent. The delivery code's hash goes too:
+      // four digits is 10,000 guesses, so a hash in a JSON response is a code.
+      pickupCode: undefined,
+      fulfillment: order.fulfillment
+        ? { ...order.fulfillment, deliveryCodeHash: undefined, pickupVerificationValue: undefined }
+        : order.fulfillment,
       customer: {
         ...order.customer,
         phone: maskCustomerPhone(order.customer.phone)
@@ -1616,6 +2036,238 @@ export class OperationsFulfillmentService {
     });
   }
 
+  /**
+   * The single gate every delivery completion passes through.
+   *
+   * It re-reads the row inside a transaction and updates the attempt counter in
+   * the same statement it checks, so two riders submitting codes at the same
+   * moment cannot both be told they were first, and a wrong code always costs an
+   * attempt even if the request is retried. Nothing about the stored code is
+   * returned: the caller learns only "yes" or a message telling it what to do.
+   */
+  private async consumeDeliveryCode(
+    order: OrderDetail,
+    submitted: string | null | undefined,
+    actor: { deliveryRiderId?: string | null; actorAdminUserId?: string | null }
+  ) {
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status !== FulfillmentStatus.OUT_FOR_DELIVERY) {
+      throw new BadRequestException("This order is not out for delivery.");
+    }
+    await this.consumeCustomerCode(order, CustomerCodePurpose.DELIVERY, submitted, actor);
+  }
+
+  /** The same gate for a customer collecting from a store counter. */
+  private async consumePickupCode(
+    order: OrderDetail,
+    submitted: string | null | undefined,
+    actor: { actorAdminUserId?: string | null }
+  ) {
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status !== FulfillmentStatus.READY_FOR_PICKUP) {
+      throw new BadRequestException("This order is not ready for pickup.");
+    }
+    await this.consumeCustomerCode(order, CustomerCodePurpose.PICKUP, submitted, actor);
+  }
+
+  private async consumeCustomerCode(
+    order: OrderDetail,
+    purpose: CustomerCodePurpose,
+    submitted: string | null | undefined,
+    actor: { deliveryRiderId?: string | null; actorAdminUserId?: string | null }
+  ) {
+    const fulfillmentId = order.fulfillment!.id;
+    const failure = await prisma.$transaction(async (tx) => {
+      const current = await tx.orderFulfillment.findUnique({ where: { id: fulfillmentId } });
+      if (!current) throw new NotFoundException("Fulfillment was not found.");
+
+      // A pickup code lives on the order in plain text because the customer has
+      // to be able to read it off their own order page; a delivery code exists
+      // only as a hash. Both are checked by the same rules.
+      const codeHash = purpose === CustomerCodePurpose.PICKUP
+        ? (order.pickupCode ? hashCustomerCode(normalizeCustomerCode(order.pickupCode)) : null)
+        : current.deliveryCodeHash;
+
+      const result = verifyCustomerCode(
+        {
+          codeHash,
+          failedAttempts: current.customerCodeFailedAttempts,
+          lockedAt: current.customerCodeLockedAt,
+          // A pickup code is reusable until the order completes, which the
+          // status check already covers; a delivery code is strictly one-time.
+          verifiedAt: purpose === CustomerCodePurpose.DELIVERY ? current.customerCodeVerifiedAt : null
+        },
+        submitted
+      );
+
+      // A malformed entry is a typo, not a guess, so it does not burn an attempt.
+      if (result.outcome === "MALFORMED") return result;
+
+      const attemptNumber = current.customerCodeFailedAttempts + 1;
+      if (result.outcome === "WRONG_CODE") {
+        await tx.orderFulfillment.update({
+          where: { id: fulfillmentId },
+          data: {
+            customerCodeFailedAttempts: { increment: 1 },
+            ...(result.nowLocked ? { customerCodeLockedAt: new Date() } : {})
+          }
+        });
+      }
+
+      await tx.customerCodeAttempt.create({
+        data: {
+          fulfillmentId,
+          orderId: order.id,
+          purpose,
+          succeeded: result.outcome === "VERIFIED",
+          attemptNumber,
+          lockedOut: result.outcome === "LOCKED" || (result.outcome === "WRONG_CODE" && result.nowLocked),
+          deliveryRiderId: actor.deliveryRiderId ?? null,
+          actorAdminUserId: actor.actorAdminUserId ?? null,
+          note: result.outcome === "VERIFIED" ? null : result.outcome
+        }
+      });
+
+      if (result.outcome === "VERIFIED") {
+        await this.createEvent(tx, {
+          fulfillmentId,
+          orderId: order.id,
+          actorAdminUserId: actor.actorAdminUserId ?? null,
+          deliveryRiderId: actor.deliveryRiderId ?? null,
+          action: purpose === CustomerCodePurpose.PICKUP ? "PICKUP_CODE_VERIFIED" : "DELIVERY_CODE_VERIFIED",
+          oldStatus: current.status,
+          newStatus: current.status,
+          note: "The customer's code was verified."
+        });
+        return null;
+      }
+
+      await this.createEvent(tx, {
+        fulfillmentId,
+        orderId: order.id,
+        actorAdminUserId: actor.actorAdminUserId ?? null,
+        deliveryRiderId: actor.deliveryRiderId ?? null,
+        action: "CUSTOMER_CODE_REJECTED",
+        oldStatus: current.status,
+        newStatus: current.status,
+        note: `Code attempt ${attemptNumber} rejected: ${result.outcome}.`
+      });
+      return result;
+    });
+
+    if (failure) throw new BadRequestException(customerCodeFailureMessage(failure));
+  }
+
+  /**
+   * Stores the drop-off photo before the code is checked, so proof of where the
+   * package was left always exists for a completed drop-off. The object name
+   * binds the picture to the order and the moment it was taken.
+   */
+  private async storeDropOffPhoto(orderId: string, fulfillmentId: string, input: DropOffInput): Promise<string> {
+    const contentType = input.photoContentType?.trim() || "image/jpeg";
+    const base64 = (input.photoBase64 ?? "").replace(/^data:[^;]+;base64,/, "").trim();
+    if (!base64) throw new BadRequestException("A photo of where the package was left is required for an authorized drop-off.");
+    let body: Buffer;
+    try {
+      body = Buffer.from(base64, "base64");
+    } catch {
+      throw new BadRequestException("The drop-off photo could not be read. Take it again.");
+    }
+    if (!body.length) throw new BadRequestException("The drop-off photo is empty. Take it again.");
+    const objectName = `staging/deliveries/${orderId}/${fulfillmentId}-${Date.now()}.${contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg"}`;
+    await this.photos.upload(objectName, contentType, body);
+    return objectName;
+  }
+
+  /** A store may only dispatch to a rider who rides for that store and is active. */
+  private async requireNodeRider(deliveryRiderId: string | undefined, nodeId: string | null) {
+    const id = deliveryRiderId?.trim();
+    if (!id) throw new BadRequestException("Choose a rider.");
+    const rider = await prisma.deliveryRider.findUnique({ where: { id } });
+    if (!rider) throw new NotFoundException("Rider was not found.");
+    if (!rider.active) throw new BadRequestException(`${rider.name} is not an active rider.`);
+    if (nodeId && rider.fulfillmentNodeId && rider.fulfillmentNodeId !== nodeId) {
+      throw new ForbiddenException(`${rider.name} rides for a different node.`);
+    }
+    return rider;
+  }
+
+  /** One status move, its timestamps, its holder and its event, in one place. */
+  private async moveWithEvent(
+    order: OrderDetail,
+    to: FulfillmentStatus,
+    actor: Pick<EventInput, "actorAdminUserId" | "actorEmployeeId">,
+    action: string,
+    note: string | undefined,
+    data: Prisma.OrderFulfillmentUncheckedUpdateInput
+  ) {
+    const fulfillment = order.fulfillment!;
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.orderFulfillment.findUnique({ where: { id: fulfillment.id } });
+      if (!current) throw new NotFoundException("Fulfillment was not found.");
+      if (current.status === to) return;
+      if (current.status !== fulfillment.status) {
+        throw new ConflictException("This package moved while you were working on it. Refresh and try again.");
+      }
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: {
+          ...data,
+          status: to,
+          ...this.holderData({
+            status: to,
+            fulfillmentNodeId: current.fulfillmentNodeId,
+            nodeName: order.fulfillment?.fulfillmentNode?.name ?? null,
+            deliveryRiderId: data.deliveryRiderId === null ? null : current.deliveryRiderId,
+            riderName: data.deliveryRiderName === null ? null : current.deliveryRiderName
+          })
+        }
+      });
+      await this.createEvent(tx, {
+        idempotencyKey: `transition:${fulfillment.id}:${to}:${current.deliveryAttemptCount}`,
+        fulfillmentId: fulfillment.id,
+        orderId: order.id,
+        ...actor,
+        deliveryRiderId: current.deliveryRiderId,
+        action,
+        oldStatus: current.status,
+        newStatus: to,
+        note
+      });
+    });
+  }
+
+  /**
+   * What a rider is allowed to see about a delivery: enough to find the customer
+   * and nothing about money. No commission, no product cost, no order total, and
+   * no delivery code -- there is no code to show, only a hash.
+   */
+  riderDeliveryView(order: RiderVisibleOrder) {
+    const fulfillment = order.fulfillment!;
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      packageCode: fulfillment.packageCode,
+      status: fulfillment.status,
+      itemCount: order.items.length,
+      items: order.items.map((item) => ({
+        title: item.snapshot?.title ?? "Item",
+        sizeLabel: item.snapshot?.sizeLabel ?? null
+      })),
+      customerName: order.customer.displayName,
+      customerPhone: order.customer.phone,
+      deliveryAddress: order.deliveryAddress,
+      deliveryNote: order.deliveryNote,
+      nodeName: fulfillment.fulfillmentNode?.name ?? null,
+      dispatchedAt: fulfillment.outForDeliveryAt,
+      deliveryAttemptCount: fulfillment.deliveryAttemptCount,
+      codeAttemptsRemaining: Math.max(0, CUSTOMER_CODE_MAX_ATTEMPTS - fulfillment.customerCodeFailedAttempts),
+      codeLocked: Boolean(fulfillment.customerCodeLockedAt),
+      failureReason: fulfillment.deliveryFailureReason,
+      completedAt: fulfillment.completedAt
+    };
+  }
+
   private async createEvent(tx: Prisma.TransactionClient, input: EventInput) {
     const data: Prisma.FulfillmentEventUncheckedCreateInput = {
       idempotencyKey: input.idempotencyKey ?? null,
@@ -1669,6 +2321,19 @@ function afterSaleWhere(): Prisma.OrderWhereInput {
   };
 }
 
+/** Plain words for the customer, not the enum label. */
+function failureReasonLabel(reason: DeliveryFailureReason): string {
+  const labels: Record<DeliveryFailureReason, string> = {
+    [DeliveryFailureReason.NO_ANSWER]: "nobody answered",
+    [DeliveryFailureReason.PHONE_UNREACHABLE]: "your phone was unreachable",
+    [DeliveryFailureReason.WRONG_ADDRESS]: "we could not find the address",
+    [DeliveryFailureReason.CUSTOMER_REQUESTED_LATER]: "you asked us to come later",
+    [DeliveryFailureReason.CUSTOMER_REFUSED]: "the delivery was refused",
+    [DeliveryFailureReason.OTHER]: "we could not complete the handover"
+  };
+  return labels[reason];
+}
+
 function validDate(value: string, label: string): Date {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw new BadRequestException(`${label} is invalid.`);
@@ -1679,16 +2344,6 @@ function exclusiveDateEnd(value: string): Date {
   const date = validDate(value, "End date");
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) date.setUTCDate(date.getUTCDate() + 1);
   return date;
-}
-
-function pickupVerificationMatches(order: OrderDetail, method: PickupVerificationMethod, value: string): boolean {
-  if (method === PickupVerificationMethod.ORDER_NUMBER) return order.orderNumber.toLowerCase() === value.toLowerCase();
-  if (method === PickupVerificationMethod.PHONE) return normalizePhone(order.customer.phone) === normalizePhone(value);
-  return Boolean(order.pickupCode && order.pickupCode.toLowerCase() === value.toLowerCase());
-}
-
-function normalizePhone(value: string | null | undefined) {
-  return (value ?? "").replace(/\D/g, "");
 }
 
 function nodeTypeFor(order: {

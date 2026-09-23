@@ -4,6 +4,11 @@ import { test, type TestContext } from "node:test";
 import { prisma } from "@online-saler/database";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsFulfillmentService } from "./operations-fulfillment.service";
+import { ProductImageStorageService } from "../product/product-image-storage.service";
+import { hashCustomerCode } from "@online-saler/business-rules";
+
+/** The code the customer reads out in these fixtures. */
+const CUSTOMER_CODE = "5832";
 
 function fixture(t: TestContext, currentStatus: string, currentFulfillment: string, staleFulfillment = "OUT_FOR_DELIVERY") {
   const calls: string[] = [];
@@ -29,13 +34,32 @@ function fixture(t: TestContext, currentStatus: string, currentFulfillment: stri
     },
     payment: { findMany: async () => [{ amountKsh: 200 }] },
     inventoryItem: { updateMany: async () => { calls.push("write-inventory"); return { count: 1 }; } },
-    orderFulfillment: { update: async () => { calls.push("write-fulfillment"); return current.fulfillment; } },
-    fulfillmentEvent: { upsert: async () => { calls.push("write-event"); return {}; } }
+    orderFulfillment: {
+      update: async () => { calls.push("write-fulfillment"); return current.fulfillment; },
+      findUnique: async () => ({
+        id: "fulfillment",
+        status: staleFulfillment,
+        deliveryCodeHash: hashCustomerCode(CUSTOMER_CODE),
+        customerCodeVerifiedAt: null,
+        customerCodeFailedAttempts: 0,
+        customerCodeLockedAt: null,
+        deliveryAttemptCount: 1,
+        fulfillmentNodeId: null,
+        deliveryRiderId: null,
+        deliveryRiderName: null,
+        readyForDispatchAt: time
+      })
+    },
+    customerCodeAttempt: { create: async () => ({}) },
+    fulfillmentEvent: {
+      upsert: async () => { calls.push("write-event"); return {}; },
+      create: async () => ({})
+    }
   };
   const original = prisma.$transaction;
   prisma.$transaction = (async (callback: (value: unknown) => unknown) => callback(tx)) as typeof prisma.$transaction;
   t.after(() => { prisma.$transaction = original; });
-  const service = new OperationsFulfillmentService({} as OperationsAccessService);
+  const service = new OperationsFulfillmentService({} as OperationsAccessService, stubPhotoStore());
   const internals = service as unknown as {
     employeeForPermission: () => Promise<typeof actor>;
     adminForPermission: () => Promise<typeof actor>;
@@ -59,13 +83,13 @@ test("a completion that committed before cancel cannot be overwritten by cancell
 
 test("a delayed handover retry after refund preserves returned or resold inventory and delivery timestamp", async (t) => {
   const h = fixture(t, "REFUNDED", "COMPLETED");
-  await h.service.completeDelivery("order", { adminUserId: "admin" });
+  await h.service.completeDelivery("order", { adminUserId: "admin", code: CUSTOMER_CODE });
   assert.deepEqual(h.calls, ["lock-order", "read-current"]);
 });
 
 test("a cancelled order cannot be completed using a previously read delivery task", async (t) => {
   const h = fixture(t, "CANCELLED", "EXCEPTION");
-  await assert.rejects(() => h.service.completeDelivery("order", { adminUserId: "admin" }), /state changed/);
+  await assert.rejects(() => h.service.completeDelivery("order", { adminUserId: "admin", code: CUSTOMER_CODE }), /state changed/);
   assert.deepEqual(h.calls, ["lock-order", "read-current"]);
 });
 
@@ -78,7 +102,7 @@ test("an old packing request cannot rewrite a refunded garment as packed", async
 test("handover locks inventory after its order and refuses another active reservation", async (t) => {
   const h = fixture(t, "FULFILLING", "OUT_FOR_DELIVERY");
   h.compete();
-  await assert.rejects(() => h.service.completeDelivery("order", { adminUserId: "admin" }), /no longer owned/);
+  await assert.rejects(() => h.service.completeDelivery("order", { adminUserId: "admin", code: CUSTOMER_CODE }), /no longer owned/);
   assert.deepEqual(h.calls, ["lock-order", "read-current", "lock-inventory"]);
 });
 
@@ -91,3 +115,8 @@ test("a delayed barcode scan cannot restore a refunded garment to picked stock",
   await assert.rejects(() => h.service.scanItem("order", "item", { adminUserId: "admin", barcode: "BARCODE" }), /Picking task changed/);
   assert.deepEqual(h.calls, ["lock-order", "read-current"]);
 });
+
+/** The drop-off photo store, which these tests never reach. */
+function stubPhotoStore() {
+  return { upload: async () => undefined } as unknown as ProductImageStorageService;
+}

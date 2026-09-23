@@ -41,4 +41,14 @@ assert.deepEqual(customerFulfillmentProgress({
   fulfillmentStatus: FulfillmentStatus.OUT_FOR_DELIVERY
 }).map((step) => step.label), ["Paid", "Preparing", "Out for delivery", "Completed"]);
 
+// A failed delivery must not look like the order went back to the warehouse.
+for (const status of [FulfillmentStatus.DELIVERY_FAILED, FulfillmentStatus.RETURNING_TO_NODE]) {
+  const steps = customerFulfillmentProgress({
+    orderStatus: OrderStatus.FULFILLING,
+    fulfillmentMethod: FulfillmentMethod.KIKUYU_LOCAL_DELIVERY,
+    fulfillmentStatus: status
+  });
+  assert.equal(steps.find((step) => step.state === "current")?.key, "handoff");
+}
+
 console.log("Order status label tests passed");

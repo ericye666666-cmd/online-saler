@@ -162,6 +162,22 @@ const pagePermissions: OperationsPermission[] = [
     description: "Open the finance summary for revenue, refunds, delivery cost and commission."
   },
   {
+    code: "page.rider.deliveries",
+    module: "orders",
+    scope: "PAGE",
+    page: "rider-deliveries",
+    action: "view",
+    description: "Open the rider's own delivery list on a phone."
+  },
+  {
+    code: "page.orders.riders",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-riders",
+    action: "view",
+    description: "Open the store's rider roster."
+  },
+  {
     code: "page.system.nodes",
     module: "system",
     scope: "PAGE",
@@ -230,6 +246,10 @@ const orderWorkflowPermissions: OperationsPermission[] = [
   ["orders.write-off", "write-off", "Write off a paid order that can never be fulfilled."],
   ["orders.refund", "refund", "Record a refund that was already executed in M-Pesa."],
   ["orders.payment-review", "payment-review", "Resolve payments and callbacks held for manual review."],
+  ["orders.resend-code", "resend-code", "Send the customer a replacement delivery code."],
+  ["rider.deliveries", "rider-deliveries", "See and close only the deliveries assigned to you."],
+  ["riders.view", "view", "View the riders of a fulfillment node."],
+  ["riders.manage", "manage", "Add a rider, change their details, or stand them down."],
   ["nodes.view", "view", "View fulfillment nodes."],
   ["nodes.manage", "manage", "Create, edit, enable and disable fulfillment nodes."],
   ["notifications.view", "view", "View the outbound notification outbox."],
@@ -243,7 +263,7 @@ const orderWorkflowPermissions: OperationsPermission[] = [
 ].map(([code, action, description]) => ({
   code,
   module: code.startsWith("analytics.") ? "analytics"
-    : code.startsWith("orders.") ? "orders"
+    : code.startsWith("orders.") || code.startsWith("rider.") || code.startsWith("riders.") ? "orders"
       : code.startsWith("nodes.") || code.startsWith("notifications.") ? "system"
         : "product",
   scope: "ACTION" as const,
@@ -303,7 +323,11 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "orders.delivery-cost",
       "orders.write-off",
       "orders.payment-review",
+      "orders.resend-code",
+      "riders.view",
+      "riders.manage",
       "page.orders.node",
+      "page.orders.riders",
       "page.orders.payment-review",
       "page.orders.finance",
       "page.system.nodes",
@@ -366,10 +390,11 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
   {
     code: "STORE_MANAGER",
     name: "Store Node Manager",
-    description: "Receive packages at a store, hand them to Bolt or the customer, and record the fare.",
+    description: "Receive packages at a store, hand them to its riders or the customer, and keep the rider roster.",
     permissions: [
       "module.orders",
       "page.orders.node",
+      "page.orders.riders",
       "action.orders.view",
       "orders.view",
       "orders.node-receive",
@@ -377,7 +402,21 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "orders.dispatch",
       "orders.complete",
       "orders.delivery-cost",
+      "orders.resend-code",
+      "riders.view",
+      "riders.manage",
       "nodes.view"
+    ]
+  },
+  {
+    code: "DELIVERY_RIDER",
+    name: "Delivery Rider",
+    description: "See only your own deliveries, enter the customer's code, and report a failed delivery.",
+    // Deliberately tiny. No orders module, no order list, no finance, no
+    // affiliate: a rider signing in sees one screen with their own drops on it.
+    permissions: [
+      "page.rider.deliveries",
+      "rider.deliveries"
     ]
   },
   {
@@ -404,7 +443,10 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "orders.write-off",
       "orders.payment-review",
       "orders.delivery-cost",
+      "orders.resend-code",
+      "riders.view",
       "page.orders.node",
+      "page.orders.riders",
       "page.orders.payment-review",
       "nodes.view",
       "notifications.view",

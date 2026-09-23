@@ -16,8 +16,13 @@ import { t } from "@/i18n/runtime";
 
 /**
  * The store's own screen. A package arrives from the warehouse, the store scans
- * it in, hands it to the customer or to a Bolt rider, and records what the ride
- * actually cost. Before this existed none of those steps had anywhere to go.
+ * it in, hands it to one of the store's riders or straight to the customer, and
+ * records what the ride actually cost.
+ *
+ * Handing a package to a rider is one button, because it has to be one step: it
+ * assigns the rider, mints the customer's delivery code, texts it and moves the
+ * package out for delivery together or not at all. The store never sees that
+ * code -- only the customer's phone has it.
  */
 
 type NodeOption = {
@@ -27,6 +32,14 @@ type NodeOption = {
   type: "WAREHOUSE" | "STORE";
   supportsPickup: boolean;
   supportsDelivery: boolean;
+};
+
+type NodeRider = {
+  id: string;
+  name: string;
+  phone: string | null;
+  active: boolean;
+  openDeliveries: number;
 };
 
 type NodeOrder = {
@@ -50,6 +63,12 @@ type NodeOrder = {
     arrivedAtNodeAt: string | null;
     actualDeliveryCostKsh: number | null;
     deliveryRiderName: string | null;
+    deliveryAttemptCount: number;
+    deliveryFailureReason: string | null;
+    deliveryFailureNote: string | null;
+    customerCodeFailedAttempts: number;
+    customerCodeLockedAt: string | null;
+    deliveryCodeSentCount: number;
     exceptionReason: string | null;
     exceptionNote: string | null;
     fulfillmentNode: { id: string; name: string } | null;
@@ -61,7 +80,9 @@ const NODE_STAGES = [
   { key: "at-node", label: "已到店" },
   { key: "ready-for-pickup", label: "待自提" },
   { key: "ready-for-dispatch", label: "待发车" },
-  { key: "out-for-delivery", label: "配送中" }
+  { key: "out-for-delivery", label: "配送中" },
+  { key: "delivery-failed", label: "配送失败" },
+  { key: "returning-to-node", label: "送回途中" }
 ] as const;
 
 export function NodeWorkbenchPage() {
@@ -73,6 +94,7 @@ export function NodeWorkbenchPage() {
   const canRecordCost = hasPermission("orders.delivery-cost");
 
   const [nodes, setNodes] = useState<NodeOption[]>([]);
+  const [riders, setRiders] = useState<NodeRider[]>([]);
   const [nodeId, setNodeId] = useState("");
   const [orders, setOrders] = useState<NodeOrder[]>([]);
   const [scan, setScan] = useState("");
@@ -110,6 +132,22 @@ export function NodeWorkbenchPage() {
     }
   }, [accessToken, nodeId, request]);
 
+  // The dispatch dropdown lists this store's active riders and nobody else's.
+  const loadRiders = useCallback(async () => {
+    if (!accessToken || !nodeId || !hasPermission("riders.view")) return;
+    try {
+      const list = await request<NodeRider[]>("/operations/riders", { query: { nodeId } });
+      setRiders(list.filter((rider) => rider.active));
+    } catch {
+      // A store without a roster yet still has to be able to receive packages.
+      setRiders([]);
+    }
+  }, [accessToken, nodeId, hasPermission, request]);
+
+  useEffect(() => {
+    void loadRiders();
+  }, [loadRiders]);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -139,7 +177,9 @@ export function NodeWorkbenchPage() {
         : status === "ARRIVED_AT_NODE" ? "at-node"
           : status === "READY_FOR_PICKUP" ? "ready-for-pickup"
             : status === "READY_FOR_DISPATCH" ? "ready-for-dispatch"
-              : status === "OUT_FOR_DELIVERY" ? "out-for-delivery" : null;
+              : status === "OUT_FOR_DELIVERY" ? "out-for-delivery"
+                : status === "DELIVERY_FAILED" ? "delivery-failed"
+                  : status === "RETURNING_TO_NODE" ? "returning-to-node" : null;
       if (key) map.get(key)!.push(order);
     }
     return map;
@@ -235,6 +275,15 @@ export function NodeWorkbenchPage() {
                     {order.fulfillment?.deliveryRiderName ? (
                       <Fact label={t("骑手")} value={order.fulfillment.deliveryRiderName} />
                     ) : null}
+                    {order.fulfillment?.deliveryFailureReason ? (
+                      <Fact
+                        label={t("失败原因")}
+                        value={`${order.fulfillment.deliveryFailureReason}${order.fulfillment.deliveryFailureNote ? ` · ${order.fulfillment.deliveryFailureNote}` : ""}`}
+                      />
+                    ) : null}
+                    {(order.fulfillment?.deliveryAttemptCount ?? 0) > 1 ? (
+                      <Fact label={t("配送尝试次数")} value={String(order.fulfillment?.deliveryAttemptCount)} />
+                    ) : null}
                     {order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" ? (
                       <Fact
                         label={t("顾客付 / 实际车费")}
@@ -276,41 +325,72 @@ export function NodeWorkbenchPage() {
                       </Button>
                     ) : null}
 
-                    {stage.key === "at-node" && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" ? (
-                      <Button
-                        size="sm"
-                        disabled={busyId === order.id || !canDispatch}
-                        onClick={() => void act(order.id, "ready-for-dispatch", { note: fields[`${order.id}:note`] ?? "" }, t("已进入待发车队列。"))}
-                      >
-                        {t("准备叫 Bolt")}
-                      </Button>
+                    {(stage.key === "at-node" || stage.key === "ready-for-dispatch")
+                      && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && canDispatch ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {riders.length === 0 ? (
+                          <span className="text-sm text-destructive">
+                            {t("本店还没有上班的骑手。先到「门店骑手」里添加。")}
+                          </span>
+                        ) : (
+                          <>
+                            <NativeSelect
+                              className="w-44"
+                              value={fields[`${order.id}:riderId`] ?? ""}
+                              onChange={(event) => setFields((current) => ({ ...current, [`${order.id}:riderId`]: event.target.value }))}
+                            >
+                              <NativeSelectOption value="">{t("选择骑手")}</NativeSelectOption>
+                              {riders.map((rider) => (
+                                <NativeSelectOption key={rider.id} value={rider.id}>
+                                  {rider.name}{rider.openDeliveries ? ` (${rider.openDeliveries})` : ""}
+                                </NativeSelectOption>
+                              ))}
+                            </NativeSelect>
+                            <Button
+                              size="sm"
+                              disabled={busyId === order.id || !(fields[`${order.id}:riderId`] ?? "")}
+                              onClick={() => void act(order.id, "dispatch-to-rider", {
+                                deliveryRiderId: fields[`${order.id}:riderId`] ?? "",
+                                note: fields[`${order.id}:note`] ?? ""
+                              }, t("已交给骑手，配送码已短信发给顾客。"))}
+                            >
+                              {t("交给骑手并发送配送码")}
+                            </Button>
+                            <span className="text-xs text-muted-foreground">
+                              {t("系统会给顾客发一个 4 位配送码。门店和骑手都看不到这个号码。")}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     ) : null}
 
                     {stage.key === "ready-for-pickup" && canComplete ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <Input
-                          className="w-56"
-                          placeholder={t("顾客报的订单号或手机号")}
+                          className="w-40 text-center text-lg tracking-[0.4em] font-mono"
+                          inputMode="numeric"
+                          maxLength={4}
+                          placeholder="••••"
                           value={fields[`${order.id}:verify`] ?? ""}
-                          onChange={(event) => setFields((current) => ({ ...current, [`${order.id}:verify`]: event.target.value }))}
+                          onChange={(event) => setFields((current) => ({
+                            ...current,
+                            [`${order.id}:verify`]: event.target.value.replace(/\D/g, "").slice(0, 4)
+                          }))}
                         />
                         <Button
                           size="sm"
-                          disabled={busyId === order.id || !(fields[`${order.id}:verify`] ?? "").trim()}
-                          onClick={() => {
-                            const value = (fields[`${order.id}:verify`] ?? "").trim();
-                            const method = /^\d{7,}$/.test(value.replace(/\D/g, "")) && !value.toUpperCase().startsWith("DL-")
-                              ? "PHONE"
-                              : "ORDER_NUMBER";
-                            void act(order.id, "confirm-pickup", {
-                              verificationMethod: method,
-                              verificationValue: value,
-                              note: fields[`${order.id}:note`] ?? ""
-                            }, t("自提完成。"));
-                          }}
+                          disabled={busyId === order.id || (fields[`${order.id}:verify`] ?? "").length !== 4}
+                          onClick={() => void act(order.id, "confirm-pickup", {
+                            verificationMethod: "PICKUP_CODE",
+                            verificationValue: (fields[`${order.id}:verify`] ?? "").trim(),
+                            note: fields[`${order.id}:note`] ?? ""
+                          }, t("自提完成。"))}
                         >
-                          {t("核对并交付")}
+                          {t("核对自提码并交付")}
                         </Button>
+                        <span className="text-xs text-muted-foreground">
+                          {t("请顾客报出短信里的自提码。订单号和手机号都印在包裹上，不能当凭证。")}
+                        </span>
                       </div>
                     ) : null}
 
@@ -340,16 +420,44 @@ export function NodeWorkbenchPage() {
                             note: fields[`${order.id}:note`] ?? ""
                           }, t("已记录骑手。"))}
                         >
-                          {t("登记 Bolt 骑手")}
+                          {t("登记外部 Bolt 骑手")}
                         </Button>
                         <Button
                           size="sm"
                           disabled={busyId === order.id}
-                          onClick={() => void act(order.id, "dispatch", { note: fields[`${order.id}:note`] ?? "" }, t("包裹已交给骑手。"))}
+                          onClick={() => void act(order.id, "dispatch", { note: fields[`${order.id}:note`] ?? "" }, t("包裹已交给 Bolt 骑手，配送码已短信发给顾客。"))}
                         >
-                          {t("交给骑手")}
+                          {t("交给 Bolt 骑手并发送配送码")}
                         </Button>
                       </div>
+                    ) : null}
+
+                    {stage.key === "delivery-failed" ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          {t("顾客已经付过钱，这单不会取消。等骑手把货送回门店，签收后可以重新派单。")}
+                        </span>
+                        {canDispatch ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyId === order.id}
+                            onClick={() => void act(order.id, "return-to-node", { note: fields[`${order.id}:note`] ?? "" }, t("已标记为正在送回门店。"))}
+                          >
+                            {t("骑手已出发送回")}
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {stage.key === "returning-to-node" && canReceive ? (
+                      <Button
+                        size="sm"
+                        disabled={busyId === order.id}
+                        onClick={() => void act(order.id, "confirm-return", { note: fields[`${order.id}:note`] ?? "" }, t("已签收退回的包裹，可以重新派单。"))}
+                      >
+                        {t("确认收到退回的包裹")}
+                      </Button>
                     ) : null}
 
                     {stage.key === "out-for-delivery" ? (
@@ -376,14 +484,45 @@ export function NodeWorkbenchPage() {
                             </Button>
                           </>
                         ) : null}
-                        {canComplete ? (
+                        {hasPermission("orders.resend-code") ? (
                           <Button
                             size="sm"
+                            variant="outline"
                             disabled={busyId === order.id}
-                            onClick={() => void act(order.id, "complete-delivery", { note: fields[`${order.id}:note`] ?? "" }, t("配送完成。"))}
+                            onClick={() => void act(order.id, "resend-delivery-code", { note: fields[`${order.id}:note`] ?? "" }, t("已给顾客重发一个新的配送码，旧的作废。"))}
                           >
-                            {t("确认已送达")}
+                            {t("重发配送码")}
                           </Button>
+                        ) : null}
+                        {canComplete ? (
+                          <>
+                            <Input
+                              className="w-32 text-center tracking-[0.3em] font-mono"
+                              inputMode="numeric"
+                              maxLength={4}
+                              placeholder="••••"
+                              value={fields[`${order.id}:code`] ?? ""}
+                              onChange={(event) => setFields((current) => ({
+                                ...current,
+                                [`${order.id}:code`]: event.target.value.replace(/\D/g, "").slice(0, 4)
+                              }))}
+                            />
+                            <Button
+                              size="sm"
+                              disabled={busyId === order.id || (fields[`${order.id}:code`] ?? "").length !== 4}
+                              onClick={() => void act(order.id, "complete-delivery", {
+                                code: fields[`${order.id}:code`] ?? "",
+                                note: fields[`${order.id}:note`] ?? ""
+                              }, t("配送完成。"))}
+                            >
+                              {t("用顾客的配送码确认送达")}
+                            </Button>
+                          </>
+                        ) : null}
+                        {order.fulfillment?.customerCodeLockedAt ? (
+                          <span className="text-xs text-destructive">
+                            {t("配送码已被多次输错锁住，请重发一个新的。")}
+                          </span>
                         ) : null}
                       </div>
                     ) : null}

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BarChart3Icon,
+  BikeIcon,
   BoxesIcon,
   BriefcaseBusinessIcon,
   Building2Icon,
@@ -28,6 +29,7 @@ import {
 import {
   adminInitials,
   canAccessPath,
+  hasPermission,
   filterNavigation,
   roleLabels,
   type NavigationItem,
@@ -79,7 +81,7 @@ import { t } from "@/i18n/runtime";
 import { useOperationsI18n } from "@/i18n/provider";
 import { OperationsLanguageSwitcher } from "./operations-language-switcher";
 
-type ModuleKey = "product" | "orders" | "affiliate" | "service" | "analytics" | "system";
+type ModuleKey = "product" | "orders" | "rider" | "affiliate" | "service" | "analytics" | "system";
 
 type ModuleItem = NavigationItem & {
   icon: typeof PackageCheckIcon;
@@ -134,11 +136,21 @@ export const operationsModules: ModuleNav[] = [
     items: [
       { label: "订单工作台", href: "/orders", icon: LayoutDashboardIcon, permission: "page.orders.workbench" },
       { label: "门店履约台", href: "/orders/node", icon: TruckIcon, permission: "page.orders.node" },
+      { label: "门店骑手", href: "/orders/riders", icon: BikeIcon, permission: "page.orders.riders" },
       { label: "支付复核", href: "/orders/payment-review", icon: CircleDollarSignIcon, permission: "page.orders.payment-review" },
       { label: "财务汇总", href: "/orders/finance", icon: BarChart3Icon, permission: "page.orders.finance" },
       { label: "全部订单", href: "/orders/all", icon: BriefcaseBusinessIcon, permission: "page.orders.all" },
       { label: "售后订单", href: "/orders/after-sales", icon: HeadphonesIcon, permission: "page.orders.after-sale" },
       { label: "异常订单", href: "/orders/exceptions", icon: XCircleIcon, permission: "page.orders.exceptions" }
+    ]
+  },
+  {
+    key: "rider",
+    label: "我的配送",
+    icon: BikeIcon,
+    permission: "rider.deliveries",
+    items: [
+      { label: "我的配送单", href: "/rider", icon: BikeIcon, permission: "page.rider.deliveries" }
     ]
   },
   {
@@ -244,6 +256,9 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
   if (!session?.adminUser) return <LoginScreen />;
 
   const routeAllowed = canAccessPath(pathname, operationsModules, session);
+  if (pathname === "/" && !routeAllowed && hasPermission(session, "page.rider.deliveries")) {
+    return <RiderLanding />;
+  }
   const fallbackModule: ModuleNav = visibleModules[0] ?? operationsModules[0];
   const activeModule: ModuleNav = visibleModules.find((module) => module.key === selectedModule) ?? fallbackModule;
   const routeSection = sectionForPath(pathname);
@@ -394,6 +409,30 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
         </div>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+/**
+ * A rider's whole world is one link. They sign in on a phone at the gate, so the
+ * screen is a single tap rather than a sidebar they have to find.
+ */
+function RiderLanding() {
+  const { t } = useOperationsI18n();
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+      <Card className="w-full max-w-md shadow-sm">
+        <CardHeader>
+          <CardTitle>{t("我的配送")}</CardTitle>
+          <CardDescription>{t("打开今天派给你的配送单。")}</CardDescription>
+        </CardHeader>
+        <CardFooter>
+          <Button asChild className="h-12 w-full text-base">
+            <Link href="/rider">{t("查看我的配送单")}</Link>
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
   );
 }
 

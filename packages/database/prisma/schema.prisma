@@ -222,6 +222,8 @@ model AdminUser {
   customerServiceNotes   CustomerServiceNote[] @relation("CustomerServiceNoteAuthor")
   fulfillmentEvents      FulfillmentEvent[]    @relation("FulfillmentEventAdminActor")
   deliveryAssignments    DeliveryAssignment[]  @relation("DeliveryAssignmentAssignedBy")
+  deliveryRider          DeliveryRider?        @relation("DeliveryRiderAccount")
+  customerCodeAttempts   CustomerCodeAttempt[] @relation("CustomerCodeAttemptActor")
   auditLogs              AuditLog[]            @relation("AuditLogAdminUser")
   reviewedPayments       Payment[]             @relation("PaymentReviewedBy")
   resolvedMpesaCallbacks MpesaCallback[]       @relation("MpesaCallbackResolvedBy")
@@ -655,6 +657,8 @@ enum FulfillmentStatus {
   READY_FOR_PICKUP
   READY_FOR_DISPATCH
   OUT_FOR_DELIVERY
+  DELIVERY_FAILED
+  RETURNING_TO_NODE
   COMPLETED
   EXCEPTION
 }
@@ -692,6 +696,46 @@ enum FulfillmentExceptionReason {
   WRONG_NODE
   CUSTOMER_UNREACHABLE
   OTHER
+}
+
+/**
+ * Who physically holds the package right now. Every order can answer "where is
+ * it and who is responsible" from this one field, without replaying the log.
+ */
+enum FulfillmentHolderType {
+  WAREHOUSE
+  IN_TRANSIT
+  NODE
+  RIDER
+  CUSTOMER
+}
+
+/**
+ * How a delivery ended. Both ways need the customer's code.
+ */
+enum DeliveryCompletionMethod {
+  HANDED_TO_CUSTOMER
+  AUTHORIZED_DROP_OFF
+}
+
+/**
+ * Why a rider came back with the package still in hand.
+ */
+enum DeliveryFailureReason {
+  NO_ANSWER
+  PHONE_UNREACHABLE
+  WRONG_ADDRESS
+  CUSTOMER_REQUESTED_LATER
+  CUSTOMER_REFUSED
+  OTHER
+}
+
+/**
+ * Which handover a customer code was issued for.
+ */
+enum CustomerCodePurpose {
+  DELIVERY
+  PICKUP
 }
 
 enum FulfillmentNodeType {
@@ -900,6 +944,7 @@ model Order {
   afterSaleReturns     AfterSaleReturn[]
   afterSaleEvents      AfterSaleEvent[]
   refunds              RefundRecord[]
+  codeAttempts         CustomerCodeAttempt[]
   notifications        Notification[]
   sourceDraft          CheckoutDraft?        @relation("CheckoutDraftConvertedOrder")
   createdAt            DateTime              @default(now())
@@ -1030,6 +1075,33 @@ model OrderFulfillment {
   readyForDispatchAt          DateTime?
   dispatchedAt                DateTime?
   outForDeliveryAt            DateTime?
+  // Who is holding the package right now, and which node/rider that is.
+  currentHolderType           FulfillmentHolderType       @default(WAREHOUSE)
+  currentHolderId             String?
+  currentHolderLabel          String?
+  /**
+   * The customer's delivery code, stored only as a salted pbkdf2 hash. Nobody
+   * -- rider, store, customer service or this API -- can read it back; the
+   * plaintext exists only inside the dispatch transaction that texts it.
+   */
+  deliveryCodeHash            String?
+  deliveryCodeIssuedAt        DateTime?
+  deliveryCodeSentCount       Int                         @default(0)
+  /**
+   * Shared by both handovers: an order is either pickup or delivery, so one
+   * attempt budget and one lock cover the delivery code and the pickup code.
+   */
+  customerCodeVerifiedAt      DateTime?
+  customerCodeFailedAttempts  Int                         @default(0)
+  customerCodeLockedAt        DateTime?
+  deliveryCompletionMethod    DeliveryCompletionMethod?
+  dropOffPhotoObject          String?
+  dropOffNote                 String?
+  deliveryFailureReason       DeliveryFailureReason?
+  deliveryFailureNote         String?
+  deliveryAttemptCount        Int                         @default(0)
+  deliveryFailedAt            DateTime?
+  returningToNodeAt           DateTime?
   pickupVerificationMethod    PickupVerificationMethod?
   pickupVerificationValue     String?
   pickupNote                  String?
@@ -1049,6 +1121,7 @@ model OrderFulfillment {
   items                       FulfillmentItem[]
   deliveryAssignments         DeliveryAssignment[]
   events                      FulfillmentEvent[]
+  codeAttempts                CustomerCodeAttempt[]
   createdAt                   DateTime                    @default(now())
   updatedAt                   DateTime                    @updatedAt
 
@@ -1058,6 +1131,7 @@ model OrderFulfillment {
   @@index([dispatchedByEmployeeId])
   @@index([deliveryRiderId])
   @@index([fulfillmentNodeId, status, updatedAt])
+  @@index([currentHolderType, status])
 }
 
 model FulfillmentItem {
@@ -1080,22 +1154,36 @@ model FulfillmentItem {
 }
 
 model DeliveryRider {
-  id           String               @id @default(uuid())
-  type         DeliveryRiderType
-  employeeId   String?              @unique
-  name         String
-  phone        String?
-  company      String?
-  vehicle      String?
-  employee     Employee?            @relation("DeliveryRiderEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
-  fulfillments OrderFulfillment[]
-  assignments  DeliveryAssignment[]
-  events       FulfillmentEvent[]
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  id                String                @id @default(uuid())
+  type              DeliveryRiderType
+  employeeId        String?               @unique
+  name              String
+  phone             String?
+  company           String?
+  vehicle           String?
+  /**
+   * Riders belong to the store they ride out of. A store manager only ever sees
+   * and dispatches to the riders of their own node.
+   */
+  fulfillmentNodeId String?
+  active            Boolean               @default(true)
+  /**
+   * The account the rider signs into the mobile portal with.
+   */
+  adminUserId       String?               @unique
+  employee          Employee?             @relation("DeliveryRiderEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  fulfillmentNode   FulfillmentNode?      @relation(fields: [fulfillmentNodeId], references: [id], onDelete: SetNull)
+  adminUser         AdminUser?            @relation("DeliveryRiderAccount", fields: [adminUserId], references: [id], onDelete: SetNull)
+  fulfillments      OrderFulfillment[]
+  assignments       DeliveryAssignment[]
+  events            FulfillmentEvent[]
+  codeAttempts      CustomerCodeAttempt[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([type, name])
   @@index([phone])
+  @@index([fulfillmentNodeId, active, name])
 }
 
 model DeliveryAssignment {
@@ -1150,6 +1238,35 @@ model FulfillmentEvent {
   @@index([relatedEmployeeId, createdAt])
   @@index([deliveryRiderId, createdAt])
   @@index([orderItemId, createdAt])
+}
+
+/**
+ * Every customer-code check, right and wrong. A wrong code is the signal that
+ * someone is guessing at a doorstep, so it is a row here rather than a counter:
+ * the order, the rider, the attempt number and the time all stay auditable.
+ * The code itself is never written here, not even the part that was typed.
+ */
+model CustomerCodeAttempt {
+  id               String              @id @default(uuid())
+  fulfillmentId    String
+  orderId          String
+  purpose          CustomerCodePurpose
+  succeeded        Boolean
+  attemptNumber    Int
+  lockedOut        Boolean             @default(false)
+  deliveryRiderId  String?
+  actorAdminUserId String?
+  note             String?
+  fulfillment      OrderFulfillment    @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  order            Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  deliveryRider    DeliveryRider?      @relation(fields: [deliveryRiderId], references: [id], onDelete: SetNull)
+  actorAdminUser   AdminUser?          @relation("CustomerCodeAttemptActor", fields: [actorAdminUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime            @default(now())
+
+  @@index([fulfillmentId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([succeeded, createdAt])
+  @@index([deliveryRiderId, createdAt])
 }
 
 model MpesaCallback {
@@ -1620,6 +1737,7 @@ model FulfillmentNode {
   orders           Order[]
   fulfillments     OrderFulfillment[]
   staff            Employee[]            @relation("FulfillmentNodeStaff")
+  riders           DeliveryRider[]
   notifications    Notification[]
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt

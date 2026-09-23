@@ -21,7 +21,9 @@ const migrations = [
   "20260922150000_run_through_videos",
   "20260922190000_daily_run_through_videos",
   "20260923115000_business_closure_enum_values",
-  "20260923120000_business_closure_p0"
+  "20260923120000_business_closure_p0",
+  "20260923140000_delivery_closure_enum_values",
+  "20260923141000_delivery_closure_p0"
 ];
 const raw = process.env.MVP_INTEGRATION_DATABASE_URL;
 if (!raw) throw new Error("MVP_INTEGRATION_DATABASE_URL must name a disposable local test database.");

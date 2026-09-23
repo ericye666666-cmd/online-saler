@@ -1,4 +1,5 @@
 import {
+  FulfillmentHolderType,
   FulfillmentItemStatus,
   FulfillmentMethod,
   FulfillmentNodeType,
@@ -16,6 +17,12 @@ export type FulfillmentTransitionInput = {
    * transit steps; the warehouse hands over on the spot.
    */
   nodeType?: FulfillmentNodeType | null;
+  /**
+   * Whether the customer has read out their code for this handover. No code, no
+   * completion: this is checked here as well as in the service, so a new caller
+   * cannot complete an order by skipping the verification helper.
+   */
+  customerCodeVerified?: boolean;
 };
 
 export type OrderCenterTab =
@@ -30,6 +37,8 @@ export type OrderCenterTab =
   | "ready-for-pickup"
   | "ready-for-dispatch"
   | "out-for-delivery"
+  | "delivery-failed"
+  | "returning-to-node"
   | "completed"
   | "after-sale"
   | "cancelled";
@@ -94,14 +103,37 @@ export function canTransitionFulfillment(input: FulfillmentTransitionInput): boo
   if (from === FulfillmentStatus.READY_FOR_DISPATCH && to === FulfillmentStatus.OUT_FOR_DELIVERY) {
     return fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY && Boolean(hasDeliveryRider);
   }
-  if (from === FulfillmentStatus.READY_FOR_PICKUP && to === FulfillmentStatus.COMPLETED) {
-    return fulfillmentMethod === FulfillmentMethod.PICKUP;
+  // A rider who cannot hand the package over comes back with it. The order is
+  // never cancelled here: the customer has already paid, so the package returns
+  // to the node and waits for another attempt.
+  if (from === FulfillmentStatus.OUT_FOR_DELIVERY && to === FulfillmentStatus.DELIVERY_FAILED) {
+    return fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY;
   }
-  if (from === FulfillmentStatus.OUT_FOR_DELIVERY && to === FulfillmentStatus.COMPLETED) {
+  if (from === FulfillmentStatus.DELIVERY_FAILED && to === FulfillmentStatus.RETURNING_TO_NODE) {
+    return fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY;
+  }
+  if (from === FulfillmentStatus.RETURNING_TO_NODE && to === FulfillmentStatus.ARRIVED_AT_NODE) {
     return fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY;
   }
 
+  // The two completions, and the one rule they share.
+  if (from === FulfillmentStatus.READY_FOR_PICKUP && to === FulfillmentStatus.COMPLETED) {
+    return fulfillmentMethod === FulfillmentMethod.PICKUP && Boolean(input.customerCodeVerified);
+  }
+  if (from === FulfillmentStatus.OUT_FOR_DELIVERY && to === FulfillmentStatus.COMPLETED) {
+    return fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY && Boolean(input.customerCodeVerified);
+  }
+
   return false;
+}
+
+/**
+ * Handing a package to the customer always needs the customer's own code. Both
+ * completions go through it, which is what makes "the rider knows them" or "they
+ * said so on WhatsApp" not a way to close an order.
+ */
+export function requiresCustomerCode(to: FulfillmentStatus): boolean {
+  return to === FulfillmentStatus.COMPLETED;
 }
 
 export function orderCenterTab(input: {
@@ -124,6 +156,8 @@ export function orderCenterTab(input: {
     [FulfillmentStatus.READY_FOR_PICKUP]: "ready-for-pickup",
     [FulfillmentStatus.READY_FOR_DISPATCH]: "ready-for-dispatch",
     [FulfillmentStatus.OUT_FOR_DELIVERY]: "out-for-delivery",
+    [FulfillmentStatus.DELIVERY_FAILED]: "delivery-failed",
+    [FulfillmentStatus.RETURNING_TO_NODE]: "returning-to-node",
     [FulfillmentStatus.COMPLETED]: "completed"
   };
   if (input.fulfillmentStatus && fulfillmentTabs[input.fulfillmentStatus]) {
@@ -194,6 +228,71 @@ export const UNRECOVERABLE_EXCEPTION_REASONS = [
   "ITEM_NOT_FOUND",
   "ITEM_DAMAGED",
   "ITEM_SOLD_OFFLINE"
+] as const;
+
+/**
+ * Who is holding the package at a given status. Storing the answer on the
+ * fulfillment row means "where is this order and who is responsible for it" is
+ * one read, not a replay of the event log, and it is the same answer on every
+ * screen that asks.
+ */
+export function holderForStatus(input: {
+  status: FulfillmentStatus;
+  fulfillmentNodeId?: string | null;
+  nodeName?: string | null;
+  deliveryRiderId?: string | null;
+  riderName?: string | null;
+}): { currentHolderType: FulfillmentHolderType; currentHolderId: string | null; currentHolderLabel: string | null } {
+  switch (input.status) {
+    case FulfillmentStatus.PAID:
+    case FulfillmentStatus.PICKING:
+    case FulfillmentStatus.READY_TO_PACK:
+    case FulfillmentStatus.PACKED:
+      return { currentHolderType: FulfillmentHolderType.WAREHOUSE, currentHolderId: null, currentHolderLabel: "Central warehouse" };
+
+    // Between the warehouse door and the store counter nobody on the system is
+    // holding it. Saying so is more useful than pretending the node already has it.
+    case FulfillmentStatus.IN_TRANSIT_TO_NODE:
+    case FulfillmentStatus.RETURNING_TO_NODE:
+      return {
+        currentHolderType: FulfillmentHolderType.IN_TRANSIT,
+        currentHolderId: input.fulfillmentNodeId ?? null,
+        currentHolderLabel: input.nodeName ? `In transit to ${input.nodeName}` : "In transit"
+      };
+
+    case FulfillmentStatus.ARRIVED_AT_NODE:
+    case FulfillmentStatus.READY_FOR_PICKUP:
+    case FulfillmentStatus.READY_FOR_DISPATCH:
+      return {
+        currentHolderType: FulfillmentHolderType.NODE,
+        currentHolderId: input.fulfillmentNodeId ?? null,
+        currentHolderLabel: input.nodeName ?? "Fulfillment node"
+      };
+
+    // A failed delivery is still in the rider's hands until they hand it back.
+    case FulfillmentStatus.OUT_FOR_DELIVERY:
+    case FulfillmentStatus.DELIVERY_FAILED:
+      return {
+        currentHolderType: FulfillmentHolderType.RIDER,
+        currentHolderId: input.deliveryRiderId ?? null,
+        currentHolderLabel: input.riderName ?? "Delivery rider"
+      };
+
+    case FulfillmentStatus.COMPLETED:
+      return { currentHolderType: FulfillmentHolderType.CUSTOMER, currentHolderId: null, currentHolderLabel: "Customer" };
+
+    // An exception does not move the package, so the holder stays whoever the
+    // caller already recorded; this is the safe fallback for a brand-new row.
+    case FulfillmentStatus.EXCEPTION:
+    default:
+      return { currentHolderType: FulfillmentHolderType.WAREHOUSE, currentHolderId: null, currentHolderLabel: null };
+  }
+}
+
+/** Statuses where a delivery order is somewhere between the node and the customer. */
+export const RIDER_HELD_STATUSES = [
+  FulfillmentStatus.OUT_FOR_DELIVERY,
+  FulfillmentStatus.DELIVERY_FAILED
 ] as const;
 
 /** Human-facing package label carried on the box between warehouse and node. */

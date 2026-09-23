@@ -5,7 +5,10 @@ import {
   OperationsFulfillmentService,
   type AdminInput,
   type AfterSaleInput,
+  type DeliveryCodeInput,
   type DeliveryCostInput,
+  type DeliveryFailureInput,
+  type DispatchToRiderInput,
   type EmployeeInput,
   type ExceptionInput,
   type NodeInput,
@@ -102,8 +105,39 @@ export class OperationsFulfillmentController {
     return this.orders.confirmPickup(orderId, await this.authorizedInput(authorization, body));
   }
 
+  /**
+   * The store hands the package to one of its riders. One call does the lot:
+   * assigns the rider, mints the delivery code, moves the status, texts the
+   * customer and writes the event.
+   */
+  @Post(":orderId/dispatch-to-rider")
+  async dispatchToRider(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: DispatchToRiderInput) {
+    return this.orders.dispatchToRider(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  /** Replaces the delivery code and texts the new one. Nobody sees either. */
+  @Post(":orderId/resend-delivery-code")
+  async resendDeliveryCode(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.resendDeliveryCode(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/delivery-failed")
+  async deliveryFailed(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: DeliveryFailureInput) {
+    return this.orders.markDeliveryFailed(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/return-to-node")
+  async returnToNode(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.startReturnToNode(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/confirm-return")
+  async confirmReturn(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+    return this.orders.confirmReturnAtNode(orderId, await this.authorizedInput(authorization, body));
+  }
+
   @Post(":orderId/complete-delivery")
-  async completeDelivery(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+  async completeDelivery(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: DeliveryCodeInput) {
     return this.orders.completeDelivery(orderId, await this.authorizedInput(authorization, body));
   }
 

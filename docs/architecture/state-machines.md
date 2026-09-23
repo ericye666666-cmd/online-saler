@@ -251,11 +251,19 @@ PAID
   -> READY_TO_PACK
   -> PACKED
 
+Via a store node:
+PACKED -> IN_TRANSIT_TO_NODE -> ARRIVED_AT_NODE
+
 Pickup:
-PACKED -> READY_FOR_PICKUP -> COMPLETED
+ARRIVED_AT_NODE -> READY_FOR_PICKUP -> COMPLETED
+(PACKED -> READY_FOR_PICKUP when the handover is at the warehouse itself)
 
 Delivery:
-PACKED -> READY_FOR_DISPATCH -> OUT_FOR_DELIVERY -> COMPLETED
+ARRIVED_AT_NODE -> READY_FOR_DISPATCH -> OUT_FOR_DELIVERY -> COMPLETED
+
+Failed delivery:
+OUT_FOR_DELIVERY -> DELIVERY_FAILED -> RETURNING_TO_NODE -> ARRIVED_AT_NODE
+(and from there out again, with a new code)
 
 Any non-completed active state -> EXCEPTION
 ```
@@ -271,11 +279,14 @@ Any non-completed active state -> EXCEPTION
   `VERIFIED`.
 - Packing records the start employee, completion employee, method, parcel count,
   note, and timestamps before moving to `PACKED`.
-- Pickup and delivery paths are mutually exclusive. Pickup requires order number,
-  customer phone, or pickup-code verification.
-- Delivery requires an internal employee rider or an external rider record before
-  dispatch. Each assignment records the assigning admin, rider, assignment time,
-  estimated delivery time, and note.
+- Pickup and delivery paths are mutually exclusive.
+- **No code, no completion.** Both `READY_FOR_PICKUP -> COMPLETED` and
+  `OUT_FOR_DELIVERY -> COMPLETED` require a verified customer code. The state
+  machine refuses the transition without one, so no route into `COMPLETED`
+  bypasses it. Knowing the customer, a WhatsApp message saying the goods arrived,
+  or a rider's word are not substitutes.
+- Delivery requires a rider on the order before dispatch. Each assignment records
+  the assigning admin, rider, assignment time, estimated delivery time, and note.
 - Picker, packer, dispatch confirmer, rider, pickup confirmer, and after-sale owner
   are separate relations.
 - Every action writes a `FulfillmentEvent` with old/new state, admin actor,
@@ -283,6 +294,44 @@ Any non-completed active state -> EXCEPTION
   idempotency key so repeated clicks do not append duplicates.
 - Exceptions record warehouse facts only. Refund decisions remain an after-sale
   responsibility.
+- A failed delivery never cancels the order. The customer has paid, so the
+  package returns to its node and waits for another attempt.
+
+### Customer Codes
+
+- The delivery code is four digits, generated **at dispatch** and never before.
+  It is stored only as a salted pbkdf2 hash, so no API response, operations
+  screen, event or log can show it. The plaintext exists inside the dispatch
+  transaction and in the customer's SMS, and nowhere else.
+- Five wrong codes lock the order. A locked order refuses even the correct code.
+- A code is one-time: it is dead once the order completes, once the delivery
+  fails, and once a replacement is issued.
+- "Resend" issues a **new** code and voids the old one, because the old one
+  cannot be read back. Customer service can therefore trigger a resend without
+  ever being able to see a code.
+- Every check, right or wrong, writes a `CustomerCodeAttempt` row with the order,
+  the rider, the attempt number and the time. The digits that were typed are
+  never recorded.
+- Authorized drop-off (left with security, at reception, at the door) needs a
+  photo **and** a valid code. The customer reading out their code over the phone
+  is what makes the drop-off the customer's decision rather than the rider's.
+- Pickup uses the same rule against `Order.pickupCode`. The order number and the
+  customer's phone number are no longer proof on their own, because both are
+  printed on the package sitting on the counter.
+
+### Responsibility
+
+`OrderFulfillment.currentHolderType` and `currentHolderId` record who physically
+holds the package, so "where is this order and who is responsible for it" is one
+read rather than a replay of the event log.
+
+| Status | Holder |
+| --- | --- |
+| `PAID`, `PICKING`, `READY_TO_PACK`, `PACKED` | `WAREHOUSE` |
+| `IN_TRANSIT_TO_NODE`, `RETURNING_TO_NODE` | `IN_TRANSIT` |
+| `ARRIVED_AT_NODE`, `READY_FOR_PICKUP`, `READY_FOR_DISPATCH` | `NODE` |
+| `OUT_FOR_DELIVERY`, `DELIVERY_FAILED` | `RIDER` |
+| `COMPLETED` | `CUSTOMER` |
 
 ## Return State
 

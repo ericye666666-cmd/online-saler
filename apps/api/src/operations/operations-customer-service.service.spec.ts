@@ -7,6 +7,7 @@ import { OperationsAccessService } from "./operations-access.service";
 import { OperationsCustomerServiceController } from "./operations-customer-service.controller";
 import { OperationsCustomerServiceService } from "./operations-customer-service.service";
 import { OperationsFulfillmentService } from "./operations-fulfillment.service";
+import { ProductImageStorageService } from "../product/product-image-storage.service";
 
 function deferred() {
   let resolve!: () => void;
@@ -85,7 +86,7 @@ function harness(t: TestContext) {
     if (actor !== "admin-1") throw new ForbiddenException();
     return { adminUser: { id: "admin-1", linkedEmployeeId: "actor-employee", linkedEmployee: { id: "actor-employee" } } };
   } } as unknown as OperationsAccessService;
-  const fulfillment = new OperationsFulfillmentService(access);
+  const fulfillment = new OperationsFulfillmentService(access, stubPhotoStore());
   fulfillment.orderDetail = (async () => ({ id: order.id })) as unknown as typeof fulfillment.orderDetail;
   return {
     service: new OperationsCustomerServiceService(access), fulfillment, events, audits, timeline, order,
@@ -228,3 +229,8 @@ test("all legacy customer-service routes require a verified token and mutations 
   assert.equal(calls.length, 8);
   assert.ok(calls.every((call) => call.actor === "verified-admin"));
 });
+
+/** The drop-off photo store, which these tests never reach. */
+function stubPhotoStore() {
+  return { upload: async () => undefined } as unknown as ProductImageStorageService;
+}

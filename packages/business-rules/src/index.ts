@@ -35,5 +35,6 @@ export * from "./product-detail-measurement-templates";
 
 export * from "./delivery-address";
 export * from "./delivery-economics";
+export * from "./customer-code";
 export * from "./notification-topics";
 export * from "./notification-templates";
