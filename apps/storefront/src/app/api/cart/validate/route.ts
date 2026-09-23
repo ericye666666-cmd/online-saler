@@ -193,6 +193,7 @@ function cartAvailability(product: ProductForCart): CartAvailabilityStatus {
   if (!status || status === InventoryItemStatus.PENDING_STOCK_IN || status === InventoryItemStatus.LOST) return "DISABLED";
   if (status === InventoryItemStatus.AVAILABLE) return "AVAILABLE";
   if (status === InventoryItemStatus.RESERVED) return "TEMPORARILY_RESERVED";
+  if (status === InventoryItemStatus.DEPOSIT_HELD) return "HELD_ON_DEPOSIT";
   if (
     status === InventoryItemStatus.PAID ||
     status === InventoryItemStatus.PICKED ||
@@ -206,6 +207,7 @@ function statusMessage(status: CartAvailabilityStatus, priceKsh: number | null):
   if (status === "AVAILABLE" && (!priceKsh || priceKsh <= 0)) return "Price is not ready yet.";
   if (status === "AVAILABLE") return "Available for checkout.";
   if (status === "TEMPORARILY_RESERVED") return "Temporarily locked for payment. Refresh after the timer expires, or release your unpaid lock if you started it.";
+  if (status === "HELD_ON_DEPOSIT") return "Held by a deposit. If the balance is not paid within seven days it comes back on sale.";
   if (status === "SOLD") return "Sold. This one-of-one item can no longer be purchased.";
   if (status === "UNPUBLISHED") return "No longer listed for sale.";
   if (status === "REMOVED") return "Removed from the catalog.";

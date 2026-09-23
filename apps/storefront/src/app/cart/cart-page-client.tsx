@@ -347,6 +347,7 @@ function statusLabel(
 ): string | null {
   if (status === "AVAILABLE") return null;
   if (status === "TEMPORARILY_RESERVED") return t("cart.statusReserved");
+  if (status === "HELD_ON_DEPOSIT") return t("cart.statusDepositHeld");
   if (status === "SOLD") return t("cart.statusSold");
   return t("cart.statusGone");
 }

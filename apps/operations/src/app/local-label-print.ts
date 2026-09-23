@@ -37,6 +37,57 @@ export type LabelPrintPayload = {
   };
 };
 
+/** The agent's own validation: uppercase, digits and hyphens, 4 to 64 long. */
+export const PRINTABLE_CODE = /^[A-Z0-9][A-Z0-9-]{3,63}$/;
+
+export type FulfillmentLabelSource = {
+  packageCode: string;
+  nodeName: string;
+  orderNumber: string;
+  isDelivery: boolean;
+  itemCount: number;
+  customerName?: string | null;
+};
+
+/**
+ * The parcel label for an online order.
+ *
+ * `template_scope` stays "online_saler_product" because the print agent
+ * hard-rejects any other value, and there is no agent build to change on the
+ * shop floor. It identifies the wire contract, not the contents: the agent
+ * prints the raster and nothing else from this payload.
+ */
+export function buildFulfillmentLabelPayload(input: FulfillmentLabelSource & { printerName?: string }): LabelPrintPayload {
+  const packageCode = input.packageCode.trim().toUpperCase();
+  if (!PRINTABLE_CODE.test(packageCode)) {
+    throw new Error("This parcel has no package code yet. Complete packing before printing.");
+  }
+  const printerName = input.printerName?.trim() || DEFAULT_PRINTER_NAME;
+  const templateCode = "online_saler_product_60x40";
+  return {
+    printer_name: printerName,
+    printer: printerName,
+    copies: 1,
+    template_size: "60x40",
+    template_code: templateCode,
+    template_scope: "online_saler_product",
+    label_payload: {
+      template_scope: "online_saler_product",
+      template_code: templateCode,
+      display_code: packageCode,
+      machine_code: packageCode,
+      barcode_value: packageCode,
+      product_code: input.orderNumber,
+      title: input.nodeName,
+      category: input.isDelivery ? "Delivery" : "Customer pickup",
+      color: "-",
+      size: String(input.itemCount),
+      condition: "-",
+      location: input.nodeName
+    }
+  };
+}
+
 export function normalizeLabelSize(value: string): LabelSize {
   const normalized = value.trim().toLowerCase().replace(/\s+/g, "");
   if (normalized === "40x30" || normalized === "4030" || normalized === "40*30" || normalized === "40mmx30mm") {

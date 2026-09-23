@@ -2,9 +2,11 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import {
   ActorType,
   CheckoutDraftStatus,
+  DepositSettlementError,
   MpesaCallbackProcessingStatus,
   NotificationAudience,
   OrderStatus,
+  PaymentKind,
   PaymentReviewDecision,
   PaymentStatus,
   PaymentSettlementError,
@@ -14,11 +16,13 @@ import {
   lockReservationOrder,
   prisma,
   releaseUnpaidOrderReservation,
+  settleDepositPayment,
   settleSuccessfulPayment
 } from "@online-saler/database";
 import {
   LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
   SUPPORT_PHONE_LABEL,
+  depositBalanceDueAt,
   notificationBody,
   notificationDedupeKey
 } from "@online-saler/business-rules";
@@ -173,14 +177,28 @@ export class OperationsPaymentReviewService {
         }
       }
 
+      // A deposit that was verified by hand is still only half the money. It
+      // must place the seven-day hold, not finish the order — settling it as a
+      // full payment would hand a picking task and a commission to an order
+      // that has not been paid for.
+      const isDeposit = current.kind === PaymentKind.DEPOSIT;
       try {
-        await settleSuccessfulPayment(tx, {
-          paymentId,
-          commissionRateBps: LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
-          requireActiveReservation: false
-        });
+        if (isDeposit) {
+          await settleDepositPayment(tx, {
+            paymentId,
+            balanceDueAt: depositBalanceDueAt(new Date())
+          });
+        } else {
+          await settleSuccessfulPayment(tx, {
+            paymentId,
+            commissionRateBps: LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
+            requireActiveReservation: false
+          });
+        }
       } catch (error) {
-        if (error instanceof PaymentSettlementError) throw new ConflictException(error.message);
+        if (error instanceof PaymentSettlementError || error instanceof DepositSettlementError) {
+          throw new ConflictException(error.message);
+        }
         throw error;
       }
 
@@ -199,7 +217,8 @@ export class OperationsPaymentReviewService {
         data: { resolvedByAdminUserId: actor.actorAdminUserId, resolvedAt: new Date(), resolutionNote: note }
       });
       await this.audit(tx, actor, paymentId, "PAYMENT_REVIEW_SETTLE", { status: current.status }, { status: PaymentStatus.SUCCESS, receiptNumber }, note);
-      await this.queuePaidNotifications(tx, payment.orderId);
+      if (isDeposit) await this.queueDepositNotification(tx, payment.orderId);
+      else await this.queuePaidNotifications(tx, payment.orderId);
     });
 
     return this.detail(paymentId, input.adminUserId);
@@ -292,6 +311,32 @@ export class OperationsPaymentReviewService {
     return payment;
   }
 
+  /** Tells the shopper their deposit landed and when the balance is due. */
+  private async queueDepositNotification(tx: Prisma.TransactionClient, orderId: string) {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { customer: true, items: { select: { id: true } } }
+    });
+    if (!order?.balanceDueAt) return;
+    await enqueueNotification(tx, {
+      topic: "CUSTOMER_DEPOSIT_RECEIVED",
+      audience: NotificationAudience.CUSTOMER,
+      dedupeKey: notificationDedupeKey("CUSTOMER_DEPOSIT_RECEIVED", orderId),
+      recipientPhone: order.whatsappPhone || order.customer.phone,
+      recipientLabel: order.customer.displayName,
+      orderId,
+      body: notificationBody("CUSTOMER_DEPOSIT_RECEIVED", {
+        orderNumber: order.orderNumber,
+        itemCount: order.items.length,
+        balanceKsh: order.balanceKsh,
+        dueDateLabel: order.balanceDueAt.toLocaleDateString("en-KE", {
+          weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Nairobi"
+        }),
+        supportPhone: SUPPORT_PHONE_LABEL
+      })
+    });
+  }
+
   /** Tells the shopper the payment landed, and the affiliate that they earned. */
   private async queuePaidNotifications(tx: Prisma.TransactionClient, orderId: string) {
     const order = await tx.order.findUnique({
@@ -313,22 +358,12 @@ export class OperationsPaymentReviewService {
         supportPhone: SUPPORT_PHONE_LABEL
       })
     });
-    if (order.affiliate && order.commission) {
-      await enqueueNotification(tx, {
-        topic: "AFFILIATE_NEW_ORDER",
-        audience: NotificationAudience.AFFILIATE,
-        dedupeKey: notificationDedupeKey("AFFILIATE_NEW_ORDER", orderId),
-        recipientPhone: order.affiliate.phone,
-        recipientLabel: order.affiliate.displayName,
-        orderId,
-        affiliateId: order.affiliateId,
-        body: notificationBody("AFFILIATE_NEW_ORDER", {
-          orderNumber: order.orderNumber,
-          amountKsh: order.commission.commissionAmountKsh,
-          affiliateName: order.affiliate.displayName
-        })
-      });
-    }
+    // Affiliates are not texted. The DIRECTLOOP sender id is registered with
+    // Safaricom as Transactional, and that registration carries a KES 25,000 fine
+    // if promotional traffic is ever found on it. "Your first sale is in, keep
+    // posting" is encouragement, not a transaction, so it does not belong on this
+    // sender id at any wording. Affiliates see their sales in the Affiliate Centre
+    // instead. Reinstating these needs a second, promotional sender id.
   }
 
   private async actor(adminUserId?: string) {
@@ -368,17 +403,28 @@ export class OperationsPaymentReviewService {
 /** Plain-language reason a payment is sitting in the queue. */
 export function describeHold(payment: {
   amountKsh: number;
+  kind?: PaymentKind;
   providerReceiptNumber: string | null;
   providerResultCode: number | null;
   expiresAt: Date | null;
-  order: { totalKsh: number; status: OrderStatus };
+  order: { totalKsh: number; depositKsh?: number; balanceKsh?: number; status: OrderStatus };
 }): string {
   if (payment.providerResultCode !== null && payment.providerResultCode !== 0) {
     return "M-Pesa initiation could not be confirmed; check the merchant statement before settling.";
   }
   if (!payment.providerReceiptNumber) return "Callback arrived without an M-Pesa receipt number.";
-  if (payment.amountKsh !== payment.order.totalKsh) {
-    return `Paid amount KSh ${payment.amountKsh} does not match the order total KSh ${payment.order.totalKsh}.`;
+  // A deposit and a balance are each due their own figure. Comparing them to
+  // the order total would report every deposit as an amount mismatch.
+  const expectedKsh = payment.kind === PaymentKind.DEPOSIT
+    ? payment.order.depositKsh ?? payment.order.totalKsh
+    : payment.kind === PaymentKind.BALANCE
+      ? payment.order.balanceKsh ?? payment.order.totalKsh
+      : payment.order.totalKsh;
+  const expectedLabel = payment.kind === PaymentKind.DEPOSIT
+    ? "deposit"
+    : payment.kind === PaymentKind.BALANCE ? "balance" : "order total";
+  if (payment.amountKsh !== expectedKsh) {
+    return `Paid amount KSh ${payment.amountKsh} does not match the ${expectedLabel} KSh ${expectedKsh}.`;
   }
   if (payment.expiresAt && payment.expiresAt.getTime() <= Date.now()) {
     return "Callback arrived after the reservation window closed.";

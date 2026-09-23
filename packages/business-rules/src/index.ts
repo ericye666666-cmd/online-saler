@@ -27,6 +27,7 @@ export function createCommissionEligibleAt(deliveredAt: Date): Date {
 }
 
 export * from "./transaction-domain";
+export * from "./deposit-plan";
 export * from "./commission-rate";
 export * from "./size-chart";
 export * from "./product-measurement-requirements";

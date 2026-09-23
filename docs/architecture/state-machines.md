@@ -134,6 +134,29 @@ Any non-terminal operating state can move to:
 - `RETURN_INSPECTION -> AVAILABLE` requires inspection pass and optional new location.
 - `LOST`, `DAMAGED`, and `ADMIN_HOLD` require reason and audit log.
 
+### Deposit hold (added 2026-09-23)
+
+A 50% deposit takes a garment off sale for seven days. It has its own inventory
+state so the warehouse can tell it apart from a cart reservation that expires in
+minutes. These names are the ones in the Prisma schema.
+
+```text
+AVAILABLE -> RESERVED -> DEPOSIT_HELD -> PAID
+                           |
+                           +-> AVAILABLE   (seven days lapsed, back on sale)
+```
+
+- `RESERVED -> DEPOSIT_HELD` happens only when a `DEPOSIT` payment is confirmed.
+- `DEPOSIT_HELD` occupies a shelf and counts against warehouse capacity. It is
+  never sellable, online or over the counter.
+- `DEPOSIT_HELD -> PAID` happens only when the `BALANCE` payment is confirmed.
+  This is the same settlement path a pay-in-full order takes, so a deposit order
+  and a full order reach picking in exactly the same shape.
+- `DEPOSIT_HELD -> AVAILABLE` happens when `Order.balanceDueAt` passes without
+  the balance. The release and the refund request are one transaction, so the
+  garment is never both off sale and unaccounted for.
+- Every transition writes an `InventoryMovement` with its reason.
+
 ## Reservation State
 
 Reservation is the short-lived lock created when a customer starts payment.
@@ -211,6 +234,16 @@ RETURN_RECEIVED -> REFUNDED
 - `DELIVERED -> COMPLETED` happens after the return request window passes and no valid return is open.
 - Return request must be within 24 hours after delivery.
 - Platform-canceled paid orders require refund flow.
+- `PENDING_PAYMENT -> DEPOSIT_PAID` on a confirmed deposit. The order carries
+  `depositKsh`, `balanceKsh` and `balanceDueAt` from that moment. No picking
+  task and no commission are created — only the balance does that.
+- `DEPOSIT_PAID -> PAID` on a confirmed balance.
+- `DEPOSIT_PAID -> DEPOSIT_EXPIRED` when the hold lapses. This is kept separate
+  from `CANCELLED` because money is still open: 30% of the order total is owed
+  back to the shopper as a `LAPSED_DEPOSIT` refund request.
+- A balance prompt does **not** move the order to `PAYMENT_PROCESSING`. The
+  seven-day hold is what the expiry sweep watches, and an unanswered prompt must
+  not pause that clock.
 
 ## Payment State
 
@@ -233,8 +266,12 @@ INITIATED
 - Each M-Pesa request has an idempotency key.
 - M-Pesa callback transaction id must be unique.
 - Duplicate callback returns success to M-Pesa but does not repeat state changes.
-- Payment amount must match order amount.
+- Every payment records its leg: `FULL`, `DEPOSIT` or `BALANCE`.
+- Payment amount must match the amount that leg is due — the order total for
+  `FULL`, `Order.depositKsh` for `DEPOSIT`, `Order.balanceKsh` for `BALANCE`.
 - Amount mismatch goes to `MANUAL_REVIEW`.
+- A `BALANCE` callback is checked against the deposit hold window and
+  `DEPOSIT_HELD` inventory, not against the five-minute cart reservation.
 - Delayed callback after reservation expiry goes to `MANUAL_REVIEW` unless order can be safely paid.
 - Refund execution requires restricted permission.
 - Refund record must link to original payment.

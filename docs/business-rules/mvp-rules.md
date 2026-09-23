@@ -13,6 +13,43 @@ These rules define the first 1,000-item Kikuyu MVP.
 - Closing an order always settles its stock. An unpaid cancellation returns the
   garment to sale; a paid order that can never be fulfilled is written off with
   an explicit outcome — back on the shelf, or recorded as lost.
+- A garment held by a paid deposit sits in its own inventory state,
+  `DEPOSIT_HELD`, and must never be sold over the counter. It still occupies a
+  shelf and still counts against warehouse capacity.
+
+## Deposit plan (50% deposit, 7-day hold)
+
+Added 2026-09-23. A shopper who cannot pay in full today may pay half and hold
+the piece for a week.
+
+- The choice is offered at checkout on every order of at least KSh 2: pay in
+  full, or pay a 50% deposit.
+- The deposit is half the order total including delivery, **rounded up**, so on
+  an odd total the first payment is the larger half. The balance is the
+  remainder. Both figures are frozen on the order at checkout; a later price
+  edit cannot change what the shopper owes.
+- The deposit itself is still an M-Pesa STK prompt inside the ordinary
+  five-minute reservation window. The seven days start only once that money has
+  actually landed.
+- While the deposit holds, **nothing is picked, packed or dispatched, and no
+  affiliate commission exists.** A deposit order is a sale that may still fall
+  through. Only the balance completes it.
+- The balance is one payment for the full remainder; it cannot be paid in
+  instalments. A failed or cancelled balance prompt costs the shopper nothing
+  and leaves the hold standing.
+- One phone number may hold at most 3 items on deposit at a time. This is
+  counted separately from, and applies on top of, the 5-item cart reservation
+  cap.
+- Reminders go out on day 4 and day 6.
+- **There is no grace period.** At the seven-day mark the garment goes back on
+  sale immediately.
+- On lapse the shopper is refunded **30% of the order total** and the shop
+  keeps **20% of the order total** for the week the piece spent off sale. On a
+  KSh 1,000 order: KSh 500 deposit, KSh 300 refunded, KSh 200 kept. The refund
+  is never more than what was actually collected.
+- The refund is *raised*, not paid: the expiry sweep creates a
+  `LAPSED_DEPOSIT` refund request in the finance queue, and someone executes it
+  in M-Pesa by hand like every other refund.
 
 ## Payment
 
@@ -26,6 +63,9 @@ These rules define the first 1,000-item Kikuyu MVP.
   M-Pesa merchant statement.
 - Every STK request whose callback never arrives is queried against Safaricom
   directly, so a lost callback cannot quietly expire on a shopper who has paid.
+- Every payment records which leg of the order it is: `FULL`, `DEPOSIT` or
+  `BALANCE`. An amount is only accepted when it matches that leg exactly, so a
+  deposit can never be mistaken for a discounted full payment.
 
 ## Fulfillment
 
@@ -67,6 +107,9 @@ Return requests must be submitted within 24 hours after delivery.
   for but can never be fulfilled can be refunded too.
 - Recorded refunds can never exceed what was actually paid. Once they cover the
   full payment the order becomes REFUNDED.
+- A lapsed deposit hold is the one refund the system raises by itself. It has
+  no requesting admin user, because it is created by a timer, and it still
+  waits for approval and manual execution like every other refund.
 
 ## Affiliate
 

@@ -47,6 +47,7 @@ import { CUSTOMER_SERVICE_PHONE_LABEL, supportWhatsAppUrl } from "../../support/
 
 type CheckoutState = "loading" | "empty" | "ready" | "error";
 type CheckoutStepId = "contact" | "handoff";
+type PaymentPlan = "FULL" | "DEPOSIT_50";
 type Reservation = {
   orderId: string;
   orderNumber: string;
@@ -58,6 +59,11 @@ type Reservation = {
   deliveryFeeKsh: number;
   totalKsh: number;
   currency: "KES";
+  paymentPlan: PaymentPlan;
+  depositKsh: number;
+  balanceKsh: number;
+  /** What this M-Pesa prompt asks for: the total, or the deposit. */
+  amountDueNowKsh: number;
 };
 type PaymentState = {
   paymentId: string | null;
@@ -74,6 +80,10 @@ type PaymentState = {
   customerMessage?: string | null;
   receiptNumber?: string | null;
   resultDescription?: string | null;
+  paymentPlan?: PaymentPlan;
+  balanceKsh?: number;
+  balanceDueAt?: string | null;
+  balanceDaysLeft?: number | null;
 };
 type CheckoutDraft = {
   phone: string;
@@ -83,6 +93,12 @@ type CheckoutDraft = {
   deliveryNote: string;
   pickupPointId: string;
 };
+
+const DEPOSIT_HOLD_DAYS = 7;
+/** The deposit rounds up, matching `depositAmountKsh` on the server. */
+function depositDueNowKsh(totalKsh: number): number {
+  return Math.ceil(totalKsh / 2);
+}
 
 function buyNowProductId(): string | null {
   return new URLSearchParams(window.location.search).get("buy")?.trim() || null;
@@ -95,6 +111,7 @@ function checkoutDraftStorageKey(draftKey: string): string {
 // draftKey scopes the locally saved checkout draft: a signed-in customer id, or
 // "guest" for shoppers who go straight to payment without an account.
 export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false, pickupPoints = [] }: { mapsApiKey?: string; draftKey: string; signedIn?: boolean; pickupPoints?: PickupPoint[] }) {
+  const { t } = useStorefrontI18n();
   const [snapshot, setSnapshot] = useState<CartSnapshot | null>(null);
   const [validation, setValidation] = useState<CartValidationResponse | null>(null);
   const [state, setState] = useState<CheckoutState>("loading");
@@ -104,6 +121,7 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [pickupPointId, setPickupPointId] = useState("");
+  const [paymentPlan, setPaymentPlan] = useState<PaymentPlan>("FULL");
   // Checkout is an overview with two collapsed steps; opening one replaces the
   // overview so the shopper answers a single question at a time.
   const [activeStep, setActiveStep] = useState<CheckoutStepId | null>(null);
@@ -213,20 +231,20 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
     setError("");
     const contact = whatsappPhone.trim().replace(/[\s()-]/g, "");
     if (!/^\+?[0-9]{8,15}$/.test(contact)) {
-      setError("Enter a valid WhatsApp number, including the country code if outside Kenya.");
+      setError(t("checkout.errWhatsapp"));
       return;
     }
     if (fulfillment === "PICKUP" && !pickupPoints.some((point) => point.id === pickupPointId)) {
-      setError("Choose a pickup point before continuing to payment.");
+      setError(t("checkout.errPickupPoint"));
       return;
     }
     if (deliveryRequiresAddress(fulfillment)) {
       if (!deliveryAddress.trim()) {
-        setError("Add a delivery address before continuing to payment.");
+        setError(t("checkout.errAddress"));
         return;
       }
       if (deliveryAddress.length > 1500) {
-        setError("Your delivery address is too long. Edit it before continuing to payment.");
+        setError(t("checkout.errAddressLong"));
         return;
       }
     }
@@ -234,9 +252,9 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
     try {
       const freshValidation = await loadAndValidate(false);
       const payableItems = freshValidation?.items.filter((item) => item.canCheckout && item.productId) ?? [];
-      if (!payableItems.length) throw new Error("No available cart items can be paid for.");
+      if (!payableItems.length) throw new Error(t("checkout.errNoPayable"));
       if ((freshValidation?.summary.unavailableCount ?? 0) > 0) {
-        throw new Error("Remove unavailable items or continue with only available items after reviewing the cart.");
+        throw new Error(t("checkout.errUnavailable"));
       }
       const response = await fetch("/api/checkout/start", {
         method: "POST",
@@ -251,11 +269,12 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
           // by store and support can search by contact number.
           fulfillmentNodeId: fulfillment === "PICKUP" ? pickupPointId : null,
           whatsappPhone: contact,
-          deliveryNote: deliveryNote.trim() || null
+          deliveryNote: deliveryNote.trim() || null,
+          paymentPlan
         })
       });
       const result = await response.json().catch(() => ({})) as Reservation & { error?: string };
-      if (!response.ok) throw new Error(result.error || "Unable to reserve these items.");
+      if (!response.ok) throw new Error(result.error || t("checkout.errReserve"));
       const nextReservedCartIds = payableItems.map((item) => item.requestedProductId);
       reservedCartIdsRef.current = nextReservedCartIds;
       setReservedCartIds(nextReservedCartIds);
@@ -263,7 +282,7 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
       setNow(Date.now());
       await initiatePayment(result.orderId);
     } catch (checkoutError) {
-      setError(checkoutError instanceof Error ? checkoutError.message : "Unable to reserve these items.");
+      setError(checkoutError instanceof Error ? checkoutError.message : t("checkout.errReserve"));
     } finally {
       setSubmitting(false);
     }
@@ -297,10 +316,10 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
         cache: "no-store"
       });
       const result = await response.json().catch(() => ({})) as PaymentState & { error?: string };
-      if (!response.ok) throw new Error(result.error || "Payment status could not be refreshed.");
+      if (!response.ok) throw new Error(result.error || t("checkout.errPaymentStatus"));
       applyPaymentStatus(result);
     } catch (refreshError) {
-      setPaymentError(refreshError instanceof Error ? refreshError.message : "Payment status could not be refreshed.");
+      setPaymentError(refreshError instanceof Error ? refreshError.message : t("checkout.errPaymentStatus"));
     } finally {
       setRefreshingPayment(false);
     }
@@ -336,15 +355,15 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   }
 
   if (state === "loading") {
-    return <CheckoutEmpty title="Checkout" body="Checking your cart before payment..." />;
+    return <CheckoutEmpty title={t("checkout.title")} body={t("checkout.loadingBody")} />;
   }
 
   if (state === "empty") {
     return (
       <CheckoutEmpty
-        title="Your cart is empty"
-        body="Choose available items before starting checkout."
-        action={<Link className="commercePrimaryButton" href="/">Browse items <ArrowRight size={16} /></Link>}
+        title={t("checkout.emptyTitle")}
+        body={t("checkout.emptyBody")}
+        action={<Link className="commercePrimaryButton" href="/">{t("checkout.browseItems")} <ArrowRight size={16} /></Link>}
       />
     );
   }
@@ -352,9 +371,9 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   if (state === "error" || !validation) {
     return (
       <CheckoutEmpty
-        title="Checkout could not refresh"
-        body="We could not check current stock. Refresh the cart before payment."
-        action={<button className="commerceSecondaryButton" type="button" onClick={() => loadAndValidate()}>Refresh checkout</button>}
+        title={t("checkout.refreshTitle")}
+        body={t("checkout.refreshBody")}
+        action={<button className="commerceSecondaryButton" type="button" onClick={() => loadAndValidate()}>{t("checkout.refreshAction")}</button>}
       />
     );
   }
@@ -364,9 +383,17 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   const itemTotal = reservation?.itemSubtotalKsh ?? validation.summary.itemSubtotalKsh;
   const deliveryFee = reservation?.deliveryFeeKsh ?? (fulfillment === "KIKUYU_LOCAL_DELIVERY" ? KIKUYU_DELIVERY_FEE_KSH : 0);
   const total = reservation?.totalKsh ?? itemTotal + deliveryFee;
-  const itemTotalLabel = hasCheckoutableItems ? moneyKsh(itemTotal) : "Not available";
-  const deliveryFeeLabel = deliveryFee === 0 ? "Free" : moneyKsh(deliveryFee);
-  const totalLabel = hasCheckoutableItems ? moneyKsh(total) : "Not ready";
+  const itemTotalLabel = hasCheckoutableItems ? moneyKsh(itemTotal) : t("checkout.notAvailable");
+  const deliveryFeeLabel = deliveryFee === 0 ? t("checkout.free") : moneyKsh(deliveryFee);
+  const totalLabel = hasCheckoutableItems ? moneyKsh(total) : t("checkout.notReady");
+  // A deposit needs two shillings to split into two M-Pesa payments; below that
+  // the choice is not offered at all rather than shown and refused.
+  const depositAvailable = hasCheckoutableItems && total >= 2;
+  const onDeposit = depositAvailable && paymentPlan === "DEPOSIT_50";
+  const depositNow = reservation?.depositKsh || depositDueNowKsh(total);
+  const depositBalance = reservation?.balanceKsh || total - depositNow;
+  const dueNow = reservation?.amountDueNowKsh ?? (onDeposit ? depositNow : total);
+  const dueNowLabel = hasCheckoutableItems ? moneyKsh(dueNow) : t("checkout.notReady");
   const paymentStatus = payment?.paymentStatus ?? payment?.status ?? null;
   const isPaymentSucceeded = paymentSucceeded(payment?.orderStatus, paymentStatus);
   const supportItems = validation.items.slice(0, 3)
@@ -377,30 +404,30 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   // One source of truth for "what is still missing", so the step rows, the step
   // buttons and the pay button never disagree about whether checkout is ready.
   const contactBlocker = !phone.trim()
-    ? "Add your M-Pesa phone"
+    ? t("checkout.blockPhone")
     : !/^\+?[0-9]{8,15}$/.test(whatsappPhone.trim().replace(/[\s()-]/g, ""))
-      ? "Add your WhatsApp number"
+      ? t("checkout.blockWhatsapp")
       : null;
   const selectedPickupPoint = pickupPoints.find((point) => point.id === pickupPointId);
   const handoffBlocker = fulfillment === "PICKUP"
-    ? (selectedPickupPoint ? null : "Choose a pickup point")
-    : (deliveryAddress.trim() ? null : "Add a delivery address");
+    ? (selectedPickupPoint ? null : t("checkout.blockPickup"))
+    : (deliveryAddress.trim() ? null : t("checkout.blockAddress"));
   const payBlocker = !hasCheckoutableItems
-    ? "Add an available item to your bag"
+    ? t("checkout.blockEmpty")
     : unavailableItems.length
-      ? (buyNowId ? "This item is no longer available" : "Remove the unavailable items above")
+      ? (buyNowId ? t("checkout.blockBuyNowGone") : t("checkout.blockRemoveUnavailable"))
       : contactBlocker ?? handoffBlocker;
   const contactSummary = contactBlocker
-    ? "M-Pesa phone and WhatsApp number"
+    ? t("checkout.contactSummaryEmpty")
     : `${phone.trim()} · WhatsApp ${whatsappPhone.trim()}`;
   // The step row already carries "Pickup" or "Delivery" as its title, so the
   // summary states only the answer.
   const handoffSummary = fulfillment === "PICKUP"
-    ? (selectedPickupPoint ? selectedPickupPoint.name : "Choose where to collect your order")
-    : (deliveryAddress.trim() ? deliveryAddress.split("\n")[0] : "Tell us where to deliver");
+    ? (selectedPickupPoint ? selectedPickupPoint.name : t("checkout.pickupSummaryEmpty"))
+    : (deliveryAddress.trim() ? deliveryAddress.split("\n")[0] : t("checkout.deliverySummaryEmpty"));
   if (reservation && isPaymentSucceeded) {
     return (
-      <section className="commerceCheckoutShell checkoutSuccessShell" aria-label="Payment confirmation">
+      <section className="commerceCheckoutShell checkoutSuccessShell" aria-label={t("checkout.paymentConfirmationLabel")}>
         <PaymentPanel
           signedIn={signedIn}
           isPaymentSucceeded={isPaymentSucceeded}
@@ -418,9 +445,9 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   }
 
   return (
-    <section className="commerceCheckoutShell" aria-label="Checkout">
+    <section className="commerceCheckoutShell" aria-label={t("checkout.title")}>
       <div className="checkoutHero">
-        <h1>{reservation ? "Complete payment" : "Checkout"}</h1>
+        <h1>{reservation ? t("checkout.completePayment") : t("checkout.title")}</h1>
       </div>
 
       <div className="checkoutSingleColumn">
@@ -476,12 +503,14 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
                   <div className="checkoutError checkoutUnavailable" role="alert">
                     <span>
                       {buyNowId
-                        ? "This item has just been taken and can no longer be bought."
-                        : `${unavailableItems.length} ${unavailableItems.length === 1 ? "item" : "items"} in your bag can't be bought right now.`}
+                        ? t("checkout.buyNowGoneAlert")
+                        : unavailableItems.length === 1
+                          ? t("checkout.bagBlockedOne")
+                          : t("checkout.bagBlocked", { count: String(unavailableItems.length) })}
                     </span>
                     {buyNowId ? null : (
                       <button type="button" onClick={() => void removeFromBag(unavailableItems.map((item) => item.requestedProductId))}>
-                        {unavailableItems.length === 1 ? "Remove it" : "Remove them"}
+                        {unavailableItems.length === 1 ? t("checkout.removeIt") : t("checkout.removeThem")}
                       </button>
                     )}
                   </div>
@@ -490,24 +519,40 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
                 <div className="checkoutSteps">
                   <CheckoutStepRow
                     index={1}
-                    title="Contact"
+                    title={t("checkout.stepContact")}
                     summary={contactSummary}
                     complete={!contactBlocker}
                     onOpen={() => setActiveStep("contact")}
                   />
                   <CheckoutStepRow
                     index={2}
-                    title={requiresAddress ? "Delivery" : "Pickup"}
+                    title={requiresAddress ? t("checkout.stepDelivery") : t("checkout.stepPickup")}
                     summary={handoffSummary}
                     complete={!handoffBlocker}
                     onOpen={() => setActiveStep("handoff")}
                   />
                 </div>
 
+                {depositAvailable ? (
+                  <PaymentPlanChoice
+                    plan={paymentPlan}
+                    onChange={setPaymentPlan}
+                    totalLabel={totalLabel}
+                    depositLabel={moneyKsh(depositNow)}
+                    balanceLabel={moneyKsh(depositBalance)}
+                  />
+                ) : null}
+
                 <div className="commerceSummaryRows">
-                  <div className="commerceSummaryRow"><span>Items</span><strong>{itemTotalLabel}</strong></div>
-                  <div className="commerceSummaryRow"><span>{requiresAddress ? "Delivery" : "Pickup"}</span><strong>{deliveryFeeLabel}</strong></div>
-                  <div className="commerceSummaryRow total"><span>Total</span><strong>{totalLabel}</strong></div>
+                  <div className="commerceSummaryRow"><span>{t("checkout.rowItems")}</span><strong>{itemTotalLabel}</strong></div>
+                  <div className="commerceSummaryRow"><span>{requiresAddress ? t("checkout.stepDelivery") : t("checkout.stepPickup")}</span><strong>{deliveryFeeLabel}</strong></div>
+                  <div className="commerceSummaryRow total"><span>{t("checkout.rowTotal")}</span><strong>{totalLabel}</strong></div>
+                  {onDeposit ? (
+                    <>
+                      <div className="commerceSummaryRow"><span>{t("plan.rowPayNow")}</span><strong>{moneyKsh(depositNow)}</strong></div>
+                      <div className="commerceSummaryRow"><span>{t("plan.rowBalance", { days: String(DEPOSIT_HOLD_DAYS) })}</span><strong>{moneyKsh(depositBalance)}</strong></div>
+                    </>
+                  ) : null}
                 </div>
 
                 {error ? <p className="checkoutError" role="alert">{error}</p> : null}
@@ -518,7 +563,11 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
                 <div className="checkoutPayBar">
                   {payBlocker ? <p className="checkoutPayHint">{payBlocker}</p> : null}
                   <button className="commercePrimaryButton full" type="submit" disabled={submitting || Boolean(payBlocker)}>
-                    <CreditCard size={17} /> {submitting ? "Checking stock..." : `Pay ${totalLabel} with M-Pesa`}
+                    <CreditCard size={17} /> {submitting
+                      ? t("checkout.checkingStock")
+                      : onDeposit
+                        ? t("checkout.payDeposit", { amount: dueNowLabel })
+                        : t("checkout.payWith", { amount: dueNowLabel })}
                   </button>
                 </div>
               </form>
@@ -539,7 +588,8 @@ async function validateCart(productIds: string[]): Promise<CartValidationRespons
     body: JSON.stringify({ productIds }),
     cache: "no-store"
   });
-  if (!response.ok) throw new Error("Cart validation failed.");
+  // Module scope, so no hook here. The caller turns this into a message.
+  if (!response.ok) throw new Error("CART_VALIDATION_FAILED");
   return response.json() as Promise<CartValidationResponse>;
 }
 
@@ -579,6 +629,49 @@ function PaymentPanel({
   // word, so staff see the real refusal instead of guessing at it.
   const technicalDetail = paymentError || payment?.resultDescription || "";
   const supportMessage = `Hello Direct Loop, I need help with order ${reservation.orderNumber}.${technicalDetail ? ` The payment page said: ${technicalDetail}` : ""}`;
+  // A confirmed deposit is a success, but not the one the normal panel
+  // describes: nothing is being prepared and there is still a deadline to meet.
+  const depositConfirmed = isPaymentSucceeded && payment?.orderStatus === "DEPOSIT_PAID";
+  const chargedKsh = reservation.amountDueNowKsh ?? reservation.totalKsh;
+  const balanceDueLabel = payment?.balanceDueAt
+    ? new Date(payment.balanceDueAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })
+    : null;
+
+  if (depositConfirmed) {
+    return (
+      <div className="paymentSuccessPanel" role="status">
+        <div className="paymentSuccessMark"><CheckCircle2 size={36} aria-hidden="true" /></div>
+        <div className="paymentSuccessHeading">
+          <h1>{t("pay.depositConfirmedTitle")}</h1>
+        </div>
+
+        <dl className="paymentSuccessFacts">
+          <div><dt>{t("pay.orderLabel")}</dt><dd>{reservation.orderNumber}</dd></div>
+          <div><dt>{t("pay.depositPaidLabel")}</dt><dd>{moneyKsh(chargedKsh)}</dd></div>
+          <div><dt>{t("pay.balanceLabel")}</dt><dd>{moneyKsh(payment?.balanceKsh ?? reservation.balanceKsh)}</dd></div>
+        </dl>
+
+        <section className="paymentNextStep">
+          <Clock3 size={24} aria-hidden="true" />
+          <div>
+            <h2>{balanceDueLabel
+              ? t("pay.balanceDueBy", { date: balanceDueLabel })
+              : t("pay.balanceDueWithin", { days: String(DEPOSIT_HOLD_DAYS) })}</h2>
+            <p>{t("pay.depositNextBody", { phone: `+${reservation.phone}` })}</p>
+          </div>
+        </section>
+
+        <CheckoutSupport message={supportMessage} />
+
+        <div className="paymentSuccessActions">
+          <Link className="commercePrimaryButton" href={`/orders/${encodeURIComponent(reservation.orderNumber)}`}>
+            {t("pay.goToOrder")} <ArrowRight size={16} />
+          </Link>
+          <Link className="commerceTextButton" href="/">{t("cart.continueShopping")}</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (isPaymentSucceeded) {
     return (
@@ -589,9 +682,9 @@ function PaymentPanel({
         </div>
 
         <dl className="paymentSuccessFacts">
-          <div><dt>Order</dt><dd>{reservation.orderNumber}</dd></div>
-          <div><dt>Paid</dt><dd>{moneyKsh(reservation.totalKsh)}</dd></div>
-          <div><dt>M-Pesa receipt</dt><dd>{payment?.receiptNumber ?? "Confirmed"}</dd></div>
+          <div><dt>{t("pay.orderLabel")}</dt><dd>{reservation.orderNumber}</dd></div>
+          <div><dt>{t("pay.paidLabel")}</dt><dd>{moneyKsh(chargedKsh)}</dd></div>
+          <div><dt>{t("pay.receiptLabel")}</dt><dd>{payment?.receiptNumber ?? t("pay.receiptConfirmed")}</dd></div>
         </dl>
 
         <section className="paymentNextStep">
@@ -631,13 +724,21 @@ function PaymentPanel({
   const phoneLabel = `+${reservation.phone}`;
   const heldUntil = new Date(reservation.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const copy: Record<PaymentStage, { title: string; body: string }> = {
-    sending: { title: "Sending the prompt to your phone", body: `Asking M-Pesa to send a payment prompt to ${phoneLabel}.` },
-    waiting: { title: "Check your phone", body: `Enter your M-Pesa PIN on the prompt sent to ${phoneLabel}. This page updates by itself once you have paid.` },
-    notSent: { title: "We couldn't send the M-Pesa prompt", body: "Nothing has been charged. Try again, and if no prompt arrives, message us on WhatsApp." },
-    failed: { title: "Payment wasn't completed", body: `${friendlyFailureReason(payment?.resultDescription)} Nothing has been charged, so you can try again.` },
-    review: { title: "We're checking your payment", body: "M-Pesa sent a result we need to confirm by hand. Please don't pay again - message us on WhatsApp with your order number." },
-    expired: { title: "This hold has ended", body: "The item was held for 15 minutes and is back on sale. If you already entered your PIN, message us on WhatsApp and we'll check." },
-    success: { title: "Payment confirmed", body: "" }
+    sending: { title: t("pay.sendingTitle"), body: t("pay.sendingBody", { phone: phoneLabel }) },
+    waiting: {
+      title: t("pay.waitingTitle"),
+      body: reservation.paymentPlan === "DEPOSIT_50"
+        ? t("pay.waitingBodyDeposit", { amount: moneyKsh(chargedKsh), phone: phoneLabel })
+        : t("pay.waitingBody", { phone: phoneLabel })
+    },
+    notSent: { title: t("pay.notSentTitle"), body: t("pay.notSentBody") },
+    failed: { title: t("pay.failedTitle"), body: t("pay.failedBody", { reason: friendlyFailureReason(payment?.resultDescription) }) },
+    review: { title: t("pay.reviewTitle"), body: t("pay.reviewBody") },
+    // The reservation window has been five minutes since 2026-09-23. This line
+    // still promised fifteen, which is the one number a shopper whose hold just
+    // lapsed would check.
+    expired: { title: t("pay.expiredTitle"), body: t("pay.expiredBody", { minutes: String(reservation.reservationMinutes) }) },
+    success: { title: t("payment.confirmed"), body: "" }
   };
   const StageIcon = {
     sending: Loader2,
@@ -660,37 +761,89 @@ function PaymentPanel({
       <p className="payStageBody">{copy[stage].body}</p>
 
       <dl className="payFacts">
-        <div><dt>Amount</dt><dd className="payAmount">{moneyKsh(reservation.totalKsh)}</dd></div>
-        <div><dt>M-Pesa phone</dt><dd>{phoneLabel}</dd></div>
-        <div><dt>Order</dt><dd>{reservation.orderNumber}</dd></div>
+        <div><dt>{t("pay.amountLabel")}</dt><dd className="payAmount">{moneyKsh(chargedKsh)}</dd></div>
+        <div><dt>{t("pay.phoneLabel")}</dt><dd>{phoneLabel}</dd></div>
+        <div><dt>{t("pay.orderLabel")}</dt><dd>{reservation.orderNumber}</dd></div>
       </dl>
 
       {holding ? (
-        <p className="payHold"><Clock3 size={15} aria-hidden="true" /> Item held for you until {heldUntil}</p>
+        <p className="payHold"><Clock3 size={15} aria-hidden="true" /> {t("pay.holdUntil", { time: heldUntil })}</p>
       ) : null}
 
       <div className="payActions">
         {canRetry ? (
           <button className="commercePrimaryButton full" type="button" disabled={paymentLoading} onClick={retryPayment}>
-            <Smartphone size={17} /> {paymentLoading ? "Sending..." : "Send the prompt again"}
+            <Smartphone size={17} /> {paymentLoading ? t("pay.retrySending") : t("pay.retry")}
           </button>
         ) : null}
         {stage === "waiting" ? (
           <button className="commerceSecondaryButton full" type="button" disabled={refreshingPayment} onClick={refreshPaymentStatus}>
-            <RefreshCw size={16} /> {refreshingPayment ? "Checking..." : "I've entered my PIN"}
+            <RefreshCw size={16} /> {refreshingPayment ? t("pay.confirmChecking") : t("pay.confirmPin")}
           </button>
         ) : null}
         {stage === "expired" ? (
           <button className="commercePrimaryButton full" type="button" onClick={() => window.location.reload()}>
-            Start again
+            {t("pay.startAgain")}
           </button>
         ) : null}
       </div>
 
       <a className="payHelp" href={supportWhatsAppUrl(supportMessage)} target="_blank" rel="noopener noreferrer">
-        <MessageCircle size={16} aria-hidden="true" /> Need help? Chat with us on WhatsApp
+        <MessageCircle size={16} aria-hidden="true" /> {t("pay.help")}
       </a>
     </div>
+  );
+}
+
+/**
+ * Pay in full, or half now and the rest within a week. Both consequences are
+ * stated on the card the shopper picks: a deposit holds the piece, and losing
+ * the deadline costs them part of that deposit. Somebody choosing this is short
+ * of money, so the penalty cannot be a footnote they find out about later.
+ */
+function PaymentPlanChoice({ plan, onChange, totalLabel, depositLabel, balanceLabel }: {
+  plan: PaymentPlan;
+  onChange: (plan: PaymentPlan) => void;
+  totalLabel: string;
+  depositLabel: string;
+  balanceLabel: string;
+}) {
+  const { t } = useStorefrontI18n();
+
+  return (
+    <fieldset className="checkoutPlan">
+      <legend>{t("plan.legend")}</legend>
+      <div className="checkoutPlanOptions">
+        <label className={`checkoutPlanOption ${plan === "FULL" ? "selected" : ""}`}>
+          <input
+            type="radio"
+            name="paymentPlan"
+            value="FULL"
+            checked={plan === "FULL"}
+            onChange={() => onChange("FULL")}
+          />
+          <span className="checkoutPlanText">
+            <strong>{t("plan.fullTitle", { amount: totalLabel })}</strong>
+            <span>{t("plan.fullBody")}</span>
+          </span>
+        </label>
+
+        <label className={`checkoutPlanOption ${plan === "DEPOSIT_50" ? "selected" : ""}`}>
+          <input
+            type="radio"
+            name="paymentPlan"
+            value="DEPOSIT_50"
+            checked={plan === "DEPOSIT_50"}
+            onChange={() => onChange("DEPOSIT_50")}
+          />
+          <span className="checkoutPlanText">
+            <strong>{t("plan.depositTitle", { amount: depositLabel })}</strong>
+            <span>{t("plan.depositBody", { days: String(DEPOSIT_HOLD_DAYS), amount: balanceLabel })}</span>
+            <span className="checkoutPlanWarning">{t("plan.depositWarning")}</span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
   );
 }
 
@@ -781,14 +934,15 @@ type CheckoutStepPanelProps = {
  * parent, so leaving a step never discards what was typed in it.
  */
 function CheckoutStepPanel(props: CheckoutStepPanelProps) {
+  const { t } = useStorefrontI18n();
   const { step, blocker, onBack, submitting } = props;
   const requiresAddress = deliveryRequiresAddress(props.fulfillment);
 
   return (
     <div className="checkoutStepPanel">
       <header className="checkoutStepPanelHead">
-        <button type="button" onClick={onBack} aria-label="Back to checkout"><ArrowLeft size={22} /></button>
-        <strong>{step === "contact" ? "Contact" : requiresAddress ? "Delivery" : "Pickup"}</strong>
+        <button type="button" onClick={onBack} aria-label={t("checkout.back")}><ArrowLeft size={22} /></button>
+        <strong>{step === "contact" ? t("checkout.stepContact") : requiresAddress ? t("checkout.stepDelivery") : t("checkout.stepPickup")}</strong>
       </header>
 
       <div className="checkoutStepPanelBody">
@@ -809,7 +963,7 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
             </label>
 
             <label className="checkoutField">
-              <span>WhatsApp number</span>
+              <span>{t("checkout.whatsappLabel")}</span>
               <input
                 type="tel"
                 autoComplete="section-whatsapp tel"
@@ -821,12 +975,12 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
                 value={props.whatsappPhone}
                 onChange={(event) => props.setWhatsappPhone(event.target.value)}
               />
-              <small id="whatsapp-contact-help">Please leave your WhatsApp number. Our customer service team will contact you to arrange pickup or delivery.</small>
+              <small id="whatsapp-contact-help">{t("checkout.whatsappHelp")}</small>
             </label>
           </>
         ) : (
           <>
-            <div className="commerceOptionGrid" role="radiogroup" aria-label="Fulfillment">
+            <div className="commerceOptionGrid" role="radiogroup" aria-label={t("checkout.fulfillmentLabel")}>
               <label className={`commerceOption ${props.fulfillment === "PICKUP" ? "selected" : ""}`}>
                 <input
                   type="radio"
@@ -837,8 +991,8 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
                 />
                 <PackageCheck size={20} />
                 <div>
-                  <span>Free</span>
-                  <strong>Choose a pickup point</strong>
+                  <span>{t("checkout.free")}</span>
+                  <strong>{t("checkout.optionPickup")}</strong>
                 </div>
               </label>
               <label className={`commerceOption ${props.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "selected" : ""}`}>
@@ -852,21 +1006,21 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
                 <Truck size={20} />
                 <div>
                   <span>KSh {KIKUYU_DELIVERY_FEE_KSH}</span>
-                  <strong>Courier delivery</strong>
+                  <strong>{t("checkout.optionDelivery")}</strong>
                 </div>
               </label>
             </div>
 
             {props.fulfillment === "PICKUP" ? (
               <div className="checkoutField">
-                <label htmlFor="pickup-point">Pickup point</label>
+                <label htmlFor="pickup-point">{t("checkout.pickupPointLabel")}</label>
                 <select id="pickup-point" name="pickupPoint" required value={props.pickupPointId}
                   disabled={submitting} onChange={(event) => props.setPickupPointId(event.target.value)}>
-                  <option value="">Choose a pickup point</option>
+                  <option value="">{t("checkout.pickupPointPlaceholder")}</option>
                   {props.pickupPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
                 </select>
                 {props.pickupPoints.filter((point) => point.id === props.pickupPointId && point.mapsUrl).map((point) => (
-                  <a key={point.id} href={point.mapsUrl!} target="_blank" rel="noopener noreferrer">View {point.name} on Google Maps ↗</a>
+                  <a key={point.id} href={point.mapsUrl!} target="_blank" rel="noopener noreferrer">{t("checkout.viewOnMaps", { name: point.name })}</a>
                 ))}
               </div>
             ) : null}
@@ -882,10 +1036,10 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
             ) : null}
 
             <label className="checkoutField">
-              <span>{props.fulfillment === "PICKUP" ? "Pickup note for customer service" : "Order note (optional)"}</span>
+              <span>{props.fulfillment === "PICKUP" ? t("checkout.notePickup") : t("checkout.noteDelivery")}</span>
               <textarea
                 name="deliveryNote"
-                placeholder="Preferred time or anything else the team should know"
+                placeholder={t("checkout.notePlaceholder")}
                 value={props.deliveryNote}
                 onChange={(event) => props.setDeliveryNote(event.target.value)}
               />

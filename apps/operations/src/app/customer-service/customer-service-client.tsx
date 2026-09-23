@@ -707,6 +707,8 @@ function statusLabel(status: string): string {
     RESOLVED: t("已解决"),
     CLOSED: t("已关闭"),
     PENDING_PAYMENT: t("待付款"),
+    DEPOSIT_PAID: t("定金已付待尾款"),
+    DEPOSIT_EXPIRED: t("定金逾期"),
     PAYMENT_PROCESSING: t("支付处理中"),
     PAID: t("已付款"),
     CANCELLED: t("已取消"),

@@ -11,6 +11,7 @@ import {
   CheckCircle2Icon,
   ClipboardCheckIcon,
   PackageCheckIcon,
+  PrinterIcon,
   RefreshCwIcon,
   RotateCcwIcon,
   ScanBarcodeIcon,
@@ -18,6 +19,7 @@ import {
   TruckIcon,
   UserRoundCheckIcon
 } from "lucide-react";
+import { FulfillmentLabelPrinter } from "../warehouse/fulfillment-label-printer";
 
 import { hasPermission, type OperationsSession } from "@/components/admin/operations-access";
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
@@ -120,7 +122,7 @@ type OrderRow = {
     unitPriceKsh: number;
     quantity: number;
     displayImageUrl?: string | null;
-    snapshot?: { title: string; barcode?: string | null; imageUrl?: string | null } | null;
+    snapshot?: { title: string; barcode?: string | null; sizeLabel?: string | null; imageUrl?: string | null } | null;
     inventoryItem?: { id: string; barcode: string; status: string; location?: { id: string; locationCode: string } | null } | null;
   }>;
   fulfillment?: {
@@ -250,6 +252,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [labelOrder, setLabelOrder] = useState<OrderRow | null>(null);
   const meta = PAGE_META[scope];
 
   useEffect(() => {
@@ -351,6 +354,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
             busy={busy}
             onDialog={setDialog}
             onDirect={directAction}
+            onLabel={setLabelOrder}
           />
         )) : (
           <Empty className="min-h-64 border">
@@ -371,6 +375,28 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
         onClose={() => setDialog(null)}
         onDone={async () => { setDialog(null); await load(); }}
       />
+      {labelOrder?.fulfillment?.packageCode ? (
+        <FulfillmentLabelPrinter
+          label={{
+            packageCode: labelOrder.fulfillment.packageCode,
+            nodeName: labelOrder.fulfillment.fulfillmentNode?.name ?? labelOrder.fulfillmentNode?.name ?? "—",
+            orderNumber: labelOrder.orderNumber,
+            isDelivery: labelOrder.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY",
+            itemCount: labelOrder.items.length,
+            customerName: labelOrder.customer.displayName,
+            customerPhone: labelOrder.whatsappPhone ?? labelOrder.customer.phone,
+            // The pin and the map link are for a screen, not a sticker.
+            deliveryAddress: parseDeliveryAddress(labelOrder.deliveryAddress ?? "").address,
+            deliveryArea: labelOrder.deliveryNote,
+            items: labelOrder.items.map((item) => ({
+              title: item.snapshot?.title ?? "Item",
+              sizeLabel: item.snapshot?.sizeLabel ?? null,
+              barcode: item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? null
+            }))
+          }}
+          onClose={() => setLabelOrder(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -381,6 +407,7 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [labelOrder, setLabelOrder] = useState<OrderRow | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -423,7 +450,7 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
       {error ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{t("无法打开订单")}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
       {order ? (
         <>
-          <OrderCard order={order} session={session} busy={busy} showTimeline onDialog={setDialog} onDirect={directAction} />
+          <OrderCard order={order} session={session} busy={busy} showTimeline onDialog={setDialog} onDirect={directAction} onLabel={setLabelOrder} />
           <AfterSalesPanel key={order.id} order={order} session={session} onOrderChanged={load} />
         </>
       ) : (
@@ -436,6 +463,28 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
         onClose={() => setDialog(null)}
         onDone={async () => { setDialog(null); await load(); }}
       />
+      {labelOrder?.fulfillment?.packageCode ? (
+        <FulfillmentLabelPrinter
+          label={{
+            packageCode: labelOrder.fulfillment.packageCode,
+            nodeName: labelOrder.fulfillment.fulfillmentNode?.name ?? labelOrder.fulfillmentNode?.name ?? "—",
+            orderNumber: labelOrder.orderNumber,
+            isDelivery: labelOrder.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY",
+            itemCount: labelOrder.items.length,
+            customerName: labelOrder.customer.displayName,
+            customerPhone: labelOrder.whatsappPhone ?? labelOrder.customer.phone,
+            // The pin and the map link are for a screen, not a sticker.
+            deliveryAddress: parseDeliveryAddress(labelOrder.deliveryAddress ?? "").address,
+            deliveryArea: labelOrder.deliveryNote,
+            items: labelOrder.items.map((item) => ({
+              title: item.snapshot?.title ?? "Item",
+              sizeLabel: item.snapshot?.sizeLabel ?? null,
+              barcode: item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? null
+            }))
+          }}
+          onClose={() => setLabelOrder(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -527,8 +576,9 @@ function OrderCard(props: {
   showTimeline?: boolean;
   onDialog: (state: DialogState) => void;
   onDirect: (order: OrderRow, action: string, body?: Record<string, unknown>) => Promise<void>;
+  onLabel: (order: OrderRow) => void;
 }) {
-  const { order, session, busy, showTimeline, onDialog, onDirect } = props;
+  const { order, session, busy, showTimeline, onDialog, onDirect, onLabel } = props;
   const delivery = parseDeliveryAddress(order.deliveryAddress ?? "");
   const payment = order.payments[0];
   const fulfillment = order.fulfillment;
@@ -606,7 +656,7 @@ function OrderCard(props: {
         {showTimeline ? <OrderTimeline events={fulfillment?.events ?? []} /> : null}
       </CardContent>
       <CardFooter className="flex-wrap justify-end gap-2">
-        <OrderActions order={order} session={session} busy={busy} onDialog={onDialog} onDirect={onDirect} />
+        <OrderActions order={order} session={session} busy={busy} onDialog={onDialog} onDirect={onDirect} onLabel={onLabel} />
       </CardFooter>
     </Card>
   );
@@ -626,12 +676,13 @@ function OrderItemImage({ src, alt }: { src?: string | null; alt: string }) {
   return <img src={src.startsWith("/") && !src.startsWith("/api-proxy/") ? `/api-proxy${src}` : src} alt={alt} loading="lazy" decoding="async" className="size-full object-contain" onError={() => setFailed(true)} />;
 }
 
-function OrderActions({ order, session, busy, onDialog, onDirect }: {
+function OrderActions({ order, session, busy, onDialog, onDirect, onLabel }: {
   order: OrderRow;
   session: OperationsSession | null;
   busy: boolean;
   onDialog: (state: DialogState) => void;
   onDirect: (order: OrderRow, action: string, body?: Record<string, unknown>) => Promise<void>;
+  onLabel: (order: OrderRow) => void;
 }) {
   const status = order.fulfillment?.status;
   const actions: ReactNode[] = [];
@@ -643,6 +694,12 @@ function OrderActions({ order, session, busy, onDialog, onDirect }: {
   const atStoreNode = nodeType === "STORE";
   if (status && !["COMPLETED", "IN_TRANSIT_TO_NODE", "ARRIVED_AT_NODE", "READY_FOR_PICKUP", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY"].includes(status) && hasPermission(session, "orders.assign-node")) {
     actions.push(<Button key="node" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-node", order })}><TruckIcon data-icon="inline-start" />{order.fulfillmentNode ? t("改派履约点") : t("指定履约点")}</Button>);
+  }
+  // Printable as soon as packing assigns a package code, and reprintable at any
+  // later step: a sticker that falls off in a van should not need the order
+  // rewound to replace it.
+  if (order.fulfillment?.packageCode && hasPermission(session, "orders.pack")) {
+    actions.push(<Button key="label" variant="outline" disabled={busy} onClick={() => onLabel(order)}><PrinterIcon data-icon="inline-start" />{t("打印面单")}</Button>);
   }
   if (status === "PACKED" && atStoreNode && hasPermission(session, "orders.assign-node")) actions.push(<Button key="send-node" disabled={busy} onClick={() => void onDirect(order, "send-to-node")}><TruckIcon data-icon="inline-start" />{t("发往门店")}</Button>);
   if (status === "IN_TRANSIT_TO_NODE" && hasPermission(session, "orders.node-receive")) actions.push(<Button key="receive-node" disabled={busy} onClick={() => void onDirect(order, "receive-at-node")}><PackageCheckIcon data-icon="inline-start" />{t("确认到店")}</Button>);
@@ -820,13 +877,13 @@ function OrderActionDialog(props: {
             ) : null}
             {state.kind === "confirm-pickup" ? (
               <>
-                <Alert><CheckCircle2Icon /><AlertTitle>{t("请顾客报出自提码")}</AlertTitle><AlertDescription>{t("顾客收到的短信里有 4 位自提码。订单号和手机号都印在包裹上，不能当凭证。")}</AlertDescription></Alert>
+                <Alert><CheckCircle2Icon /><AlertTitle>{t("请顾客报出自提码")}</AlertTitle><AlertDescription>{t("顾客自己的订单页上有 4 位自提码。订单号和手机号都印在包裹上，不能当凭证。")}</AlertDescription></Alert>
                 <TextFilter label={t("顾客报的自提码")} value={verificationValue} onChange={setVerificationValue} />
               </>
             ) : null}
             {state.kind === "complete-delivery" ? (
               <>
-                <Alert><CheckCircle2Icon /><AlertTitle>{t("请顾客报出配送码")}</AlertTitle><AlertDescription>{t("顾客收到货以后才会把短信里的 4 位配送码报出来。没有这个号码不能确认送达——即使骑手说已经送到了。如果顾客没收到短信，先点「重发配送码」。")}</AlertDescription></Alert>
+                <Alert><CheckCircle2Icon /><AlertTitle>{t("请顾客报出配送码")}</AlertTitle><AlertDescription>{t("顾客收到货以后，才会把自己订单页上的 4 位配送码报出来。没有这个号码不能确认送达——即使骑手说已经送到了。顾客打不开订单页的话，用「用 WhatsApp 发给顾客」把链接发过去。")}</AlertDescription></Alert>
                 <TextFilter label={t("顾客报的配送码")} value={verificationValue} onChange={setVerificationValue} />
               </>
             ) : null}
@@ -951,12 +1008,12 @@ function actionLabel(action: string) {
 }
 
 function statusLabel(status: string) {
-  return ({ DRAFT: t("草稿"), PENDING_PAYMENT: t("待付款"), PAYMENT_PROCESSING: t("支付处理中"), PAID: t("待拣货"), PICKING: t("拣货中"), READY_TO_PACK: t("待打包"), PACKED: t("已打包"), IN_TRANSIT_TO_NODE: t("发往门店中"), ARRIVED_AT_NODE: t("已到店"), READY_FOR_PICKUP: t("待自提"), READY_FOR_DISPATCH: t("待发货"), OUT_FOR_DELIVERY: t("配送中"), COMPLETED: t("已完成"), AFTER_SALE: t("售后中"), CANCELLED: t("已取消"), EXPIRED: t("已取消"), REFUNDED: t("已退款"), SUCCESS: t("支付成功"), FAILED: t("支付失败"), MANUAL_REVIEW: t("人工复核"), NO_PAYMENT: t("无支付"), EXCEPTION: t("异常"), ITEM_NOT_FOUND: t("商品找不到"), BARCODE_MISMATCH: t("Barcode 不匹配"), ITEM_DAMAGED: t("商品损坏"), ITEM_SOLD_OFFLINE: t("已线下卖掉"), NODE_NOT_RECEIVED: t("门店未收到"), WRONG_NODE: t("发错门店"), CUSTOMER_UNREACHABLE: t("联系不上顾客"), DELIVERY_FAILED: t("配送失败"), CUSTOMER_CANCELLED: t("顾客取消"), OTHER: t("其他异常"), OPEN: t("待处理"), IN_PROGRESS: t("处理中"), RESOLVED: t("已解决"), CLOSED: t("已关闭") } as Record<string, string>)[status] ?? status;
+  return ({ DRAFT: t("草稿"), PENDING_PAYMENT: t("待付款"), PAYMENT_PROCESSING: t("支付处理中"), DEPOSIT_PAID: t("定金已付待尾款"), DEPOSIT_EXPIRED: t("定金逾期"), PAID: t("待拣货"), PICKING: t("拣货中"), READY_TO_PACK: t("待打包"), PACKED: t("已打包"), IN_TRANSIT_TO_NODE: t("发往门店中"), ARRIVED_AT_NODE: t("已到店"), READY_FOR_PICKUP: t("待自提"), READY_FOR_DISPATCH: t("待发货"), OUT_FOR_DELIVERY: t("配送中"), COMPLETED: t("已完成"), AFTER_SALE: t("售后中"), CANCELLED: t("已取消"), EXPIRED: t("已取消"), REFUNDED: t("已退款"), SUCCESS: t("支付成功"), FAILED: t("支付失败"), MANUAL_REVIEW: t("人工复核"), NO_PAYMENT: t("无支付"), EXCEPTION: t("异常"), ITEM_NOT_FOUND: t("商品找不到"), BARCODE_MISMATCH: t("Barcode 不匹配"), ITEM_DAMAGED: t("商品损坏"), ITEM_SOLD_OFFLINE: t("已线下卖掉"), NODE_NOT_RECEIVED: t("门店未收到"), WRONG_NODE: t("发错门店"), CUSTOMER_UNREACHABLE: t("联系不上顾客"), DELIVERY_FAILED: t("配送失败"), CUSTOMER_CANCELLED: t("顾客取消"), OTHER: t("其他异常"), OPEN: t("待处理"), IN_PROGRESS: t("处理中"), RESOLVED: t("已解决"), CLOSED: t("已关闭") } as Record<string, string>)[status] ?? status;
 }
 
 function formatDate(value: string) { return new Date(value).toLocaleString(operationsFormatLocale(), { hour12: false }); }
 function money(value: number) { return `${value.toLocaleString("en-KE")} KSh`; }
 
 const PAYMENT_OPTIONS = [["PENDING", "待处理"], ["SUCCESS", "支付成功"], ["FAILED", "支付失败"], ["CANCELLED", "已取消"], ["TIMEOUT", "超时"], ["EXPIRED", "过期"], ["MANUAL_REVIEW", "人工复核"]] as const;
-const ORDER_OPTIONS = [["DRAFT", "草稿"], ["PENDING_PAYMENT", "待付款"], ["PAYMENT_PROCESSING", "支付处理中"], ["PAID", "已付款"], ["FULFILLING", "履约中"], ["COMPLETED", "已完成"], ["CANCELLED", "已取消"], ["EXPIRED", "已过期"], ["REFUNDED", "已退款"]] as const;
+const ORDER_OPTIONS = [["DRAFT", "草稿"], ["PENDING_PAYMENT", "待付款"], ["PAYMENT_PROCESSING", "支付处理中"], ["DEPOSIT_PAID", "定金已付待尾款"], ["DEPOSIT_EXPIRED", "定金逾期"], ["PAID", "已付款"], ["FULFILLING", "履约中"], ["COMPLETED", "已完成"], ["CANCELLED", "已取消"], ["EXPIRED", "已过期"], ["REFUNDED", "已退款"]] as const;
 const EXCEPTION_OPTIONS = [["ITEM_NOT_FOUND", "商品找不到"], ["BARCODE_MISMATCH", "Barcode 不匹配"], ["ITEM_DAMAGED", "商品损坏"], ["ITEM_SOLD_OFFLINE", "已线下卖掉"], ["NODE_NOT_RECEIVED", "门店未收到"], ["WRONG_NODE", "发错门店"], ["CUSTOMER_UNREACHABLE", "联系不上顾客"], ["DELIVERY_FAILED", "配送失败"], ["CUSTOMER_CANCELLED", "顾客取消"], ["OTHER", "其他异常"]] as const;

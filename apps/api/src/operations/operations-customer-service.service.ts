@@ -612,7 +612,10 @@ function serviceOrderWhere(input: SearchInput): Prisma.OrderWhereInput {
   const queue = input.queue ?? "all";
   if (queue === "payment") {
     where.OR = [
-      { status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] } },
+      // A deposit order is a payment queue case by definition: half is in and
+      // the rest is on a clock. DEPOSIT_EXPIRED is here because it leaves a
+      // refund owed, which is the agent's problem too.
+      { status: { in: [OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING, OrderStatus.DEPOSIT_PAID, OrderStatus.DEPOSIT_EXPIRED] } },
       { payments: { some: { status: { in: [PaymentStatus.FAILED, PaymentStatus.CANCELLED, PaymentStatus.TIMEOUT, PaymentStatus.MANUAL_REVIEW] } } } }
     ];
   }

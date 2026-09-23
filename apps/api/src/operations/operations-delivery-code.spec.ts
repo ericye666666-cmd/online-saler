@@ -242,6 +242,7 @@ test("no order response carries a code or its hash", async (t) => {
     status: "FULFILLING",
     fulfillment: {
       status: "OUT_FOR_DELIVERY",
+      deliveryCode: CODE,
       deliveryCodeHash: hashCustomerCode(CODE),
       pickupVerificationValue: "VERIFIED"
     }
@@ -254,14 +255,19 @@ test("no order response carries a code or its hash", async (t) => {
   assert.equal(row.pickupCode, undefined, "the pickup code is not returned");
   const fulfillment = row.fulfillment as Record<string, unknown>;
   assert.equal(fulfillment.deliveryCodeHash, undefined, "the delivery code hash is not returned");
+  // The readable copy exists for the customer's order page. An operations
+  // response that carried it would hand the store a code it could type into its
+  // own verification box, which is the one thing the code exists to prevent.
+  assert.equal(fulfillment.deliveryCode, undefined, "the readable delivery code is not returned");
   // Four digits is 10,000 guesses, so a hash in a JSON response is a code.
   assert.ok(!JSON.stringify(row).includes("pbkdf2_sha256"));
   assert.ok(!JSON.stringify(row).includes("4417"));
+  assert.ok(!JSON.stringify(row).includes(CODE), "no response carries the delivery code");
 });
 
 // ------------------------------------------------------------------ dispatch ---
 
-test("dispatching to a rider texts a code that appears nowhere else", async (t) => {
+test("dispatching to a rider texts a code that appears nowhere staff can read it", async (t) => {
   const h = fixture(t, { status: "ARRIVED_AT_NODE", codeHash: null });
   await h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1" });
 
@@ -271,13 +277,20 @@ test("dispatching to a rider texts a code that appears nowhere else", async (t) 
   assert.ok(digits, "the SMS carries four digits");
   assert.match(sms!, /only after you have received your order/);
 
-  // The code is stored as a hash, and the plaintext is in no write and no event.
+  // Verification still reads a hash, never the readable copy.
   const write = h.fulfillmentWrites.find((data) => typeof data.deliveryCodeHash === "string");
   assert.ok(write, "a code hash is stored");
   assert.match(String(write!.deliveryCodeHash), /^pbkdf2_sha256\$/);
   assert.ok(!String(write!.deliveryCodeHash).includes(digits!));
   assert.ok(!JSON.stringify(h.events).includes(digits!), "no event records the code");
-  assert.ok(!JSON.stringify(h.fulfillmentWrites).includes(`"${digits}"`), "no column records the code");
+
+  // One column holds the readable copy, and it is the one the customer's own
+  // order page reads. Anywhere else -- an event, a note, a second column -- it
+  // would be visible to the staff who must not have it.
+  assert.equal(write!.deliveryCode, digits, "the customer's own copy is stored");
+  const columnsWithCode = h.fulfillmentWrites.flatMap((data) =>
+    Object.entries(data).filter(([, value]) => value === digits).map(([column]) => column));
+  assert.deepEqual(columnsWithCode, ["deliveryCode"], "only deliveryCode carries the plaintext");
 });
 
 test("dispatch moves the package to the rider in the same write as the code", async (t) => {
@@ -464,6 +477,7 @@ test("a failed delivery keeps the order alive, kills the code, and tells the cus
   assert.ok(write, "the package is marked failed");
   assert.equal(write!.deliveryFailureReason, "NO_ANSWER");
   assert.equal(write!.deliveryCodeHash, null, "the old code dies with the attempt");
+  assert.equal(write!.deliveryCode, null, "and stops being readable on the customer's order page");
   assert.equal(write!.currentHolderType, "RIDER", "the rider still has the goods");
 
   const sms = bodies(h).find((body) => body.includes("could not deliver"));
@@ -483,7 +497,9 @@ test("resending replaces the code rather than revealing the old one", async (t) 
   const sms = bodies(h).find((body) => body.includes("Delivery code"));
   assert.ok(sms, "the new code is texted");
   const digits = sms!.match(/Delivery code (\d{4})/)?.[1];
-  assert.ok(!JSON.stringify(h.fulfillmentWrites).includes(`"${digits}"`), "the new code is not stored in the clear");
+  // The readable copy is overwritten in the same update, so the order page can
+  // never show a code the verification box would now reject.
+  assert.equal(write!.deliveryCode, digits, "the customer's order page shows the new code");
 });
 
 test("a code can only be resent while the package is actually out for delivery", async (t) => {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { parseDeliveryAddress, deliveryMapUrl } from "@online-saler/business-rules";
-import { MessageCircle } from "lucide-react";
+import { Clock3, MessageCircle } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
 import { checkoutViewers } from "../../../auth/checkout-identity";
 import {
@@ -13,6 +13,9 @@ import {
 import { moneyKsh } from "../../storefront-products";
 import { getStorefrontI18n } from "../../../i18n/server";
 import { supportWhatsAppUrl } from "../../../support/whatsapp";
+import { OrderLookupForm } from "../order-lookup-form";
+import { BalancePaymentPanel } from "./balance-payment-panel";
+import { depositHoldDaysLeft, lapsedDepositRefundKsh } from "@online-saler/business-rules";
 
 type OrderPageProps = {
   params: Promise<{ orderNumber: string }>;
@@ -39,6 +42,11 @@ export default async function OrderPage({ params }: OrderPageProps) {
             <p className="detail-meta">{t("order.progress")}</p>
             <h1>{t("order.lookupTitle")}</h1>
             <p>{t("order.lookupBody")}</p>
+            {/* The form comes before customer service on purpose. A shopper who
+                opened the store's WhatsApp link on a second handset can get
+                back into their own order — and to their delivery code — in one
+                step, without waiting for an agent. */}
+            <OrderLookupForm defaultOrderNumber={orderNumber} />
             <a className="customerServiceButton" href={supportWhatsAppUrl(`Hello Direct Loop, I would like an update on order ${orderNumber}.`)} target="_blank" rel="noopener noreferrer">
               <MessageCircle size={18} aria-hidden="true" /> <span>{t("support.chat")}</span>
             </a>
@@ -89,6 +97,42 @@ export default async function OrderPage({ params }: OrderPageProps) {
             <span className={`orderBadge ${order.status.toLowerCase()}`}>{translatedStatus}</span>
           </div>
 
+          {order.status === "DEPOSIT_PAID" ? (
+            <BalancePaymentPanel
+              orderId={order.id}
+              balanceKsh={order.balanceKsh}
+              balanceDueAt={order.balanceDueAt?.toISOString() ?? null}
+              balanceDaysLeft={order.balanceDueAt ? depositHoldDaysLeft(order.balanceDueAt) : null}
+              phone={latestPayment?.phone ?? null}
+            />
+          ) : null}
+
+          {order.status === "DEPOSIT_EXPIRED" ? (
+            <section className="orderBalancePanel lapsed" role="status">
+              <Clock3 size={20} aria-hidden="true" />
+              <div>
+                <h2>{t("order.depositExpiredTitle")}</h2>
+                <p>{t("order.depositExpiredBody", { amount: moneyKsh(lapsedDepositRefundKsh(order.totalKsh)) })}</p>
+              </div>
+            </section>
+          ) : null}
+
+          {order.fulfillment?.deliveryCode ? (
+            <section className="orderCodePanel" role="status">
+              <div>
+                <h2>{t("order.deliveryCodeTitle")}</h2>
+                <p className="orderCodeValue">{order.fulfillment.deliveryCode}</p>
+                <p>{t("order.deliveryCodeBody")}</p>
+                {order.fulfillment.deliveryRiderName ? (
+                  <p className="orderCodeRider">
+                    {t("order.deliveryCodeRider", { name: order.fulfillment.deliveryRiderName })}
+                    {order.fulfillment.deliveryRiderPhone ? <> · <a href={`tel:${order.fulfillment.deliveryRiderPhone}`}>{order.fulfillment.deliveryRiderPhone}</a></> : null}
+                  </p>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
           {progress.length ? (
             <ol className="orderProgress" aria-label="Order fulfillment progress">
               {progress.map((step, index) => (
@@ -106,6 +150,12 @@ export default async function OrderPage({ params }: OrderPageProps) {
               <dl>
                 <div><dt>{t("order.status")}</dt><dd>{paymentStatusLabel(latestPayment?.status)}</dd></div>
                 <div><dt>{t("order.amount")}</dt><dd>{moneyKsh(order.totalKsh)}</dd></div>
+                {order.paymentPlan === "DEPOSIT_50" ? (
+                  <>
+                    <div><dt>{t("order.depositLabel")}</dt><dd>{moneyKsh(order.depositKsh)}{order.depositPaidAt ? t("order.paidSuffix") : ""}</dd></div>
+                    <div><dt>{t("order.balanceLabel")}</dt><dd>{moneyKsh(order.balanceKsh)}{order.status === "PAID" || order.status === "FULFILLING" || order.status === "COMPLETED" ? t("order.paidSuffix") : ""}</dd></div>
+                  </>
+                ) : null}
                 <div><dt>{t("order.phone")}</dt><dd>{latestPayment?.phone ? `+${latestPayment.phone}` : "Not started"}</dd></div>
                 <div><dt>{t("order.receipt")}</dt><dd>{latestPayment?.providerReceiptNumber ?? "Pending"}</dd></div>
               </dl>
@@ -147,7 +197,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
           <div className="orderStatusActions">
             <a className="reserve-button secondary" href={supportWhatsAppUrl(`Hello Direct Loop, I need after-sales help with order ${order.orderNumber}.`)} target="_blank" rel="noopener noreferrer">{t("support.chat")}</a>
             <Link className="reserve-link" href="/">{t("cart.continueShopping")}</Link>
-            {!["PAID", "FULFILLING", "COMPLETED"].includes(order.status) ? <Link className="reserve-button secondary" href="/checkout">Back to checkout</Link> : null}
+            {!["PAID", "FULFILLING", "COMPLETED"].includes(order.status) ? <Link className="reserve-button secondary" href="/checkout">{t("checkout.backToCheckout")}</Link> : null}
           </div>
         </section>
       </div>

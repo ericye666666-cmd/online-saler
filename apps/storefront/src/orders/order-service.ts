@@ -29,7 +29,13 @@ export async function getCustomerOrderByNumber(orderNumber: string, customerIds:
           updatedAt: true,
           readyForPickupAt: true,
           outForDeliveryAt: true,
-          completedAt: true
+          completedAt: true,
+          // The customer's own copy of the delivery code. This query is already
+          // gated on the order belonging to one of this browser's identities,
+          // which is the same gate the pickup code sits behind.
+          deliveryCode: true,
+          deliveryRiderName: true,
+          deliveryRiderPhone: true
         }
       },
       items: {
@@ -42,10 +48,63 @@ export async function getCustomerOrderByNumber(orderNumber: string, customerIds:
   });
 }
 
+/**
+ * Every order this browser may open, newest first, with deposit holds pinned to
+ * the top. Until this existed an order was only reachable from the payment
+ * confirmation screen — fine for a paid order with nothing left to do, useless
+ * for a deposit whose balance has to be paid days later from a closed tab.
+ */
+export async function listCustomerOrders(viewers: ReadonlyArray<{
+  customerId: string;
+  ownsOrder: (orderId: string) => boolean;
+}>) {
+  if (!viewers.length) return [];
+  const orders = await prisma.order.findMany({
+    where: { customerId: { in: viewers.map((viewer) => viewer.customerId) } },
+    select: {
+      id: true,
+      customerId: true,
+      orderNumber: true,
+      status: true,
+      totalKsh: true,
+      balanceKsh: true,
+      balanceDueAt: true,
+      paymentPlan: true,
+      fulfillmentMethod: true,
+      createdAt: true,
+      fulfillment: { select: { status: true } },
+      items: {
+        select: { snapshot: { select: { title: true, imageUrl: true } } },
+        orderBy: { createdAt: "asc" }
+      }
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50
+  });
+
+  // A guest reaches only the orders their own device started, so the ownership
+  // check is applied per row rather than trusted from the customer id alone.
+  const visible = orders.filter((order) => {
+    const viewer = viewers.find((candidate) => candidate.customerId === order.customerId);
+    return viewer ? viewer.ownsOrder(order.id) : false;
+  });
+
+  // A hold with a deadline outranks a finished order, however old it is: it is
+  // the only row on this page the shopper still has to act on.
+  return visible.sort((left, right) => {
+    const leftHeld = left.status === OrderStatus.DEPOSIT_PAID ? 0 : 1;
+    const rightHeld = right.status === OrderStatus.DEPOSIT_PAID ? 0 : 1;
+    if (leftHeld !== rightHeld) return leftHeld - rightHeld;
+    return right.createdAt.getTime() - left.createdAt.getTime();
+  });
+}
+
 export function orderStatusLabel(status: OrderStatus): string {
   if (status === OrderStatus.PAID) return "Paid";
   if (status === OrderStatus.PAYMENT_PROCESSING) return "Waiting for M-Pesa";
   if (status === OrderStatus.PENDING_PAYMENT) return "Payment pending";
+  if (status === OrderStatus.DEPOSIT_PAID) return "Deposit paid — balance due";
+  if (status === OrderStatus.DEPOSIT_EXPIRED) return "Deposit hold expired";
   if (status === OrderStatus.EXPIRED) return "Expired";
   if (status === OrderStatus.CANCELLED) return "Cancelled";
   if (status === OrderStatus.FULFILLING) return "Being prepared";

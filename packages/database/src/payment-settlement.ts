@@ -18,7 +18,18 @@ import { lockOrderReservationInventory, lockReservationOrder } from "./reservati
  * This lives here rather than in the storefront because a payment can also be
  * confirmed by hand, when a late or mismatched callback sent it to manual
  * review. Both paths must leave the database in exactly the same shape.
+ *
+ * It is also where a deposit order finishes. The balance payment is the point
+ * the sale completes, so the garment arrives here held on deposit rather than
+ * reserved in a cart, and leaves it exactly as a pay-in-full order does — one
+ * picking task, one commission, one shape of database.
  */
+
+/** The states a garment can be in when its order is confirmed paid. */
+const SETTLEABLE_INVENTORY_STATUSES: InventoryItemStatus[] = [
+  InventoryItemStatus.RESERVED,
+  InventoryItemStatus.DEPOSIT_HELD
+];
 
 export class PaymentSettlementError extends Error {}
 
@@ -26,9 +37,9 @@ export type SettleSuccessfulPaymentInput = {
   paymentId: string;
   commissionRateBps: number;
   /**
-   * A callback arriving inside the reservation window owns its inventory. A
-   * manual settlement happens after the window has closed, so the reservation
-   * is re-checked but its expiry is not.
+   * A callback arriving inside the reservation or deposit window owns its
+   * inventory. A manual settlement happens after that window has closed, so the
+   * hold is re-checked but its expiry is not.
    */
   requireActiveReservation: boolean;
   now?: Date;
@@ -71,7 +82,7 @@ export async function settleSuccessfulPayment(
     throw new PaymentSettlementError("This order no longer has one inventory row per item.");
   }
   const alreadyPaidStock = inventory.every((item) => item.owned && item.status === InventoryItemStatus.PAID);
-  const heldReservation = inventory.every((item) => item.owned && item.status === InventoryItemStatus.RESERVED);
+  const heldReservation = inventory.every((item) => item.owned && SETTLEABLE_INVENTORY_STATUSES.includes(item.status));
   if (!alreadyPaidStock && !heldReservation) {
     throw new PaymentSettlementError(
       "The garments on this order are no longer reserved for it — they were released or sold. Write the order off and refund it instead."
@@ -82,9 +93,9 @@ export async function settleSuccessfulPayment(
   }
 
   for (const item of inventory) {
-    if (item.status !== InventoryItemStatus.RESERVED) continue;
+    if (!SETTLEABLE_INVENTORY_STATUSES.includes(item.status)) continue;
     const updated = await tx.inventoryItem.updateMany({
-      where: { id: item.id, status: InventoryItemStatus.RESERVED },
+      where: { id: item.id, status: item.status },
       data: { status: InventoryItemStatus.PAID }
     });
     if (updated.count !== 1) throw new PaymentSettlementError("Reserved inventory changed during payment confirmation.");

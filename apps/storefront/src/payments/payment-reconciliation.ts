@@ -1,7 +1,9 @@
 import {
   CheckoutDraftStatus,
+  DepositSettlementError,
   NotificationAudience,
   OrderStatus,
+  PaymentKind,
   PaymentSettlementError,
   PaymentStatus,
   Prisma,
@@ -9,11 +11,13 @@ import {
   lockReservationOrder,
   prisma,
   releaseUnpaidOrderReservation,
+  settleDepositPayment,
   settleSuccessfulPayment
 } from "@online-saler/database";
 import {
   LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
   SUPPORT_PHONE_LABEL,
+  depositBalanceDueAt,
   notificationBody,
   notificationDedupeKey
 } from "@online-saler/business-rules";
@@ -44,6 +48,7 @@ export type ReconciliationResult = {
 type ReconcilablePayment = {
   id: string;
   orderId: string;
+  kind: PaymentKind;
   providerCheckoutRequestId: string;
 };
 
@@ -59,7 +64,7 @@ export async function reconcilePendingPayments(
       requestedAt: { lte: cutoff },
       providerQueryCount: { lt: MAX_QUERIES_PER_PAYMENT }
     },
-    select: { id: true, orderId: true, providerCheckoutRequestId: true },
+    select: { id: true, orderId: true, kind: true, providerCheckoutRequestId: true },
     orderBy: { requestedAt: "asc" },
     take: 50
   });
@@ -119,13 +124,25 @@ async function reconcileOne(client: MpesaClient, payment: ReconcilablePayment, r
       // Safaricom says the money moved but we never saw the receipt, so the
       // payment is settled and flagged for a finance check rather than closed
       // silently. The receipt is filled in by the reviewer.
+      // A recovered deposit is still only half the money. Settling it as a full
+      // payment would hand a picking task and a commission to an order nobody
+      // has finished paying for.
+      const isDeposit = current.kind === PaymentKind.DEPOSIT;
       try {
-        await settleSuccessfulPayment(tx, {
-          paymentId: payment.id,
-          commissionRateBps: LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
-          requireActiveReservation: false,
-          now
-        });
+        if (isDeposit) {
+          await settleDepositPayment(tx, {
+            paymentId: payment.id,
+            balanceDueAt: depositBalanceDueAt(now),
+            now
+          });
+        } else {
+          await settleSuccessfulPayment(tx, {
+            paymentId: payment.id,
+            commissionRateBps: LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
+            requireActiveReservation: false,
+            now
+          });
+        }
         await tx.payment.update({
           where: { id: payment.id },
           data: {
@@ -135,10 +152,11 @@ async function reconcileOne(client: MpesaClient, payment: ReconcilablePayment, r
             completedAt: now
           }
         });
-        await queueReconciledCustomerNotice(tx, payment.orderId);
+        if (isDeposit) await queueReconciledDepositNotice(tx, payment.orderId);
+        else await queueReconciledCustomerNotice(tx, payment.orderId);
         result.settled += 1;
       } catch (error) {
-        if (!(error instanceof PaymentSettlementError)) throw error;
+        if (!(error instanceof PaymentSettlementError) && !(error instanceof DepositSettlementError)) throw error;
         // Paid, but the garment is gone. A human has to refund it.
         await tx.payment.update({
           where: { id: payment.id },
@@ -168,12 +186,16 @@ async function reconcileOne(client: MpesaClient, payment: ReconcilablePayment, r
         completedAt: now
       }
     });
-    await releaseUnpaidOrderReservation(
-      tx,
-      payment.orderId,
-      failed === PaymentStatus.TIMEOUT ? CheckoutDraftStatus.EXPIRED : CheckoutDraftStatus.ABANDONED,
-      failed === PaymentStatus.TIMEOUT ? OrderStatus.EXPIRED : OrderStatus.CANCELLED
-    );
+    // A balance prompt that died leaves the deposit hold untouched: the shopper
+    // still has the rest of their seven days to try again.
+    if (current.kind !== PaymentKind.BALANCE) {
+      await releaseUnpaidOrderReservation(
+        tx,
+        payment.orderId,
+        failed === PaymentStatus.TIMEOUT ? CheckoutDraftStatus.EXPIRED : CheckoutDraftStatus.ABANDONED,
+        failed === PaymentStatus.TIMEOUT ? OrderStatus.EXPIRED : OrderStatus.CANCELLED
+      );
+    }
     result.failed += 1;
   });
 }
@@ -195,6 +217,32 @@ async function queueReconciledCustomerNotice(tx: Prisma.TransactionClient, order
       orderNumber: order.orderNumber,
       amountKsh: order.totalKsh,
       itemCount: order.items.length,
+      supportPhone: SUPPORT_PHONE_LABEL
+    })
+  });
+}
+
+/** The deposit landed after all; tell the shopper the hold is real. */
+async function queueReconciledDepositNotice(tx: Prisma.TransactionClient, orderId: string) {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    include: { customer: true, items: { select: { id: true } } }
+  });
+  if (!order?.balanceDueAt) return;
+  await enqueueNotification(tx, {
+    topic: "CUSTOMER_DEPOSIT_RECEIVED",
+    audience: NotificationAudience.CUSTOMER,
+    dedupeKey: notificationDedupeKey("CUSTOMER_DEPOSIT_RECEIVED", orderId),
+    recipientPhone: order.whatsappPhone || order.customer.phone,
+    recipientLabel: order.customer.displayName,
+    orderId,
+    body: notificationBody("CUSTOMER_DEPOSIT_RECEIVED", {
+      orderNumber: order.orderNumber,
+      itemCount: order.items.length,
+      balanceKsh: order.balanceKsh,
+      dueDateLabel: order.balanceDueAt.toLocaleDateString("en-KE", {
+        weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Nairobi"
+      }),
       supportPhone: SUPPORT_PHONE_LABEL
     })
   });

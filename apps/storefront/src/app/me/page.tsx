@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Heart, MessageCircle, TrendingUp } from "lucide-react";
+import { ChevronRight, Heart, MessageCircle, Receipt, TrendingUp } from "lucide-react";
 import { SiteHeader } from "../components/site-header";
 import { AccountSessionRow } from "./account-session-row";
 import { supportWhatsAppUrl } from "../../support/whatsapp";
@@ -21,6 +21,19 @@ export default async function AccountPage() {
         <AccountSessionRow />
 
         <ul className="accountList">
+          {/* First row on the page. A deposit hold has a deadline attached to
+              it, so getting back to an order cannot depend on still having the
+              payment confirmation screen open. */}
+          <li>
+            <Link href="/orders">
+              <Receipt size={19} aria-hidden="true" />
+              <span className="accountRowText">
+                <strong>{t("account.orders")}</strong>
+                <span>{t("account.ordersHint")}</span>
+              </span>
+              <ChevronRight size={18} aria-hidden="true" />
+            </Link>
+          </li>
           <li>
             <Link href="/saved">
               <Heart size={19} aria-hidden="true" />
@@ -28,8 +41,6 @@ export default async function AccountPage() {
               <ChevronRight size={18} aria-hidden="true" />
             </Link>
           </li>
-          {/* No order-lookup page exists yet, so orders are reached from the
-              confirmation link or through customer service. */}
           <li>
             <a href={supportHref} target="_blank" rel="noopener noreferrer">
               <MessageCircle size={19} aria-hidden="true" />

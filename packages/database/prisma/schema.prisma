@@ -144,6 +144,10 @@ enum InventoryItemStatus {
   PENDING_STOCK_IN
   AVAILABLE
   RESERVED
+  /// Half paid, held off sale for seven days while the shopper finds the rest.
+  /// Distinct from RESERVED so the warehouse can tell a cart lock that expires
+  /// in minutes from a garment that has a customer's money against it.
+  DEPOSIT_HELD
   PAID
   PICKED
   PACKED
@@ -620,6 +624,11 @@ enum OrderStatus {
   DRAFT
   PENDING_PAYMENT
   PAYMENT_PROCESSING
+  /// Deposit received; the garment is held and the balance is due by balanceDueAt.
+  DEPOSIT_PAID
+  /// The seven days lapsed without the balance. Stock is back on sale and a
+  /// partial refund is owed — kept apart from CANCELLED because money is open.
+  DEPOSIT_EXPIRED
   PAID
   CANCELLED
   EXPIRED
@@ -639,6 +648,17 @@ enum OrderCurrency {
 
 enum PaymentProvider {
   MPESA
+}
+
+enum OrderPaymentPlan {
+  FULL
+  DEPOSIT_50
+}
+
+enum PaymentKind {
+  FULL
+  DEPOSIT
+  BALANCE
 }
 
 enum PaymentStatus {
@@ -777,6 +797,7 @@ enum RefundKind {
   UNFULFILLABLE_ORDER
   DUPLICATE_PAYMENT
   OVERPAYMENT
+  LAPSED_DEPOSIT
 }
 
 enum PaymentReviewDecision {
@@ -979,6 +1000,16 @@ model Order {
   deliveryFeeKsh       Int                   @default(0)
   totalKsh             Int
   currency             OrderCurrency         @default(KES)
+  /// FULL is one M-Pesa payment for the whole total. DEPOSIT_50 is two: half
+  /// now to hold the garment, the rest within seven days.
+  paymentPlan          OrderPaymentPlan      @default(FULL)
+  /// Both are zero on a FULL order. On a deposit order they are frozen at
+  /// checkout so a later price edit cannot move what the shopper still owes.
+  depositKsh           Int                   @default(0)
+  balanceKsh           Int                   @default(0)
+  depositPaidAt        DateTime?
+  /// The moment the hold lapses. Null until the deposit actually clears.
+  balanceDueAt         DateTime?
   affiliateId          String?
   affiliateSource      String?
   affiliatePlacement   String?
@@ -1011,6 +1042,8 @@ model Order {
   @@index([status, createdAt])
   @@index([affiliateId, createdAt])
   @@index([fulfillmentNodeId, status, createdAt])
+  /// Drives the sweep that releases garments whose balance never arrived.
+  @@index([status, balanceDueAt])
 }
 
 model OrderItem {
@@ -1058,6 +1091,9 @@ model Payment {
   id                        String                 @id @default(uuid())
   orderId                   String
   provider                  PaymentProvider        @default(MPESA)
+  /// Which leg of the order this is. A DEPOSIT never settles the order into
+  /// fulfilment; only FULL or BALANCE does.
+  kind                      PaymentKind            @default(FULL)
   status                    PaymentStatus          @default(PENDING)
   amountKsh                 Int
   currency                  OrderCurrency          @default(KES)
@@ -1087,6 +1123,7 @@ model Payment {
   updatedAt                 DateTime               @updatedAt
 
   @@index([orderId, status])
+  @@index([orderId, kind, status])
   @@index([status, requestedAt])
   @@index([phone, status])
   @@index([providerMerchantRequestId])
@@ -1142,6 +1179,11 @@ model OrderFulfillment {
    * plaintext exists only inside the dispatch transaction that texts it.
    */
   deliveryCodeHash            String?
+  // The same code in readable form, for the customer's own order page only.
+  // It exists because SMS is not live yet and a code nobody can read is a
+  // delivery nobody can complete. Redacted from every operations and rider
+  // response; see docs/modules/delivery-code-and-riders.md.
+  deliveryCode                String?
   deliveryCodeIssuedAt        DateTime?
   deliveryCodeSentCount       Int                         @default(0)
   /**
@@ -1324,6 +1366,28 @@ model CustomerCodeAttempt {
   @@index([orderId, createdAt])
   @@index([succeeded, createdAt])
   @@index([deliveryRiderId, createdAt])
+}
+
+/**
+ * Every attempt to recover an order with a phone number and an order number.
+ *
+ * The lookup is the one place an unauthenticated stranger can ask "does this
+ * order exist", so it has to be rate limited, and a limit that lives in one
+ * server's memory is no limit at all on Cloud Run. Rows are kept per phone and
+ * per caller so a flood against one order and a sweep across many both hit a
+ * ceiling. The order number tried is never stored.
+ */
+model OrderLookupAttempt {
+  id              String   @id @default(uuid())
+  /// Normalized 2547xxxxxxxx form of the phone the caller claimed.
+  normalizedPhone String
+  /// Salted hash of the caller's IP. Never the address itself.
+  callerHash      String?
+  succeeded       Boolean
+  createdAt       DateTime @default(now())
+
+  @@index([normalizedPhone, createdAt])
+  @@index([callerHash, createdAt])
 }
 
 model MpesaCallback {
@@ -1804,7 +1868,9 @@ model RefundRequest {
   kind                   RefundKind           @default(AFTER_SALE_RETURN)
   amountKsh              Int
   reason                 String
-  requestedByAdminUserId String
+  /// Null when the system raised the refund itself — today that is only a
+  /// lapsed deposit hold, which expires on a timer with nobody at a desk.
+  requestedByAdminUserId String?
   requestedAt            DateTime             @default(now())
   reviewedByAdminUserId  String?
   reviewedAt             DateTime?

@@ -336,3 +336,248 @@
     height: 92px;
   }
 }
+
+/* The deposit balance panel on the order page. It sits directly under the
+   status heading because paying it is the only thing the shopper can do on
+   this page, and the deadline is the reason they opened it. */
+.orderBalancePanel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e3d5bd;
+  border-radius: 10px;
+  background: #fdf8ef;
+  padding: 16px;
+}
+
+.orderBalancePanel.paid,
+.orderBalancePanel.lapsed {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.orderBalancePanel.paid {
+  border-color: #b8ddc5;
+  background: #f2faf5;
+}
+
+.orderBalancePanel.lapsed {
+  border-color: #e6cfcb;
+  background: #fdf5f4;
+}
+
+.orderBalanceHead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+/* The delivery code. It is read out loud at the door, often one-handed and in
+   daylight, so the digits are the largest thing on the page and spaced far
+   enough apart to survive a bad phone line. */
+.orderCodePanel {
+  border: 1px solid #cfe0d4;
+  border-radius: 10px;
+  background: #f3faf5;
+  padding: 16px;
+}
+
+.orderCodePanel h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.orderCodeValue {
+  margin: 6px 0 8px;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.orderCodePanel p {
+  margin: 2px 0 0;
+  color: #4b5a50;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.orderCodeRider {
+  margin-top: 8px !important;
+  font-weight: 700;
+}
+
+.orderBalancePanel h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.orderBalancePanel p {
+  margin: 2px 0 0;
+  color: #5c564f;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Stated plainly rather than styled as an alert: it is a condition of the
+   deal, not an error the shopper has made. */
+.orderBalanceWarning {
+  margin: 0;
+  color: #8a4b12;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.orderBalanceStage {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+  color: #3f3a35;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.orderBalanceStage.failed { color: #9d2d20; }
+.orderBalanceStage.review { color: #7a5a12; }
+
+/* The order list. Rows are deliberately flat and image-led: on a phone this is
+   scanned, not read, and the piece is what a shopper recognises — not an order
+   number they never memorised. */
+.ordersList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ordersRow a {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #ebe5de;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.ordersRow a:hover { border-color: #171717; }
+
+/* A hold is the one row with a deadline on it, so it is the one row that looks
+   different from the list it sits in. */
+.ordersRow.held a {
+  border-color: #e3d5bd;
+  background: #fdf8ef;
+}
+
+.ordersRow img,
+.ordersRowCover {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  background: #f1ece6;
+  object-fit: cover;
+}
+
+.ordersRowText { display: grid; min-width: 0; gap: 3px; }
+
+.ordersRowText strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordersRowMeta,
+.ordersRowStatus {
+  color: #6b6b6b;
+  font-size: 13px;
+}
+
+.ordersRowDue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8a4b12;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ordersEmpty {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
+.ordersEmpty p {
+  margin: 0;
+  color: #5c564f;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* Order recovery. Sits under the list rather than behind a link, because the
+   shopper who needs it is the one who cannot see their order at all. */
+.orderLookup {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  border: 1px solid #ebe5de;
+  border-radius: 10px;
+  background: #faf7f3;
+  padding: 16px;
+}
+
+.orderLookup h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.orderLookup p {
+  margin: 0;
+  color: #5c564f;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.orderLookup label { display: grid; gap: 5px; }
+
+.orderLookup label span {
+  color: #5c564f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.orderLookup input {
+  min-height: 44px;
+  border: 1px solid #ddd5cc;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 12px;
+  color: #171717;
+  font: inherit;
+  font-size: 16px; /* Stops iOS zooming the page on focus. */
+}
+
+.orderLookup input:focus-visible {
+  border-color: #171717;
+  outline: none;
+}
+
+.orderLookupError {
+  margin: 0;
+  color: #9d2d20;
+  font-size: 13px;
+}

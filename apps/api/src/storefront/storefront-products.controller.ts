@@ -152,6 +152,7 @@ export function publicDetailWhere(): Prisma.ProductWhereInput {
     ...basePublicWhere(),
     inventoryItem: { is: { status: { in: [
       InventoryItemStatus.AVAILABLE, InventoryItemStatus.RESERVED,
+      InventoryItemStatus.DEPOSIT_HELD,
       InventoryItemStatus.PAID, InventoryItemStatus.PICKED,
       InventoryItemStatus.PACKED, InventoryItemStatus.DELIVERED
     ] } } }
@@ -309,7 +310,10 @@ export function publicProduct(product: ProductWithPublicRelations) {
     fabricWeight: (isShoe || product.category === "BAG") ? null : product.fabricWeight,
     priceKsh: product.priceKsh,
     publishedAt: product.publishedAt,
-    availability: product.inventoryItem?.status === InventoryItemStatus.RESERVED ? "RESERVED" as const
+    // A deposit hold reads as reserved, not sold: it really can come back on
+    // sale in seven days, and "Sold" would stop anyone ever checking again.
+    availability: product.inventoryItem?.status === InventoryItemStatus.RESERVED
+      || product.inventoryItem?.status === InventoryItemStatus.DEPOSIT_HELD ? "RESERVED" as const
       : product.inventoryItem && product.inventoryItem.status !== InventoryItemStatus.AVAILABLE ? "SOLD" as const : "AVAILABLE" as const,
     onlyOneAvailable: !product.inventoryItem || product.inventoryItem.status === InventoryItemStatus.AVAILABLE,
     images,

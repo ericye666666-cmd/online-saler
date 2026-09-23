@@ -147,7 +147,10 @@ export function CustomerServiceRefundsPage() {
                     <div>{request.reason}</div>
                     {request.reviewNote ? <div className="text-muted-foreground">{t("审批意见")}: {request.reviewNote}</div> : null}
                   </TableCell>
-                  <TableCell className="text-xs">{request.requestedByAdminUser?.name ?? "-"}</TableCell>
+                  {/* A lapsed deposit hold is raised by the expiry sweep, not
+                      by a person. Showing "-" reads like missing data; naming
+                      the system says the debt is real and nobody forgot it. */}
+                  <TableCell className="text-xs">{request.requestedByAdminUser?.name ?? t("系统自动")}</TableCell>
                   <TableCell className="text-xs">
                     {request.reviewedByAdminUser?.name ?? "-"}
                     {request.reviewedAt ? <div className="text-muted-foreground">{when(request.reviewedAt)}</div> : null}

@@ -803,6 +803,7 @@ export class OperationsFulfillmentService {
           // A new attempt gets a new code and a clean attempt budget; the old
           // code dies the moment this hash is overwritten.
           deliveryCodeHash: hashCustomerCode(code),
+          deliveryCode: code,
           deliveryCodeIssuedAt: new Date(),
           deliveryCodeSentCount: { increment: 1 },
           customerCodeVerifiedAt: null,
@@ -860,6 +861,7 @@ export class OperationsFulfillmentService {
         where: { id: fulfillment.id },
         data: {
           deliveryCodeHash: hashCustomerCode(code),
+          deliveryCode: code,
           deliveryCodeIssuedAt: new Date(),
           deliveryCodeSentCount: sendCount,
           // Resending is also how a locked-out order is rescued.
@@ -962,6 +964,7 @@ export class OperationsFulfillmentService {
           deliveryFailedAt: new Date(),
           // The code dies with the attempt. A retry gets a fresh one.
           deliveryCodeHash: null,
+          deliveryCode: null,
           customerCodeFailedAttempts: 0,
           customerCodeLockedAt: null,
           ...this.holderData({
@@ -1752,6 +1755,10 @@ export class OperationsFulfillmentService {
           ...fulfillmentData,
           status: FulfillmentStatus.COMPLETED,
           completedAt: new Date(),
+          // The readable copy exists only so the customer can read it out during
+          // the handover. Once the handover happened it is spent, so it stops
+          // being readable — on their order page and everywhere else.
+          deliveryCode: null,
           ...this.holderData({ status: FulfillmentStatus.COMPLETED })
         }
       });
@@ -1933,9 +1940,13 @@ export class OperationsFulfillmentService {
       // staff complete an order the customer never turned up for -- which is the
       // whole thing the codes exist to prevent. The delivery code's hash goes too:
       // four digits is 10,000 guesses, so a hash in a JSON response is a code.
+      //
+      // `deliveryCode` is the readable copy the customer's own order page shows
+      // while SMS is not live. It is the code itself, so it is redacted here
+      // first and hardest.
       pickupCode: undefined,
       fulfillment: order.fulfillment
-        ? { ...order.fulfillment, deliveryCodeHash: undefined, pickupVerificationValue: undefined }
+        ? { ...order.fulfillment, deliveryCode: undefined, deliveryCodeHash: undefined, pickupVerificationValue: undefined }
         : order.fulfillment,
       customer: {
         ...order.customer,
@@ -2081,9 +2092,10 @@ export class OperationsFulfillmentService {
       const current = await tx.orderFulfillment.findUnique({ where: { id: fulfillmentId } });
       if (!current) throw new NotFoundException("Fulfillment was not found.");
 
-      // A pickup code lives on the order in plain text because the customer has
-      // to be able to read it off their own order page; a delivery code exists
-      // only as a hash. Both are checked by the same rules.
+      // Both codes are readable on the customer's own order page, and both are
+      // verified against a hash rather than against that readable copy — so a
+      // wrong column, a stale copy or a tampered row still cannot pass a code
+      // the customer was never given.
       const codeHash = purpose === CustomerCodePurpose.PICKUP
         ? (order.pickupCode ? hashCustomerCode(normalizeCustomerCode(order.pickupCode)) : null)
         : current.deliveryCodeHash;
@@ -2296,7 +2308,9 @@ export class OperationsFulfillmentService {
 }
 
 function tabWhere(tab: OrderCenterTab): Prisma.OrderWhereInput {
-  if (tab === "pending-payment") return { status: { in: [OrderStatus.DRAFT, OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING] } };
+  // A deposit order belongs here too — it is waiting for money, just on a
+  // seven-day clock instead of a five-minute one.
+  if (tab === "pending-payment") return { status: { in: [OrderStatus.DRAFT, OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING, OrderStatus.DEPOSIT_PAID] } };
   if (tab === "waiting-pick") return { fulfillment: { is: { status: FulfillmentStatus.PAID } } };
   if (tab === "picking") return { fulfillment: { is: { status: FulfillmentStatus.PICKING } } };
   if (tab === "ready-to-pack") return { fulfillment: { is: { status: FulfillmentStatus.READY_TO_PACK } } };

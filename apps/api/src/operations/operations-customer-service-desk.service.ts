@@ -530,6 +530,9 @@ function buildTimeline(order: Order360Row): TimelineEntry[] {
 export const OPEN_ORDER_STATUSES: OrderStatus[] = [
   OrderStatus.PENDING_PAYMENT,
   OrderStatus.PAYMENT_PROCESSING,
+  // Half paid and waiting on the balance. The shopper has money with us and
+  // will call about it, so an agent has to find the order.
+  OrderStatus.DEPOSIT_PAID,
   OrderStatus.PAID,
   OrderStatus.FULFILLING
 ];

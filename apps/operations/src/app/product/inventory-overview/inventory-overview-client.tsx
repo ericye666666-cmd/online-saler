@@ -27,6 +27,7 @@ type InventoryOverview = {
     currentWarehouseTotal: number;
     available: number;
     reserved: number;
+    depositHeld: number;
     paidAwaitingOutbound: number;
     published: number;
     pendingPublish: number;
@@ -48,6 +49,7 @@ type InventoryOverview = {
     currentWarehouseCount: number;
     availableCount: number;
     reservedCount: number;
+    depositHeldCount: number;
     publishedCount: number;
     pendingPublishCount: number;
     sharePercent: number;
@@ -95,6 +97,7 @@ export function InventoryOverviewPage() {
     [t("当前仓库商品"), overview.metrics.currentWarehouseTotal],
     ["AVAILABLE", overview.metrics.available],
     ["RESERVED", overview.metrics.reserved],
+    [t("定金锁定"), overview.metrics.depositHeld],
     [t("已付款待出库"), overview.metrics.paidAwaitingOutbound],
     [t("已发布"), overview.metrics.published],
     [t("待发布"), overview.metrics.pendingPublish],
@@ -121,7 +124,7 @@ export function InventoryOverviewPage() {
           <Field><FieldLabel htmlFor="inventory-size">Size</FieldLabel><Input id="inventory-size" value={size} onChange={(event) => setSize(event.target.value)} /></Field>
           <Field><FieldLabel>Condition</FieldLabel><FilterSelect value={condition} onValueChange={setCondition} values={["LIKE_NEW", "EXCELLENT", "GOOD", "FAIR"]} /></Field>
           <Field><FieldLabel>Published</FieldLabel><FilterSelect value={published} onValueChange={setPublished} values={["published", "unpublished"]} /></Field>
-          <Field><FieldLabel>Inventory status</FieldLabel><FilterSelect value={inventoryStatus} onValueChange={setInventoryStatus} values={["PENDING_STOCK_IN", "AVAILABLE", "RESERVED", "PAID", "PICKED", "PACKED", "DELIVERED", "RETURNED", "LOST"]} /></Field>
+          <Field><FieldLabel>Inventory status</FieldLabel><FilterSelect value={inventoryStatus} onValueChange={setInventoryStatus} values={["PENDING_STOCK_IN", "AVAILABLE", "RESERVED", "DEPOSIT_HELD", "PAID", "PICKED", "PACKED", "DELIVERED", "RETURNED", "LOST"]} /></Field>
           <div className="flex items-end gap-2"><Button disabled={busy} onClick={() => void load()}><SearchIcon data-icon="inline-start" />{t("应用筛选")}</Button><Button variant="outline" disabled={busy} onClick={() => void load()}><RefreshCwIcon data-icon="inline-start" />{t("刷新")}</Button></div>
         </CardContent>
       </Card>
@@ -132,7 +135,7 @@ export function InventoryOverviewPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{metrics.map(([label, value]) => <Card key={label}><CardHeader className="pb-2"><CardDescription>{label}</CardDescription><CardTitle className="text-2xl tabular-nums">{value}</CardTitle></CardHeader></Card>)}</div>
         <Card>
           <CardHeader><CardTitle>{t("按 Category / Subcategory 的当前库存")}</CardTitle><CardDescription>{t("Unclassified 单独显示，用于发现分类数据缺口。")}</CardDescription></CardHeader>
-          <CardContent>{overview.categories.length ? <Table><TableHeader><TableRow><TableHead>Category</TableHead><TableHead>Subcategory</TableHead><TableHead>{t("当前仓库")}</TableHead><TableHead>AVAILABLE</TableHead><TableHead>RESERVED</TableHead><TableHead>{t("已发布")}</TableHead><TableHead>{t("待发布")}</TableHead><TableHead>{t("占比")}</TableHead></TableRow></TableHeader><TableBody>{overview.categories.map((row) => <TableRow key={`${row.category}:${row.subcategory}`}><TableCell className="font-medium">{row.category}</TableCell><TableCell>{row.subcategory}</TableCell><TableCell>{row.currentWarehouseCount}</TableCell><TableCell>{row.availableCount}</TableCell><TableCell>{row.reservedCount}</TableCell><TableCell>{row.publishedCount}</TableCell><TableCell>{row.pendingPublishCount}</TableCell><TableCell>{row.sharePercent}%</TableCell></TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyMedia variant="icon"><BoxesIcon /></EmptyMedia><EmptyTitle>{t("当前筛选没有仓内商品")}</EmptyTitle><EmptyDescription>{t("调整筛选条件后重试。")}</EmptyDescription></EmptyHeader></Empty>}</CardContent>
+          <CardContent>{overview.categories.length ? <Table><TableHeader><TableRow><TableHead>Category</TableHead><TableHead>Subcategory</TableHead><TableHead>{t("当前仓库")}</TableHead><TableHead>AVAILABLE</TableHead><TableHead>RESERVED</TableHead><TableHead>DEPOSIT</TableHead><TableHead>{t("已发布")}</TableHead><TableHead>{t("待发布")}</TableHead><TableHead>{t("占比")}</TableHead></TableRow></TableHeader><TableBody>{overview.categories.map((row) => <TableRow key={`${row.category}:${row.subcategory}`}><TableCell className="font-medium">{row.category}</TableCell><TableCell>{row.subcategory}</TableCell><TableCell>{row.currentWarehouseCount}</TableCell><TableCell>{row.availableCount}</TableCell><TableCell>{row.reservedCount}</TableCell><TableCell>{row.depositHeldCount}</TableCell><TableCell>{row.publishedCount}</TableCell><TableCell>{row.pendingPublishCount}</TableCell><TableCell>{row.sharePercent}%</TableCell></TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyMedia variant="icon"><BoxesIcon /></EmptyMedia><EmptyTitle>{t("当前筛选没有仓内商品")}</EmptyTitle><EmptyDescription>{t("调整筛选条件后重试。")}</EmptyDescription></EmptyHeader></Empty>}</CardContent>
         </Card>
         <div className="grid gap-4 lg:grid-cols-3"><DistributionCard title={t("Gender 分布")} rows={overview.distributions.gender} /><DistributionCard title={t("Size 分布")} rows={overview.distributions.size} /><DistributionCard title={t("Condition 分布")} rows={overview.distributions.condition} /></div>
         <div className="grid gap-4 lg:grid-cols-3"><ShelfCard title={t("货架占用 Top")} rows={overview.shelfDistribution.topOccupied} /><ShelfCard title={t("空闲货架位")} rows={overview.shelfDistribution.empty} /><ShelfCard title={t("已满货架位")} rows={overview.shelfDistribution.full} /></div>

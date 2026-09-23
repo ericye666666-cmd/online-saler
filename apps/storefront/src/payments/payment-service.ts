@@ -1,9 +1,12 @@
 import {
   CheckoutDraftStatus,
+  DepositSettlementError,
   InventoryItemStatus,
   MpesaCallbackProcessingStatus,
   NotificationAudience,
+  OrderPaymentPlan,
   OrderStatus,
+  PaymentKind,
   PaymentSettlementError,
   PaymentStatus,
   Prisma,
@@ -13,6 +16,7 @@ import {
   lockReservationOrder,
   lockOrderReservationInventory,
   releaseUnpaidOrderReservation,
+  settleDepositPayment,
   settleSuccessfulPayment
 } from "@online-saler/database";
 import { randomUUID } from "node:crypto";
@@ -30,7 +34,10 @@ import {
 } from "./mpesa-production-guard";
 import {
   LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
+  RESERVATION_MINUTES,
   SUPPORT_PHONE_LABEL,
+  depositBalanceDueAt,
+  depositHoldDaysLeft,
   notificationBody,
   notificationDedupeKey
 } from "@online-saler/business-rules";
@@ -43,7 +50,9 @@ export type InitiatePaymentResult = {
   orderId: string;
   orderNumber: string;
   status: PaymentStatus;
+  /** What this prompt asks for — the total, the deposit, or the balance. */
   amountKsh: number;
+  kind: PaymentKind;
   phone: string;
   expiresAt: string | null;
   checkoutRequestId: string | null;
@@ -57,11 +66,20 @@ export type PaymentStatusResult = {
   orderNumber: string;
   orderStatus: OrderStatus;
   paymentStatus: PaymentStatus | null;
+  paymentKind: PaymentKind | null;
   amountKsh: number;
   phone: string | null;
   expiresAt: string | null;
   receiptNumber: string | null;
   resultDescription: string | null;
+  paymentPlan: OrderPaymentPlan;
+  totalKsh: number;
+  depositKsh: number;
+  /** Still owed on a deposit order. Zero once the balance has been paid. */
+  balanceKsh: number;
+  /** When the seven-day hold lapses, and how many whole days are left. */
+  balanceDueAt: string | null;
+  balanceDaysLeft: number | null;
 };
 
 type MpesaCallbackBody = {
@@ -112,30 +130,59 @@ export async function initiateMpesaPayment(
       include: { sourceDraft: true, items: { select: { id: true } }, payments: { orderBy: { createdAt: "desc" } } }
     });
     if (!order) throw new PaymentValidationError("Order was not found.");
-    const successful = order.payments.find((payment) => payment.status === PaymentStatus.SUCCESS);
-    if (successful) return { order, payment: successful, created: false };
-    if (order.status !== OrderStatus.PENDING_PAYMENT && order.status !== OrderStatus.PAYMENT_PROCESSING) {
+    const now = new Date();
+    // Which leg is being paid. A deposit order is waiting for its balance the
+    // moment the deposit clears, so a SUCCESS payment does not mean the order
+    // is finished — only a successful FULL or BALANCE does.
+    const balanceDue = order.status === OrderStatus.DEPOSIT_PAID;
+    const settled = order.payments.find((payment) =>
+      payment.status === PaymentStatus.SUCCESS
+      && (payment.kind === PaymentKind.FULL || payment.kind === PaymentKind.BALANCE));
+    if (settled) return { order, payment: settled, created: false };
+
+    if (!balanceDue && order.status !== OrderStatus.PENDING_PAYMENT && order.status !== OrderStatus.PAYMENT_PROCESSING) {
       throw new PaymentConflictError("This order is not waiting for payment.");
     }
-    if (order.sourceDraft?.status !== CheckoutDraftStatus.ACTIVE || !order.sourceDraft.expiresAt || order.sourceDraft.expiresAt.getTime() <= Date.now()) {
+    // The deposit hold and the cart reservation are different clocks, and each
+    // leg has to be inside its own before an STK goes out.
+    if (balanceDue) {
+      if (!order.balanceDueAt || order.balanceDueAt.getTime() <= now.getTime()) {
+        throw new PaymentConflictError("This deposit hold has expired. The item has gone back on sale.");
+      }
+    } else if (order.sourceDraft?.status !== CheckoutDraftStatus.ACTIVE || !order.sourceDraft.expiresAt || order.sourceDraft.expiresAt.getTime() <= now.getTime()) {
       throw new PaymentConflictError("This payment reservation is no longer active.");
     }
+
     const existing = order.payments.find((payment) => payment.status === PaymentStatus.PENDING || payment.status === PaymentStatus.MANUAL_REVIEW);
     if (existing) return { order, payment: existing, created: false };
+
+    const kind = balanceDue
+      ? PaymentKind.BALANCE
+      : order.paymentPlan === OrderPaymentPlan.DEPOSIT_50 ? PaymentKind.DEPOSIT : PaymentKind.FULL;
+    const expectedInventoryStatus = balanceDue ? InventoryItemStatus.DEPOSIT_HELD : InventoryItemStatus.RESERVED;
     const inventory = await lockOrderReservationInventory(tx, order.id);
     if (inventory.length !== order.items.length || !inventory.length ||
-        inventory.some((item) => !item.owned || item.status !== InventoryItemStatus.RESERVED)) {
+        inventory.some((item) => !item.owned || item.status !== expectedInventoryStatus)) {
       throw new PaymentConflictError("This order no longer owns its reserved items.");
     }
     const phone = await phoneForOrder(tx, order.id);
-    const charge = resolveMpesaCharge({ orderAmountKsh: order.totalKsh });
+    const charge = resolveMpesaCharge({ expectedAmountKsh: expectedLegAmountKsh(order, kind) });
+    // The STK prompt always gets the short window. On a balance it is capped by
+    // the hold itself, so a prompt can never outlive the garment it is for.
+    const stkExpiresAt = balanceDue
+      ? new Date(Math.min(now.getTime() + RESERVATION_MINUTES * 60_000, order.balanceDueAt!.getTime()))
+      : order.sourceDraft!.expiresAt!;
     const payment = await tx.payment.create({
       data: {
-        orderId: order.id, status: PaymentStatus.PENDING, amountKsh: charge.amountKsh,
-        phone, idempotencyKey: `mpesa:${order.id}:${randomUUID()}`, expiresAt: order.sourceDraft.expiresAt
+        orderId: order.id, kind, status: PaymentStatus.PENDING, amountKsh: charge.amountKsh,
+        phone, idempotencyKey: `mpesa:${order.id}:${randomUUID()}`, expiresAt: stkExpiresAt
       }
     });
-    await tx.order.update({ where: { id: order.id }, data: { status: OrderStatus.PAYMENT_PROCESSING } });
+    // A balance prompt leaves the order in DEPOSIT_PAID: the hold is what the
+    // expiry sweep watches, and an unanswered prompt must not pause that clock.
+    if (!balanceDue) {
+      await tx.order.update({ where: { id: order.id }, data: { status: OrderStatus.PAYMENT_PROCESSING } });
+    }
     return { order, payment, created: true };
   });
   const { order, payment } = attempt;
@@ -161,7 +208,10 @@ export async function initiateMpesaPayment(
           completedAt: new Date()
         }
       });
-      if (changed.count && rejected) {
+      // Only the first leg's failure gives the garment back. A rejected balance
+      // prompt leaves the hold exactly as it was — the deposit still stands and
+      // the shopper still has until balanceDueAt to try again.
+      if (changed.count && rejected && payment.kind !== PaymentKind.BALANCE) {
         await releaseUnpaidOrderReservation(tx, order.id, CheckoutDraftStatus.ABANDONED, OrderStatus.CANCELLED);
       }
     });
@@ -200,17 +250,25 @@ export async function getPaymentStatus(orderId: string, customerId: string): Pro
   });
   if (!order) throw new PaymentValidationError("Order was not found.");
   const payment = order.payments[0] ?? null;
+  const balanceOutstanding = order.status === OrderStatus.DEPOSIT_PAID;
   return {
     paymentId: payment?.id ?? null,
     orderId: order.id,
     orderNumber: order.orderNumber,
     orderStatus: order.status,
     paymentStatus: payment?.status ?? null,
+    paymentKind: payment?.kind ?? null,
     amountKsh: payment?.amountKsh ?? order.totalKsh,
     phone: payment?.phone ?? null,
     expiresAt: payment?.expiresAt?.toISOString() ?? order.sourceDraft?.expiresAt?.toISOString() ?? null,
     receiptNumber: payment?.providerReceiptNumber ?? null,
-    resultDescription: payment?.providerResultDescription ?? null
+    resultDescription: payment?.providerResultDescription ?? null,
+    paymentPlan: order.paymentPlan,
+    totalKsh: order.totalKsh,
+    depositKsh: order.depositKsh,
+    balanceKsh: balanceOutstanding ? order.balanceKsh : 0,
+    balanceDueAt: balanceOutstanding ? order.balanceDueAt?.toISOString() ?? null : null,
+    balanceDaysLeft: balanceOutstanding && order.balanceDueAt ? depositHoldDaysLeft(order.balanceDueAt) : null
   };
 }
 
@@ -250,25 +308,35 @@ export async function handleMpesaCallback(body: unknown) {
         where: { id: payment.id },
         data: { status: failedStatus, providerMerchantRequestId: callback.merchantRequestId, providerResultCode: callback.resultCode, providerResultDescription: callback.resultDescription, completedAt: now }
       });
-      await releaseUnpaidOrderReservation(tx, payment.orderId,
-        failedStatus === PaymentStatus.TIMEOUT ? CheckoutDraftStatus.EXPIRED : CheckoutDraftStatus.ABANDONED,
-        failedStatus === PaymentStatus.TIMEOUT ? OrderStatus.EXPIRED : OrderStatus.CANCELLED);
+      // A declined balance leaves the deposit hold standing; the shopper keeps
+      // the rest of their seven days to try again.
+      if (payment.kind !== PaymentKind.BALANCE) {
+        await releaseUnpaidOrderReservation(tx, payment.orderId,
+          failedStatus === PaymentStatus.TIMEOUT ? CheckoutDraftStatus.EXPIRED : CheckoutDraftStatus.ABANDONED,
+          failedStatus === PaymentStatus.TIMEOUT ? OrderStatus.EXPIRED : OrderStatus.CANCELLED);
+      }
       return { ok: true, status: failedStatus };
     }
-    const activeDraft = order.sourceDraft?.status === CheckoutDraftStatus.ACTIVE &&
-      order.sourceDraft.expiresAt && order.sourceDraft.expiresAt > now &&
-      (order.status === OrderStatus.PENDING_PAYMENT || order.status === OrderStatus.PAYMENT_PROCESSING) &&
-      payment.status === PaymentStatus.PENDING;
+    // Each leg is checked against its own clock and its own inventory state: a
+    // deposit or a full payment against the five-minute cart reservation, a
+    // balance against the seven-day hold the deposit bought.
+    const balanceLeg = payment.kind === PaymentKind.BALANCE;
+    const windowOpen = payment.status === PaymentStatus.PENDING && (balanceLeg
+      ? order.status === OrderStatus.DEPOSIT_PAID && Boolean(order.balanceDueAt) && order.balanceDueAt! > now
+      : order.sourceDraft?.status === CheckoutDraftStatus.ACTIVE &&
+        Boolean(order.sourceDraft.expiresAt) && order.sourceDraft.expiresAt! > now &&
+        (order.status === OrderStatus.PENDING_PAYMENT || order.status === OrderStatus.PAYMENT_PROCESSING));
     const amountMatches = callback.amountKsh === payment.amountKsh && mpesaPaymentAmountMatchesOrder({
-      paymentAmountKsh: payment.amountKsh, orderAmountKsh: order.totalKsh
+      paymentAmountKsh: payment.amountKsh, expectedAmountKsh: expectedLegAmountKsh(order, payment.kind)
     });
     const receiptOwner = callback.receiptNumber ? await tx.payment.findUnique({ where: { providerReceiptNumber: callback.receiptNumber }, select: { id: true } }) : null;
     const metadataMatches = (!callback.phone || callback.phone === payment.phone) &&
       (!callback.merchantRequestId || !payment.providerMerchantRequestId || callback.merchantRequestId === payment.providerMerchantRequestId);
-    const inventory = activeDraft ? await lockOrderReservationInventory(tx, payment.orderId) : [];
+    const inventory = windowOpen ? await lockOrderReservationInventory(tx, payment.orderId) : [];
+    const expectedInventoryStatus = balanceLeg ? InventoryItemStatus.DEPOSIT_HELD : InventoryItemStatus.RESERVED;
     const inventoryOwned = inventory.length === order.items.length && inventory.length > 0 &&
-      inventory.every((item) => item.owned && item.status === InventoryItemStatus.RESERVED);
-    if (!activeDraft || !order.sourceDraft?.expiresAt || order.sourceDraft.expiresAt.getTime() <= Date.now() || !amountMatches || !callback.receiptNumber || receiptOwner || !metadataMatches || !inventoryOwned) {
+      inventory.every((item) => item.owned && item.status === expectedInventoryStatus);
+    if (!windowOpen || !amountMatches || !callback.receiptNumber || receiptOwner || !metadataMatches || !inventoryOwned) {
       await tx.mpesaCallback.create({ data: callbackData(callback, payment.id, payment.orderId, MpesaCallbackProcessingStatus.MANUAL_REVIEW, body) });
       await tx.payment.update({
         where: { id: payment.id },
@@ -281,6 +349,23 @@ export async function handleMpesaCallback(body: unknown) {
       where: { id: payment.id },
       data: { status: PaymentStatus.SUCCESS, providerMerchantRequestId: callback.merchantRequestId, providerResultCode: callback.resultCode, providerResultDescription: callback.resultDescription, providerReceiptNumber: callback.receiptNumber, providerResponseJson: jsonValue(body), completedAt: now }
     });
+    // A deposit stops here: the garment is held, nothing is picked and nobody
+    // earns a commission until the balance lands. Everything else is a
+    // completed sale and takes the single settlement path.
+    if (payment.kind === PaymentKind.DEPOSIT) {
+      try {
+        await settleDepositPayment(tx, {
+          paymentId: payment.id,
+          balanceDueAt: depositBalanceDueAt(now),
+          now
+        });
+      } catch (error) {
+        if (error instanceof DepositSettlementError) throw new PaymentConflictError(error.message);
+        throw error;
+      }
+      await queueDepositReceivedNotification(tx, payment.orderId);
+      return { ok: true, status: PaymentStatus.SUCCESS, depositHeld: true };
+    }
     try {
       await settleSuccessfulPayment(tx, {
         paymentId: payment.id,
@@ -294,6 +379,34 @@ export async function handleMpesaCallback(body: unknown) {
     }
     await queuePaidOrderNotifications(tx, payment.orderId);
     return { ok: true, status: PaymentStatus.SUCCESS };
+  });
+}
+
+/**
+ * Tells the shopper the hold is real and when it ends. This is the only message
+ * that carries the deadline before the reminders start, so it names both the
+ * balance and the date rather than pointing at the order page.
+ */
+async function queueDepositReceivedNotification(tx: Prisma.TransactionClient, orderId: string) {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    include: { customer: true, items: { select: { id: true } } }
+  });
+  if (!order?.balanceDueAt) return;
+  await enqueueNotification(tx, {
+    topic: "CUSTOMER_DEPOSIT_RECEIVED",
+    audience: NotificationAudience.CUSTOMER,
+    dedupeKey: notificationDedupeKey("CUSTOMER_DEPOSIT_RECEIVED", orderId),
+    recipientPhone: order.whatsappPhone || order.customer.phone,
+    recipientLabel: order.customer.displayName,
+    orderId,
+    body: notificationBody("CUSTOMER_DEPOSIT_RECEIVED", {
+      orderNumber: order.orderNumber,
+      itemCount: order.items.length,
+      balanceKsh: order.balanceKsh,
+      dueDateLabel: dueDateLabel(order.balanceDueAt),
+      supportPhone: SUPPORT_PHONE_LABEL
+    })
   });
 }
 
@@ -322,25 +435,12 @@ async function queuePaidOrderNotifications(tx: Prisma.TransactionClient, orderId
       supportPhone: SUPPORT_PHONE_LABEL
     })
   });
-  if (!order.affiliate || !order.commission) return;
-  const previousSales = await tx.commission.count({
-    where: { affiliateId: order.affiliate.id, orderId: { not: orderId } }
-  });
-  const topic = previousSales === 0 ? "AFFILIATE_FIRST_SALE" : "AFFILIATE_NEW_ORDER";
-  await enqueueNotification(tx, {
-    topic,
-    audience: NotificationAudience.AFFILIATE,
-    dedupeKey: notificationDedupeKey(topic, orderId),
-    recipientPhone: order.affiliate.phone,
-    recipientLabel: order.affiliate.displayName,
-    orderId,
-    affiliateId: order.affiliateId,
-    body: notificationBody(topic, {
-      orderNumber: order.orderNumber,
-      amountKsh: order.commission.commissionAmountKsh,
-      affiliateName: order.affiliate.displayName
-    })
-  });
+  // Affiliates are not texted. The DIRECTLOOP sender id is registered with
+  // Safaricom as Transactional, and that registration carries a KES 25,000 fine
+  // if promotional traffic is ever found on it. "Your first sale is in, keep
+  // posting" is encouragement, not a transaction, so it does not belong on this
+  // sender id at any wording. Affiliates see their sales in the Affiliate Centre
+  // instead. Reinstating these needs a second, promotional sender id.
 }
 
 export function parseMpesaCallback(body: unknown): ParsedCallback {
@@ -361,10 +461,32 @@ export function parseMpesaCallback(body: unknown): ParsedCallback {
   };
 }
 
+/**
+ * What a single M-Pesa prompt is supposed to collect. A deposit order is
+ * charged in two prompts and neither of them equals the order total, so every
+ * amount check has to ask for the leg rather than the order.
+ */
+export function expectedLegAmountKsh(
+  order: { totalKsh: number; depositKsh: number; balanceKsh: number },
+  kind: PaymentKind
+): number {
+  if (kind === PaymentKind.DEPOSIT) return order.depositKsh;
+  if (kind === PaymentKind.BALANCE) return order.balanceKsh;
+  return order.totalKsh;
+}
+
+/** The deadline as a Kenyan shopper reads it in an SMS. */
+function dueDateLabel(dueAt: Date): string {
+  return dueAt.toLocaleDateString("en-KE", {
+    weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Nairobi"
+  });
+}
+
 function paymentResultFromRecord(
   order: { id: string; orderNumber: string },
   payment: {
     id: string;
+    kind: PaymentKind;
     status: PaymentStatus;
     amountKsh: number;
     phone: string;
@@ -379,6 +501,7 @@ function paymentResultFromRecord(
     orderId: order.id,
     orderNumber: order.orderNumber,
     status: payment.status,
+    kind: payment.kind,
     amountKsh: payment.amountKsh,
     phone: payment.phone,
     expiresAt: payment.expiresAt?.toISOString() ?? null,

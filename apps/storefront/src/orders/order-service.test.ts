@@ -51,4 +51,18 @@ for (const status of [FulfillmentStatus.DELIVERY_FAILED, FulfillmentStatus.RETUR
   assert.equal(steps.find((step) => step.state === "current")?.key, "handoff");
 }
 
+// A deposit order sits between "not paid" and "paid", and the shopper must be
+// able to tell which from the label alone: one still needs their money, the
+// other has already lost them the piece.
+assert.equal(orderStatusLabel(OrderStatus.DEPOSIT_PAID), "Deposit paid — balance due");
+assert.equal(orderStatusLabel(OrderStatus.DEPOSIT_EXPIRED), "Deposit hold expired");
+
+// Neither of them is a fulfilment state, so the picking tracker stays hidden.
+for (const status of [OrderStatus.DEPOSIT_PAID, OrderStatus.DEPOSIT_EXPIRED]) {
+  assert.deepEqual(customerFulfillmentProgress({
+    orderStatus: status,
+    fulfillmentMethod: FulfillmentMethod.PICKUP
+  }), []);
+}
+
 console.log("Order status label tests passed");

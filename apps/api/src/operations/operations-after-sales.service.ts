@@ -157,7 +157,7 @@ export class OperationsAfterSalesService {
     if (!inventory || inventory.status !== InventoryItemStatus.DELIVERED || inventory.barcode !== record.receivedBarcode || inventory.updatedAt.getTime() !== record.inventoryUpdatedAt?.getTime()) throw new ConflictException("Inventory changed after receipt or is no longer the original delivered item. Review without overwriting it.");
     const newerSale = await tx.orderItem.findFirst({ where: {
       productId: inventory.productId, orderId: { not: order.id }, order: { OR: [
-        { status: { in: [OrderStatus.PAID, OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING, OrderStatus.FULFILLING] } },
+        { status: { in: [OrderStatus.PAID, OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING, OrderStatus.DEPOSIT_PAID, OrderStatus.FULFILLING] } },
         { status: OrderStatus.COMPLETED, OR: [
           { createdAt: { gte: order.createdAt } },
           { fulfillment: { completedAt: { gte: order.fulfillment!.completedAt! } } }

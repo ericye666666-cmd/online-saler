@@ -153,6 +153,9 @@ test("shoe API exposes only human measured insole lengths", () => {
 test("paid and reserved detail preserves public display but never claims available stock", () => {
   for (const [status, availability] of [
     ["AVAILABLE", "AVAILABLE"], ["RESERVED", "RESERVED"],
+    // A deposit hold reads as reserved, not sold: it really can come back on
+    // sale in seven days, and "Sold" would stop anyone ever checking again.
+    ["DEPOSIT_HELD", "RESERVED"],
     ["PAID", "SOLD"], ["PICKED", "SOLD"], ["PACKED", "SOLD"], ["DELIVERED", "SOLD"]
   ]) {
     const result = publicProduct(shoeProduct({ inventoryItem: { status } }) as never);
@@ -163,7 +166,7 @@ test("paid and reserved detail preserves public display but never claims availab
   const where = publicDetailWhere();
   assert.equal(where.status, "PUBLISHED", "draft, withdrawn and archived goods stay private");
   const statuses = (where.inventoryItem as { is: { status: { in: string[] } } }).is.status.in;
-  assert.deepEqual(statuses, ["AVAILABLE", "RESERVED", "PAID", "PICKED", "PACKED", "DELIVERED"]);
+  assert.deepEqual(statuses, ["AVAILABLE", "RESERVED", "DEPOSIT_HELD", "PAID", "PICKED", "PACKED", "DELIVERED"]);
 });
 
 test("the public list and filters take every published piece, with no row limit", () => {

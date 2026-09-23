@@ -23,6 +23,8 @@ Each module should define:
   deliveries, and the store rider roster.
 - [payment-exceptions.md](payment-exceptions.md) — the manual review queue,
   M-Pesa reconciliation, refunds, and the environment they need.
+- [deposit-plan.md](deposit-plan.md) — the 50% deposit, the seven-day hold, the
+  balance payment, and what happens to the money when the deadline passes.
 - [customer-service.md](customer-service.md) — global customer search, the Order
   360 view, cases with owners and SLAs, escalation, and the two-person refund
   approval gate.

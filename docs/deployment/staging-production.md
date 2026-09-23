@@ -117,6 +117,15 @@ The internal reservation cleanup route and staging-only M-Pesa callback simulato
 require the `INTERNAL_CRON_SECRET_STAGING` bearer token. Do not expose this value
 to browser code or commit it to the repository.
 
+`scripts/gcloud/configure-staging-scheduler.sh` creates three Cloud Scheduler
+jobs against those internal routes:
+
+| Job | Route | Schedule | What breaks without it |
+| --- | --- | --- | --- |
+| `release-expired-reservations-staging` | `/api/internal/release-expired-reservations` | every minute | Abandoned five-minute checkout locks never return to sale. |
+| `send-notifications-staging` | `/api/internal/send-notifications` | every 2 minutes | The SMS outbox fills up and no customer message is ever sent. |
+| `expire-deposit-holds-staging` | `/api/internal/expire-deposit-holds` | hourly | **Deposit holds never expire.** A garment stays off sale indefinitely, the shopper is never reminded the balance is due, and the refund they are owed is never raised. |
+
 When `MPESA_ENABLE_SANDBOX_SIMULATOR_STAGING=true`, staging can simulate a final
 M-Pesa callback for a pending payment:
 

@@ -680,6 +680,55 @@
   font-size: 12px;
 }
 
+/* The pay-in-full / deposit choice. Built from the same card language as the
+   checkout step rows so it reads as one more question, not a promotion. */
+.checkoutPlan {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.checkoutPlan legend {
+  padding: 0;
+  color: #171717;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.checkoutPlanOptions { display: grid; gap: 10px; }
+
+.checkoutPlanOption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  border: 1px solid #ebe5de;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+
+.checkoutPlanOption:hover { border-color: #171717; }
+.checkoutPlanOption.selected { border-color: #171717; box-shadow: inset 0 0 0 1px #171717; }
+
+.checkoutPlanOption input { margin-top: 3px; accent-color: #171717; }
+
+.checkoutPlanText { display: grid; min-width: 0; gap: 4px; }
+.checkoutPlanText strong { font-size: 15px; }
+
+.checkoutPlanText span {
+  color: #6b6b6b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* The consequence of missing the deadline. Stated on the card itself, because
+   a shopper choosing a deposit is the one who most needs to read it. */
+.checkoutPlanText .checkoutPlanWarning { color: #8a4b12; }
+
 .commerceSummaryRows {
   display: grid;
   gap: 12px;

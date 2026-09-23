@@ -24,6 +24,9 @@ export function buildInventoryOverview(records: readonly InventoryOverviewRecord
       currentWarehouseTotal: current.length,
       available: current.filter((item) => item.status === InventoryItemStatus.AVAILABLE).length,
       reserved: current.filter((item) => item.status === InventoryItemStatus.RESERVED).length,
+      // Its own number, because it answers a different question: how much of
+      // the rail is off sale for a week against half-paid money.
+      depositHeld: current.filter((item) => item.status === InventoryItemStatus.DEPOSIT_HELD).length,
       paidAwaitingOutbound: current.filter((item) => item.status === InventoryItemStatus.PAID).length,
       published: current.filter((item) => item.product.status === ProductStatus.PUBLISHED).length,
       pendingPublish: current.filter((item) => item.product.status !== ProductStatus.PUBLISHED).length,
@@ -50,6 +53,7 @@ function groupedCategoryRows(records: readonly InventoryOverviewRecord[]) {
     currentWarehouseCount: number;
     availableCount: number;
     reservedCount: number;
+    depositHeldCount: number;
     publishedCount: number;
     pendingPublishCount: number;
   }>();
@@ -63,12 +67,14 @@ function groupedCategoryRows(records: readonly InventoryOverviewRecord[]) {
       currentWarehouseCount: 0,
       availableCount: 0,
       reservedCount: 0,
+      depositHeldCount: 0,
       publishedCount: 0,
       pendingPublishCount: 0
     };
     row.currentWarehouseCount += 1;
     if (item.status === InventoryItemStatus.AVAILABLE) row.availableCount += 1;
     if (item.status === InventoryItemStatus.RESERVED) row.reservedCount += 1;
+    if (item.status === InventoryItemStatus.DEPOSIT_HELD) row.depositHeldCount += 1;
     if (item.product.status === ProductStatus.PUBLISHED) row.publishedCount += 1;
     else row.pendingPublishCount += 1;
     groups.set(key, row);

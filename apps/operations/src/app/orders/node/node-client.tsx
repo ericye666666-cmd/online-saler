@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PackageCheckIcon, RefreshCwIcon, TruckIcon } from "lucide-react";
+import { MessageCircle, PackageCheckIcon, RefreshCwIcon, TruckIcon } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea";
 import { formatKsh, formatMoment, operationsRequester } from "@/lib/operations-request";
 import { t } from "@/i18n/runtime";
+import { customerWhatsappUrl } from "../customer-whatsapp";
 
 /**
  * The store's own screen. A package arrives from the warehouse, the store scans
@@ -20,9 +21,12 @@ import { t } from "@/i18n/runtime";
  * records what the ride actually cost.
  *
  * Handing a package to a rider is one button, because it has to be one step: it
- * assigns the rider, mints the customer's delivery code, texts it and moves the
- * package out for delivery together or not at all. The store never sees that
- * code -- only the customer's phone has it.
+ * assigns the rider, mints the customer's delivery code, queues the message and
+ * moves the package out for delivery together or not at all. The store never
+ * sees that code -- it appears on the customer's own order page.
+ *
+ * While the SMS provider is not live, that queued message goes nowhere, so the
+ * store presses "用 WhatsApp 发给顾客" and sends the customer a link to that page.
  */
 
 type NodeOption = {
@@ -416,12 +420,12 @@ export function NodeWorkbenchPage() {
                               onClick={() => void act(order.id, "dispatch-to-rider", {
                                 deliveryRiderId: fields[`${order.id}:riderId`] ?? "",
                                 note: fields[`${order.id}:note`] ?? ""
-                              }, t("已交给骑手，配送码已短信发给顾客。"))}
+                              }, t("已交给骑手。配送码在顾客自己的订单页上——短信还没开通，请点「用 WhatsApp 发给顾客」。"))}
                             >
                               {t("交给骑手并发送配送码")}
                             </Button>
                             <span className="text-xs text-muted-foreground">
-                              {t("系统会给顾客发一个 4 位配送码。门店和骑手都看不到这个号码。")}
+                              {t("系统会生成一个 4 位配送码，只出现在顾客自己的订单页上。门店和骑手都看不到这个号码。")}
                             </span>
                           </>
                         )}
@@ -430,6 +434,7 @@ export function NodeWorkbenchPage() {
 
                     {stage.key === "ready-for-pickup" && canComplete ? (
                       <div className="flex flex-wrap items-center gap-2">
+                        <NotifyCustomerButton order={order} kind="PICKUP" />
                         <Input
                           className="w-40 text-center text-lg tracking-[0.4em] font-mono"
                           inputMode="numeric"
@@ -453,7 +458,7 @@ export function NodeWorkbenchPage() {
                           {t("核对自提码并交付")}
                         </Button>
                         <span className="text-xs text-muted-foreground">
-                          {t("请顾客报出短信里的自提码。订单号和手机号都印在包裹上，不能当凭证。")}
+                          {t("请顾客报出自己订单页上的自提码。订单号和手机号都印在包裹上，不能当凭证。")}
                         </span>
                       </div>
                     ) : null}
@@ -489,7 +494,7 @@ export function NodeWorkbenchPage() {
                         <Button
                           size="sm"
                           disabled={busyId === order.id}
-                          onClick={() => void act(order.id, "dispatch", { note: fields[`${order.id}:note`] ?? "" }, t("包裹已交给 Bolt 骑手，配送码已短信发给顾客。"))}
+                          onClick={() => void act(order.id, "dispatch", { note: fields[`${order.id}:note`] ?? "" }, t("包裹已交给 Bolt 骑手。配送码在顾客自己的订单页上——短信还没开通，请点「用 WhatsApp 发给顾客」。"))}
                         >
                           {t("交给 Bolt 骑手并发送配送码")}
                         </Button>
@@ -526,6 +531,7 @@ export function NodeWorkbenchPage() {
 
                     {stage.key === "out-for-delivery" ? (
                       <div className="flex flex-wrap items-center gap-2">
+                        <NotifyCustomerButton order={order} kind="DELIVERY" />
                         {canRecordCost ? (
                           <>
                             <Input
@@ -553,7 +559,7 @@ export function NodeWorkbenchPage() {
                             size="sm"
                             variant="outline"
                             disabled={busyId === order.id}
-                            onClick={() => void act(order.id, "resend-delivery-code", { note: fields[`${order.id}:note`] ?? "" }, t("已给顾客重发一个新的配送码，旧的作废。"))}
+                            onClick={() => void act(order.id, "resend-delivery-code", { note: fields[`${order.id}:note`] ?? "" }, t("已生成新的配送码，旧的作废。请再点一次「用 WhatsApp 发给顾客」。"))}
                           >
                             {t("重发配送码")}
                           </Button>
@@ -598,6 +604,32 @@ export function NodeWorkbenchPage() {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Sends the customer to their own order page, where the code is.
+ *
+ * Until the SMS provider is live this is the only thing that puts a code in the
+ * customer's hands, so it sits next to the button that minted it rather than in
+ * a menu. The message carries a link, never the digits — see customer-whatsapp.ts.
+ */
+function NotifyCustomerButton({ order, kind }: { order: NodeOrder; kind: "DELIVERY" | "PICKUP" }) {
+  const url = customerWhatsappUrl({
+    orderNumber: order.orderNumber,
+    phone: order.whatsappPhone ?? order.customer.phone,
+    kind,
+    nodeName: order.fulfillment?.fulfillmentNode?.name ?? null
+  });
+  if (!url) {
+    return <span className="text-xs text-destructive">{t("这单没有可用的手机号，无法通知顾客。请在客服中心补一个。")}</span>;
+  }
+  return (
+    <Button size="sm" variant="outline" asChild>
+      <a href={url} target="_blank" rel="noreferrer">
+        <MessageCircle data-icon="inline-start" />{t("用 WhatsApp 发给顾客")}
+      </a>
+    </Button>
   );
 }
 

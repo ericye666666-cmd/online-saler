@@ -78,7 +78,10 @@ fare was never entered, because an unrecorded fare is unknown, not zero.
    packed; it stamps the package code.
 3. Open **门店履约台**, choose that store, and type the package code into the scan
    box. **确认收到包裹** moves it to 已到店.
-4. Hand it over with **放到自提区并通知顾客**, then **核对并交付** using the
-   pickup code.
-5. For a delivery order, use **登记 Bolt 骑手 → 交给骑手 → 记录车费 → 确认已送达**,
-   then check the fare and subsidy in 财务汇总.
+4. Hand it over with **放到自提区并通知顾客**, press **用 WhatsApp 发给顾客** so they
+   have the link to their code, then **核对并交付** using the pickup code.
+5. For a delivery order, use **登记 Bolt 骑手 → 交给骑手 → 用 WhatsApp 发给顾客 →
+   记录车费 → 用顾客的配送码确认送达**, then check the fare and subsidy in 财务汇总.
+
+The WhatsApp step is there because SMS is not live yet; see
+[delivery-code-and-riders.md](delivery-code-and-riders.md).

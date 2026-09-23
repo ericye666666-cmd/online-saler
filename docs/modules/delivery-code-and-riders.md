@@ -4,9 +4,9 @@
 
 ## Scope
 
-The last leg of the loop: a store hands a package to one of its own riders, the
-customer gets a four-digit code by SMS, and the order only closes when the
-customer reads that code out.
+The last leg of the loop: a store hands a package to one of its own riders or a
+Bolt driver, the customer reads a four-digit code off their own order page, and
+the order only closes when they read it out.
 
 In scope: the delivery code, the rider's mobile screen, authorized drop-off with
 a photo, a failed delivery and its return to the store, the store's rider roster,
@@ -32,25 +32,42 @@ that can get around it.
 | --- | --- |
 | Length | 4 digits |
 | Generated | at dispatch, never at payment |
-| Stored as | a salted pbkdf2 hash, never plaintext |
+| Verified against | a salted pbkdf2 hash |
+| Readable by the customer | yes, on their own order page |
 | Visible to the rider | no |
 | Visible to store staff | no |
 | Visible to customer service | no |
-| Visible in any API response | no |
+| Visible in any operations or rider API response | no |
 | Wrong attempts allowed | 5, then the order locks |
 | Reuse | none — dead after completion, failure, or replacement |
 
-Because only a hash is kept, **nobody can look a code up**. "Resend code" issues
-a *new* code and voids the old one. That is deliberate: it means customer service
-can rescue a customer who never got the SMS without ever being able to read a
-code themselves.
+**No staff screen can look a code up.** "Resend code" issues a *new* code and
+voids the old one. That is deliberate: it means customer service can rescue a
+customer who never got the message without ever being able to read a code
+themselves.
+
+The customer, though, has to be able to read their own. Until 2026-09-23 the
+only readable copy was the SMS, and with no SMS provider live that made every
+delivery uncompletable. So the code is now also stored in
+`OrderFulfillment.deliveryCode` and shown on `/orders/<number>`, the shopper's
+own page, beside the pickup code that was always shown there. It is redacted
+from every operations and rider response, cleared when the delivery completes or
+fails, and replaced on every resend.
+
+The property that matters is unchanged: **the people holding the package cannot
+obtain the code**. A rider still cannot close a delivery they did not make, and
+a store still cannot close one the customer never received. What changed is that
+a leaked database row now contains a live code, where before it contained only a
+hash. That is the price of having no SMS, and it is the reason this is worth
+undoing once a provider is live — drop the column write and the order page
+falls back to showing nothing.
 
 Every check, right or wrong, writes a `CustomerCodeAttempt` row: the order, the
 rider, the attempt number, the time. The digits that were typed are never stored.
 
 ## Data
 
-- `OrderFulfillment.deliveryCodeHash`, `deliveryCodeIssuedAt`,
+- `OrderFulfillment.deliveryCodeHash`, `deliveryCode`, `deliveryCodeIssuedAt`,
   `deliveryCodeSentCount`
 - `OrderFulfillment.customerCodeVerifiedAt`, `customerCodeFailedAttempts`,
   `customerCodeLockedAt` — shared by both handovers, since an order is either
@@ -119,30 +136,42 @@ stood down while they still have packages in hand.
 ## Clicking through it
 
 1. **门店履约台** — pick the node, scan the package, **确认收到包裹**.
-2. Same row, choose a rider and press **交给骑手并发送配送码**. The customer's
-   phone gets: *"Delivery code 5832. Give this code to the rider only after you
-   have received your order."* Nothing on the screen shows 5832.
-3. On the rider's phone, **我的配送** shows the order, the address, and a **打给顾客**
+2. Same row, choose a rider and press **交给骑手并发送配送码** — or, for a Bolt
+   driver, **登记外部 Bolt 骑手** then **交给 Bolt 骑手并发送配送码**. Nothing on the
+   screen shows the code.
+3. Press **用 WhatsApp 发给顾客**. WhatsApp opens on the customer's number with the
+   link to their order page already written. They open it and see the four
+   digits.
+4. On the rider's phone, **我的配送** shows the order, the address, and a **打给顾客**
    button. Hand over the goods, ask for the code, type it, press
-   **核对号码并完成**. The order is `COMPLETED`.
-4. Type a wrong code instead: it says how many attempts are left. Five wrong and
+   **核对号码并完成**. The order is `COMPLETED`. With a Bolt driver instead of a
+   rider, the store does this from **门店履约台** with
+   **用顾客的配送码确认送达** once the customer confirms on the phone.
+5. Type a wrong code instead: it says how many attempts are left. Five wrong and
    the order locks and says to call the store.
-5. Press **代收** instead: it demands a photo *and* a code before the button
+6. Press **代收** instead: it demands a photo *and* a code before the button
    enables.
-6. Press **没送成**, pick a reason: the order goes to **配送失败**, the customer is
+7. Press **没送成**, pick a reason: the order goes to **配送失败**, the customer is
    told their payment is safe, and the code dies. **我现在把货送回门店** → the store
    sees **送回途中** → **确认收到退回的包裹** → the package is back at
    **已到店** and can be dispatched again with a fresh code.
 
 ## Operational risks
 
-- **SMS delivery is the single point of failure.** Without a working provider the
-  customer never gets a code and no delivery can be completed. The provider is
+- **SMS is not live, so the store sends the link by hand.** The provider is
   env-gated (`AFRICASTALKING_API_KEY`, `AFRICASTALKING_USERNAME`,
   `AFRICASTALKING_SENDER_ID`); with nothing set, messages sit in the outbox and
   the log says so rather than pretending to send. The outbox also has to be
   drained — something must call `/api/internal/send-notifications` on a schedule.
-  Until both are true, this feature does not work end to end.
+  Until both are true, **用 WhatsApp 发给顾客** on the store desk is what actually
+  reaches the customer: it opens WhatsApp with a link to their order page, where
+  the code is. The message carries the link and never the digits, so sending it
+  does not put the code in front of the person sending it.
+- **A customer on a second handset needs the lookup form.** The order page is
+  gated on the browser that placed the order. Opening the WhatsApp link on a
+  different phone shows the phone-plus-order-number form instead, which
+  re-attaches the order and then shows the code. Nothing else recovers it — not
+  even customer service, who cannot read a code either.
 - A store with no riders on the roster cannot dispatch. The screen says so and
   points at 门店骑手.
 - The external Bolt path (`assign-rider` then `dispatch`) still exists and now

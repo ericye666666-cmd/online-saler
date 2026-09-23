@@ -81,3 +81,23 @@ test("a held payment says in plain words why a human has to look at it", () => {
     /after the reservation window/
   );
 });
+
+test("a deposit is measured against the deposit, not the order total", () => {
+  // Half of a KSh 400 order is a correct deposit. Comparing it to the total
+  // would park every single deposit in the review queue as a mismatch.
+  const depositOrder = { totalKsh: 400, depositKsh: 200, balanceKsh: 200, status: "DEPOSIT_PAID" as never };
+  const held = {
+    amountKsh: 200,
+    kind: "DEPOSIT" as never,
+    providerReceiptNumber: "SJ12ABC",
+    providerResultCode: 0,
+    expiresAt: null,
+    order: depositOrder
+  };
+  assert.doesNotMatch(describeHold(held), /does not match/);
+  assert.match(describeHold({ ...held, amountKsh: 150 }), /does not match the deposit KSh 200/);
+  assert.match(
+    describeHold({ ...held, kind: "BALANCE" as never, amountKsh: 150 }),
+    /does not match the balance KSh 200/
+  );
+});

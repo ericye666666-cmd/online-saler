@@ -61,6 +61,15 @@ type FinanceSummary = {
     ordersMissingCost: number;
     averageCostPerOrderKsh: number | null;
   };
+  deposits: {
+    heldOrders: number;
+    depositHeldKsh: number;
+    balanceOutstandingKsh: number;
+    lapsedOrders: number;
+    forfeitKsh: number;
+    refundOwedKsh: number;
+    refundPaidKsh: number;
+  };
   net: { netRevenueKsh: number; formula: string };
   attention: { paymentsInReview: number; callbacksInReview: number; fulfillmentExceptions: number };
 };
@@ -145,6 +154,39 @@ export function FinancePage() {
             <Metric label={t("客单价")} value={formatKsh(summary.sales.averageOrderValueKsh)} note={`${summary.sales.completedOrders} ${t("笔已完成")}`} />
             <Metric label={t("净收入")} value={formatKsh(summary.net.netRevenueKsh)} note={summary.net.formula} />
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("定金计划")}</CardTitle>
+              <CardDescription>
+                {t("「定金在途」是已收但还没赚到的钱——尾款付清会变成销售额，逾期则大部分要退回，所以不计入净收入。「违约金收入」是逾期后留下的那部分，已经赚到，计入净收入。")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric
+                label={t("定金在途")}
+                value={formatKsh(summary.deposits.depositHeldKsh)}
+                note={`${summary.deposits.heldOrders} ${t("笔持有中，不计入净收入")}`}
+              />
+              <Metric
+                label={t("待收尾款")}
+                value={formatKsh(summary.deposits.balanceOutstandingKsh)}
+                note={t("这些单还要收到的钱")}
+              />
+              <Metric
+                label={t("违约金收入")}
+                value={formatKsh(summary.deposits.forfeitKsh)}
+                note={`${summary.deposits.lapsedOrders} ${t("笔逾期，已计入净收入")}`}
+              />
+              <Metric
+                label={t("待退顾客")}
+                value={formatKsh(summary.deposits.refundOwedKsh)}
+                note={summary.deposits.refundPaidKsh
+                  ? `${t("已退")} ${formatKsh(summary.deposits.refundPaidKsh)}`
+                  : t("逾期应退但还没在 M-Pesa 执行")}
+              />
+            </CardContent>
+          </Card>
 
           <div className="grid gap-4 md:grid-cols-2">
             <Card>

@@ -155,7 +155,7 @@ export function Order360Page({ orderId }: { orderId: string }) {
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       {canResendCode && outForDelivery ? (
         <p className="text-muted-foreground text-xs">
-          {t("重发会生成一个新的配送码并短信给顾客，旧码立刻失效。客服界面永远看不到码本身。")}
+          {t("重发会生成一个新的配送码，旧码立刻失效。新码只出现在顾客自己的订单页上，客服界面永远看不到码本身。")}
         </p>
       ) : null}
 

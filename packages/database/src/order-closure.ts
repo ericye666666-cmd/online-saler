@@ -27,6 +27,10 @@ export type OrderClosureResult = {
 
 const CLOSEABLE_INVENTORY_STATUSES: InventoryItemStatus[] = [
   InventoryItemStatus.RESERVED,
+  // A garment held against a deposit is released the same way as any other.
+  // The deposit itself is money already taken, so closing such an order always
+  // leaves a refund decision behind it.
+  InventoryItemStatus.DEPOSIT_HELD,
   InventoryItemStatus.PAID,
   InventoryItemStatus.PICKED,
   InventoryItemStatus.PACKED

@@ -8,6 +8,9 @@ export const WAREHOUSE_OCCUPYING_STATUSES: InventoryItemStatus[] = [
   InventoryItemStatus.PENDING_STOCK_IN,
   InventoryItemStatus.AVAILABLE,
   InventoryItemStatus.RESERVED,
+  // A deposit hold is a garment sitting on a shelf for up to a week. It takes
+  // up exactly as much space as any other and has to count against capacity.
+  InventoryItemStatus.DEPOSIT_HELD,
   InventoryItemStatus.PAID,
   InventoryItemStatus.RETURNED
 ];
@@ -16,6 +19,7 @@ export const MOVABLE_INVENTORY_STATUSES: InventoryItemStatus[] = [
   InventoryItemStatus.PENDING_STOCK_IN,
   InventoryItemStatus.AVAILABLE,
   InventoryItemStatus.RESERVED,
+  InventoryItemStatus.DEPOSIT_HELD,
   InventoryItemStatus.RETURNED
 ];
 

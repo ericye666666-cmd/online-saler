@@ -74,9 +74,13 @@ test("counts only inventory that still occupies a shelf and blocks paid-item mov
     InventoryItemStatus.PENDING_STOCK_IN,
     InventoryItemStatus.AVAILABLE,
     InventoryItemStatus.RESERVED,
+    // A garment held against a deposit sits on a shelf for up to a week and
+    // takes up exactly as much space as any other.
+    InventoryItemStatus.DEPOSIT_HELD,
     InventoryItemStatus.PAID,
     InventoryItemStatus.RETURNED
   ]);
   assert.equal(new Set<InventoryItemStatus>(MOVABLE_INVENTORY_STATUSES).has(InventoryItemStatus.PAID), false);
+  assert.equal(new Set<InventoryItemStatus>(MOVABLE_INVENTORY_STATUSES).has(InventoryItemStatus.DEPOSIT_HELD), true);
   assert.equal(new Set<InventoryItemStatus>(WAREHOUSE_OCCUPYING_STATUSES).has(InventoryItemStatus.PICKED), false);
 });

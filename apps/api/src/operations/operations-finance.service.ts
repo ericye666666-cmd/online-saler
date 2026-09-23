@@ -4,10 +4,13 @@ import {
   FulfillmentMethod,
   FulfillmentStatus,
   OrderStatus,
+  PaymentKind,
   PaymentStatus,
+  RefundKind,
   prisma
 } from "@online-saler/database";
 import { summariseDeliveryEconomics } from "@online-saler/business-rules";
+import { summariseHeldDeposits, summariseLapsedDeposits } from "./deposit-ledger";
 import { OperationsAccessService } from "./operations-access.service";
 
 /**
@@ -48,7 +51,9 @@ export class OperationsFinanceService {
       openPaymentReviews,
       openCallbackReviews,
       openExceptions,
-      unrefundedClosures
+      unrefundedClosures,
+      heldDepositOrders,
+      lapsedDepositOrders
     ] = await Promise.all([
       prisma.order.count({ where: { ...orderWhere, status: { in: [...PAID_ORDER_STATUSES, OrderStatus.REFUNDED] } } }),
       prisma.order.count({ where: { ...orderWhere, status: OrderStatus.COMPLETED } }),
@@ -82,7 +87,36 @@ export class OperationsFinanceService {
       prisma.payment.count({ where: { status: PaymentStatus.MANUAL_REVIEW } }),
       prisma.mpesaCallback.count({ where: { processingStatus: "MANUAL_REVIEW", resolvedAt: null } }),
       prisma.orderFulfillment.count({ where: { status: FulfillmentStatus.EXCEPTION } }),
-      this.outstandingRefunds()
+      this.outstandingRefunds(),
+      // Deposits are deliberately not filtered by the report's date range. A
+      // hold is a position held right now, not something that happened in a
+      // window, and showing "deposits held in August" would be meaningless.
+      prisma.order.findMany({
+        where: { status: OrderStatus.DEPOSIT_PAID },
+        select: {
+          balanceKsh: true,
+          payments: {
+            where: { kind: PaymentKind.DEPOSIT, status: PaymentStatus.SUCCESS },
+            select: { amountKsh: true }
+          }
+        },
+        take: 2000
+      }),
+      prisma.order.findMany({
+        where: { ...orderWhere, status: OrderStatus.DEPOSIT_EXPIRED },
+        select: {
+          totalKsh: true,
+          payments: {
+            where: { kind: PaymentKind.DEPOSIT, status: PaymentStatus.SUCCESS },
+            select: { amountKsh: true }
+          },
+          refundRequests: {
+            where: { kind: RefundKind.LAPSED_DEPOSIT },
+            select: { amountKsh: true, status: true, completedAt: true }
+          }
+        },
+        take: 2000
+      })
     ]);
 
     const delivery = summariseDeliveryEconomics(deliveryRows.map((row) => ({
@@ -91,6 +125,8 @@ export class OperationsFinanceService {
     })));
 
     const commission = commissionSummary(commissionTotals);
+    const heldDeposits = summariseHeldDeposits(heldDepositOrders);
+    const lapsedDeposits = summariseLapsedDeposits(lapsedDepositOrders);
     const gmvKsh = grossSales._sum.itemSubtotalKsh ?? 0;
     const collectedKsh = grossSales._sum.totalKsh ?? 0;
     const refundedKsh = refunds._sum.amountKsh ?? 0;
@@ -108,11 +144,26 @@ export class OperationsFinanceService {
       refunds: { count: refunds._count, refundedKsh, outstanding: unrefundedClosures },
       commission,
       delivery,
-      // GMV minus everything the business gives back or pays out. Delivery
-      // subsidy is the part of the Bolt fare the KSh 50 did not cover.
+      // The deposit plan splits into money that is not yet earned and money
+      // that is. They are reported apart because only one of them is revenue:
+      // a held deposit can still turn into a completed sale or a refund, while
+      // a forfeit is what the shop was paid for keeping a piece off sale.
+      deposits: {
+        heldOrders: heldDeposits.heldOrders,
+        depositHeldKsh: heldDeposits.depositHeldKsh,
+        balanceOutstandingKsh: heldDeposits.balanceOutstandingKsh,
+        lapsedOrders: lapsedDeposits.lapsedOrders,
+        forfeitKsh: lapsedDeposits.forfeitKsh,
+        refundOwedKsh: lapsedDeposits.refundOwedKsh,
+        refundPaidKsh: lapsedDeposits.refundPaidKsh
+      },
+      // GMV minus everything the business gives back or pays out, plus the
+      // deposits kept on lapsed holds. Delivery subsidy is the part of the Bolt
+      // fare the KSh 50 did not cover. Deposits still being held are NOT in
+      // here: that money has not been earned and may yet be refunded.
       net: {
-        netRevenueKsh: gmvKsh - refundedKsh - commission.owedKsh - Math.max(delivery.subsidyKsh, 0),
-        formula: "GMV - refunds - affiliate commission (pending + confirmed + paid) - delivery subsidy"
+        netRevenueKsh: gmvKsh + lapsedDeposits.forfeitKsh - refundedKsh - commission.owedKsh - Math.max(delivery.subsidyKsh, 0),
+        formula: "GMV + forfeited deposits - refunds - affiliate commission (pending + confirmed + paid) - delivery subsidy"
       },
       attention: {
         paymentsInReview: openPaymentReviews,

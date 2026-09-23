@@ -4,6 +4,7 @@ import {
   FulfillmentMethod,
   FulfillmentNodeStatus,
   InventoryItemStatus,
+  OrderPaymentPlan,
   OrderStatus,
   PaymentStatus,
   ProductStatus,
@@ -16,8 +17,12 @@ import {
 import {
   KIKUYU_DELIVERY_FEE_KSH,
   MAX_ACTIVE_RESERVATIONS_PER_PHONE,
+  MAX_DEPOSIT_HOLDS_PER_PHONE,
   RESERVATION_MINUTES,
-  calculateOrderAmounts
+  balanceAmountKsh,
+  calculateOrderAmounts,
+  depositAmountKsh,
+  orderQualifiesForDeposit
 } from "@online-saler/business-rules";
 import {
   createAttributionForOrder,
@@ -39,6 +44,13 @@ export type StartCheckoutInput = {
    */
   fulfillmentNodeId?: string | null;
   whatsappPhone?: string | null;
+  /**
+   * FULL charges the whole total now. DEPOSIT_50 charges half and holds the
+   * garments for seven days while the shopper finds the rest. Either way the
+   * first M-Pesa prompt still has to be answered inside the five-minute
+   * reservation window — the seven days only start once money has landed.
+   */
+  paymentPlan?: OrderPaymentPlan;
   attribution?: CheckoutAttributionInput | null;
 };
 
@@ -64,6 +76,7 @@ export function normalizeKenyaPhone(value: string): string {
 
 export async function startCheckout(input: StartCheckoutInput) {
   const phone = normalizeKenyaPhone(input.phone);
+  const paymentPlan = input.paymentPlan ?? OrderPaymentPlan.FULL;
   const requestedProductIds = normalizeProductIds(input.productIds);
   const deliveryAddress = input.deliveryAddress?.trim() || null;
   const deliveryNote = input.deliveryNote?.trim() || null;
@@ -145,6 +158,7 @@ export async function startCheckout(input: StartCheckoutInput) {
     const existing = existingDrafts.find((draft) => {
       const existingProductIds = draft.convertedOrder?.items.map((item) => item.productId) ?? [];
       return sameProductSet(existingProductIds, productIds)
+        && draft.convertedOrder?.paymentPlan === paymentPlan
         && draft.fulfillmentMethod === input.fulfillmentMethod
         && draft.deliveryAddress === deliveryAddress
         && draft.deliveryNote === deliveryNote
@@ -164,6 +178,12 @@ export async function startCheckout(input: StartCheckoutInput) {
         deliveryFeeKsh: existing.deliveryFeeKsh,
         totalKsh: existing.totalKsh,
         currency: existing.currency,
+        paymentPlan: existing.convertedOrder.paymentPlan,
+        depositKsh: existing.convertedOrder.depositKsh,
+        balanceKsh: existing.convertedOrder.balanceKsh,
+        amountDueNowKsh: existing.convertedOrder.paymentPlan === OrderPaymentPlan.DEPOSIT_50
+          ? existing.convertedOrder.depositKsh
+          : existing.convertedOrder.totalKsh,
         items: existing.convertedOrder.items.map((item) => ({ productId: item.productId }))
       };
     }
@@ -196,6 +216,24 @@ export async function startCheckout(input: StartCheckoutInput) {
       throw new CheckoutConflictError("This phone number already has five active payment reservations.");
     }
 
+    // A deposit takes a garment off sale for a week, so the allowance is much
+    // tighter than the five-minute cart cap and is counted separately.
+    if (paymentPlan === OrderPaymentPlan.DEPOSIT_50) {
+      const heldOnDeposit = await tx.orderItem.count({
+        where: {
+          order: {
+            status: OrderStatus.DEPOSIT_PAID,
+            customer: { is: { phone } }
+          }
+        }
+      });
+      if (heldOnDeposit + uniqueProducts.length > MAX_DEPOSIT_HOLDS_PER_PHONE) {
+        throw new CheckoutConflictError(
+          `This phone number is already holding ${MAX_DEPOSIT_HOLDS_PER_PHONE} items on deposit. Pay a balance off before reserving another.`
+        );
+      }
+    }
+
     for (const product of [...uniqueProducts].sort((left, right) => left.id.localeCompare(right.id))) {
       const locked = await tx.inventoryItem.updateMany({
         where: { id: product.inventoryItem!.id, status: InventoryItemStatus.AVAILABLE },
@@ -213,6 +251,11 @@ export async function startCheckout(input: StartCheckoutInput) {
       uniqueProducts.map((product) => ({ productId: product.id, unitPriceKsh: product.priceKsh! })),
       deliveryFeeKsh
     );
+    if (paymentPlan === OrderPaymentPlan.DEPOSIT_50 && !orderQualifiesForDeposit(amounts.totalKsh)) {
+      throw new CheckoutValidationError("This order is too small to split into a deposit and a balance.");
+    }
+    const depositKsh = paymentPlan === OrderPaymentPlan.DEPOSIT_50 ? depositAmountKsh(amounts.totalKsh) : 0;
+    const balanceKsh = paymentPlan === OrderPaymentPlan.DEPOSIT_50 ? balanceAmountKsh(amounts.totalKsh) : 0;
     const expiresAt = new Date(now.getTime() + RESERVATION_MINUTES * 60_000);
     const orderNumber = `DL-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(4).toString("hex").toUpperCase()}`;
     // A short code the shopper reads out at the counter. Until now the pickup
@@ -242,6 +285,11 @@ export async function startCheckout(input: StartCheckoutInput) {
         itemSubtotalKsh: amounts.itemSubtotalKsh,
         deliveryFeeKsh: amounts.deliveryFeeKsh,
         totalKsh: amounts.totalKsh,
+        paymentPlan,
+        // Frozen here so a later price edit cannot move what the shopper still
+        // owes on a hold they already paid half of.
+        depositKsh,
+        balanceKsh,
         fulfillmentNodeId: node?.id ?? null,
         whatsappPhone,
         affiliateId: attribution?.affiliateId ?? null,
@@ -316,6 +364,10 @@ export async function startCheckout(input: StartCheckoutInput) {
       expiresAt: expiresAt.toISOString(),
       reservationMinutes: RESERVATION_MINUTES,
       ...amounts,
+      paymentPlan,
+      depositKsh,
+      balanceKsh,
+      amountDueNowKsh: paymentPlan === OrderPaymentPlan.DEPOSIT_50 ? depositKsh : amounts.totalKsh,
       items: uniqueProducts.map((product) => ({
         productId: product.id,
         title: product.title || "Second-hand item",

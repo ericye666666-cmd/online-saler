@@ -1,4 +1,4 @@
-import { FulfillmentMethod } from "@online-saler/database";
+import { FulfillmentMethod, OrderPaymentPlan } from "@online-saler/database";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
       deliveryNote?: string | null;
       fulfillmentNodeId?: string | null;
       whatsappPhone?: string | null;
+      paymentPlan?: string | null;
     };
     const productIds = Array.isArray(body.productIds)
       ? body.productIds.filter((productId) => typeof productId === "string").map((productId) => productId.trim()).filter(Boolean)
@@ -45,6 +46,12 @@ export async function POST(request: Request) {
     }
     if (!Object.values(FulfillmentMethod).includes(body.fulfillmentMethod as FulfillmentMethod)) {
       throw new CheckoutValidationError("Choose Kikuyu pickup or local delivery.");
+    }
+    // Absent means pay in full, so an older client that knows nothing about
+    // deposits keeps checking out exactly as it did.
+    const paymentPlan = body.paymentPlan ?? OrderPaymentPlan.FULL;
+    if (!Object.values(OrderPaymentPlan).includes(paymentPlan as OrderPaymentPlan)) {
+      throw new CheckoutValidationError("Choose to pay in full or to pay a 50% deposit.");
     }
 
     const normalizedPhone = normalizeKenyaPhone(phone);
@@ -64,6 +71,7 @@ export async function POST(request: Request) {
       deliveryNote: body.deliveryNote,
       fulfillmentNodeId: body.fulfillmentNodeId,
       whatsappPhone: body.whatsappPhone,
+      paymentPlan: paymentPlan as OrderPaymentPlan,
       attribution
     });
 

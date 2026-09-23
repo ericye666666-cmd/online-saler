@@ -25,6 +25,12 @@ export type NotificationTemplateInput = {
   affiliateName?: string | null;
   supportPhone?: string | null;
   reason?: string | null;
+  /** What is still owed on a deposit order. */
+  balanceKsh?: number | null;
+  /** Whole days left before a deposit hold lapses. */
+  daysLeft?: number | null;
+  /** The deadline as the shopper reads it, e.g. "Mon 30 Sep". */
+  dueDateLabel?: string | null;
 };
 
 function money(amountKsh: number | null | undefined): string {
@@ -40,6 +46,18 @@ function items(input: NotificationTemplateInput): string {
 const templates: Record<NotificationTopicName, (input: NotificationTemplateInput) => string> = {
   CUSTOMER_PAYMENT_SUCCESS: (input) =>
     `Direct Loop: payment received for order ${input.orderNumber}${input.amountKsh ? ` (${money(input.amountKsh)})` : ""}. We are preparing ${items(input)} now. Questions? ${input.supportPhone ?? ""}`,
+  // The three deposit messages all lead with the same two facts, because they
+  // are the only two that matter to someone who has paid half: what is left to
+  // pay, and the day it has to be paid by.
+  CUSTOMER_DEPOSIT_RECEIVED: (input) =>
+    `Direct Loop: deposit received for order ${input.orderNumber}. ${items(input)} held for you. Balance ${money(input.balanceKsh)} due by ${input.dueDateLabel ?? "the due date"} or the item goes back on sale. ${input.supportPhone ?? ""}`,
+  CUSTOMER_DEPOSIT_BALANCE_DUE: (input) =>
+    `Direct Loop: ${input.daysLeft === 1 ? "last day" : `${input.daysLeft ?? ""} days left`} to pay the ${money(input.balanceKsh)} balance on order ${input.orderNumber}. Pay by ${input.dueDateLabel ?? "the due date"} to keep ${items(input)}. ${input.supportPhone ?? ""}`,
+  // Says plainly that money is coming back and that it is not all of it. A
+  // shopper who reads "refund" and expects the full deposit calls support.
+  CUSTOMER_DEPOSIT_EXPIRED: (input) =>
+    `Direct Loop: the balance on order ${input.orderNumber} was not paid in time, so ${items(input)} went back on sale. We will send ${money(input.amountKsh)} of your deposit back to your M-Pesa number. ${input.supportPhone ?? ""}`,
+
   CUSTOMER_ORDER_READY_FOR_PICKUP: (input) =>
     `Direct Loop: order ${input.orderNumber} is ready for pickup at ${input.nodeName ?? "our store"}. ${input.nodeMapsUrl ?? ""} Pickup code ${input.pickupCode ?? input.orderNumber}. ${input.supportPhone ?? ""}`,
   CUSTOMER_ORDER_DISPATCHED: (input) =>
@@ -55,6 +73,10 @@ const templates: Record<NotificationTopicName, (input: NotificationTemplateInput
   CUSTOMER_REFUND_RECORDED: (input) =>
     `Direct Loop: a refund of ${money(input.amountKsh)} for order ${input.orderNumber} has been sent to your M-Pesa number. ${input.supportPhone ?? ""}`,
 
+  // Not sent. The DIRECTLOOP sender id is registered as Transactional with
+  // Safaricom, and promotional traffic on it carries a KES 25,000 fine, so
+  // affiliate encouragement has no sender id to go out on. The bodies stay here
+  // as the catalogue; sending them again needs a second, promotional sender id.
   AFFILIATE_FIRST_SALE: (input) =>
     `Direct Loop: your first sale is in. Order ${input.orderNumber}${input.amountKsh ? `, commission ${money(input.amountKsh)}` : ""}. Keep posting — every item is one of one.`,
   AFFILIATE_NEW_ORDER: (input) =>
