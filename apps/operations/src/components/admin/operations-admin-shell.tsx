@@ -18,6 +18,7 @@ import {
   LayoutDashboardIcon,
   LogOutIcon,
   PackageCheckIcon,
+  ScanBarcodeIcon,
   SearchIcon,
   SettingsIcon,
   ShieldCheckIcon,
@@ -151,6 +152,7 @@ export const operationsModules: ModuleNav[] = [
       // eight o'clock. The order centre is for looking one order up, which is a
       // rarer and calmer thing to need.
       { label: "每日打单配送", href: "/orders/dispatch", icon: ClipboardCheckIcon, permission: "page.orders.dispatch" },
+      { label: "手机拣货台", href: "/orders/picking", icon: ScanBarcodeIcon, permission: "page.orders.picking" },
       { label: "订单工作台", href: "/orders", icon: LayoutDashboardIcon, permission: "page.orders.workbench" },
       { label: "全部订单", href: "/orders/all", icon: BriefcaseBusinessIcon, permission: "page.orders.all" },
       { label: "异常订单", href: "/orders/exceptions", icon: XCircleIcon, permission: "page.orders.exceptions" }

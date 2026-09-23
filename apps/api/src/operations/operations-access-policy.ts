@@ -74,6 +74,14 @@ const pagePermissions: OperationsPermission[] = [
     description: "Open the daily picking, packing and dispatch run."
   },
   {
+    code: "page.orders.picking",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-picking",
+    action: "view",
+    description: "Open the picker's phone station."
+  },
+  {
     code: "page.orders.all",
     module: "orders",
     scope: "PAGE",
@@ -336,7 +344,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "page.product.control",
       "page.product.details",
       "page.orders.workbench",
-      "page.orders.dispatch",
+      "page.orders.dispatch","page.orders.picking",
       "page.orders.all",
       "page.orders.after-sale",
       "page.orders.exceptions",
@@ -419,7 +427,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "module.orders",
       "module.product",
       "page.orders.workbench",
-      "page.orders.dispatch",
+      "page.orders.dispatch","page.orders.picking",
       "page.orders.all",
       "page.orders.exceptions",
       "page.product.warehouse-locations",
@@ -475,7 +483,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
     permissions: [
       "module.orders",
       "page.orders.workbench",
-      "page.orders.dispatch",
+      "page.orders.dispatch","page.orders.picking",
       "page.orders.all",
       "page.orders.after-sale",
       "page.orders.exceptions",

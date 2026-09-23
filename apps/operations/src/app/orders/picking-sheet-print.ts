@@ -61,52 +61,113 @@ function escapeHtml(value: string): string {
  */
 export function pickingSheetHtml(lines: PickingLine[], printedAt: Date): string {
   const orders = new Set(lines.map((line) => line.orderNumber));
-  const rows = lines.map((line) => `
+
+  // How many garments each destination is owed. Printed at the end so the
+  // packing bench can count its piles against a number instead of against
+  // memory, which is where a parcel goes to the wrong store.
+  const perDestination = new Map<string, number>();
+  for (const line of lines) perDestination.set(line.destination, (perDestination.get(line.destination) ?? 0) + 1);
+
+  let zone = "";
+  const rows = lines.map((line) => {
+    const nextZone = line.locationCode.split(/[^0-9a-zA-Z]/)[0] || "—";
+    // A band whenever the aisle changes. A picker looks up from the trolley and
+    // needs to know, without re-reading, that the next few lines are elsewhere.
+    const band = nextZone !== zone
+      ? `<tr class="zone"><td colspan="6">${escapeHtml(t("{zone} 区", { zone: nextZone }))}</td></tr>`
+      : "";
+    zone = nextZone;
+    return `${band}
     <tr>
       <td class="tick"></td>
       <td class="shelf">${escapeHtml(line.locationCode)}</td>
-      <td>${escapeHtml(line.title)}${line.sizeLabel ? ` <span class="size">${escapeHtml(line.sizeLabel)}</span>` : ""}</td>
+      <td class="title">${escapeHtml(line.title)}${line.sizeLabel ? `<span class="size">${escapeHtml(line.sizeLabel)}</span>` : ""}</td>
       <td class="mono">${escapeHtml(line.barcode)}</td>
-      <td class="mono">${escapeHtml(line.orderNumber)}</td>
-      <td>${escapeHtml(line.destination)}</td>
-    </tr>`).join("");
+      <td class="mono dim">${escapeHtml(line.orderNumber)}</td>
+      <td class="dest">${escapeHtml(line.destination)}</td>
+    </tr>`;
+  }).join("");
+
+  const summary = [...perDestination.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([destination, count]) => `<li><span>${escapeHtml(destination)}</span><b>${count}</b></li>`)
+    .join("");
 
   return `<!doctype html>
 <html lang="zh"><head><meta charset="utf-8"><title>${escapeHtml(t("拣货单"))}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: "Noto Sans SC", "Segoe UI", system-ui, sans-serif; margin: 12mm 10mm; color: #111; }
-  h1 { font-size: 18pt; margin: 0 0 2mm; }
-  .meta { font-size: 10pt; color: #444; margin-bottom: 4mm; }
-  table { width: 100%; border-collapse: collapse; font-size: 10pt; }
-  th, td { border-bottom: 1px solid #bbb; padding: 2.4mm 2mm; text-align: left; vertical-align: top; }
-  th { border-bottom: 1.5px solid #333; font-size: 9pt; text-transform: uppercase; letter-spacing: .04em; }
-  .tick { width: 9mm; }
-  .tick::before { content: ""; display: block; width: 5mm; height: 5mm; border: 1.2px solid #333; }
-  .shelf { font-weight: 700; font-size: 12pt; white-space: nowrap; }
-  .mono { font-family: "Consolas", "Menlo", monospace; white-space: nowrap; }
-  .size { color: #555; }
-  tfoot td { border: none; padding-top: 5mm; font-size: 9pt; color: #444; }
-  /* A picker reads a row at a time; a row split across a page break is a row
-     that gets missed. */
-  tr { page-break-inside: avoid; }
+  @page { size: A4; margin: 12mm 10mm 14mm; }
+  body { font-family: "Noto Sans SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif; margin: 0; color: #111; font-size: 10pt; }
+
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 6mm; border-bottom: 2px solid #111; padding-bottom: 2.5mm; }
+  h1 { font-size: 20pt; margin: 0; letter-spacing: .02em; }
+  .counts { font-size: 13pt; font-weight: 700; white-space: nowrap; }
+  .stamp { font-size: 9pt; color: #555; text-align: right; }
+
+  /* Who picked it and when. The sheet is the only thing present at the racks,
+     so if it is not written here it is not written anywhere. */
+  .signoff { display: flex; gap: 8mm; margin: 3mm 0 4mm; font-size: 9.5pt; color: #333; }
+  .signoff span { flex: 1; border-bottom: 1px solid #999; padding-bottom: 1mm; }
+
+  table { width: 100%; border-collapse: collapse; }
   thead { display: table-header-group; }
-  @page { size: A4; margin: 0; }
+  th { border-bottom: 1.2px solid #333; padding: 1.5mm 2mm; text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .06em; color: #555; font-weight: 600; }
+  td { border-bottom: 1px solid #ddd; padding: 2.6mm 2mm; vertical-align: middle; }
+  tr { page-break-inside: avoid; }
+
+  /* Tick boxes are 6 mm because they are ticked with a pen, standing up,
+     holding a trolley. */
+  .tick { width: 10mm; }
+  .tick::before { content: ""; display: block; width: 6mm; height: 6mm; border: 1.3px solid #333; border-radius: 1px; }
+
+  /* The shelf column is the one a picker reads while walking, so it is the
+     largest thing on the page and sits in its own tinted lane to follow down. */
+  .shelf { width: 30mm; font-size: 14pt; font-weight: 800; white-space: nowrap; background: #f2f2f2; font-variant-numeric: tabular-nums; }
+  .title { font-size: 10.5pt; }
+  .size { display: inline-block; margin-left: 2mm; padding: 0 1.6mm; border: 1px solid #bbb; border-radius: 2px; font-size: 8.5pt; color: #444; }
+  .mono { font-family: "Consolas", "Menlo", monospace; white-space: nowrap; font-size: 9.5pt; }
+  .dim { color: #666; }
+  .dest { font-size: 9pt; white-space: nowrap; }
+
+  .zone td { background: #111; color: #fff; font-weight: 700; font-size: 9pt; letter-spacing: .08em; padding: 1.2mm 2mm; border: none; }
+
+  footer { margin-top: 5mm; border-top: 1px solid #999; padding-top: 2.5mm; }
+  footer h2 { font-size: 10pt; margin: 0 0 1.5mm; }
+  footer ul { display: flex; flex-wrap: wrap; gap: 2mm 6mm; margin: 0; padding: 0; list-style: none; font-size: 9.5pt; }
+  footer li { display: flex; gap: 2mm; border: 1px solid #ccc; border-radius: 2px; padding: 1mm 2.5mm; }
+  .note { margin-top: 3mm; font-size: 8.5pt; color: #555; }
 </style></head>
 <body>
-  <h1>${escapeHtml(t("拣货单"))}</h1>
-  <div class="meta">
-    ${escapeHtml(printedAt.toLocaleString("zh-CN"))} ·
-    ${escapeHtml(t("{orders} 单 · {items} 件", { orders: orders.size, items: lines.length }))} ·
-    ${escapeHtml(t("按货架位排序，从上往下走一遍"))}
+  <header>
+    <div>
+      <h1>${escapeHtml(t("拣货单"))}</h1>
+      <div class="counts">${escapeHtml(t("{orders} 单 · {items} 件", { orders: orders.size, items: lines.length }))}</div>
+    </div>
+    <div class="stamp">
+      ${escapeHtml(printedAt.toLocaleString("zh-CN"))}<br>
+      ${escapeHtml(t("按货架位排序，从上往下走一遍"))}
+    </div>
+  </header>
+
+  <div class="signoff">
+    <span>${escapeHtml(t("拣货员"))}</span>
+    <span>${escapeHtml(t("开始"))}</span>
+    <span>${escapeHtml(t("完成"))}</span>
   </div>
+
   <table>
     <thead><tr>
       <th></th><th>${escapeHtml(t("货架位"))}</th><th>${escapeHtml(t("商品"))}</th>
       <th>${escapeHtml(t("条码"))}</th><th>${escapeHtml(t("订单号"))}</th><th>${escapeHtml(t("目的地"))}</th>
     </tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td colspan="6">${escapeHtml(t("拣完在作业台逐件扫码核对。这张纸不是凭证，扫码才是。"))}</td></tr></tfoot>
   </table>
+
+  <footer>
+    <h2>${escapeHtml(t("拣完按目的地分堆"))}</h2>
+    <ul>${summary}</ul>
+    <p class="note">${escapeHtml(t("这张纸不是凭证。拣完回作业台逐件扫码，扫过的才算数。"))}</p>
+  </footer>
 </body></html>`;
 }

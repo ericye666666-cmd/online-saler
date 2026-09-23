@@ -16,6 +16,8 @@ Each module should define:
 
 ## Notes in this directory
 
+- [picking-and-dispatch.md](picking-and-dispatch.md) — the warehouse's morning:
+  the daily run, the shelf-ordered picking sheet, and the picker's phone.
 - [fulfillment-nodes.md](fulfillment-nodes.md) — the warehouse-to-store hand-off,
   node configuration, and delivery economics.
 - [delivery-code-and-riders.md](delivery-code-and-riders.md) — the customer

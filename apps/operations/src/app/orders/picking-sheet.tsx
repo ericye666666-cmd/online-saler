@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { PrinterIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -34,15 +34,6 @@ export function PickingSheetDialog({ lines, onClose }: { lines: PickingLine[]; o
   const html = useMemo(() => pickingSheetHtml(sorted, printedAt), [sorted, printedAt]);
   const orderCount = useMemo(() => new Set(sorted.map((line) => line.orderNumber)).size, [sorted]);
 
-  useEffect(() => {
-    const frame = frameRef.current;
-    const document_ = frame?.contentDocument;
-    if (!document_) return;
-    document_.open();
-    document_.write(html);
-    document_.close();
-  }, [html]);
-
   function print() {
     const frame = frameRef.current;
     if (!frame?.contentWindow) return;
@@ -57,7 +48,17 @@ export function PickingSheetDialog({ lines, onClose }: { lines: PickingLine[]; o
         <DialogDescription>
           {t("{orders} 单 · {items} 件 · 按货架位排序。用普通打印机打 A4，或在打印对话框里选「另存为 PDF」。", { orders: orderCount, items: sorted.length })}
         </DialogDescription>
-        <iframe ref={frameRef} title={t("拣货单预览")} className="h-[60vh] w-full rounded border bg-white" />
+        {/* srcDoc rather than writing into contentDocument: the document.write
+            version rendered blank, and this is declarative — React owns the
+            content, so there is no ordering between the effect and the dialog's
+            mount animation to get wrong. Printing a srcDoc frame works the same
+            way, because it is still same-origin. */}
+        <iframe
+          ref={frameRef}
+          title={t("拣货单预览")}
+          srcDoc={html}
+          className="h-[60vh] w-full rounded border bg-white"
+        />
         <div className="flex flex-wrap gap-2">
           <Button onClick={print}><PrinterIcon data-icon="inline-start" />{t("打印")}</Button>
           <Button variant="outline" onClick={onClose}>{t("关闭")}</Button>
