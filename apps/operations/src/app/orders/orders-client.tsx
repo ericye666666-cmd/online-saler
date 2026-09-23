@@ -9,6 +9,7 @@ import {
   AlertTriangleIcon,
   BoxIcon,
   CheckCircle2Icon,
+  ChevronDownIcon,
   ClipboardCheckIcon,
   PackageCheckIcon,
   PrinterIcon,
@@ -20,6 +21,8 @@ import {
   UserRoundCheckIcon
 } from "lucide-react";
 import { FulfillmentLabelPrinter } from "../warehouse/fulfillment-label-printer";
+import type { FulfillmentLabelInput } from "../warehouse/fulfillment-label-raster";
+import { PickingSheetDialog, type PickingLine } from "./picking-sheet";
 
 import { hasPermission, type OperationsSession } from "@/components/admin/operations-access";
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
@@ -27,6 +30,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -46,7 +56,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ORDER_STATUS_TABS, type OrderStatusTab } from "./order-center-routes";
@@ -240,6 +249,62 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   return body as T;
 }
 
+/** One order as the label renderer wants it. Shared so a batch and a single print never drift. */
+function labelInput(order: OrderRow): FulfillmentLabelInput {
+  return {
+    packageCode: order.fulfillment?.packageCode ?? "",
+    nodeName: order.fulfillment?.fulfillmentNode?.name ?? order.fulfillmentNode?.name ?? "—",
+    orderNumber: order.orderNumber,
+    isDelivery: order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY",
+    itemCount: order.items.length,
+    customerName: order.customer.displayName,
+    customerPhone: order.whatsappPhone ?? order.customer.phone,
+    // The pin and the map link are for a screen, not a sticker.
+    deliveryAddress: parseDeliveryAddress(order.deliveryAddress ?? "").address,
+    deliveryArea: order.deliveryNote,
+    items: order.items.map((item) => ({
+      title: item.snapshot?.title ?? "Item",
+      sizeLabel: item.snapshot?.sizeLabel ?? null,
+      barcode: item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? null
+    }))
+  };
+}
+
+/**
+ * Where this parcel is going, which is how the morning's work is actually
+ * divided: one trolley per store, one pile for the van.
+ *
+ * A pickup order carries the store the shopper chose at checkout; a delivery
+ * order carries the store the warehouse routed it through. Both are the same
+ * question — which door does this leave by — so they group the same way.
+ */
+function destinationOf(order: OrderRow): { key: string; label: string; sort: string } {
+  const node = order.fulfillment?.fulfillmentNode ?? order.fulfillmentNode;
+  if (order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY") {
+    return node
+      ? { key: `delivery:${node.id}`, label: t("送货上门 · 经 {name}", { name: node.name }), sort: `1:${node.name}` }
+      : { key: "delivery:unrouted", label: t("送货上门 · 未指定履约点"), sort: "2" };
+  }
+  return node
+    ? { key: `pickup:${node.id}`, label: t("自提 · {name}", { name: node.name }), sort: `0:${node.name}` }
+    : { key: "pickup:unknown", label: t("自提 · 未指定门店"), sort: "2:" };
+}
+
+type OrderGroup = { key: string; label: string; sort: string; orders: OrderRow[] };
+
+function groupByDestination(orders: OrderRow[]): OrderGroup[] {
+  const groups = new Map<string, OrderGroup>();
+  for (const order of orders) {
+    const destination = destinationOf(order);
+    const existing = groups.get(destination.key);
+    if (existing) existing.orders.push(order);
+    else groups.set(destination.key, { ...destination, orders: [order] });
+  }
+  // Stores first and alphabetical, then deliveries, then whatever still has no
+  // destination — which is the pile somebody has to deal with before the van goes.
+  return [...groups.values()].sort((a, b) => a.sort.localeCompare(b.sort));
+}
+
 export function OrderCenterPage({ scope }: { scope: Scope }) {
   const { session } = useOperationsSession();
   const accessToken = session?.accessToken ?? "";
@@ -252,7 +317,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [labelOrder, setLabelOrder] = useState<OrderRow | null>(null);
+  const [labelOrders, setLabelOrders] = useState<OrderRow[] | null>(null);
   const meta = PAGE_META[scope];
 
   useEffect(() => {
@@ -354,7 +419,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
             busy={busy}
             onDialog={setDialog}
             onDirect={directAction}
-            onLabel={setLabelOrder}
+            onLabel={(target) => setLabelOrders([target])}
           />
         )) : (
           <Empty className="min-h-64 border">
@@ -375,27 +440,335 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
         onClose={() => setDialog(null)}
         onDone={async () => { setDialog(null); await load(); }}
       />
-      {labelOrder?.fulfillment?.packageCode ? (
-        <FulfillmentLabelPrinter
-          label={{
-            packageCode: labelOrder.fulfillment.packageCode,
-            nodeName: labelOrder.fulfillment.fulfillmentNode?.name ?? labelOrder.fulfillmentNode?.name ?? "—",
-            orderNumber: labelOrder.orderNumber,
-            isDelivery: labelOrder.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY",
-            itemCount: labelOrder.items.length,
-            customerName: labelOrder.customer.displayName,
-            customerPhone: labelOrder.whatsappPhone ?? labelOrder.customer.phone,
-            // The pin and the map link are for a screen, not a sticker.
-            deliveryAddress: parseDeliveryAddress(labelOrder.deliveryAddress ?? "").address,
-            deliveryArea: labelOrder.deliveryNote,
-            items: labelOrder.items.map((item) => ({
-              title: item.snapshot?.title ?? "Item",
-              sizeLabel: item.snapshot?.sizeLabel ?? null,
-              barcode: item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? null
-            }))
-          }}
-          onClose={() => setLabelOrder(null)}
-        />
+      {labelOrders?.length ? (
+        <FulfillmentLabelPrinter labels={labelOrders.map(labelInput)} onClose={() => setLabelOrders(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * What can be done to everything ticked, pinned to the bottom of the screen.
+ *
+ * Only actions that fit part of the selection appear, and each says how many
+ * orders it will touch — because a mixed selection is normal and "领取拣货 12 单"
+ * out of 20 ticked is the honest description of what the button does.
+ */
+function BatchBar({ orders, session, busy, onClear, onPickingSheet, onLabels, onBatch }: {
+  orders: OrderRow[];
+  session: OperationsSession | null;
+  busy: boolean;
+  onClear: () => void;
+  onPickingSheet: () => void;
+  onLabels: (orders: OrderRow[]) => void;
+  onBatch: (orders: OrderRow[], action: string, label: string) => Promise<void>;
+}) {
+  if (!orders.length) return null;
+  const claimable = orders.filter((order) => order.fulfillment?.status === "PAID");
+  const printable = orders.filter((order) => order.fulfillment?.packageCode);
+  const sendable = orders.filter((order) =>
+    order.fulfillment?.status === "PACKED"
+    && (order.fulfillment?.fulfillmentNode?.type ?? order.fulfillmentNode?.type) === "STORE");
+  const itemCount = orders.reduce((sum, order) => sum + order.items.length, 0);
+
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-3 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
+        <span className="font-medium">{t("已选 {count} 单 · {items} 件", { count: orders.length, items: itemCount })}</span>
+        <Button variant="ghost" size="sm" onClick={onClear}>{t("取消选择")}</Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button variant="outline" disabled={busy} onClick={onPickingSheet}>
+            <PrinterIcon data-icon="inline-start" />{t("打拣货单")}
+          </Button>
+          {printable.length && hasPermission(session, "orders.pack") ? (
+            <Button variant="outline" disabled={busy} onClick={() => onLabels(printable)}>
+              <PrinterIcon data-icon="inline-start" />{t("打面单 {count} 单", { count: printable.length })}
+            </Button>
+          ) : null}
+          {claimable.length && hasPermission(session, "orders.pick") ? (
+            <Button disabled={busy} onClick={() => void onBatch(claimable, "claim-picking", t("批量领取拣货"))}>
+              <ClipboardCheckIcon data-icon="inline-start" />{t("领取拣货 {count} 单", { count: claimable.length })}
+            </Button>
+          ) : null}
+          {sendable.length && hasPermission(session, "orders.assign-node") ? (
+            <Button disabled={busy} onClick={() => void onBatch(sendable, "send-to-node", t("批量发往门店"))}>
+              <TruckIcon data-icon="inline-start" />{t("发往门店 {count} 单", { count: sendable.length })}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The four things a morning consists of, in the order they happen. */
+const DISPATCH_STEPS = [
+  { key: "pick", label: "① 打单拣货", statuses: ["PAID"], hint: "先打一张拣货单，按货架位走一遍。领取拣货后这些单进入下一步。" },
+  { key: "scan", label: "② 逐件核对", statuses: ["PICKING"], hint: "拿回来的每一件都要扫码核对。全部核对完，订单自动进入待打包。" },
+  { key: "pack", label: "③ 打包", statuses: ["READY_TO_PACK"], hint: "开始打包 → 完成打包。打包完会生成包裹号，就能打面单了。" },
+  { key: "dispatch", label: "④ 发车", statuses: ["PACKED"], hint: "面单贴好，按门店分堆，整组发往门店。没有履约点的单要先指定。" }
+] as const;
+
+type DispatchStep = (typeof DISPATCH_STEPS)[number]["key"];
+
+/**
+ * The warehouse's morning, as one screen.
+ *
+ * The order centre answers "what happened to order DL-…?", which is a different
+ * question from "what do I do between eight and eleven". This page answers the
+ * second one: it takes every order still inside the warehouse, splits it into
+ * the four steps of a morning, and inside each step groups by where the parcel
+ * is going — because that is how the work physically divides, one trolley per
+ * store and one pile for the van.
+ *
+ * It writes through the same endpoints as the order centre, so an order moved
+ * here shows its new status there, and an order moved there disappears from the
+ * step here. There is no separate state to fall out of sync.
+ */
+export function DailyDispatchPage() {
+  const { session } = useOperationsSession();
+  const accessToken = session?.accessToken ?? "";
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [step, setStep] = useState<DispatchStep>("pick");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [dialog, setDialog] = useState<DialogState>(null);
+  const [labelOrders, setLabelOrders] = useState<OrderRow[] | null>(null);
+  const [pickingSheet, setPickingSheet] = useState<OrderRow[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const load = useCallback(async () => {
+    if (!accessToken) return;
+    setBusy(true);
+    setError("");
+    const headers = authorizationHeaders(accessToken);
+    try {
+      const [nextOrders, nextEmployees] = await Promise.all([
+        request<OrderRow[]>("/operations/orders", { query: { scope: "workbench", tab: "all" }, headers }),
+        request<Employee[]>("/operations/orders/employees", { headers })
+      ]);
+      setOrders(nextOrders);
+      setEmployees(nextEmployees);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("无法读取今天的出货任务。"));
+    } finally {
+      setBusy(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => { void load(); }, [load]);
+  // A selection only means anything within one step; carrying it across would
+  // act on orders that are no longer on screen.
+  useEffect(() => { setSelected(new Set()); }, [step]);
+
+  const byStep = useMemo(() => {
+    const map = {} as Record<DispatchStep, OrderRow[]>;
+    for (const entry of DISPATCH_STEPS) {
+      map[entry.key] = orders.filter((order) => (entry.statuses as readonly string[]).includes(order.fulfillment?.status ?? ""));
+    }
+    return map;
+  }, [orders]);
+
+  const current = DISPATCH_STEPS.find((entry) => entry.key === step)!;
+  const stepOrders = byStep[step] ?? [];
+  const groups = useMemo(() => groupByDestination(stepOrders), [stepOrders]);
+  const selectedOrders = useMemo(() => stepOrders.filter((order) => selected.has(order.id)), [stepOrders, selected]);
+
+  function toggleOrder(orderId: string, value: boolean) {
+    setSelected((currentSelection) => {
+      const next = new Set(currentSelection);
+      if (value) next.add(orderId); else next.delete(orderId);
+      return next;
+    });
+  }
+
+  function toggleGroup(group: OrderGroup, value: boolean) {
+    setSelected((currentSelection) => {
+      const next = new Set(currentSelection);
+      for (const order of group.orders) {
+        if (value) next.add(order.id); else next.delete(order.id);
+      }
+      return next;
+    });
+  }
+
+  async function directAction(order: OrderRow, action: string, body?: Record<string, unknown>) {
+    setBusy(true);
+    setError("");
+    try {
+      await request(`/operations/orders/${order.id}/${action}`, {
+        method: "POST",
+        headers: authorizationHeaders(accessToken),
+        body: JSON.stringify(body ?? {})
+      });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("订单操作失败。"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Runs one action across the selected orders, one request at a time.
+   *
+   * Sequential rather than parallel on purpose: these take the same order lock
+   * and touch the same stock rows, and firing thirty at once earns thirty
+   * conflict errors instead of thirty claimed orders. A failure does not stop
+   * the run — one bad order should not cost the other twenty-nine — but each
+   * failure is named, because "12 succeeded" does not tell anyone which parcel
+   * to go and look at.
+   */
+  async function batchAction(targets: OrderRow[], action: string, label: string) {
+    if (!targets.length) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const failures: string[] = [];
+    try {
+      for (const order of targets) {
+        try {
+          await request(`/operations/orders/${order.id}/${action}`, {
+            method: "POST",
+            headers: authorizationHeaders(accessToken),
+            body: JSON.stringify({})
+          });
+        } catch (caught) {
+          failures.push(`${order.orderNumber}（${caught instanceof Error ? caught.message : t("未知错误")}）`);
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+    setSelected(new Set());
+    if (failures.length) {
+      setError(t("{label}：{done} 单成功，{failed} 单没成功 —— {detail}", {
+        label,
+        done: targets.length - failures.length,
+        failed: failures.length,
+        detail: failures.join("；")
+      }));
+    } else {
+      setNotice(t("{label}：{done} 单已完成。", { label, done: targets.length }));
+    }
+    await load();
+  }
+
+  const pickingLines = useMemo<PickingLine[]>(() => (pickingSheet ?? []).flatMap((order) => {
+    const destination = destinationOf(order).label;
+    return order.items.map((item) => ({
+      locationCode: item.inventoryItem?.location?.locationCode ?? "—",
+      title: item.snapshot?.title ?? t("未命名商品"),
+      sizeLabel: item.snapshot?.sizeLabel ?? null,
+      barcode: item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? "—",
+      orderNumber: order.orderNumber,
+      destination
+    }));
+  }), [pickingSheet]);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={t("每日打单配送")}
+        description={t("仓库一个上午的活：打拣货单、拣货核对、打包贴面单、按门店发车。改的是同一批订单，订单中心会同步更新。")}
+      >
+        <Button variant="outline" disabled={busy} onClick={() => void load()}>
+          <RefreshCwIcon data-icon="inline-start" />{t("刷新")}
+        </Button>
+      </PageHeader>
+
+      <Tabs value={step} onValueChange={(value) => setStep(value as DispatchStep)}>
+        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+          {DISPATCH_STEPS.map((entry) => (
+            <TabsTrigger key={entry.key} value={entry.key} className="shrink-0">
+              {t(entry.label)}<Badge variant="secondary">{(byStep[entry.key] ?? []).length}</Badge>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      <p className="text-muted-foreground text-sm">{t(current.hint)}</p>
+
+      {error ? (
+        <Alert variant="destructive">
+          <AlertTriangleIcon />
+          <AlertTitle>{t("有订单没有处理成功")}</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+      {notice ? (
+        <Alert>
+          <CheckCircle2Icon />
+          <AlertTitle>{notice}</AlertTitle>
+        </Alert>
+      ) : null}
+
+      <div className="flex flex-col gap-6 pb-24">
+        {groups.length ? groups.map((group) => {
+          const allSelected = group.orders.every((order) => selected.has(order.id));
+          return (
+            <section key={group.key} className="flex flex-col gap-3">
+              {/* The destination is the heading because it is how the work
+                  divides on the floor: one trolley per store. */}
+              <div className="flex flex-wrap items-center gap-3 border-b pb-2">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(value) => toggleGroup(group, value === true)}
+                  aria-label={t("选择这一组的全部订单")}
+                />
+                <h2 className="font-semibold text-base">{group.label}</h2>
+                <Badge variant="secondary">{t("{count} 单", { count: group.orders.length })}</Badge>
+              </div>
+              {group.orders.map((order) => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  session={session}
+                  busy={busy}
+                  selected={selected.has(order.id)}
+                  onSelect={toggleOrder}
+                  onDialog={setDialog}
+                  onDirect={directAction}
+                  onLabel={(target) => setLabelOrders([target])}
+                />
+              ))}
+            </section>
+          );
+        }) : (
+          <Empty className="min-h-64 border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><ClipboardCheckIcon /></EmptyMedia>
+              <EmptyTitle>{busy ? t("正在读取") : t("这一步没有待办")}</EmptyTitle>
+              <EmptyDescription>{busy ? t("正在同步今天的出货任务。") : t("这一步是空的。看看上一步还有没有没做完的。")}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+      </div>
+
+      <BatchBar
+        orders={selectedOrders}
+        session={session}
+        busy={busy}
+        onClear={() => setSelected(new Set())}
+        onPickingSheet={() => setPickingSheet(selectedOrders)}
+        onLabels={(targets) => setLabelOrders(targets)}
+        onBatch={batchAction}
+      />
+
+      <OrderActionDialog
+        state={dialog}
+        employees={employees}
+        session={session}
+        onClose={() => setDialog(null)}
+        onDone={async () => { setDialog(null); await load(); }}
+      />
+      {labelOrders?.length ? (
+        <FulfillmentLabelPrinter labels={labelOrders.map(labelInput)} onClose={() => setLabelOrders(null)} />
+      ) : null}
+      {pickingSheet?.length ? (
+        <PickingSheetDialog lines={pickingLines} onClose={() => setPickingSheet(null)} />
       ) : null}
     </div>
   );
@@ -407,7 +780,7 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [labelOrder, setLabelOrder] = useState<OrderRow | null>(null);
+  const [labelOrders, setLabelOrders] = useState<OrderRow[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -450,7 +823,7 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
       {error ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{t("无法打开订单")}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
       {order ? (
         <>
-          <OrderCard order={order} session={session} busy={busy} showTimeline onDialog={setDialog} onDirect={directAction} onLabel={setLabelOrder} />
+          <OrderCard order={order} session={session} busy={busy} showTimeline onDialog={setDialog} onDirect={directAction} onLabel={(order) => setLabelOrders([order])} />
           <AfterSalesPanel key={order.id} order={order} session={session} onOrderChanged={load} />
         </>
       ) : (
@@ -463,27 +836,8 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
         onClose={() => setDialog(null)}
         onDone={async () => { setDialog(null); await load(); }}
       />
-      {labelOrder?.fulfillment?.packageCode ? (
-        <FulfillmentLabelPrinter
-          label={{
-            packageCode: labelOrder.fulfillment.packageCode,
-            nodeName: labelOrder.fulfillment.fulfillmentNode?.name ?? labelOrder.fulfillmentNode?.name ?? "—",
-            orderNumber: labelOrder.orderNumber,
-            isDelivery: labelOrder.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY",
-            itemCount: labelOrder.items.length,
-            customerName: labelOrder.customer.displayName,
-            customerPhone: labelOrder.whatsappPhone ?? labelOrder.customer.phone,
-            // The pin and the map link are for a screen, not a sticker.
-            deliveryAddress: parseDeliveryAddress(labelOrder.deliveryAddress ?? "").address,
-            deliveryArea: labelOrder.deliveryNote,
-            items: labelOrder.items.map((item) => ({
-              title: item.snapshot?.title ?? "Item",
-              sizeLabel: item.snapshot?.sizeLabel ?? null,
-              barcode: item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? null
-            }))
-          }}
-          onClose={() => setLabelOrder(null)}
-        />
+      {labelOrders?.length ? (
+        <FulfillmentLabelPrinter labels={labelOrders.map(labelInput)} onClose={() => setLabelOrders(null)} />
       ) : null}
     </div>
   );
@@ -569,74 +923,109 @@ function EmployeeFilter({ label, value, employees, onChange }: { label: string; 
   return <SelectFilter label={label} value={value} onChange={onChange} options={employees.map((employee) => [employee.id, `${employee.name} · ${employee.employeeCode}`] as const)} />;
 }
 
+/**
+ * One order, showing only what the current step needs.
+ *
+ * The card used to open with eight labelled boxes — picker, packer, dispatcher,
+ * rider, pickup, after-sales, affiliate, packaging — almost all of them reading
+ * 未分配 on a fresh order. Eight empty boxes is not information; it is a form
+ * nobody filled in. They now appear one at a time, as the person doing that step
+ * is actually recorded, so the card grows a line as the order moves instead of
+ * starting full of blanks.
+ */
 function OrderCard(props: {
   order: OrderRow;
   session: OperationsSession | null;
   busy: boolean;
   showTimeline?: boolean;
+  selected?: boolean;
+  onSelect?: (orderId: string, selected: boolean) => void;
   onDialog: (state: DialogState) => void;
   onDirect: (order: OrderRow, action: string, body?: Record<string, unknown>) => Promise<void>;
   onLabel: (order: OrderRow) => void;
 }) {
-  const { order, session, busy, showTimeline, onDialog, onDirect, onLabel } = props;
+  const { order, session, busy, showTimeline, selected, onSelect, onDialog, onDirect, onLabel } = props;
   const delivery = parseDeliveryAddress(order.deliveryAddress ?? "");
   const payment = order.payments[0];
   const fulfillment = order.fulfillment;
   const afterSales = order.customerServiceCases.filter((item) => item.issueType === "AFTER_SALE");
+  const people: Array<[string, string]> = [];
+  if (fulfillment?.assignedPicker?.name) people.push([t("拣货"), fulfillment.assignedPicker.name]);
+  if (fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name) people.push([t("打包"), (fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name)!]);
+  if (fulfillment?.dispatchedBy?.name) people.push([t("出库"), fulfillment.dispatchedBy.name]);
+  if (fulfillment?.deliveryRider?.name ?? fulfillment?.deliveryRiderName) people.push([t("骑手"), (fulfillment?.deliveryRider?.name ?? fulfillment?.deliveryRiderName)!]);
+  if (fulfillment?.pickupConfirmedBy?.name) people.push([t("自提确认"), fulfillment.pickupConfirmedBy.name]);
+  if (fulfillment?.afterSaleOwner?.name) people.push([t("售后"), fulfillment.afterSaleOwner.name]);
+  if (fulfillment?.packagingMethod) people.push([t("包装"), t("{packagingMethod} · {v1}件", { packagingMethod: fulfillment.packagingMethod, v1: fulfillment.packageCount ?? 1 })]);
+  if (order.affiliate) people.push(["Affiliate", `${order.affiliate.displayName} · ${order.affiliate.affiliateCode}`]);
+
   return (
     <Card className="[content-visibility:auto]">
-      <CardHeader className="gap-4">
+      <CardHeader className="gap-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="text-lg">{order.orderNumber}</CardTitle>
-              <StatusBadge status={fulfillment?.status ?? order.status} />
-              <StatusBadge status={payment?.status ?? "NO_PAYMENT"} />
+          <div className="flex min-w-0 items-start gap-3">
+            {onSelect ? (
+              <Checkbox
+                className="mt-1"
+                checked={Boolean(selected)}
+                onCheckedChange={(value) => onSelect(order.id, value === true)}
+                aria-label={t("选择这一单")}
+              />
+            ) : null}
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle className="text-lg">{order.orderNumber}</CardTitle>
+                <StatusBadge status={fulfillment?.status ?? order.status} />
+                <StatusBadge status={payment?.status ?? "NO_PAYMENT"} />
+                {fulfillment?.packageCode ? <Badge variant="outline" className="font-mono">{fulfillment.packageCode}</Badge> : null}
+              </div>
+              <CardDescription>
+                {formatDate(order.createdAt)} · {order.customer.displayName ?? order.customer.email} · {payment?.phone ?? order.customer.phone ?? t("未留手机号")}
+              </CardDescription>
+              {people.length ? (
+                <CardDescription className="flex flex-wrap gap-x-3 gap-y-1">
+                  {people.map(([label, value]) => (
+                    <span key={label}>{label}：<span className="text-foreground">{value}</span></span>
+                  ))}
+                </CardDescription>
+              ) : null}
             </div>
-            <CardDescription>{formatDate(order.createdAt)} · {order.customer.displayName ?? order.customer.email}</CardDescription>
-            <CardDescription>{t("本单付款号码：")}{payment?.phone ?? t("暂无付款号码")}</CardDescription>
-            <CardDescription>{t("顾客当前联系方式：")}{order.customer.phone ?? t("未留手机号")}</CardDescription>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Badge variant="outline">{order.fulfillmentMethod === "PICKUP" ? t("自提") : t("配送")}</Badge>
             <span className="font-semibold">{money(order.totalKsh)}</span>
-            {!showTimeline ? <Button size="sm" variant="outline" asChild><Link href={`/orders/${order.id}`}>{t("查看详情与历史")}</Link></Button> : null}
+            {!showTimeline ? <Button size="sm" variant="ghost" asChild><Link href={`/orders/${order.id}`}>{t("详情")}</Link></Button> : null}
           </div>
         </div>
-        <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <Assignment label={t("拣货员工")} value={fulfillment?.assignedPicker?.name} />
-          <Assignment label={t("打包员工")} value={fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name} />
-          <Assignment label={t("出库确认")} value={fulfillment?.dispatchedBy?.name} />
-          <Assignment label={t("配送员")} value={fulfillment?.deliveryRider?.name} />
-          <Assignment label={t("自提确认")} value={fulfillment?.pickupConfirmedBy?.name} />
-          <Assignment label={t("售后负责人")} value={fulfillment?.afterSaleOwner?.name} />
-          <Assignment label="Affiliate" value={order.affiliate ? `${order.affiliate.displayName} · ${order.affiliate.affiliateCode}` : undefined} />
-          <Assignment label={t("包装")} value={fulfillment?.packagingMethod ? t("{packagingMethod} · {v1}件", { packagingMethod: fulfillment.packagingMethod, v1: fulfillment.packageCount ?? 1 }) : undefined} />
-        </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" ? <div className="rounded-lg border p-3 text-sm space-y-2">
-          <p className="font-medium">{t("配送地址")}</p>
-          <p className="whitespace-pre-wrap break-words">{delivery.address || t("未填写")}</p>
-          {delivery.point ? <a className="underline" href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">{t("打开 Google Maps 配送位置 ↗")}</a> : null}
-          {order.deliveryNote ? <p className="whitespace-pre-wrap">{t("配送备注：")}{order.deliveryNote}</p> : null}
-        </div> : null}
-        <Separator />
-        <div className="flex flex-col gap-3">
+      <CardContent className="flex flex-col gap-3">
+        {order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" ? (
+          <div className="rounded-lg border p-3 text-sm">
+            <span className="text-muted-foreground">{t("配送地址：")}</span>
+            <span className="break-words">{delivery.address || t("未填写")}</span>
+            {delivery.point ? <> · <a className="underline" href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">Google Maps ↗</a></> : null}
+            {order.deliveryNote ? <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{order.deliveryNote}</p> : null}
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-2">
           {order.items.map((item, index) => {
             const scan = fulfillment?.items.find((candidate) => candidate.orderItemId === item.id);
             return (
-              <div key={item.id} className="grid gap-4 rounded-lg border p-3 sm:grid-cols-[112px_1fr_auto] sm:items-center">
-                <div className="flex h-32 w-28 items-center justify-center overflow-hidden rounded-md border bg-white">
+              <div key={item.id} className="grid gap-3 rounded-lg border p-2 sm:grid-cols-[72px_1fr_auto] sm:items-center">
+                <div className="flex h-20 w-18 items-center justify-center overflow-hidden rounded-md border bg-white">
                   <OrderItemImage src={item.displayImageUrl ?? item.snapshot?.imageUrl} alt={item.snapshot?.title ?? t("商品图片")} />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-medium">{index + 1}. {item.snapshot?.title ?? t("未命名商品")}</p>
-                  <div className="mt-1 grid gap-x-4 gap-y-1 text-muted-foreground text-sm md:grid-cols-3">
-                    <span>Barcode: <strong className="text-foreground">{scan?.expectedBarcode ?? item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? t("缺失")}</strong></span>
-                    <span>{t("货架位:")} <strong className="text-foreground">{item.inventoryItem?.location?.locationCode ?? t("未分配")}</strong></span>
-                    <span>{t("价格:")} <strong className="text-foreground">{money(item.unitPriceKsh)}</strong></span>
-                  </div>
+                  {/* The shelf code leads: it is the only thing on this row that
+                      tells a picker where to walk. */}
+                  <p className="font-semibold text-base">
+                    {item.inventoryItem?.location?.locationCode ?? t("货架位未分配")}
+                    <span className="ml-2 font-normal text-muted-foreground text-sm">{index + 1}. {item.snapshot?.title ?? t("未命名商品")}</span>
+                  </p>
+                  <p className="text-muted-foreground text-sm">
+                    <span className="font-mono">{scan?.expectedBarcode ?? item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? t("缺失")}</span>
+                    {item.snapshot?.sizeLabel ? <> · {item.snapshot.sizeLabel}</> : null} · {money(item.unitPriceKsh)}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 sm:flex-col sm:items-end">
                   <Badge variant={scan?.status === "VERIFIED" ? "secondary" : "outline"}>{scan?.status === "VERIFIED" ? t("已核对") : t("未核对")}</Badge>
@@ -655,8 +1044,8 @@ function OrderCard(props: {
         ) : null}
         {showTimeline ? <OrderTimeline events={fulfillment?.events ?? []} /> : null}
       </CardContent>
-      <CardFooter className="flex-wrap justify-end gap-2">
-        <OrderActions order={order} session={session} busy={busy} onDialog={onDialog} onDirect={onDirect} onLabel={onLabel} />
+      <CardFooter className="justify-end">
+        <OrderActionBar actions={orderActions({ order, session, onDialog, onDirect, onLabel })} busy={busy} />
       </CardFooter>
     </Card>
   );
@@ -676,56 +1065,148 @@ function OrderItemImage({ src, alt }: { src?: string | null; alt: string }) {
   return <img src={src.startsWith("/") && !src.startsWith("/api-proxy/") ? `/api-proxy${src}` : src} alt={alt} loading="lazy" decoding="async" className="size-full object-contain" onError={() => setFailed(true)} />;
 }
 
-function OrderActions({ order, session, busy, onDialog, onDirect, onLabel }: {
+type OrderAction = {
+  key: string;
+  label: string;
+  icon: ReactNode;
+  run: () => void;
+  variant?: "default" | "outline" | "destructive";
+};
+
+/**
+ * Everything this order can do right now, in the order a warehouse expects.
+ *
+ * The first entry is the one the card shows as a button; the rest go behind
+ * 更多. That split is the point. A 待拣货 order has exactly one thing anyone is
+ * meant to do to it, but the card used to offer five buttons at once — reassign,
+ * claim, route, raise an exception, write the order off — which reads as a
+ * decision to make rather than a task to do, and buries the one button the
+ * picker wants under four they will use once a month.
+ *
+ * Nothing is removed. The rare actions are one click further away.
+ */
+function orderActions({ order, session, onDialog, onDirect, onLabel }: {
   order: OrderRow;
   session: OperationsSession | null;
-  busy: boolean;
   onDialog: (state: DialogState) => void;
   onDirect: (order: OrderRow, action: string, body?: Record<string, unknown>) => Promise<void>;
   onLabel: (order: OrderRow) => void;
-}) {
+}): OrderAction[] {
   const status = order.fulfillment?.status;
-  const actions: ReactNode[] = [];
-  if (status === "PAID" && hasPermission(session, "orders.assign-picker")) actions.push(<Button key="assign" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-picker", order })}><UserRoundCheckIcon data-icon="inline-start" />{t("分配拣货员")}</Button>);
-  if (status === "PAID" && hasPermission(session, "orders.pick")) actions.push(<Button key="claim" disabled={busy} onClick={() => void onDirect(order, "claim-picking")}><ClipboardCheckIcon data-icon="inline-start" />{t("领取拣货任务")}</Button>);
-  if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && !order.fulfillment?.packingStartedAt) actions.push(<Button key="start-pack" disabled={busy} onClick={() => onDialog({ kind: "start-packing", order })}><BoxIcon data-icon="inline-start" />{t("开始打包")}</Button>);
-  if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && order.fulfillment?.packingStartedAt) actions.push(<Button key="pack" disabled={busy} onClick={() => onDialog({ kind: "complete-packing", order })}><PackageCheckIcon data-icon="inline-start" />{t("完成打包")}</Button>);
+  const actions: OrderAction[] = [];
   const nodeType = order.fulfillment?.fulfillmentNode?.type ?? order.fulfillmentNode?.type ?? null;
   const atStoreNode = nodeType === "STORE";
-  if (status && !["COMPLETED", "IN_TRANSIT_TO_NODE", "ARRIVED_AT_NODE", "READY_FOR_PICKUP", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY"].includes(status) && hasPermission(session, "orders.assign-node")) {
-    actions.push(<Button key="node" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-node", order })}><TruckIcon data-icon="inline-start" />{order.fulfillmentNode ? t("改派履约点") : t("指定履约点")}</Button>);
+  const hasNode = Boolean(order.fulfillment?.fulfillmentNode ?? order.fulfillmentNode);
+
+  // A packed parcel with nowhere to go is the one case where routing is the
+  // next thing to do rather than a correction, so it leads.
+  if (status === "PACKED" && !hasNode && hasPermission(session, "orders.assign-node")) {
+    actions.push({ key: "node", label: t("指定履约点"), icon: <TruckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-node", order }) });
+  }
+
+  if (status === "PAID" && hasPermission(session, "orders.pick")) {
+    actions.push({ key: "claim", label: t("领取拣货任务"), icon: <ClipboardCheckIcon data-icon="inline-start" />, run: () => void onDirect(order, "claim-picking") });
+  }
+  if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && !order.fulfillment?.packingStartedAt) {
+    actions.push({ key: "start-pack", label: t("开始打包"), icon: <BoxIcon data-icon="inline-start" />, run: () => onDialog({ kind: "start-packing", order }) });
+  }
+  if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && order.fulfillment?.packingStartedAt) {
+    actions.push({ key: "pack", label: t("完成打包"), icon: <PackageCheckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "complete-packing", order }) });
+  }
+  if (status === "PACKED" && atStoreNode && hasPermission(session, "orders.assign-node")) {
+    actions.push({ key: "send-node", label: t("发往门店"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "send-to-node") });
+  }
+  if (status === "IN_TRANSIT_TO_NODE" && hasPermission(session, "orders.node-receive")) {
+    actions.push({ key: "receive-node", label: t("确认到店"), icon: <PackageCheckIcon data-icon="inline-start" />, run: () => void onDirect(order, "receive-at-node") });
+  }
+  if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && order.fulfillmentMethod === "PICKUP" && hasPermission(session, "orders.pack")) {
+    actions.push({ key: "pickup-ready", label: t("设为待自提"), icon: <ClipboardCheckIcon data-icon="inline-start" />, run: () => void onDirect(order, "ready-for-pickup") });
+  }
+  if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) {
+    actions.push({ key: "dispatch-ready", label: t("设为待发货"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "ready-for-dispatch") });
+  }
+  if (status === "READY_FOR_DISPATCH" && order.fulfillment?.deliveryRiderId && hasPermission(session, "orders.dispatch")) {
+    actions.push({ key: "dispatch", label: t("已交给配送员"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "dispatch") });
+  }
+  if (status === "READY_FOR_DISPATCH" && hasPermission(session, "orders.assign-rider")) {
+    actions.push({ key: "rider", label: t("分配配送员"), icon: <TruckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-rider", order }), variant: "outline" });
+  }
+  if (status === "READY_FOR_PICKUP" && hasPermission(session, "orders.complete")) {
+    actions.push({ key: "pickup", label: t("确认已取货"), icon: <CheckCircle2Icon data-icon="inline-start" />, run: () => onDialog({ kind: "confirm-pickup", order }) });
+  }
+  if (status === "OUT_FOR_DELIVERY" && hasPermission(session, "orders.complete")) {
+    actions.push({ key: "delivered", label: t("确认送达"), icon: <CheckCircle2Icon data-icon="inline-start" />, run: () => onDialog({ kind: "complete-delivery", order }) });
+  }
+
+  // Everything below is a correction, a reprint or an escape hatch.
+
+  if (status === "PAID" && hasPermission(session, "orders.assign-picker")) {
+    actions.push({ key: "assign", label: t("分配给其他拣货员"), icon: <UserRoundCheckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-picker", order }), variant: "outline" });
   }
   // Printable as soon as packing assigns a package code, and reprintable at any
   // later step: a sticker that falls off in a van should not need the order
   // rewound to replace it.
   if (order.fulfillment?.packageCode && hasPermission(session, "orders.pack")) {
-    actions.push(<Button key="label" variant="outline" disabled={busy} onClick={() => onLabel(order)}><PrinterIcon data-icon="inline-start" />{t("打印面单")}</Button>);
+    actions.push({ key: "label", label: t("打印面单"), icon: <PrinterIcon data-icon="inline-start" />, run: () => onLabel(order), variant: "outline" });
   }
-  if (status === "PACKED" && atStoreNode && hasPermission(session, "orders.assign-node")) actions.push(<Button key="send-node" disabled={busy} onClick={() => void onDirect(order, "send-to-node")}><TruckIcon data-icon="inline-start" />{t("发往门店")}</Button>);
-  if (status === "IN_TRANSIT_TO_NODE" && hasPermission(session, "orders.node-receive")) actions.push(<Button key="receive-node" disabled={busy} onClick={() => void onDirect(order, "receive-at-node")}><PackageCheckIcon data-icon="inline-start" />{t("确认到店")}</Button>);
-  if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && order.fulfillmentMethod === "PICKUP" && hasPermission(session, "orders.pack")) actions.push(<Button key="pickup-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-pickup")}><ClipboardCheckIcon data-icon="inline-start" />{t("设为待自提")}</Button>);
-  if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="dispatch-ready" disabled={busy} onClick={() => void onDirect(order, "ready-for-dispatch")}><TruckIcon data-icon="inline-start" />{t("设为待发货")}</Button>);
-  if (status === "READY_FOR_DISPATCH" && hasPermission(session, "orders.assign-rider")) actions.push(<Button key="rider" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-rider", order })}><TruckIcon data-icon="inline-start" />{t("分配配送员")}</Button>);
-  if (status === "READY_FOR_DISPATCH" && order.fulfillment?.deliveryRiderId && hasPermission(session, "orders.dispatch")) actions.push(<Button key="dispatch" disabled={busy} onClick={() => void onDirect(order, "dispatch")}><TruckIcon data-icon="inline-start" />{t("已交给配送员")}</Button>);
-  if (status === "READY_FOR_PICKUP" && hasPermission(session, "orders.complete")) actions.push(<Button key="pickup" disabled={busy} onClick={() => onDialog({ kind: "confirm-pickup", order })}><CheckCircle2Icon data-icon="inline-start" />{t("确认已取货")}</Button>);
-  if (status === "OUT_FOR_DELIVERY" && hasPermission(session, "orders.complete")) actions.push(<Button key="delivered" disabled={busy} onClick={() => onDialog({ kind: "complete-delivery", order })}><CheckCircle2Icon data-icon="inline-start" />{t("确认送达")}</Button>);
-  if (status === "OUT_FOR_DELIVERY" && hasPermission(session, "orders.resend-code")) actions.push(<Button key="resend-code" variant="outline" disabled={busy} onClick={() => void onDirect(order, "resend-delivery-code")}><TruckIcon data-icon="inline-start" />{t("重发配送码")}</Button>);
-  if (order.customerServiceCases.some((item) => item.issueType === "AFTER_SALE") && hasPermission(session, "orders.after-sale")) actions.push(<Button key="after-sale" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "assign-after-sale", order })}>{t("处理售后")}</Button>);
-  if (status && !["COMPLETED", "EXCEPTION"].includes(status) && ["orders.pick", "orders.pack", "orders.dispatch"].some((permission) => hasPermission(session, permission))) actions.push(<Button key="exception" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "exception", order })}><AlertTriangleIcon data-icon="inline-start" />{t("提交异常事实")}</Button>);
+  if (status && !["COMPLETED", "IN_TRANSIT_TO_NODE", "ARRIVED_AT_NODE", "READY_FOR_PICKUP", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY"].includes(status) && hasPermission(session, "orders.assign-node") && !(status === "PACKED" && !hasNode)) {
+    actions.push({ key: "node", label: hasNode ? t("改派履约点") : t("指定履约点"), icon: <TruckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-node", order }), variant: "outline" });
+  }
+  if (status === "OUT_FOR_DELIVERY" && hasPermission(session, "orders.resend-code")) {
+    actions.push({ key: "resend-code", label: t("重发配送码"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "resend-delivery-code"), variant: "outline" });
+  }
+  if (order.customerServiceCases.some((item) => item.issueType === "AFTER_SALE") && hasPermission(session, "orders.after-sale")) {
+    actions.push({ key: "after-sale", label: t("处理售后"), icon: <ClipboardCheckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-after-sale", order }), variant: "outline" });
+  }
+  if (status && !["COMPLETED", "EXCEPTION"].includes(status) && ["orders.pick", "orders.pack", "orders.dispatch"].some((permission) => hasPermission(session, permission))) {
+    actions.push({ key: "exception", label: t("提交异常事实"), icon: <AlertTriangleIcon data-icon="inline-start" />, run: () => onDialog({ kind: "exception", order }), variant: "outline" });
+  }
   if (status === "EXCEPTION" && order.fulfillment?.exceptionFromStatus && !["CANCELLED", "REFUNDED"].includes(order.status) && ["orders.pick", "orders.pack", "orders.dispatch", "orders.node-receive"].some((permission) => hasPermission(session, permission))) {
-    actions.push(<Button key="resolve-exception" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "resolve-exception", order })}><CheckCircle2Icon data-icon="inline-start" />{t("异常已解决，回到原步骤")}</Button>);
+    actions.push({ key: "resolve-exception", label: t("异常已解决，回到原步骤"), icon: <CheckCircle2Icon data-icon="inline-start" />, run: () => onDialog({ kind: "resolve-exception", order }), variant: "outline" });
   }
   // A paid order cannot simply be cancelled: the garment has to be accounted
   // for and the money has to be given back.
   const paid = Boolean(order.payments?.some((payment) => payment.status === "SUCCESS"));
   if (paid && !["COMPLETED", "CANCELLED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.write-off")) {
-    actions.push(<Button key="write-off" variant="destructive" disabled={busy} onClick={() => onDialog({ kind: "write-off", order })}><AlertTriangleIcon data-icon="inline-start" />{t("无法履约，作废订单")}</Button>);
+    actions.push({ key: "write-off", label: t("无法履约，作废订单"), icon: <AlertTriangleIcon data-icon="inline-start" />, run: () => onDialog({ kind: "write-off", order }), variant: "destructive" });
   }
   if (paid && ["CANCELLED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.refund")) {
-    actions.push(<Button key="refund" variant="outline" disabled={busy} onClick={() => onDialog({ kind: "refund", order })}>{t("登记退款")}</Button>);
+    actions.push({ key: "refund", label: t("登记退款"), icon: <ClipboardCheckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "refund", order }), variant: "outline" });
   }
-  if (!paid && !["COMPLETED", "CANCELLED", "EXPIRED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.cancel")) actions.push(<Button key="cancel" variant="destructive" disabled={busy} onClick={() => onDialog({ kind: "cancel", order })}>{t("取消订单")}</Button>);
+  if (!paid && !["COMPLETED", "CANCELLED", "EXPIRED", "REFUNDED"].includes(order.status) && hasPermission(session, "orders.cancel")) {
+    actions.push({ key: "cancel", label: t("取消订单"), icon: <AlertTriangleIcon data-icon="inline-start" />, run: () => onDialog({ kind: "cancel", order }), variant: "destructive" });
+  }
   return actions;
+}
+
+/** The leading action as a button; everything else one click away under 更多. */
+function OrderActionBar({ actions, busy }: { actions: OrderAction[]; busy: boolean }) {
+  if (!actions.length) return null;
+  const [primary, ...rest] = actions;
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {rest.length ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" disabled={busy}>{t("更多")}<ChevronDownIcon data-icon="inline-end" /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {rest.map((action) => (
+              <DropdownMenuItem
+                key={action.key}
+                disabled={busy}
+                variant={action.variant === "destructive" ? "destructive" : "default"}
+                onSelect={() => action.run()}
+              >
+                {action.icon}{action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+      <Button variant={primary.variant ?? "default"} disabled={busy} onClick={primary.run}>{primary.icon}{primary.label}</Button>
+    </div>
+  );
 }
 
 function OrderActionDialog(props: {
@@ -937,10 +1418,6 @@ function OrderActionDialog(props: {
       </DialogContent>
     </Dialog>
   );
-}
-
-function Assignment({ label, value }: { label: string; value?: string | null }) {
-  return <div className="rounded-md bg-muted/40 px-3 py-2"><span className="text-muted-foreground">{label}</span><p className="mt-0.5 font-medium">{value || t("未分配")}</p></div>;
 }
 
 function AfterSaleSummary({ cases }: { cases: OrderRow["customerServiceCases"] }) {

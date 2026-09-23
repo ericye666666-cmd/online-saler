@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BarChart3Icon,
@@ -82,7 +82,7 @@ import { t } from "@/i18n/runtime";
 import { useOperationsI18n } from "@/i18n/provider";
 import { OperationsLanguageSwitcher } from "./operations-language-switcher";
 
-type ModuleKey = "product" | "orders" | "rider" | "affiliate" | "service" | "analytics" | "system";
+type ModuleKey = "product" | "warehouse" | "store" | "rider" | "affiliate" | "service" | "analytics" | "system";
 
 type ModuleItem = NavigationItem & {
   icon: typeof PackageCheckIcon;
@@ -94,6 +94,18 @@ type ModuleNav = NavigationModule & {
   items: ModuleItem[];
 };
 
+/**
+ * The eight ends of the business, in the order a garment passes through them.
+ *
+ * Each one is a job someone actually holds, not a table in the database: the
+ * person picking in the warehouse never opens the store desk, and the rider
+ * never sees an order list. Grouping by job is what lets a role be given one
+ * end and nothing else.
+ *
+ * The first item of each end is its home. Switching ends navigates there, so
+ * pressing 门店端 lands on the store desk rather than leaving the old page on
+ * screen under a new menu.
+ */
 export const operationsModules: ModuleNav[] = [
   {
     key: "product",
@@ -130,25 +142,33 @@ export const operationsModules: ModuleNav[] = [
     ]
   },
   {
-    key: "orders",
-    label: "订单中心",
-    icon: BriefcaseBusinessIcon,
+    key: "warehouse",
+    label: "仓库发货",
+    icon: BoxesIcon,
     permission: "module.orders",
     items: [
+      // The morning's run comes first because it is what the warehouse opens at
+      // eight o'clock. The order centre is for looking one order up, which is a
+      // rarer and calmer thing to need.
+      { label: "每日打单配送", href: "/orders/dispatch", icon: ClipboardCheckIcon, permission: "page.orders.dispatch" },
       { label: "订单工作台", href: "/orders", icon: LayoutDashboardIcon, permission: "page.orders.workbench" },
-      { label: "门店履约台", href: "/orders/node", icon: TruckIcon, permission: "page.orders.node" },
-      { label: "门店骑手", href: "/orders/riders", icon: BikeIcon, permission: "page.orders.riders" },
-      { label: "支付复核", href: "/orders/payment-review", icon: CircleDollarSignIcon, permission: "page.orders.payment-review" },
-      { label: "定金看板", href: "/orders/deposits", icon: ClockIcon, permission: "page.orders.deposits" },
-      { label: "财务汇总", href: "/orders/finance", icon: BarChart3Icon, permission: "page.orders.finance" },
       { label: "全部订单", href: "/orders/all", icon: BriefcaseBusinessIcon, permission: "page.orders.all" },
-      { label: "售后订单", href: "/orders/after-sales", icon: HeadphonesIcon, permission: "page.orders.after-sale" },
       { label: "异常订单", href: "/orders/exceptions", icon: XCircleIcon, permission: "page.orders.exceptions" }
     ]
   },
   {
+    key: "store",
+    label: "门店端",
+    icon: TruckIcon,
+    permission: "module.orders",
+    items: [
+      { label: "门店履约台", href: "/orders/node", icon: TruckIcon, permission: "page.orders.node" },
+      { label: "门店骑手", href: "/orders/riders", icon: BikeIcon, permission: "page.orders.riders" }
+    ]
+  },
+  {
     key: "rider",
-    label: "我的配送",
+    label: "骑手端",
     icon: BikeIcon,
     permission: "rider.deliveries",
     items: [
@@ -173,7 +193,7 @@ export const operationsModules: ModuleNav[] = [
   },
   {
     key: "service",
-    label: "客服中心",
+    label: "客服端",
     icon: HeadphonesIcon,
     permission: "module.customer-service",
     items: [
@@ -185,6 +205,7 @@ export const operationsModules: ModuleNav[] = [
       { label: "支付问题", href: "/customer-service/payments", icon: CircleDollarSignIcon, permission: "action.customer-service.view" },
       { label: "自提问题", href: "/customer-service/pickup", icon: ClipboardCheckIcon, permission: "action.customer-service.view" },
       { label: "配送问题", href: "/customer-service/delivery", icon: TruckIcon, permission: "action.customer-service.view" },
+      { label: "售后订单", href: "/orders/after-sales", icon: HeadphonesIcon, permission: "page.orders.after-sale" },
       { label: "售后记录", href: "/customer-service/after-sales", icon: HeadphonesIcon, permission: "action.customer-service.view" },
       { label: "备注与标签", href: "/customer-service/notes", icon: SettingsIcon, permission: "action.customer-service.view" }
     ]
@@ -196,6 +217,12 @@ export const operationsModules: ModuleNav[] = [
     permission: "module.analytics",
     items: [
       { label: "经营概览", href: "/analytics", icon: BarChart3Icon, permission: "action.analytics.view" },
+      // The three money screens live here rather than with the warehouse: they
+      // are read by whoever is answerable for the cash, not by whoever is
+      // holding the parcel.
+      { label: "财务汇总", href: "/orders/finance", icon: CircleDollarSignIcon, permission: "page.orders.finance" },
+      { label: "支付复核", href: "/orders/payment-review", icon: CircleDollarSignIcon, permission: "page.orders.payment-review" },
+      { label: "定金看板", href: "/orders/deposits", icon: ClockIcon, permission: "page.orders.deposits" },
       { label: "高级仓库分析", href: "/analytics/warehouse-bi", icon: BoxesIcon, permission: "analytics.warehouse.view" },
       { label: "搜索分析", href: "/analytics/search-bi", icon: SearchIcon, permission: "action.analytics.view" },
       { label: "商品漏斗", href: "/analytics/product-funnel", icon: LayoutDashboardIcon, permission: "action.analytics.view" },
@@ -223,11 +250,20 @@ export const operationsModules: ModuleNav[] = [
   }
 ];
 
+/**
+ * Which end a path belongs to.
+ *
+ * The specific store and rider paths are tested before the general order paths,
+ * because /orders/node is the store's screen even though it starts with /orders.
+ * Getting this wrong is what made 我的配送 open with the 商品中心 menu beside it.
+ */
 function moduleForPath(pathname: string): ModuleKey {
-  if (pathname.startsWith("/warehouse")) return "orders";
-  if (pathname.startsWith("/orders")) return "orders";
+  if (pathname.startsWith("/rider")) return "rider";
+  if (pathname.startsWith("/orders/node") || pathname.startsWith("/orders/riders")) return "store";
+  if (pathname.startsWith("/orders/after-sales") || pathname.startsWith("/customer-service")) return "service";
+  if (pathname.startsWith("/orders/finance") || pathname.startsWith("/orders/payment-review") || pathname.startsWith("/orders/deposits")) return "analytics";
+  if (pathname.startsWith("/warehouse") || pathname.startsWith("/orders")) return "warehouse";
   if (pathname.startsWith("/affiliate")) return "affiliate";
-  if (pathname.startsWith("/customer-service")) return "service";
   if (pathname.startsWith("/analytics")) return "analytics";
   if (pathname.startsWith("/system")) return "system";
   if (pathname.startsWith("/product") || pathname.startsWith("/control") || pathname.startsWith("/debug") || pathname === "/") return "product";
@@ -250,12 +286,11 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { loading, session, logout } = useOperationsSession();
   const visibleModules = useMemo(() => filterNavigation(operationsModules, session) as ModuleNav[], [session]);
+  const router = useRouter();
+  // Which end is open is decided by the URL and nothing else. It used to be
+  // separate state, which meant pressing an end changed the menu but left the
+  // previous page on screen — 我的配送 opening under the 商品中心 sidebar.
   const routeModule = moduleForPath(pathname);
-  const [selectedModule, setSelectedModule] = useState<ModuleKey>(routeModule);
-
-  useEffect(() => {
-    setSelectedModule(routeModule);
-  }, [routeModule]);
 
   if (loading) return <LoadingScreen />;
   if (!session?.adminUser) return <LoginScreen />;
@@ -265,7 +300,7 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
     return <RiderLanding />;
   }
   const fallbackModule: ModuleNav = visibleModules[0] ?? operationsModules[0];
-  const activeModule: ModuleNav = visibleModules.find((module) => module.key === selectedModule) ?? fallbackModule;
+  const activeModule: ModuleNav = visibleModules.find((module) => module.key === routeModule) ?? fallbackModule;
   const routeSection = sectionForPath(pathname);
 
   return (
@@ -400,7 +435,11 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
                   variant={selected ? "secondary" : "ghost"}
                   size="sm"
                   className={cn("shrink-0", selected && "shadow-xs")}
-                  onClick={() => setSelectedModule(module.key)}
+                  onClick={() => {
+                    // The first item this account can see is that end's home.
+                    const home = module.items.find((item) => item.href)?.href;
+                    if (home) router.push(home);
+                  }}
                 >
                   <Icon data-icon="inline-start" />
                   {t(module.label)}

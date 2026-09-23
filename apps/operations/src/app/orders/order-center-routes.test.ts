@@ -14,17 +14,26 @@ const orderClient = readFileSync(new URL("./orders-client.tsx", import.meta.url)
 assert.match(orderClient, /order\.items\.map/);
 assert.match(orderClient, /inventoryItem\?\.location\?\.locationCode/);
 assert.match(orderClient, /displayImageUrl/);
-assert.match(orderClient, /h-32 w-28/);
+// The picker needs to see the garment, so the card renders its photo. The
+// element is asserted rather than its size class, which is styling and may
+// change without the card losing its picture.
+assert.match(orderClient, /<OrderItemImage/);
 assert.match(orderClient, /预期 Barcode/);
 assert.match(orderClient, /错误|失败|does not match|Barcode/);
 assert.match(orderClient, /Authorization/);
 assert.doesNotMatch(orderClient, /JSON\.stringify\(\{ adminUserId/);
 
 const shell = readFileSync(new URL("../../components/admin/operations-admin-shell.tsx", import.meta.url), "utf8");
+// The eight ends of the business. Each is a job somebody holds, and a role can
+// be given one of them and nothing else.
 assert.deepEqual(
-  ["商品中心", "订单中心", "推广中心", "客服中心", "数据中心", "系统管理"].every((label) => shell.includes(`label: "${label}"`)),
+  ["商品中心", "仓库发货", "门店端", "骑手端", "推广中心", "客服端", "数据中心", "系统管理"]
+    .every((label) => shell.includes(`label: "${label}"`)),
   true
 );
 assert.doesNotMatch(shell, /label: "仓库履约"/);
+// Pressing an end has to go somewhere. While this was state rather than a route,
+// the menu changed and the page did not.
+assert.match(shell, /router\.push\(home\)/);
 
 console.log("Order-center route migration tests passed");

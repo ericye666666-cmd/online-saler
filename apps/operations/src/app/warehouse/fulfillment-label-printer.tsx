@@ -16,7 +16,13 @@ import { renderFulfillmentLabels, type FulfillmentLabelInput, type FulfillmentLa
 import { t } from "@/i18n/runtime";
 
 /**
- * Prints one order's strip of 60×40 mm labels on the store's Deli DL-720C.
+ * Prints 60×40 mm labels on the store's Deli DL-720C, for one order or for a
+ * whole morning's worth.
+ *
+ * Batch printing exists because the work is batched: a packer finishes thirty
+ * parcels and then labels thirty parcels. Opening a dialog, detecting the
+ * printer and pressing print thirty times is the same work done thirty times
+ * over, and it is where labels get skipped.
  *
  * The labels go one after another on the roll, so they are sent one request at
  * a time and the count of what actually left is reported. A run that stops
@@ -50,24 +56,28 @@ async function agentRequest(path: string, options?: RequestInit) {
   return body;
 }
 
-export function FulfillmentLabelPrinter({ label, onClose }: { label: FulfillmentLabelInput; onClose: () => void }) {
+export function FulfillmentLabelPrinter({ labels, onClose }: { labels: FulfillmentLabelInput[]; onClose: () => void }) {
   const [printers, setPrinters] = useState<LocalPrinter[]>([]);
   const [printer, setPrinter] = useState(DEFAULT_PRINTER_NAME);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [sheets, setSheets] = useState<FulfillmentLabelSheet[]>([]);
+  const [sheets, setSheets] = useState<Array<{ input: FulfillmentLabelInput; sheet: FulfillmentLabelSheet }>>([]);
+  const multi = labels.length > 1;
 
   useEffect(() => {
     try {
-      setSheets(renderFulfillmentLabels(label));
+      // Flattened, because the roll is flat: every sheet of every order comes
+      // off the printer in this order, and the run has to be able to say which
+      // parcel it stopped on.
+      setSheets(labels.flatMap((input) => renderFulfillmentLabels(input).map((sheet) => ({ input, sheet }))));
       setError("");
     } catch (caught) {
       setSheets([]);
       setError((caught as Error).message);
     }
-  }, [label]);
+  }, [labels]);
 
   async function detect() {
     setBusy("detect");
@@ -97,28 +107,32 @@ export function FulfillmentLabelPrinter({ label, onClose }: { label: Fulfillment
     }
   }
 
-  async function print(only?: FulfillmentLabelSheet) {
+  async function print(only?: { input: FulfillmentLabelInput; sheet: FulfillmentLabelSheet }) {
     if (!ready || busy || !sheets.length) return;
     const run = only ? [only] : sheets;
     setBusy("print");
     setError("");
     setNotice("");
     let sent = 0;
+    let lastOrder = "";
     try {
-      for (const sheet of run) {
-        const payload = buildFulfillmentLabelPayload({ ...label, printerName: printer });
-        payload.label_payload.raster = sheet.raster;
+      for (const entry of run) {
+        const payload = buildFulfillmentLabelPayload({ ...entry.input, printerName: printer });
+        payload.label_payload.raster = entry.sheet.raster;
         await agentRequest("/print/label", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
         sent += 1;
+        lastOrder = entry.input.orderNumber;
         setNotice(t("已发送 {sent}/{total} 张。", { sent, total: run.length }));
       }
-      setNotice(t("{total} 张已全部发送。第 1 张贴在包裹上，其余随包裹带走。", { total: run.length }));
+      setNotice(t("{total} 张已全部发送。每单第 1 张贴在包裹上，其余随包裹带走。", { total: run.length }));
     } catch (caught) {
-      setError(t("已发送 {sent} 张后停止。{message}", { sent, message: (caught as Error).message }));
+      // Naming the order it stopped on matters more than the sheet number: the
+      // packer has to know which parcel to go back to.
+      setError(t("已发送 {sent} 张后停止，最后印出的是 {order}。{message}", { sent, order: lastOrder || t("（没有一张印出）"), message: (caught as Error).message }));
     } finally {
       setBusy("");
     }
@@ -127,9 +141,9 @@ export function FulfillmentLabelPrinter({ label, onClose }: { label: Fulfillment
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
       <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-2xl">
-        <DialogTitle>{t("打印包裹面单")}</DialogTitle>
+        <DialogTitle>{multi ? t("打印 {count} 单的面单", { count: labels.length }) : t("打印包裹面单")}</DialogTitle>
         <DialogDescription>
-          {t("60×40 mm 不干胶 · Deli DL-720C · 连着打几张：路由、顾客、拣货清单")}
+          {t("60×40 mm 不干胶 · Deli DL-720C · 每单连着打几张：路由、顾客、拣货清单")}
         </DialogDescription>
 
         <div className="flex flex-wrap items-center gap-3 rounded border bg-muted/30 p-3 text-sm">
@@ -145,22 +159,22 @@ export function FulfillmentLabelPrinter({ label, onClose }: { label: Fulfillment
 
         {sheets.length ? (
           <div className="grid gap-3 bg-muted/40 p-4 sm:grid-cols-2">
-            {sheets.map((sheet) => (
-              <figure key={sheet.index} className="m-0">
+            {sheets.map((entry) => (
+              <figure key={`${entry.input.packageCode}:${entry.sheet.index}`} className="m-0">
                 <img
-                  src={sheet.preview}
+                  src={entry.sheet.preview}
                   width={480}
                   height={320}
                   className="h-auto w-full border bg-white"
-                  alt={t("第 {index} 张，共 {total} 张", { index: sheet.index, total: sheet.total })}
+                  alt={t("第 {index} 张，共 {total} 张", { index: entry.sheet.index, total: entry.sheet.total })}
                 />
                 <figcaption className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{sheet.index}/{sheet.total} · {SHEET_LABEL[sheet.kind]()}</span>
+                  <span>{multi ? `${entry.input.orderNumber} · ` : ""}{entry.sheet.index}/{entry.sheet.total} · {SHEET_LABEL[entry.sheet.kind]()}</span>
                   <button
                     type="button"
                     className="underline disabled:no-underline disabled:opacity-50"
                     disabled={!!busy || !ready}
-                    onClick={() => void print(sheet)}
+                    onClick={() => void print(entry)}
                   >
                     {t("只打这一张")}
                   </button>
@@ -208,7 +222,7 @@ export function FulfillmentLabelPrinter({ label, onClose }: { label: Fulfillment
           <Button variant="outline" disabled={!!busy} onClick={onClose}>{t("关闭")}</Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          {t("第 1 张贴在包裹上，其余随包裹带走。每张都印着订单号和张数，掉了也能对回来。面单只是贴纸，重打多少次都不影响订单。")}
+          {t("每单第 1 张贴在包裹上，其余随包裹带走。每张都印着订单号和张数，掉了也能对回来。面单只是贴纸，重打多少次都不影响订单。")}
         </p>
       </DialogContent>
     </Dialog>

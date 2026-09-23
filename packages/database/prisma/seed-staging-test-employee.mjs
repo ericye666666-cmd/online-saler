@@ -21,6 +21,14 @@ export const permissions = [
     description: "Open the order workbench."
   },
   {
+    code: "page.orders.dispatch",
+    module: "orders",
+    scope: "PAGE",
+    page: "orders-dispatch",
+    action: "view",
+    description: "Open the daily picking, packing and dispatch run."
+  },
+  {
     code: "page.orders.all",
     module: "orders",
     scope: "PAGE",
@@ -261,7 +269,7 @@ export const roles = [
     code: "PROJECT_MANAGER",
     name: "Project Manager",
     description: "Manage daily operation flow without changing system users or roles.",
-    permissions: unique(["action.affiliate.view","action.analytics.export","action.analytics.view","action.customer-service.create","action.customer-service.edit","action.customer-service.view","action.orders.edit","action.orders.view","action.product.approve","action.product.edit","action.product.publish","action.product.view","action.system.view","analytics.warehouse.view","customer-service.assign","customer-service.contact-update","customer-service.escalate","customer-service.refund-request","inventory-overview.view","module.affiliate","module.analytics","module.customer-service","module.orders","module.product","module.system","nodes.manage","nodes.view","notifications.retry","notifications.view","orders.after-sale","orders.assign-node","orders.assign-picker","orders.assign-rider","orders.cancel","orders.complete","orders.delivery-cost","orders.dispatch","orders.node-receive","orders.pack","orders.payment-review","orders.pick","orders.resend-code","orders.view","orders.write-off","page.customer-service.cases","page.customer-service.refunds","page.orders.after-sale","page.orders.all","page.orders.deposits","page.orders.exceptions","page.orders.finance","page.orders.node","page.orders.payment-review","page.orders.riders","page.orders.workbench","page.product.control","page.product.details","page.product.digitalization","page.product.inventory-overview","page.product.warehouse-locations","page.system.nodes","page.system.notifications","page.system.warehouse-locations","riders.manage","riders.view","warehouse-locations.edit-capacity","warehouse-locations.manage","warehouse-locations.move-product","warehouse-locations.view"])
+    permissions: unique(["action.affiliate.view","action.analytics.export","action.analytics.view","action.customer-service.create","action.customer-service.edit","action.customer-service.view","action.orders.edit","action.orders.view","action.product.approve","action.product.edit","action.product.publish","action.product.view","action.system.view","analytics.warehouse.view","customer-service.assign","customer-service.contact-update","customer-service.escalate","customer-service.refund-request","inventory-overview.view","module.affiliate","module.analytics","module.customer-service","module.orders","module.product","module.system","nodes.manage","nodes.view","notifications.retry","notifications.view","orders.after-sale","orders.assign-node","orders.assign-picker","orders.assign-rider","orders.cancel","orders.complete","orders.delivery-cost","orders.dispatch","orders.node-receive","orders.pack","orders.payment-review","orders.pick","orders.resend-code","orders.view","orders.write-off","page.customer-service.cases","page.customer-service.refunds","page.orders.after-sale","page.orders.all","page.orders.deposits","page.orders.exceptions","page.orders.finance","page.orders.node","page.orders.payment-review","page.orders.riders","page.orders.dispatch","page.orders.workbench","page.product.control","page.product.details","page.product.digitalization","page.product.inventory-overview","page.product.warehouse-locations","page.system.nodes","page.system.notifications","page.system.warehouse-locations","riders.manage","riders.view","warehouse-locations.edit-capacity","warehouse-locations.manage","warehouse-locations.move-product","warehouse-locations.view"])
   },
   {
     code: "PRODUCT_DIGITIZATION",
@@ -273,7 +281,7 @@ export const roles = [
     code: "WAREHOUSE_FULFILLMENT",
     name: "Order Fulfillment",
     description: "Order-level picking, packing, pickup, and delivery handoff work.",
-    permissions: unique(["action.orders.view","inventory-overview.view","module.orders","module.product","nodes.view","orders.assign-node","orders.complete","orders.dispatch","orders.pack","orders.pick","orders.view","page.orders.all","page.orders.exceptions","page.orders.workbench","page.product.inventory-overview","page.product.warehouse-locations","warehouse-locations.view"])
+    permissions: unique(["action.orders.view","inventory-overview.view","module.orders","module.product","nodes.view","orders.assign-node","orders.complete","orders.dispatch","orders.pack","orders.pick","orders.view","page.orders.all","page.orders.exceptions","page.orders.dispatch","page.orders.workbench","page.product.inventory-overview","page.product.warehouse-locations","warehouse-locations.view"])
   },
   {
     code: "STORE_MANAGER",
@@ -291,7 +299,7 @@ export const roles = [
     code: "ORDER_OPERATIONS",
     name: "Order Operations",
     description: "Order review, payment status follow-up, and order exception handling.",
-    permissions: unique(["action.orders.approve","action.orders.edit","action.orders.export","action.orders.view","module.orders","nodes.view","notifications.retry","notifications.view","orders.after-sale","orders.assign-node","orders.assign-picker","orders.assign-rider","orders.cancel","orders.delivery-cost","orders.node-receive","orders.payment-review","orders.resend-code","orders.view","orders.write-off","page.orders.after-sale","page.orders.all","page.orders.deposits","page.orders.exceptions","page.orders.node","page.orders.payment-review","page.orders.riders","page.orders.workbench","page.system.notifications","riders.view"])
+    permissions: unique(["action.orders.approve","action.orders.edit","action.orders.export","action.orders.view","module.orders","nodes.view","notifications.retry","notifications.view","orders.after-sale","orders.assign-node","orders.assign-picker","orders.assign-rider","orders.cancel","orders.delivery-cost","orders.node-receive","orders.payment-review","orders.resend-code","orders.view","orders.write-off","page.orders.after-sale","page.orders.all","page.orders.deposits","page.orders.exceptions","page.orders.node","page.orders.payment-review","page.orders.riders","page.orders.dispatch","page.orders.workbench","page.system.notifications","riders.view"])
   },
   {
     code: "AFFILIATE_OPERATIONS",
