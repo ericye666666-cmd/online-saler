@@ -53,3 +53,16 @@ test("the header counts orders and garments separately", () => {
   assert.match(html, /2 单/);
   assert.match(html, /3 件/);
 });
+
+test("the sheet says which garments go in one bag", () => {
+  // The table is sorted by shelf, so an order's lines are scattered down the
+  // page. Correct for fetching, useless for packing — so the same run is
+  // printed again at the foot, one line per parcel.
+  const html = pickingSheetHtml(sortPickingLines([
+    { ...line("A-01", "DL-1"), destination: "自提 · Kinoo" },
+    { ...line("C-09", "DL-1"), destination: "自提 · Kinoo" },
+    { ...line("B-04", "DL-2"), destination: "自提 · Pipeline" }
+  ]), new Date());
+  assert.match(html, /DL-1<\/span><b>2<\/b>/, "two garments in the DL-1 parcel");
+  assert.match(html, /DL-2<\/span><b>1<\/b>/, "one in DL-2");
+});

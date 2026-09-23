@@ -13,6 +13,9 @@ import { Input } from "@/components/ui/input";
 import { operationsRequester } from "@/lib/operations-request";
 import { t } from "@/i18n/runtime";
 import { compareShelfCodes } from "../picking-sheet-print";
+import { FulfillmentLabelPrinter } from "../../warehouse/fulfillment-label-printer";
+import { PackingView } from "./packing-view";
+import type { PackOrder } from "./picking-types";
 
 /**
  * The picker's phone.
@@ -58,6 +61,8 @@ type PickerOrder = {
   fulfillment?: {
     status: string;
     assignedPickerEmployeeId?: string | null;
+    packingStartedAt?: string | null;
+    packageCode?: string | null;
     fulfillmentNode?: { id: string; name: string } | null;
     items: Array<{ orderItemId: string; status: string; expectedBarcode?: string | null }>;
   } | null;
@@ -87,6 +92,11 @@ export function PickingStation() {
   const [scanValue, setScanValue] = useState("");
   const [skipped, setSkipped] = useState<PickItem[]>([]);
   const [justPicked, setJustPicked] = useState("");
+  // Picking walks the racks in shelf order across every order; packing puts the
+  // trolley back together one order at a time. Same person, same phone, two
+  // different orderings of the same garments.
+  const [mode, setMode] = useState<"pick" | "pack">("pick");
+  const [labelOrder, setLabelOrder] = useState<PackOrder | null>(null);
   const scanRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -155,6 +165,51 @@ export function PickingStation() {
 
   useEffect(() => { scanRef.current?.focus(); }, [active?.orderItemId]);
 
+  /** The trolley, regrouped: one entry per order, which is one parcel. */
+  const packOrders = useMemo<PackOrder[]>(() => orders
+    .filter((order) => order.fulfillment?.status === "READY_TO_PACK" || order.fulfillment?.status === "PACKED")
+    .map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      destination: destinationLabel(order),
+      fulfillment: order.fulfillment
+        ? {
+            status: order.fulfillment.status,
+            packingStartedAt: order.fulfillment.packingStartedAt ?? null,
+            packageCode: order.fulfillment.packageCode ?? null
+          }
+        : null,
+      items: order.items.map((item) => ({
+        id: item.id,
+        title: item.snapshot?.title ?? t("未命名商品"),
+        sizeLabel: item.snapshot?.sizeLabel ?? null,
+        barcode: item.snapshot?.barcode ?? item.inventoryItem?.barcode ?? "",
+        imageUrl: proxied(item.displayImageUrl ?? item.snapshot?.imageUrl),
+        locationCode: item.inventoryItem?.location?.locationCode ?? "—"
+      }))
+    })), [orders]);
+
+  const toPackCount = packOrders.filter((order) => order.fulfillment?.status === "READY_TO_PACK").length;
+
+  // The moment the racks are done, the job becomes packing. Leaving the picker
+  // on an empty picking screen is how they walk back to a desk to ask what next.
+  useEffect(() => {
+    if (mode === "pick" && !active && !waiting.length && toPackCount > 0) setMode("pack");
+  }, [mode, active, waiting.length, toPackCount]);
+
+  async function packAction(order: PackOrder, action: string, body: Record<string, unknown>) {
+    setBusy(true);
+    setError("");
+    try {
+      await request(`/operations/orders/${order.id}/${action}`, { method: "POST", body: JSON.stringify(body) });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("打包操作失败。"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function claimAll() {
     setBusy(true);
     setError("");
@@ -214,15 +269,42 @@ export function PickingStation() {
       {/* Progress first and sticky: the one thing worth knowing while walking is
           how much is left. */}
       <div className="sticky top-0 z-10 -mx-1 bg-background/95 px-1 pt-1 pb-2 backdrop-blur">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-bold text-2xl tabular-nums">{picked}<span className="text-muted-foreground text-lg"> / {total}</span></span>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load()}>
-            <RefreshCwIcon data-icon="inline-start" />{t("刷新")}
-          </Button>
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+          <button
+            type="button"
+            className={`rounded-md py-2 font-medium text-sm ${mode === "pick" ? "bg-background shadow-xs" : "text-muted-foreground"}`}
+            onClick={() => setMode("pick")}
+          >
+            {t("拣货")} {queue.length ? <span className="tabular-nums">{queue.length}</span> : null}
+          </button>
+          <button
+            type="button"
+            className={`rounded-md py-2 font-medium text-sm ${mode === "pack" ? "bg-background shadow-xs" : "text-muted-foreground"}`}
+            onClick={() => setMode("pack")}
+          >
+            {t("打包")} {toPackCount ? <span className="tabular-nums">{toPackCount}</span> : null}
+          </button>
         </div>
-        <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full bg-primary transition-all" style={{ width: `${total ? (picked / total) * 100 : 0}%` }} />
-        </div>
+        {mode === "pick" ? (
+          <>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="font-bold text-2xl tabular-nums">{picked}<span className="text-muted-foreground text-lg"> / {total}</span></span>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load()}>
+                <RefreshCwIcon data-icon="inline-start" />{t("刷新")}
+              </Button>
+            </div>
+            <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-primary transition-all" style={{ width: `${total ? (picked / total) * 100 : 0}%` }} />
+            </div>
+          </>
+        ) : (
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-muted-foreground text-sm">{t("一张卡片 = 一个包裹")}</span>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load()}>
+              <RefreshCwIcon data-icon="inline-start" />{t("刷新")}
+            </Button>
+          </div>
+        )}
       </div>
 
       {error ? (
@@ -233,7 +315,15 @@ export function PickingStation() {
         </Alert>
       ) : null}
 
-      {active ? (
+      {mode === "pack" ? (
+        <PackingView
+          orders={packOrders}
+          busy={busy}
+          onStart={(order) => packAction(order, "start-packing", {})}
+          onComplete={(order, packagingMethod, packageCount) => packAction(order, "complete-packing", { packagingMethod, packageCount })}
+          onLabel={setLabelOrder}
+        />
+      ) : active ? (
         <div className="flex flex-col gap-3 rounded-xl border p-4">
           <div className="flex items-start justify-between gap-3">
             {/* Arm's length, in a warehouse, is the reading distance this has to
@@ -308,6 +398,24 @@ export function PickingStation() {
           ) : null}
         </div>
       )}
+
+      {labelOrder ? (
+        <FulfillmentLabelPrinter
+          labels={[{
+            packageCode: labelOrder.fulfillment?.packageCode ?? "",
+            nodeName: labelOrder.destination,
+            orderNumber: labelOrder.orderNumber,
+            isDelivery: labelOrder.destination.startsWith(t("送货")),
+            itemCount: labelOrder.items.length,
+            customerName: null,
+            customerPhone: null,
+            deliveryAddress: null,
+            deliveryArea: null,
+            items: labelOrder.items.map((item) => ({ title: item.title, sizeLabel: item.sizeLabel, barcode: item.barcode || null }))
+          }]}
+          onClose={() => setLabelOrder(null)}
+        />
+      ) : null}
     </div>
   );
 }

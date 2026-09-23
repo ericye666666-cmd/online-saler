@@ -93,6 +93,21 @@ export function pickingSheetHtml(lines: PickingLine[], printedAt: Date): string 
     .map(([destination, count]) => `<li><span>${escapeHtml(destination)}</span><b>${count}</b></li>`)
     .join("");
 
+  // Which garments go in one bag. The table is sorted by shelf, so an order's
+  // lines are scattered down the page — true to how they are fetched, useless
+  // for packing them. This is the same run read the other way round.
+  const perOrder = new Map<string, { count: number; destination: string }>();
+  for (const line of lines) {
+    const existing = perOrder.get(line.orderNumber);
+    if (existing) existing.count += 1;
+    else perOrder.set(line.orderNumber, { count: 1, destination: line.destination });
+  }
+  const parcels = [...perOrder.entries()]
+    .sort((a, b) => a[1].destination.localeCompare(b[1].destination) || a[0].localeCompare(b[0]))
+    .map(([orderNumber, parcel]) =>
+      `<li><span class="mono">${escapeHtml(orderNumber)}</span><b>${parcel.count}</b><i>${escapeHtml(parcel.destination)}</i></li>`)
+    .join("");
+
   return `<!doctype html>
 <html lang="zh"><head><meta charset="utf-8"><title>${escapeHtml(t("拣货单"))}</title>
 <style>
@@ -135,7 +150,9 @@ export function pickingSheetHtml(lines: PickingLine[], printedAt: Date): string 
   footer { margin-top: 5mm; border-top: 1px solid #999; padding-top: 2.5mm; }
   footer h2 { font-size: 10pt; margin: 0 0 1.5mm; }
   footer ul { display: flex; flex-wrap: wrap; gap: 2mm 6mm; margin: 0; padding: 0; list-style: none; font-size: 9.5pt; }
-  footer li { display: flex; gap: 2mm; border: 1px solid #ccc; border-radius: 2px; padding: 1mm 2.5mm; }
+  footer li { display: flex; gap: 2mm; border: 1px solid #ccc; border-radius: 2px; padding: 1mm 2.5mm; align-items: baseline; }
+  .parcels-title { margin-top: 3.5mm; }
+  .parcels li i { font-style: normal; color: #666; font-size: 8.5pt; }
   .note { margin-top: 3mm; font-size: 8.5pt; color: #555; }
 </style></head>
 <body>
@@ -167,7 +184,9 @@ export function pickingSheetHtml(lines: PickingLine[], printedAt: Date): string 
   <footer>
     <h2>${escapeHtml(t("拣完按目的地分堆"))}</h2>
     <ul>${summary}</ul>
-    <p class="note">${escapeHtml(t("这张纸不是凭证。拣完回作业台逐件扫码，扫过的才算数。"))}</p>
+    <h2 class="parcels-title">${escapeHtml(t("再按订单装袋 · 一行一个包裹"))}</h2>
+    <ul class="parcels">${parcels}</ul>
+    <p class="note">${escapeHtml(t("这张纸不是凭证。拣完在手机拣货台逐件扫码，扫过的才算数；打包也在那里，一张卡片就是一个包裹。"))}</p>
   </footer>
 </body></html>`;
 }

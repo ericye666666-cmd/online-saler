@@ -77,6 +77,30 @@ exists, not that it came off the right shelf. One at a time, scan, advance.
   listed by order number for the supervisor. The phone cannot raise an exception
   itself: that is a written fact about stock, and it belongs on the workbench.
 
+### Packing, on the same phone
+
+Picking is walked in shelf order across every order, which is what stops a picker
+crossing the same aisle five times — and it means the trolley comes back mixed,
+with nothing yet saying which garments belong in one bag.
+
+So the station has a second mode, and it flips to it by itself the moment the
+racks are done. **一张卡片 = 一个包裹**: one card per order, carrying the photos
+and barcodes needed to find its garments among the rest of the trolley, then
+包装方式 and 包裹数量, then 完成打包 — which mints the package code the store
+scans on arrival.
+
+This is one screen rather than two because it is one person. Sending them back to
+a desk to answer "what goes together" is the point at which the trolley gets
+guessed at.
+
+The paper sheet answers the same question at its foot, under **再按订单装袋**:
+the same run listed one line per parcel, since the table itself is sorted by
+shelf and scatters an order's lines down the page.
+
+Labels are the exception: the Deli printer is on a Windows PC, so a phone cannot
+print. Pack everything on the phone, then print the whole batch from
+**每日打单配送** at that PC.
+
 The desk view of the same route frames that screen like a phone and puts a QR
 code beside it. It is not an iframe and not a screenshot — it is the same React
 tree, so what a supervisor sees cannot drift from what the picker sees, and there
