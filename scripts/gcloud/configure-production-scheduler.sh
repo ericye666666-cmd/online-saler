@@ -9,6 +9,7 @@ JOB_NAME="${JOB_NAME:-release-expired-reservations-production}"
 VIDEO_JOB_NAME="${VIDEO_JOB_NAME:-render-affiliate-videos-production}"
 RECONCILE_JOB_NAME="${RECONCILE_JOB_NAME:-reconcile-mpesa-payments-production}"
 NOTIFY_JOB_NAME="${NOTIFY_JOB_NAME:-send-notifications-production}"
+DEPOSIT_JOB_NAME="${DEPOSIT_JOB_NAME:-expire-deposit-holds-production}"
 SECRET_NAME="${SECRET_NAME:-PRODUCTION_INTERNAL_CRON_SECRET}"
 CRON_SECRET="$(gcloud secrets versions access latest --project "${GCP_PROJECT_ID}" --secret "${SECRET_NAME}")"
 
@@ -54,3 +55,13 @@ upsert_job "${VIDEO_JOB_NAME}" "/api/internal/run-through-videos" "*/3 * * * *" 
 upsert_job "${RECONCILE_JOB_NAME}" "/api/internal/reconcile-payments" "* * * * *" "180s"
 # Drains the notification outbox.
 upsert_job "${NOTIFY_JOB_NAME}" "/api/internal/send-notifications" "* * * * *" "120s"
+# Deposit holds run on a seven-day clock, so hourly is far more often than the
+# deadline needs. It is hourly anyway because the moment a hold lapses the
+# garment should be back on sale -- a piece nobody can buy earns nothing -- and
+# because a shopper an hour late still gets the refund the policy promises.
+#
+# Without this job the deposit feature silently half-works: money is taken and
+# stock is held, but no hold ever expires, no garment returns to sale and no
+# refund is ever raised. That is the worst of the three states to be in, which
+# is why it belongs here and not in a runbook step somebody has to remember.
+upsert_job "${DEPOSIT_JOB_NAME}" "/api/internal/expire-deposit-holds" "0 * * * *" "300s"

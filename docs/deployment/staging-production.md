@@ -126,6 +126,23 @@ jobs against those internal routes:
 | `send-notifications-staging` | `/api/internal/send-notifications` | every 2 minutes | The SMS outbox fills up and no customer message is ever sent. |
 | `expire-deposit-holds-staging` | `/api/internal/expire-deposit-holds` | hourly | **Deposit holds never expire.** A garment stays off sale indefinitely, the shopper is never reminded the balance is due, and the refund they are owed is never raised. |
 
+`scripts/gcloud/configure-production-scheduler.sh` does the same for the live
+storefront, in `europe-west1`, reading its bearer token from the
+`PRODUCTION_INTERNAL_CRON_SECRET` secret rather than taking it on the command
+line:
+
+| Job | Route | Schedule | What breaks without it |
+| --- | --- | --- | --- |
+| `release-expired-reservations-production` | `/api/internal/release-expired-reservations` | every minute | Abandoned five-minute checkout locks never return to sale. |
+| `render-affiliate-videos-production` | `/api/internal/run-through-videos` | every 3 minutes | No affiliate gets their daily TikTok videos. |
+| `reconcile-mpesa-payments-production` | `/api/internal/reconcile-payments` | every minute | A lost M-Pesa callback means the shopper paid and the garment went back on sale. |
+| `send-notifications-production` | `/api/internal/send-notifications` | every minute | The outbox fills up and no customer message is ever sent. |
+| `expire-deposit-holds-production` | `/api/internal/expire-deposit-holds` | hourly | **Deposit holds never expire** — as above. Added 2026-09-24, after the deposit feature shipped without it. |
+
+**Re-run this script after adding a job to it.** A route with no scheduler job
+behind it is not a feature that degrades; it is a feature that looks like it
+works and quietly does half of what it promises.
+
 When `MPESA_ENABLE_SANDBOX_SIMULATOR_STAGING=true`, staging can simulate a final
 M-Pesa callback for a pending payment:
 
