@@ -1242,10 +1242,19 @@ export class OperationsFulfillmentService {
       if (order.fulfillmentMethod === FulfillmentMethod.KIKUYU_LOCAL_DELIVERY && !node.supportsDelivery) {
         throw new BadRequestException("That node does not dispatch deliveries.");
       }
+      // A package code needs two facts: the parcel is sealed, and it knows where
+      // it is going. Packing supplies the first, routing the second, and either
+      // can come last — an order packed before it was routed, which is every
+      // order from before nodes existed, would otherwise stay unlabelled until
+      // it was recorded as sent.
+      const packageCode = order.fulfillment.packageCode
+        || (order.fulfillment.status === FulfillmentStatus.PACKED && requiresNodeTransit(node.type)
+          ? buildPackageCode(order.orderNumber, node.code)
+          : null);
       await tx.order.update({ where: { id: orderId }, data: { fulfillmentNodeId: node.id } });
       await tx.orderFulfillment.update({
         where: { id: order.fulfillment.id },
-        data: { fulfillmentNodeId: node.id }
+        data: { fulfillmentNodeId: node.id, ...(packageCode ? { packageCode } : {}) }
       });
       await this.createEvent(tx, {
         fulfillmentId: order.fulfillment.id,

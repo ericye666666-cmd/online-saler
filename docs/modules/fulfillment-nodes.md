@@ -53,10 +53,16 @@ rather than at dispatch because the label goes on the parcel and the parcel is
 sealed then; minting it at dispatch meant pressing 发往门店, and so recording that
 a parcel had left, in order to be allowed to print the sticker for it.
 
-The code carries the destination, so an order that has not been routed yet gets
-no code at packing and no label — the screens say to route it first. A
-placeholder would be worse than none: sending keeps any existing code, so a
-wrong one would survive onto the shelf the store scans. The scan records who received it and
+The code needs two facts: the parcel is sealed, and it knows where it is going.
+Packing supplies the first and routing the second, and either can come last —
+whichever arrives second mints the code. An order packed before it was routed,
+which is every order from before nodes existed, is labelled the moment a node is
+chosen rather than waiting to be recorded as sent.
+
+Until both facts exist there is no code and no label, and the screens say so. A
+placeholder would be worse than none: sending keeps any existing code, so a wrong
+one would survive onto the shelf the store scans. A re-route keeps the code too,
+for the same reason in reverse — it is already printed and on the box. The scan records who received it and
 when, which is what settles "the warehouse says it shipped, the store says it
 never came".
 

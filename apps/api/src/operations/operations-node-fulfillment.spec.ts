@@ -94,3 +94,27 @@ test("package codes name their node and order and survive odd formatting", () =>
   assert.equal(buildPackageCode("DL-20260923-1A2B3C4D", "kinoo"), "PKG-KINOO-1A2B3C4D");
   assert.equal(buildPackageCode("dl-20260923-abcd", "lucky-summer"), "PKG-LUCKYS-0923ABCD");
 });
+
+/**
+ * A package code needs two facts: the parcel is sealed, and it knows where it is
+ * going. Packing supplies the first, routing the second, and either can come
+ * last. Whichever arrives second is what mints the code, because the label has
+ * to be printable before 发往门店 — a sticker that only exists after the parcel is
+ * recorded as gone is a sticker nobody can put on it.
+ */
+test("the code is minted by whichever of packing and routing happens second", () => {
+  const mint = (packed: boolean, node: { code: string; type: string } | null, existing: string | null) =>
+    existing || (packed && node && node.type === "STORE" ? buildPackageCode("DL-20260924-1A2B3C4D", node.code) : null);
+
+  const kinoo = { code: "kinoo", type: "STORE" };
+  assert.equal(mint(true, kinoo, null), "PKG-KINOO-1A2B3C4D", "packed and routed: there is a code");
+  assert.equal(mint(true, null, null), null, "packed but unrouted: no destination, so no routing sticker");
+  assert.equal(mint(false, kinoo, null), null, "routed but not packed: nothing sealed to label yet");
+  assert.equal(
+    mint(true, { code: "utawala", type: "STORE" }, "PKG-KINOO-1A2B3C4D"),
+    "PKG-KINOO-1A2B3C4D",
+    "an existing code survives a re-route: it is already printed and on the box"
+  );
+  // The warehouse hands over on the spot, so nothing travels and nothing is scanned in.
+  assert.equal(mint(true, { code: "kikuyu", type: "WAREHOUSE" }, null), null);
+});
