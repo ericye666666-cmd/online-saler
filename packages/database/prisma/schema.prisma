@@ -219,6 +219,8 @@ model AdminUser {
   linkedEmployee         Employee?             @relation("AdminUserLinkedEmployee", fields: [linkedEmployeeId], references: [id], onDelete: SetNull)
   roles                  UserRole[]
   customerServiceCases   CustomerServiceCase[] @relation("CustomerServiceCaseCreatedBy")
+  assignedServiceCases   CustomerServiceCase[] @relation("CustomerServiceCaseAssignee")
+  escalatedServiceCases  CustomerServiceCase[] @relation("CustomerServiceCaseEscalatedBy")
   customerServiceNotes   CustomerServiceNote[] @relation("CustomerServiceNoteAuthor")
   fulfillmentEvents      FulfillmentEvent[]    @relation("FulfillmentEventAdminActor")
   deliveryAssignments    DeliveryAssignment[]  @relation("DeliveryAssignmentAssignedBy")
@@ -228,6 +230,8 @@ model AdminUser {
   reviewedPayments       Payment[]             @relation("PaymentReviewedBy")
   resolvedMpesaCallbacks MpesaCallback[]       @relation("MpesaCallbackResolvedBy")
   recordedRefunds        RefundRecord[]        @relation("RefundRecordedBy")
+  requestedRefunds       RefundRequest[]       @relation("RefundRequestedBy")
+  reviewedRefunds        RefundRequest[]       @relation("RefundReviewedBy")
   lastLoginAt            DateTime?
   lockedAt               DateTime?
   disabledAt             DateTime?
@@ -844,6 +848,58 @@ enum CustomerServiceCaseStatus {
   CLOSED
 }
 
+enum CustomerServiceCaseType {
+  // PAYMENT
+  PAYMENT_FAILED
+  PAID_BUT_ORDER_MISSING
+  DUPLICATE_PAYMENT
+  PAYMENT_PENDING
+  WRONG_AMOUNT
+  // DELIVERY
+  ORDER_LATE
+  CUSTOMER_UNREACHABLE
+  WRONG_ADDRESS
+  RIDER_ISSUE
+  PACKAGE_MISSING
+  DELIVERY_CODE_NOT_RECEIVED
+  // PRODUCT
+  WRONG_ITEM
+  DAMAGED_ITEM
+  MISSING_ITEM
+  SIZE_ISSUE
+  PRODUCT_NOT_AS_EXPECTED
+  // AFTER SALES
+  RETURN_REQUEST
+  EXCHANGE_REQUEST
+  REFUND_REQUEST
+  // Anything the taxonomy above does not name yet.
+  OTHER
+}
+
+enum CustomerServicePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+/// Who owns a case once customer service cannot finish it alone.
+enum CustomerServiceEscalationTarget {
+  FULFILLMENT
+  FINANCE
+  ADMIN
+}
+
+/// Approval gate in front of money leaving the business. A refund is only ever
+/// executed in M-Pesa by finance; this is the request that authorises them to.
+enum RefundRequestStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  REFUNDED
+  CANCELLED
+}
+
 enum CustomerServiceIssueType {
   PAYMENT
   PICKUP
@@ -942,6 +998,7 @@ model Order {
   customerServiceCases CustomerServiceCase[]
   customerServiceNotes CustomerServiceNote[]
   afterSaleReturns     AfterSaleReturn[]
+  refundRequests       RefundRequest[]
   afterSaleEvents      AfterSaleEvent[]
   refunds              RefundRecord[]
   codeAttempts         CustomerCodeAttempt[]
@@ -1593,36 +1650,60 @@ model Commission {
 }
 
 model CustomerServiceCase {
-  id                         String                    @id @default(uuid())
+  id                         String                           @id @default(uuid())
   customerId                 String?
   orderId                    String?
-  issueType                  CustomerServiceIssueType  @default(OTHER)
-  status                     CustomerServiceCaseStatus @default(OPEN)
+  // issueType is the coarse queue the workbench has always grouped by; caseType
+  // is the specific reason customer service picks. caseType decides issueType,
+  // never the other way round, so old rows and old queues keep working.
+  issueType                  CustomerServiceIssueType         @default(OTHER)
+  caseType                   CustomerServiceCaseType          @default(OTHER)
+  priority                   CustomerServicePriority          @default(NORMAL)
+  status                     CustomerServiceCaseStatus        @default(OPEN)
   title                      String
   description                String?
   tags                       Json?
   createdByAdminUserId       String?
+  assignedAdminUserId        String?
   assignedEmployeeId         String?
+  assignedAt                 DateTime?
+  // Escalation is a flag plus a destination, not a status. A case stays OPEN or
+  // IN_PROGRESS while it is escalated: it has an extra owner, not a new state.
+  escalated                  Boolean                          @default(false)
+  escalatedTo                CustomerServiceEscalationTarget?
+  escalatedAt                DateTime?
+  escalatedByAdminUserId     String?
+  escalationNote             String?
+  slaDueAt                   DateTime?
   afterSaleReason            String?
   customerRequest            String?
-  requiresReturn             Boolean                   @default(false)
-  requiresRefund             Boolean                   @default(false)
-  affectsAffiliateCommission Boolean                   @default(false)
+  requiresReturn             Boolean                          @default(false)
+  requiresRefund             Boolean                          @default(false)
+  affectsAffiliateCommission Boolean                          @default(false)
   resolvedAt                 DateTime?
-  customer                   Customer?                 @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  order                      Order?                    @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  createdByAdminUser         AdminUser?                @relation("CustomerServiceCaseCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
-  assignedEmployee           Employee?                 @relation("CustomerServiceCaseOwner", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  closedAt                   DateTime?
+  refundRequests             RefundRequest[]
+  customer                   Customer?                        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order                      Order?                           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdByAdminUser         AdminUser?                       @relation("CustomerServiceCaseCreatedBy", fields: [createdByAdminUserId], references: [id], onDelete: SetNull)
+  assignedAdminUser          AdminUser?                       @relation("CustomerServiceCaseAssignee", fields: [assignedAdminUserId], references: [id], onDelete: SetNull)
+  escalatedByAdminUser       AdminUser?                       @relation("CustomerServiceCaseEscalatedBy", fields: [escalatedByAdminUserId], references: [id], onDelete: SetNull)
+  assignedEmployee           Employee?                        @relation("CustomerServiceCaseOwner", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
   afterSaleReturn            AfterSaleReturn?
   notes                      CustomerServiceNote[]
-  createdAt                  DateTime                  @default(now())
-  updatedAt                  DateTime                  @updatedAt
+  createdAt                  DateTime                         @default(now())
+  updatedAt                  DateTime                         @updatedAt
 
   @@index([status, issueType, updatedAt])
   @@index([customerId, createdAt])
   @@index([orderId, createdAt])
   @@index([createdByAdminUserId, createdAt])
   @@index([assignedEmployeeId, status, updatedAt])
+  @@index([assignedAdminUserId, status, updatedAt])
+  @@index([caseType, status, createdAt])
+  @@index([escalated, escalatedTo, updatedAt])
+  // The overdue queue: open cases past their SLA deadline.
+  @@index([status, slaDueAt])
 }
 
 model CustomerServiceNote {
@@ -1675,6 +1756,9 @@ model AfterSaleReturn {
   reason                  AfterSaleReturnReason
   measurementDifferenceCm Float?
   requestNote             String
+  // The store the customer was told to bring the item back to. Null means the
+  // warehouse, which is where every return went before nodes existed.
+  returnNodeId            String?
   requestedByAdminUserId  String
   requestedAt             DateTime              @default(now())
   decidedByAdminUserId    String?
@@ -1692,6 +1776,8 @@ model AfterSaleReturn {
   order                   Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
   orderItem               OrderItem             @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
   serviceCase             CustomerServiceCase   @relation(fields: [serviceCaseId], references: [id], onDelete: Restrict)
+  returnNode              FulfillmentNode?      @relation("AfterSaleReturnNode", fields: [returnNodeId], references: [id], onDelete: SetNull)
+  refundRequests          RefundRequest[]
   refunds                 RefundRecord[]
   commissionAdjustment    CommissionAdjustment?
   events                  AfterSaleEvent[]
@@ -1699,6 +1785,47 @@ model AfterSaleReturn {
 
   @@index([orderId, status])
   @@index([status, requestedAt])
+  // The list a store opens to see what it should expect back over the counter.
+  @@index([returnNodeId, status, requestedAt])
+}
+
+/// Customer service asks; finance decides; only then does money move.
+///
+/// This is deliberately separate from RefundRecord. A RefundRecord is evidence
+/// that a refund already happened in M-Pesa; a RefundRequest is permission for
+/// it to happen at all. Keeping them apart means customer service can never
+/// create the evidence, and finance can never pay out what nobody asked for.
+model RefundRequest {
+  id                     String               @id @default(uuid())
+  orderId                String
+  serviceCaseId          String?
+  afterSaleReturnId      String?
+  status                 RefundRequestStatus  @default(PENDING_APPROVAL)
+  kind                   RefundKind           @default(AFTER_SALE_RETURN)
+  amountKsh              Int
+  reason                 String
+  requestedByAdminUserId String
+  requestedAt            DateTime             @default(now())
+  reviewedByAdminUserId  String?
+  reviewedAt             DateTime?
+  reviewNote             String?
+  /// Set when finance records the executed refund; carries the M-Pesa reference.
+  refundRecordId         String?              @unique
+  completedAt            DateTime?
+  cancelledAt            DateTime?
+  order                  Order                @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  serviceCase            CustomerServiceCase? @relation(fields: [serviceCaseId], references: [id], onDelete: SetNull)
+  afterSaleReturn        AfterSaleReturn?     @relation(fields: [afterSaleReturnId], references: [id], onDelete: SetNull)
+  requestedByAdminUser   AdminUser?           @relation("RefundRequestedBy", fields: [requestedByAdminUserId], references: [id], onDelete: Restrict)
+  reviewedByAdminUser    AdminUser?           @relation("RefundReviewedBy", fields: [reviewedByAdminUserId], references: [id], onDelete: SetNull)
+  refundRecord           RefundRecord?        @relation(fields: [refundRecordId], references: [id], onDelete: SetNull)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  @@index([status, requestedAt])
+  @@index([orderId, requestedAt])
+  @@index([serviceCaseId, requestedAt])
+  @@index([requestedByAdminUserId, requestedAt])
 }
 
 model RefundRecord {
@@ -1716,6 +1843,7 @@ model RefundRecord {
   order                 Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)
   afterSaleReturn       AfterSaleReturn? @relation(fields: [afterSaleReturnId], references: [id], onDelete: Restrict)
   recordedByAdminUser   AdminUser?       @relation("RefundRecordedBy", fields: [recordedByAdminUserId], references: [id], onDelete: Restrict)
+  refundRequest         RefundRequest?
 
   @@index([orderId, recordedAt])
   @@index([kind, recordedAt])
@@ -1738,6 +1866,7 @@ model FulfillmentNode {
   fulfillments     OrderFulfillment[]
   staff            Employee[]            @relation("FulfillmentNodeStaff")
   riders           DeliveryRider[]
+  returns          AfterSaleReturn[]     @relation("AfterSaleReturnNode")
   notifications    Notification[]
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt

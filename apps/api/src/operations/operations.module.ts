@@ -10,6 +10,9 @@ import { OperationsAffiliateService } from "./operations-affiliate.service";
 import { OperationsAnalyticsController } from "./operations-analytics.controller";
 import { OperationsAnalyticsService } from "./operations-analytics.service";
 import { OperationsCustomerServiceController } from "./operations-customer-service.controller";
+import { OperationsCustomerServiceDeskService } from "./operations-customer-service-desk.service";
+import { OperationsRefundRequestController } from "./operations-refund-request.controller";
+import { OperationsRefundRequestService } from "./operations-refund-request.service";
 import { OperationsCustomerServiceService } from "./operations-customer-service.service";
 import {
   OperationsFulfillmentController,
@@ -55,7 +58,8 @@ import { OperationsWarehouseService } from "./operations-warehouse.service";
     OperationsInventoryOverviewController,
     OperationsAffiliateController,
     OperationsAnalyticsController,
-    OperationsCustomerServiceController
+    OperationsCustomerServiceController,
+    OperationsRefundRequestController
   ],
   providers: [
     OperationsAfterSalesService,
@@ -71,7 +75,12 @@ import { OperationsWarehouseService } from "./operations-warehouse.service";
     OperationsWarehouseService,
     OperationsAffiliateService,
     OperationsAnalyticsService,
-    OperationsCustomerServiceService
-  ]
+    OperationsCustomerServiceService,
+    OperationsCustomerServiceDeskService,
+    OperationsRefundRequestService
+  ],
+  // The store ERP integration drives the same fulfillment service the Operations
+  // screens do, so a store action and an office action cannot diverge.
+  exports: [OperationsFulfillmentService]
 })
 export class OperationsModule {}

@@ -5,6 +5,7 @@ import { BadRequestException, ForbiddenException, NotFoundException, Unauthorize
 import { prisma, type CustomerServiceCase, type Prisma } from "@online-saler/database";
 import { OperationsAccessService } from "./operations-access.service";
 import { OperationsCustomerServiceController } from "./operations-customer-service.controller";
+import { OperationsCustomerServiceDeskService } from "./operations-customer-service-desk.service";
 import { OperationsCustomerServiceService } from "./operations-customer-service.service";
 import { OperationsFulfillmentService } from "./operations-fulfillment.service";
 import { ProductImageStorageService } from "../product/product-image-storage.service";
@@ -19,10 +20,14 @@ function harness(t: TestContext) {
   const now = new Date();
   let record: CustomerServiceCase = {
     id: "case-1", orderId: "order-1", customerId: "customer-1", issueType: "AFTER_SALE",
+    caseType: "WRONG_ITEM", priority: "HIGH",
     status: "OPEN", title: "Wrong item", description: "Compare barcode", tags: null,
-    createdByAdminUserId: "admin-1", assignedEmployeeId: null, afterSaleReason: null,
+    createdByAdminUserId: "admin-1", assignedAdminUserId: null, assignedEmployeeId: null,
+    assignedAt: null, escalated: false, escalatedTo: null, escalatedAt: null,
+    escalatedByAdminUserId: null, escalationNote: null, slaDueAt: null,
+    afterSaleReason: null,
     customerRequest: null, requiresReturn: true, requiresRefund: true,
-    affectsAffiliateCommission: true, resolvedAt: null, createdAt: now, updatedAt: now
+    affectsAffiliateCommission: true, resolvedAt: null, closedAt: null, createdAt: now, updatedAt: now
   };
   const order = { id: "order-1", fulfillment: { id: "fulfillment-1", status: "COMPLETED", afterSaleOwnerEmployeeId: "old-owner" } };
   const events: string[] = [];
@@ -79,9 +84,16 @@ function harness(t: TestContext) {
   };
   const originalTransaction = prisma.$transaction;
   const originalEmployeeFind = prisma.employee.findFirst;
+  const originalSettingFind = prisma.systemSetting.findUnique;
   prisma.$transaction = (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as unknown as typeof prisma.$transaction;
   prisma.employee.findFirst = (async () => ({ id: "employee-1" })) as unknown as typeof prisma.employee.findFirst;
-  t.after(() => { prisma.$transaction = originalTransaction; prisma.employee.findFirst = originalEmployeeFind; });
+  // No SLA override is configured, so the defaults in business rules apply.
+  prisma.systemSetting.findUnique = (async () => null) as unknown as typeof prisma.systemSetting.findUnique;
+  t.after(() => {
+    prisma.$transaction = originalTransaction;
+    prisma.employee.findFirst = originalEmployeeFind;
+    prisma.systemSetting.findUnique = originalSettingFind;
+  });
   const access = { requirePermission: async (actor?: string) => {
     if (actor !== "admin-1") throw new ForbiddenException();
     return { adminUser: { id: "admin-1", linkedEmployeeId: "actor-employee", linkedEmployee: { id: "actor-employee" } } };
@@ -211,12 +223,13 @@ test("all legacy customer-service routes require a verified token and mutations 
     if (authorization !== "Bearer signed-session") throw new UnauthorizedException();
     return "verified-admin";
   } } as OperationsAccessService;
-  const controller = new OperationsCustomerServiceController(mockService as unknown as OperationsCustomerServiceService, access);
+  const desk = {} as unknown as OperationsCustomerServiceDeskService;
+  const controller = new OperationsCustomerServiceController(mockService as unknown as OperationsCustomerServiceService, desk, access);
   const invoke = (authorization?: string) => [
     () => controller.summary(authorization),
     () => controller.customers(authorization, "search"),
     () => controller.orders(authorization, "after-sales", "search"),
-    () => controller.cases(authorization, "after-sales", "AFTER_SALE", "OPEN", "search"),
+    () => controller.cases(authorization, "after-sales", "AFTER_SALE", "OPEN", undefined, undefined, undefined, undefined, undefined, undefined, "search"),
     () => controller.notes(authorization, "search"),
     () => controller.createCase(authorization, { adminUserId: "forged-admin", title: "Case" }),
     () => controller.updateCase(authorization, "case-1", { adminUserId: "forged-admin", status: "CLOSED" }),

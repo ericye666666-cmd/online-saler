@@ -162,6 +162,22 @@ const pagePermissions: OperationsPermission[] = [
     description: "Open the finance summary for revenue, refunds, delivery cost and commission."
   },
   {
+    code: "page.customer-service.cases",
+    module: "customer-service",
+    scope: "PAGE",
+    page: "customer-service-cases",
+    action: "view",
+    description: "Open the customer service case queue."
+  },
+  {
+    code: "page.customer-service.refunds",
+    module: "customer-service",
+    scope: "PAGE",
+    page: "customer-service-refunds",
+    action: "view",
+    description: "Open refund requests waiting for finance approval."
+  },
+  {
     code: "page.rider.deliveries",
     module: "orders",
     scope: "PAGE",
@@ -247,6 +263,11 @@ const orderWorkflowPermissions: OperationsPermission[] = [
   ["orders.refund", "refund", "Record a refund that was already executed in M-Pesa."],
   ["orders.payment-review", "payment-review", "Resolve payments and callbacks held for manual review."],
   ["orders.resend-code", "resend-code", "Send the customer a replacement delivery code."],
+  ["customer-service.assign", "assign", "Give a customer service case an owner."],
+  ["customer-service.escalate", "escalate", "Hand a case to fulfillment, finance or an administrator."],
+  ["customer-service.contact-update", "contact-update", "Correct a customer phone, WhatsApp number or delivery address."],
+  ["customer-service.refund-request", "refund-request", "Ask finance to approve a refund. Never moves money."],
+  ["customer-service.refund-approve", "refund-approve", "Approve or reject a refund request. Finance only."],
   ["rider.deliveries", "rider-deliveries", "See and close only the deliveries assigned to you."],
   ["riders.view", "view", "View the riders of a fulfillment node."],
   ["riders.manage", "manage", "Add a rider, change their details, or stand them down."],
@@ -263,9 +284,10 @@ const orderWorkflowPermissions: OperationsPermission[] = [
 ].map(([code, action, description]) => ({
   code,
   module: code.startsWith("analytics.") ? "analytics"
-    : code.startsWith("orders.") || code.startsWith("rider.") || code.startsWith("riders.") ? "orders"
-      : code.startsWith("nodes.") || code.startsWith("notifications.") ? "system"
-        : "product",
+    : code.startsWith("customer-service.") ? "customer-service"
+      : code.startsWith("orders.") || code.startsWith("rider.") || code.startsWith("riders.") ? "orders"
+        : code.startsWith("nodes.") || code.startsWith("notifications.") ? "system"
+          : "product",
   scope: "ACTION" as const,
   action,
   description
@@ -324,6 +346,14 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "orders.write-off",
       "orders.payment-review",
       "orders.resend-code",
+      "action.customer-service.create",
+      "action.customer-service.edit",
+      "page.customer-service.cases",
+      "page.customer-service.refunds",
+      "customer-service.assign",
+      "customer-service.escalate",
+      "customer-service.contact-update",
+      "customer-service.refund-request",
       "riders.view",
       "riders.manage",
       "page.orders.node",
@@ -470,17 +500,28 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
     code: "CUSTOMER_SERVICE",
     name: "Customer Service",
     description: "Customer support, return intake, and delivery exception handling.",
+    // What customer service can do stops exactly where money, stock and
+    // attribution begin. It can ask for a refund but never record one; it can
+    // resend a delivery code but never read one; it has no permission that
+    // completes a delivery, marks a payment paid, or touches a commission.
     permissions: [
       "module.customer-service",
       "module.orders",
       "page.orders.all",
       "page.orders.after-sale",
+      "page.customer-service.cases",
+      "page.customer-service.refunds",
       "action.customer-service.view",
       "action.customer-service.create",
       "action.customer-service.edit",
+      "customer-service.assign",
+      "customer-service.escalate",
+      "customer-service.contact-update",
+      "customer-service.refund-request",
       "action.orders.view",
       "orders.view",
-      "orders.after-sale"
+      "orders.after-sale",
+      "orders.resend-code"
     ]
   },
   {
@@ -505,6 +546,12 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "page.orders.payment-review",
       "orders.payment-review",
       "orders.refund",
+      // Finance is the only role that can approve a refund request, and the
+      // only one that can then record the executed refund against it.
+      "module.customer-service",
+      "action.customer-service.view",
+      "page.customer-service.refunds",
+      "customer-service.refund-approve",
       "nodes.view"
     ]
   },
