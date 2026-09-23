@@ -22,6 +22,7 @@ import {
   balanceAmountKsh,
   calculateOrderAmounts,
   depositAmountKsh,
+  generateCustomerCode,
   orderQualifiesForDeposit
 } from "@online-saler/business-rules";
 import {
@@ -258,10 +259,13 @@ export async function startCheckout(input: StartCheckoutInput) {
     const balanceKsh = paymentPlan === OrderPaymentPlan.DEPOSIT_50 ? balanceAmountKsh(amounts.totalKsh) : 0;
     const expiresAt = new Date(now.getTime() + RESERVATION_MINUTES * 60_000);
     const orderNumber = `DL-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(4).toString("hex").toUpperCase()}`;
-    // A short code the shopper reads out at the counter. Until now the pickup
-    // code column was never written, so staff could only verify by order
-    // number or phone, and PICKUP_CODE verification could never match.
-    const pickupCode = input.fulfillmentMethod === FulfillmentMethod.PICKUP ? generatePickupCode() : null;
+    // A short code the shopper reads out at the counter. It is minted by the
+    // same generator as the delivery code, and that is not cosmetic: the
+    // counter verifies both through verifyCustomerCode, which accepts four
+    // digits and nothing else. A six-character alphanumeric code -- which this
+    // was until 2026-09-23 -- normalised down to whatever digits it happened to
+    // contain and could never match, so no pickup could be confirmed at all.
+    const pickupCode = input.fulfillmentMethod === FulfillmentMethod.PICKUP ? generateCustomerCode() : null;
     const attribution = await resolveCheckoutAttribution(tx, input.customerId, input.attribution, now);
 
     await tx.customer.update({
@@ -390,16 +394,6 @@ async function retryCheckoutTransaction<T>(operation: () => Promise<T>): Promise
       if (attempt >= 2) throw new CheckoutConflictError("These items changed during checkout. Please try again.");
     }
   }
-}
-
-/**
- * Six characters from an alphabet with no 0/O or 1/I, so a code read aloud in a
- * noisy shop cannot be written down two ways.
- */
-function generatePickupCode(): string {
-  const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const bytes = randomBytes(6);
-  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 function normalizeProductIds(productIds: string[]): string[] {

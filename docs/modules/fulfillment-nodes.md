@@ -73,7 +73,7 @@ fare was never entered, because an unrecorded fare is unknown, not zero.
 ## Checking it by hand
 
 1. Place a pickup order on the storefront and choose a store. The order page
-   shows the store, its map link and a six-character pickup code.
+   shows the store, its map link and a four-digit pickup code.
 2. In operations, pick and pack the order. **发往门店** appears once it is
    packed; it stamps the package code.
 3. Open **门店履约台**, choose that store, and type the package code into the scan

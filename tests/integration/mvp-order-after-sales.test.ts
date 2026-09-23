@@ -168,8 +168,13 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     assert.equal(atNode.status, "ARRIVED_AT_NODE");
     assert.ok(atNode.arrivedAtNodeAt);
     await fulfillment.readyForPickup(order.id, actor);
-    await assert.rejects(fulfillment.confirmPickup(order.id, { ...actor, verificationMethod: "ORDER_NUMBER", verificationValue: "WRONG-ORDER" }), /verification does not match/);
-    await fulfillment.confirmPickup(order.id, { ...actor, verificationMethod: "ORDER_NUMBER", verificationValue: order.orderNumber });
+    // The order number is printed on the parcel sitting on the counter, so it
+    // proves nothing. Only the four digits on the customer's own order page do.
+    assert.match(order.pickupCode!, /^\d{4}$/, "the counter verifies four digits and nothing else");
+    await assert.rejects(fulfillment.confirmPickup(order.id, { ...actor, verificationMethod: "PICKUP_CODE", verificationValue: order.orderNumber }), /Enter the 4 digits/);
+    const wrongCode = String((Number(order.pickupCode) + 1) % 10000).padStart(4, "0");
+    await assert.rejects(fulfillment.confirmPickup(order.id, { ...actor, verificationMethod: "PICKUP_CODE", verificationValue: wrongCode }), /code is wrong/);
+    await fulfillment.confirmPickup(order.id, { ...actor, verificationMethod: "PICKUP_CODE", verificationValue: order.pickupCode! });
     assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "COMPLETED");
     assert.equal(await prisma.inventoryItem.count({ where: { productId: { in: productIds }, status: "DELIVERED" } }), 2);
     assert.ok((await prisma.orderFulfillment.findUniqueOrThrow({ where: { orderId: order.id } })).completedAt);
