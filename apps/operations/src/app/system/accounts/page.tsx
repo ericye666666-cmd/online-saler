@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { roleLabel, roleOptionLabel } from "../role-labels";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { accessRequest, adminQuery, type AdminUserAccount, type RoleRecord } from "../access-client";
 import { t } from "@/i18n/runtime";
@@ -186,7 +187,7 @@ export default function AccountsPage() {
                   </FormField>
                   <FormField label={t("角色")}>
                     <NativeSelect className="w-full" value={form.roleCode} onChange={(event) => setForm((current) => ({ ...current, roleCode: event.target.value }))}>
-                      {roleOptions.map((roleCode) => <NativeSelectOption key={roleCode} value={roleCode}>{roleCode}</NativeSelectOption>)}
+                      {roleOptions.map((roleCode) => <NativeSelectOption key={roleCode} value={roleCode}>{roleOptionLabel(roleCode)}</NativeSelectOption>)}
                     </NativeSelect>
                   </FormField>
                 </FieldGroup>
@@ -237,7 +238,7 @@ export default function AccountsPage() {
                             value={roleSelections[adminUser.id] ?? account.roles[0]?.code ?? roleOptions[0] ?? ""}
                             onChange={(event) => setRoleSelections((current) => ({ ...current, [adminUser.id]: event.target.value }))}
                           >
-                            {roleOptions.map((roleCode) => <NativeSelectOption key={roleCode} value={roleCode}>{roleCode}</NativeSelectOption>)}
+                            {roleOptions.map((roleCode) => <NativeSelectOption key={roleCode} value={roleCode}>{roleOptionLabel(roleCode)}</NativeSelectOption>)}
                           </NativeSelect>
                           <Button size="sm" variant="outline" disabled={busy === `role-${adminUser.id}`} onClick={() => void saveRole(adminUser.id)}>
                             
@@ -245,7 +246,7 @@ export default function AccountsPage() {
                           </Button>
                         </div>
                       ) : (
-                        account.roles.map((role) => role.name).join(", ") || "-"
+                        account.roles.map((role) => roleLabel(role.code)).join(", ") || "-"
                       )}
                     </TableCell>
                     <TableCell><Badge variant={adminUser.status === "ACTIVE" ? "default" : "secondary"}>{adminUser.status}</Badge></TableCell>

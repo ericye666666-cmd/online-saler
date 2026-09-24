@@ -5,6 +5,7 @@ import { PencilIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { Badge } from "@/components/ui/badge";
+import { roleLabel } from "../role-labels";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -158,7 +159,7 @@ export default function RolesPage() {
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <CardTitle>{role.name}</CardTitle>
+                  <CardTitle>{roleLabel(role.code)}</CardTitle>
                   <CardDescription>{role.code} - {role.description}</CardDescription>
                 </div>
                 {canManage ? (

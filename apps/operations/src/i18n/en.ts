@@ -2762,5 +2762,52 @@ export const enDictionary: Record<string, string> = {
   "顾客收到货以后，把他订单页上的 4 位数字报给你，你输进去才算送达。":
     "Once the customer has their order, they read you the four digits from their own order page. Typing those in is what completes the delivery.",
   "先把货交给顾客，再请顾客报出他订单页上的 4 位数字。没有这个号码不能完成订单。":
-    "Hand the order over first, then ask the customer for the four digits on their own order page. Without them the order cannot be completed."
+    "Hand the order over first, then ask the customer for the four digits on their own order page. Without them the order cannot be completed.",
+
+  // ——— The eight ends, their screens, and the roles that hold them ———
+  "仓库发货": "Warehouse dispatch",
+  "门店端": "Store",
+  "骑手端": "Rider",
+  "客服端": "Customer service",
+  "手机拣货台": "Picking station",
+  "门店手机台": "Store console",
+  "支付复核": "Payment review",
+  "我的配送单": "My deliveries",
+
+  "超级管理员": "Super Admin",
+  "项目经理": "Project Manager",
+  "仓库履约": "Order Fulfillment",
+  "门店店长": "Store Node Manager",
+  "配送骑手": "Delivery Rider",
+  "订单运营": "Order Operations",
+  "推广运营": "Affiliate Operations",
+  "数据分析师": "Data Analyst",
+
+  // ——— Parcel stages and delivery failures a rider or store reads ———
+  "在途": "In transit",
+  "待发车": "Ready to send",
+  "送回途中": "On the way back",
+  "顾客没有应答": "Nobody answered",
+  "电话打不通": "Phone unreachable",
+  "地址不对 / 找不到": "Address wrong or not found",
+  "顾客要求改时间": "Customer asked us to come later",
+  "顾客拒收": "Customer refused it",
+
+  // ——— Catalogue categories ———
+  "发饰": "Hair accessories",
+  "太阳镜": "Sunglasses",
+  "手套": "Gloves",
+  "手表": "Watches",
+  "首饰": "Jewellery",
+  "腰带": "Belts",
+  "钱包与卡包": "Wallets & card holders",
+  "旅行包": "Travel bags",
+  "毛衣与针织衫": "Jumpers & knitwear",
+  "泳装": "Swimwear",
+  "西装套装": "Suits",
+  "运动套装": "Tracksuits",
+  "童装套装": "Kids sets",
+  "童装睡衣": "Kids sleepwear",
+  "童装短裤": "Kids shorts",
+  "窗帘": "Curtains"
 };

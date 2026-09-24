@@ -14,6 +14,8 @@ import {
   PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS
 } from "../app/product/product-factory-batch-display";
 import { IMAGE_ISSUE_LABELS, PRODUCT_STATUS_LABELS } from "../app/product/product-factory-display";
+import { operationsModules } from "../components/admin/operations-admin-shell";
+import { ROLE_LABEL_SOURCES } from "../app/system/role-labels";
 
 // Chinese is the source language, so it always renders the key itself.
 assert.equal(translate("zh-CN", "商品中心"), "商品中心");
@@ -51,7 +53,13 @@ const labelSources = [
   ...Object.values(IMAGE_ISSUE_LABELS),
   ...Object.values(PRODUCT_FACTORY_STAGE_LABELS),
   ...Object.values(PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS),
-  ...ORDER_STATUS_TABS.map(([, label]) => label)
+  ...ORDER_STATUS_TABS.map(([, label]) => label),
+  // The navigation and the role picker are the two label maps a person meets
+  // before anything else, and both shipped untranslated: an English-reading
+  // manager opened a Chinese sidebar, and every language saw WAREHOUSE_FULFILLMENT.
+  ...operationsModules.map((module) => module.label),
+  ...operationsModules.flatMap((module) => module.items.map((item) => item.label)),
+  ...ROLE_LABEL_SOURCES
 ];
 
 for (const source of labelSources) {
