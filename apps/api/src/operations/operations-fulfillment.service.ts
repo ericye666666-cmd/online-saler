@@ -569,8 +569,12 @@ export class OperationsFulfillmentService {
     await this.requireEmployee(packerId);
     const order = await this.requireOrderWithTask(orderId);
     const fulfillment = order.fulfillment!;
-    await this.assertPackerOwnsParcel(input.adminUserId, fulfillment, actor.actorEmployeeId);
+    // Status first, ownership second. A parcel that is not ready to pack is not
+    // ready for anyone, and answering "it is not assigned to you" to someone
+    // whose real problem is an unfinished pick sends them to find a supervisor
+    // who can do nothing for them.
     if (fulfillment.status !== FulfillmentStatus.READY_TO_PACK) throw new BadRequestException("Packing can start only after every item is verified.");
+    await this.assertPackerOwnsParcel(input.adminUserId, fulfillment, actor.actorEmployeeId);
     if (fulfillment.packingStartedAt && fulfillment.packingStartedByEmployeeId === packerId) {
       return this.orderDetail(orderId, input.adminUserId);
     }
@@ -605,8 +609,8 @@ export class OperationsFulfillmentService {
     const order = await this.requireOrderWithTask(orderId);
     const fulfillment = order.fulfillment!;
     if (fulfillment.status === FulfillmentStatus.PACKED) return this.orderDetail(orderId, input.adminUserId);
-    await this.assertPackerOwnsParcel(input.adminUserId, fulfillment, actor.actorEmployeeId);
     if (!fulfillment.packingStartedAt) throw new BadRequestException("Start packing before completing it.");
+    await this.assertPackerOwnsParcel(input.adminUserId, fulfillment, actor.actorEmployeeId);
     this.assertTransition(order, FulfillmentStatus.PACKED);
     const packerId = input.employeeId?.trim() || fulfillment.packingStartedByEmployeeId || actor.actorEmployeeId!;
     if (packerId !== actor.actorEmployeeId) await this.access.requirePermission(input.adminUserId, "orders.assign-picker");

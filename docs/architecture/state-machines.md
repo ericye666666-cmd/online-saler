@@ -262,8 +262,10 @@ Ownership is decided by `canWorkWarehouseTask` in
   work, but assigned to nobody would stop a one-person warehouse dead: they would
   pick a trolley and be told to ask a supervisor who is themselves. A supervisor
   can still hand it to someone else before packing starts.
-- `startPacking` and `completePacking` both check ownership before any lock is
-  taken, so a refused packer never holds the order row.
+- `startPacking` and `completePacking` check the status first and ownership
+  second, both before any lock is taken. A parcel that is not ready to pack is
+  not ready for anyone, so answering "not assigned to you" would send a packer
+  to find a supervisor who can do nothing for them.
 - An admin account with no linked employee has a null actor id and is treated as
   "someone else" rather than matching a null assignment.
 
