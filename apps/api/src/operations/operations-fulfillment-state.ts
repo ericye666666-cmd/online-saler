@@ -190,6 +190,42 @@ export function verifyFulfillmentItemBarcode(input: BarcodeCheckInput): BarcodeC
   };
 }
 
+export type WarehouseTaskOwnership =
+  | { allowed: true }
+  | { allowed: false; reason: "UNASSIGNED" | "OTHER_EMPLOYEE" };
+
+/**
+ * May this person work this parcel?
+ *
+ * Picking and packing answer it differently on purpose. A picker takes a task
+ * by scanning the garment in their hand — the work itself is the claim, and an
+ * unclaimed order is fair game. Packing is handed out: a trolley of loose
+ * garments is the last point where what goes into a bag can still be traced to
+ * a person, so an unassigned parcel belongs to nobody rather than to whoever
+ * reaches it first.
+ *
+ * `supervisor` is whoever holds the matching assign permission. They can always
+ * act, or a floor where nothing has been handed out yet could not start.
+ */
+export function canWorkWarehouseTask(input: {
+  assignedEmployeeId: string | null;
+  actorEmployeeId: string | null;
+  supervisor: boolean;
+  /** Picking lets anyone take an unclaimed task; packing does not. */
+  unassignedIsOpen: boolean;
+}): WarehouseTaskOwnership {
+  if (input.supervisor) return { allowed: true };
+  if (!input.assignedEmployeeId) {
+    return input.unassignedIsOpen ? { allowed: true } : { allowed: false, reason: "UNASSIGNED" };
+  }
+  // A missing actor can never match an assignment; treat it as someone else's
+  // rather than letting a null slip past an equality check.
+  if (!input.actorEmployeeId || input.assignedEmployeeId !== input.actorEmployeeId) {
+    return { allowed: false, reason: "OTHER_EMPLOYEE" };
+  }
+  return { allowed: true };
+}
+
 export function allFulfillmentItemsVerified(items: ReadonlyArray<{ status: FulfillmentItemStatus }>): boolean {
   return items.length > 0 && items.every((item) => item.status === FulfillmentItemStatus.VERIFIED);
 }

@@ -44,8 +44,11 @@ export function PackingView({ orders, busy, onStart, onComplete, onLabel }: {
     return (
       <div className="rounded-xl border p-6 text-center">
         <PackageCheckIcon className="mx-auto size-10 text-muted-foreground" />
-        <p className="mt-2 font-medium text-lg">{t("没有要打包的")}</p>
-        <p className="text-muted-foreground text-sm">{t("拣完货的订单会自动出现在这里。")}</p>
+        <p className="mt-2 font-medium text-lg">{t("没有分给你的包")}</p>
+        {/* Packing is handed out, not taken. A packer staring at an empty screen
+            while trolleys pile up behind them needs to know that is correct and
+            who unblocks it. */}
+        <p className="text-muted-foreground text-sm">{t("主管把拣好的车分给你之后，它才会出现在这里。手边有货但这里是空的，就去找主管分配。")}</p>
       </div>
     );
   }

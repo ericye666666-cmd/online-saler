@@ -138,6 +138,7 @@ type OrderRow = {
     id: string;
     status: string;
     assignedPickerEmployeeId?: string | null;
+    assignedPackerEmployeeId?: string | null;
     packingStartedByEmployeeId?: string | null;
     packingStartedAt?: string | null;
     packedByEmployeeId?: string | null;
@@ -147,6 +148,7 @@ type OrderRow = {
     packageCount?: number | null;
     deliveryRiderId?: string | null;
     assignedPicker?: FulfillmentEmployee | null;
+    assignedPacker?: FulfillmentEmployee | null;
     packingStartedBy?: FulfillmentEmployee | null;
     packedBy?: FulfillmentEmployee | null;
     dispatchedBy?: FulfillmentEmployee | null;
@@ -198,7 +200,7 @@ type Filters = {
 };
 
 type Scope = "workbench" | "all" | "after-sales" | "exceptions";
-type DialogKind = "assign-picker" | "scan" | "start-packing" | "complete-packing" | "assign-rider" | "confirm-pickup" | "complete-delivery" | "exception" | "assign-after-sale" | "cancel" | "assign-node" | "write-off" | "refund" | "resolve-exception";
+type DialogKind = "assign-picker" | "assign-packer" | "scan" | "start-packing" | "complete-packing" | "assign-rider" | "confirm-pickup" | "complete-delivery" | "exception" | "assign-after-sale" | "cancel" | "assign-node" | "write-off" | "refund" | "resolve-exception";
 type DialogState = { kind: DialogKind; order: OrderRow; item?: OrderRow["items"][number] } | null;
 type RequestOptions = RequestInit & { query?: Record<string, string | undefined> };
 
@@ -951,6 +953,7 @@ function OrderCard(props: {
   const afterSales = order.customerServiceCases.filter((item) => item.issueType === "AFTER_SALE");
   const people: Array<[string, string]> = [];
   if (fulfillment?.assignedPicker?.name) people.push([t("拣货"), fulfillment.assignedPicker.name]);
+  if (fulfillment?.assignedPacker?.name) people.push([t("打包"), fulfillment.assignedPacker.name]);
   if (fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name) people.push([t("打包"), (fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name)!]);
   if (fulfillment?.dispatchedBy?.name) people.push([t("出库"), fulfillment.dispatchedBy.name]);
   if (fulfillment?.deliveryRider?.name ?? fulfillment?.deliveryRiderName) people.push([t("骑手"), (fulfillment?.deliveryRider?.name ?? fulfillment?.deliveryRiderName)!]);
@@ -1106,6 +1109,17 @@ function orderActions({ order, session, onDialog, onDirect, onLabel }: {
 
   if (status === "PAID" && hasPermission(session, "orders.pick")) {
     actions.push({ key: "claim", label: t("领取拣货任务"), icon: <ClipboardCheckIcon data-icon="inline-start" />, run: () => void onDirect(order, "claim-picking") });
+  }
+  // Packing is handed out, not taken. Until a supervisor names a packer the
+  // parcel belongs to nobody and the pack actions below will be refused.
+  if (status === "READY_TO_PACK" && hasPermission(session, "orders.assign-packer") && !order.fulfillment?.packingStartedAt) {
+    actions.push({
+      key: "assign-packer",
+      label: order.fulfillment?.assignedPackerEmployeeId ? t("换一个打包员") : t("分配打包员"),
+      icon: <UserRoundCheckIcon data-icon="inline-start" />,
+      run: () => onDialog({ kind: "assign-packer", order }),
+      variant: "outline"
+    });
   }
   if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && !order.fulfillment?.packingStartedAt) {
     actions.push({ key: "start-pack", label: t("开始打包"), icon: <BoxIcon data-icon="inline-start" />, run: () => onDialog({ kind: "start-packing", order }) });
@@ -1284,6 +1298,7 @@ function OrderActionDialog(props: {
     let path = "";
     let body: Record<string, unknown> = { note };
     if (state.kind === "assign-picker") { path = "assign-picker"; body.employeeId = employeeId; }
+    if (state.kind === "assign-packer") { path = "assign-packer"; body.employeeId = employeeId; }
     if (state.kind === "scan") { path = `items/${state.item!.id}/scan`; body.barcode = barcode; }
     if (state.kind === "start-packing") { path = "start-packing"; body.employeeId = employeeId; }
     if (state.kind === "complete-packing") { path = "complete-packing"; body = { ...body, employeeId, packagingMethod, packageCount: Number(packageCount) }; }
@@ -1322,7 +1337,9 @@ function OrderActionDialog(props: {
   }
 
   const linkedEmployeeId = session?.adminUser?.linkedEmployee?.id ?? "";
-  const selectableEmployees = hasPermission(session, "orders.assign-picker") ? employees : employees.filter((item) => item.id === linkedEmployeeId);
+  const selectableEmployees = hasPermission(session, "orders.assign-picker") || hasPermission(session, "orders.assign-packer")
+    ? employees
+    : employees.filter((item) => item.id === linkedEmployeeId);
   const managedAfterSale = Boolean(state?.order.customerServiceCases.find((item) => item.issueType === "AFTER_SALE")?.afterSaleReturn);
   return (
     <Dialog open={Boolean(state)} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -1333,7 +1350,7 @@ function OrderActionDialog(props: {
         </DialogHeader>
         {state ? (
           <FieldGroup>
-            {["assign-picker", "start-packing", "complete-packing", "assign-after-sale"].includes(state.kind) || (state.kind === "assign-rider" && riderType === "INTERNAL") ? (
+            {["assign-picker", "assign-packer", "start-packing", "complete-packing", "assign-after-sale"].includes(state.kind) || (state.kind === "assign-rider" && riderType === "INTERNAL") ? (
               <EmployeeFilter label={employeeLabel(state.kind)} value={employeeId} employees={selectableEmployees} onChange={setEmployeeId} />
             ) : null}
             {state.kind === "scan" ? (
@@ -1469,11 +1486,12 @@ function barcodeErrorDescription(details?: Record<string, unknown>) {
 }
 
 function dialogTitle(kind: DialogKind) {
-  return ({ "assign-picker": t("分配拣货员工"), scan: t("逐件 Barcode 核对"), "start-packing": t("开始打包"), "complete-packing": t("完成打包"), "assign-rider": t("分配配送员"), "confirm-pickup": t("确认顾客已取货"), "complete-delivery": t("用配送码确认送达"), exception: t("提交异常事实"), "assign-after-sale": t("处理售后订单"), cancel: t("取消订单"), "assign-node": t("指定履约点"), "resolve-exception": t("解决异常"), "write-off": t("作废订单并处理库存"), refund: t("登记已完成的退款") } as Record<DialogKind, string>)[kind];
+  return ({ "assign-picker": t("分配拣货员工"), "assign-packer": t("分配打包员工"), scan: t("逐件 Barcode 核对"), "start-packing": t("开始打包"), "complete-packing": t("完成打包"), "assign-rider": t("分配配送员"), "confirm-pickup": t("确认顾客已取货"), "complete-delivery": t("用配送码确认送达"), exception: t("提交异常事实"), "assign-after-sale": t("处理售后订单"), cancel: t("取消订单"), "assign-node": t("指定履约点"), "resolve-exception": t("解决异常"), "write-off": t("作废订单并处理库存"), refund: t("登记已完成的退款") } as Record<DialogKind, string>)[kind];
 }
 
 function employeeLabel(kind: DialogKind) {
   if (kind === "assign-picker") return t("拣货员工");
+  if (kind === "assign-packer") return t("打包员工");
   if (kind === "start-packing") return t("打包员工");
   if (kind === "complete-packing") return t("打包员工");
   if (kind === "assign-rider") return t("内部配送员工");
@@ -1481,7 +1499,7 @@ function employeeLabel(kind: DialogKind) {
 }
 
 function actionLabel(action: string) {
-  return ({ PAYMENT_CONFIRMED_PICK_TASK_CREATED: t("支付成功并生成拣货任务"), ASSIGN_PICKER: t("分配拣货员"), CLAIM_PICKING_TASK: t("领取拣货任务"), START_PICKING: t("开始拣货"), ITEM_BARCODE_VERIFIED: t("商品 Barcode 核对成功"), BARCODE_REJECTED: t("Barcode 核对失败"), COMPLETE_PICKING: t("完成拣货"), START_PACKING: t("开始打包"), COMPLETE_PACKING: t("完成打包"), READY_FOR_PICKUP: t("等待顾客自提"), READY_FOR_DISPATCH: t("等待发货"), ASSIGN_DELIVERY_RIDER: t("分配配送员"), HAND_TO_DELIVERY_RIDER: t("已交给配送员"), CONFIRM_DELIVERY: t("确认送达"), CONFIRM_CUSTOMER_PICKUP: t("确认已取货"), SUBMIT_EXCEPTION_FACT: t("提交异常事实"), ASSIGN_AFTER_SALE_OWNER: t("分配售后负责人"), UPDATE_AFTER_SALE_CASE: t("更新售后处理"), CANCEL_ORDER: t("取消订单") } as Record<string, string>)[action] ?? action;
+  return ({ PAYMENT_CONFIRMED_PICK_TASK_CREATED: t("支付成功并生成拣货任务"), ASSIGN_PICKER: t("分配拣货员"), ASSIGN_PACKER: t("分配打包员"), CLAIM_PICKING_TASK: t("领取拣货任务"), START_PICKING: t("开始拣货"), ITEM_BARCODE_VERIFIED: t("商品 Barcode 核对成功"), BARCODE_REJECTED: t("Barcode 核对失败"), COMPLETE_PICKING: t("完成拣货"), START_PACKING: t("开始打包"), COMPLETE_PACKING: t("完成打包"), READY_FOR_PICKUP: t("等待顾客自提"), READY_FOR_DISPATCH: t("等待发货"), ASSIGN_DELIVERY_RIDER: t("分配配送员"), HAND_TO_DELIVERY_RIDER: t("已交给配送员"), CONFIRM_DELIVERY: t("确认送达"), CONFIRM_CUSTOMER_PICKUP: t("确认已取货"), SUBMIT_EXCEPTION_FACT: t("提交异常事实"), ASSIGN_AFTER_SALE_OWNER: t("分配售后负责人"), UPDATE_AFTER_SALE_CASE: t("更新售后处理"), CANCEL_ORDER: t("取消订单") } as Record<string, string>)[action] ?? action;
 }
 
 function statusLabel(status: string) {

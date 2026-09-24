@@ -61,6 +61,8 @@ type PickerOrder = {
   fulfillment?: {
     status: string;
     assignedPickerEmployeeId?: string | null;
+    assignedPackerEmployeeId?: string | null;
+    assignedPacker?: { name: string } | null;
     packingStartedAt?: string | null;
     packageCode?: string | null;
     fulfillmentNode?: { id: string; name: string } | null;
@@ -114,7 +116,11 @@ export function PickingStation() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const waiting = orders.filter((order) => order.fulfillment?.status === "PAID");
+  // Who this browser is. Every ownership question on this screen is answered
+  // against the employee behind the signed-in account, never the account.
+  const meEmployeeId = session?.adminUser?.linkedEmployee?.id ?? "";
+  const isSupervisor = hasPermission(session, "orders.assign-packer");
+
 
   /**
    * Everything still to fetch, in shelf order across every claimed order.
@@ -128,10 +134,18 @@ export function PickingStation() {
     const skippedKeys = new Set(skipped.map((item) => item.orderItemId));
     const pending: PickItem[] = [];
     for (const order of orders) {
-      if (order.fulfillment?.status !== "PICKING") continue;
+      const task = order.fulfillment;
+      if (!task) continue;
+      // One task at a time, and the task is whoever scanned it. An unclaimed
+      // order is in everybody's queue; a claimed one is only in its picker's.
+      // Showing a picker rows the server will refuse is how the screen teaches
+      // people to ignore errors.
+      const unclaimed = task.status === "PAID" && !task.assignedPickerEmployeeId;
+      const mine = task.status === "PICKING" && task.assignedPickerEmployeeId === meEmployeeId;
+      if (!unclaimed && !mine) continue;
       const destination = destinationLabel(order);
       for (const item of order.items) {
-        const scan = order.fulfillment.items.find((candidate) => candidate.orderItemId === item.id);
+        const scan = task.items.find((candidate) => candidate.orderItemId === item.id);
         if (scan?.status === "VERIFIED") continue;
         pending.push({
           orderId: order.id,
@@ -154,12 +168,13 @@ export function PickingStation() {
       ...ordered.filter((item) => !skippedKeys.has(item.orderItemId)),
       ...ordered.filter((item) => skippedKeys.has(item.orderItemId))
     ];
-  }, [orders, skipped]);
+  }, [orders, skipped, meEmployeeId]);
 
   const picked = useMemo(() => orders.reduce((sum, order) => {
     if (order.fulfillment?.status !== "PICKING") return sum;
+    if (order.fulfillment.assignedPickerEmployeeId !== meEmployeeId) return sum;
     return sum + order.fulfillment.items.filter((item) => item.status === "VERIFIED").length;
-  }, 0), [orders]);
+  }, 0), [orders, meEmployeeId]);
   const total = picked + queue.length;
   const active = queue[0] ?? null;
 
@@ -167,7 +182,14 @@ export function PickingStation() {
 
   /** The trolley, regrouped: one entry per order, which is one parcel. */
   const packOrders = useMemo<PackOrder[]>(() => orders
-    .filter((order) => order.fulfillment?.status === "READY_TO_PACK" || order.fulfillment?.status === "PACKED")
+    .filter((order) => {
+      const task = order.fulfillment;
+      if (!task) return false;
+      if (task.status !== "READY_TO_PACK" && task.status !== "PACKED") return false;
+      // A packer only ever sees the parcels given to them. A supervisor sees
+      // the floor, because handing them out is their job.
+      return isSupervisor || task.assignedPackerEmployeeId === meEmployeeId;
+    })
     .map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,
@@ -181,6 +203,7 @@ export function PickingStation() {
             packageCode: order.fulfillment.packageCode ?? null
           }
         : null,
+      assignedPackerName: order.fulfillment?.assignedPacker?.name ?? null,
       items: order.items.map((item) => ({
         id: item.id,
         title: item.snapshot?.title ?? t("未命名商品"),
@@ -189,15 +212,15 @@ export function PickingStation() {
         imageUrl: proxied(item.displayImageUrl ?? item.snapshot?.imageUrl),
         locationCode: item.inventoryItem?.location?.locationCode ?? "—"
       }))
-    })), [orders]);
+    })), [orders, isSupervisor, meEmployeeId]);
 
   const toPackCount = packOrders.filter((order) => order.fulfillment?.status === "READY_TO_PACK").length;
 
   // The moment the racks are done, the job becomes packing. Leaving the picker
   // on an empty picking screen is how they walk back to a desk to ask what next.
   useEffect(() => {
-    if (mode === "pick" && !active && !waiting.length && toPackCount > 0) setMode("pack");
-  }, [mode, active, waiting.length, toPackCount]);
+    if (mode === "pick" && !active && toPackCount > 0) setMode("pack");
+  }, [mode, active, toPackCount]);
 
   async function packAction(order: PackOrder, action: string, body: Record<string, unknown>) {
     setBusy(true);
@@ -210,25 +233,6 @@ export function PickingStation() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function claimAll() {
-    setBusy(true);
-    setError("");
-    const failures: string[] = [];
-    try {
-      for (const order of waiting) {
-        try {
-          await request(`/operations/orders/${order.id}/claim-picking`, { method: "POST", body: JSON.stringify({}) });
-        } catch (caught) {
-          failures.push(`${order.orderNumber}（${caught instanceof Error ? caught.message : t("未知错误")}）`);
-        }
-      }
-    } finally {
-      setBusy(false);
-    }
-    if (failures.length) setError(t("有 {count} 单没能领取：{detail}", { count: failures.length, detail: failures.join("；") }));
-    await load();
   }
 
   async function submitScan(raw: string) {
@@ -373,21 +377,16 @@ export function PickingStation() {
             <SkipForwardIcon data-icon="inline-start" />{t("找不到这件，先跳过")}
           </Button>
           <p className="text-muted-foreground text-xs">
-            {t("跳过的会排到最后再问你一次。到最后还是找不到，在订单工作台提交异常，别自己改状态。")}
+            {t("扫第一件就算领了这一单，别人手机上就看不到它了。跳过的会排到最后再问你一次；到最后还是找不到，在订单工作台提交异常，别自己改状态。")}
           </p>
-        </div>
-      ) : waiting.length ? (
-        <div className="flex flex-col gap-3 rounded-xl border p-4 text-center">
-          <p className="font-medium text-lg">{t("有 {count} 单在等拣货", { count: waiting.length })}</p>
-          <p className="text-muted-foreground text-sm">{t("领取之后，系统会把所有商品按货架位排成一条路线，一件一件给你。")}</p>
-          <Button className="h-14" disabled={busy} onClick={() => void claimAll()}>
-            <ScanBarcodeIcon data-icon="inline-start" />{t("领取并开始拣货")}
-          </Button>
         </div>
       ) : (
         <div className="flex flex-col gap-2 rounded-xl border p-6 text-center">
           <CheckCircle2Icon className="mx-auto size-10 text-muted-foreground" />
           <p className="font-medium text-lg">{busy ? t("正在读取…") : t("没有待拣的商品")}</p>
+          {/* Says why the screen is empty. Without this a picker whose colleague
+              just scanned the last unclaimed order reads it as a broken app. */}
+          {!busy ? <p className="text-muted-foreground text-sm">{t("新订单到了会自动出现在这里。扫哪一单就算你的，别人就看不到了。")}</p> : null}
           {justPicked ? <p className="text-muted-foreground text-sm">{t("最后核对的是：{title}", { title: justPicked })}</p> : null}
           {skipped.length ? (
             <div className="mt-2 text-left">

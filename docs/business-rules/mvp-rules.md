@@ -67,6 +67,32 @@ the piece for a week.
   `BALANCE`. An amount is only accepted when it matches that leg exactly, so a
   deposit can never be mistaken for a discounted full payment.
 
+## Warehouse task ownership
+
+Changed 2026-09-24. Picking and packing are both owned work, but they are
+claimed differently, because the risks are different.
+
+- **Picking is claimed by scanning.** The first barcode a picker scans on an
+  order takes that order. From then on it is only in their queue and the server
+  refuses anyone else. There is no separate "claim" press and no
+  claim-everything button: one press that handed a single picker every order on
+  the floor left every other phone empty for reasons nobody could see.
+- An order nobody has scanned is visible to every picker. That is the pool.
+- **The picker is the default packer.** Verifying the last barcode assigns the
+  parcel to whoever picked it, so one person can pick a trolley and pack it
+  without anyone handing it over. It is still assigned work with a name against
+  it — which is the point — and a supervisor may reassign it until packing starts.
+- **Packing is handed out, never taken.** A packer may only pack a parcel a
+  supervisor assigned to them, and an unassigned parcel belongs to nobody. A
+  trolley of loose garments is the last point at which what went into a bag can
+  still be traced to a person, so it is not left to whoever reaches it first.
+- Packers see only their own parcels. Supervisors — anyone holding
+  `orders.assign-packer` — see the floor and may pack directly, otherwise a
+  warehouse where nothing had been handed out yet could not start. A supervisor
+  who packs an unassigned parcel is recorded as its packer.
+- A parcel cannot be reassigned once packing has started. That is an exception,
+  not a reassignment.
+
 ## Fulfillment
 
 - Orders are served from fulfillment nodes: one central warehouse plus the

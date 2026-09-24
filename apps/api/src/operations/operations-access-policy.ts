@@ -273,6 +273,7 @@ const actionPermissions: OperationsPermission[] = MODULES.flatMap((module) =>
 const orderWorkflowPermissions: OperationsPermission[] = [
   ["orders.view", "view", "View orders and their status history."],
   ["orders.assign-picker", "assign-picker", "Assign or reassign picking work."],
+  ["orders.assign-packer", "assign-packer", "Hand a finished trolley to a named packer. A packer without this may only pack parcels assigned to them."],
   ["orders.pick", "pick", "Claim picking work and verify item barcodes."],
   ["orders.pack", "pack", "Start and complete order packing."],
   ["orders.assign-rider", "assign-rider", "Assign an internal or external delivery rider."],
@@ -358,6 +359,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "action.analytics.export",
       "orders.view",
       "orders.assign-picker",
+      "orders.assign-packer",
       "orders.pick",
       "orders.pack",
       "orders.assign-rider",
@@ -493,6 +495,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
       "action.orders.export",
       "orders.view",
       "orders.assign-picker",
+      "orders.assign-packer",
       "orders.assign-rider",
       "orders.cancel",
       "orders.after-sale",

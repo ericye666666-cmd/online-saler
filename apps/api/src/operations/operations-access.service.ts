@@ -219,6 +219,20 @@ export class OperationsAccessService {
     return this.listRoles();
   }
 
+  /**
+   * The same check as `requirePermission`, as a question instead of a refusal.
+   * Used where holding a permission changes what an action does rather than
+   * whether it is allowed — a supervisor packing a parcel nobody was given, for
+   * instance, versus a packer who may only touch their own.
+   */
+  async hasPermission(adminUserId: string | undefined, permissionCode: string): Promise<boolean> {
+    const session = await this.session(adminUserId);
+    // Narrowed the same way `requirePermission` does: an empty session types
+    // its permission list as never[], so the guard has to come first.
+    if (!session.adminUser) return false;
+    return session.permissions.includes(permissionCode);
+  }
+
   async requirePermission(adminUserId: string | undefined, permissionCode: string) {
     const session = await this.session(adminUserId);
     if (!session.adminUser || !session.permissions.includes(permissionCode)) {

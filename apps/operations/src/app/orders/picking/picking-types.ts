@@ -31,4 +31,6 @@ export type PackOrder = {
     packingStartedAt?: string | null;
     packageCode?: string | null;
   } | null;
+  /** Who the supervisor gave this parcel to, for the "waiting" empty state. */
+  assignedPackerName?: string | null;
 };

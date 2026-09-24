@@ -52,6 +52,7 @@ import {
   buildPackageCode,
   canResolveFulfillmentException,
   canTransitionFulfillment,
+  canWorkWarehouseTask,
   holderForStatus,
   maskCustomerPhone,
   orderCenterTab,
@@ -81,6 +82,7 @@ const ORDER_INCLUDE = {
       arrivedAtNodeBy: true,
       deliveryCostBy: true,
       assignedPicker: true,
+      assignedPacker: true,
       packingStartedBy: true,
       packedBy: true,
       dispatchedBy: true,
@@ -366,12 +368,21 @@ export class OperationsFulfillmentService {
 
   async scanItem(orderId: string, orderItemId: string, input: ScanInput) {
     const actor = await this.employeeForPermission(input.adminUserId, "orders.pick");
-    const order = await this.requireOrderWithTask(orderId);
-    const fulfillment = order.fulfillment!;
-    if (fulfillment.status !== FulfillmentStatus.PICKING) throw new BadRequestException("Only an active picking task accepts barcode scans.");
+    let order = await this.requireOrderWithTask(orderId);
+    let fulfillment = order.fulfillment!;
     if (fulfillment.assignedPickerEmployeeId && fulfillment.assignedPickerEmployeeId !== actor.actorEmployeeId) {
       throw new ForbiddenException("This picking task is assigned to another employee.");
     }
+    // The scan is the claim. A picker who has the garment in their hand has
+    // already started the task; a separate "claim" press before the first scan
+    // only exists in the software, and a shared claim-everything button is how
+    // one person ends up owning nineteen orders they are not picking.
+    if (fulfillment.status === FulfillmentStatus.PAID && !fulfillment.assignedPickerEmployeeId) {
+      await this.claimPicking(orderId, { adminUserId: input.adminUserId });
+      order = await this.requireOrderWithTask(orderId);
+      fulfillment = order.fulfillment!;
+    }
+    if (fulfillment.status !== FulfillmentStatus.PICKING) throw new BadRequestException("Only an active picking task accepts barcode scans.");
     const fulfillmentItem = fulfillment.items.find((item) => item.orderItemId === orderItemId);
     const orderItem = order.items.find((item) => item.id === orderItemId);
     if (!fulfillmentItem || !orderItem) throw new NotFoundException("Order item was not found in this picking task.");
@@ -458,7 +469,16 @@ export class OperationsFulfillmentService {
         });
         await tx.orderFulfillment.update({
           where: { id: fulfillment.id },
-          data: { status: FulfillmentStatus.READY_TO_PACK, pickedAt: new Date() }
+          data: {
+            status: FulfillmentStatus.READY_TO_PACK,
+            pickedAt: new Date(),
+            // The picker holds the trolley, so the parcel is theirs until somebody
+            // says otherwise. Packing is assigned work — but leaving it assigned to
+            // nobody would stop a one-person warehouse dead: they would pick a
+            // trolley and then be told to ask a supervisor who is them. A
+            // supervisor can still hand it to someone else before packing starts.
+            assignedPackerEmployeeId: fulfillment.assignedPackerEmployeeId ?? actor.actorEmployeeId
+          }
         });
         const changed = await tx.inventoryItem.updateMany({
           where: { productId: { in: current.items.map((item) => item.productId) }, status: InventoryItemStatus.PAID },
@@ -485,13 +505,71 @@ export class OperationsFulfillmentService {
     return this.orderDetail(orderId, input.adminUserId);
   }
 
+  /**
+   * Hands a finished trolley to a named packer. Only a supervisor can do this,
+   * and until they do the parcel belongs to nobody: packing is the last point
+   * where what went into a bag can still be traced to a person, so it is not
+   * left to whoever reaches it first.
+   */
+  async assignPacker(orderId: string, input: EmployeeInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.assign-packer");
+    const employee = await this.requireEmployee(input.employeeId);
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (fulfillment.status !== FulfillmentStatus.READY_TO_PACK) {
+      throw new BadRequestException("A packer can only be assigned to a trolley that is ready to pack.");
+    }
+    if (fulfillment.assignedPackerEmployeeId === employee.id) return this.orderDetail(orderId, input.adminUserId);
+    if (fulfillment.packingStartedAt && fulfillment.packingStartedByEmployeeId !== employee.id) {
+      throw new ConflictException("Packing has already started on this parcel. Resolve it as an exception instead of reassigning it.");
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.orderFulfillment.update({ where: { id: fulfillment.id }, data: { assignedPackerEmployeeId: employee.id } });
+      await this.createEvent(tx, {
+        idempotencyKey: `assign-packer:${fulfillment.id}:${employee.id}:${fulfillment.assignedPackerEmployeeId ?? "unassigned"}`,
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        relatedEmployeeId: employee.id,
+        action: "ASSIGN_PACKER",
+        oldStatus: fulfillment.status,
+        newStatus: fulfillment.status,
+        note: input.note
+      });
+    });
+    return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * A packer may only touch the parcel a supervisor gave them. Anyone holding
+   * the assign permission is that supervisor and may pack directly — otherwise
+   * a warehouse with nobody assigned yet could not pack at all.
+   */
+  private async assertPackerOwnsParcel(
+    adminUserId: string | undefined,
+    fulfillment: { assignedPackerEmployeeId: string | null },
+    actorEmployeeId: string | null
+  ) {
+    const ownership = canWorkWarehouseTask({
+      assignedEmployeeId: fulfillment.assignedPackerEmployeeId,
+      actorEmployeeId,
+      supervisor: await this.access.hasPermission(adminUserId, "orders.assign-packer"),
+      unassignedIsOpen: false
+    });
+    if (ownership.allowed) return;
+    throw new ForbiddenException(ownership.reason === "UNASSIGNED"
+      ? "This parcel has not been assigned to anyone yet. Ask a supervisor to assign it to you."
+      : "This parcel is assigned to another packer.");
+  }
+
   async startPacking(orderId: string, input: EmployeeInput) {
     const actor = await this.employeeForPermission(input.adminUserId, "orders.pack");
     const packerId = input.employeeId?.trim() || actor.actorEmployeeId!;
-    if (packerId !== actor.actorEmployeeId) await this.access.requirePermission(input.adminUserId, "orders.assign-picker");
+    if (packerId !== actor.actorEmployeeId) await this.access.requirePermission(input.adminUserId, "orders.assign-packer");
     await this.requireEmployee(packerId);
     const order = await this.requireOrderWithTask(orderId);
     const fulfillment = order.fulfillment!;
+    await this.assertPackerOwnsParcel(input.adminUserId, fulfillment, actor.actorEmployeeId);
     if (fulfillment.status !== FulfillmentStatus.READY_TO_PACK) throw new BadRequestException("Packing can start only after every item is verified.");
     if (fulfillment.packingStartedAt && fulfillment.packingStartedByEmployeeId === packerId) {
       return this.orderDetail(orderId, input.adminUserId);
@@ -499,7 +577,13 @@ export class OperationsFulfillmentService {
     await prisma.$transaction(async (tx) => {
       await tx.orderFulfillment.update({
         where: { id: fulfillment.id },
-        data: { packingStartedAt: new Date(), packingStartedByEmployeeId: packerId }
+        data: {
+          packingStartedAt: new Date(),
+          packingStartedByEmployeeId: packerId,
+          // A supervisor packing an unassigned parcel assigns it to whoever is
+          // actually doing it, so the parcel is never worked by a ghost.
+          ...(fulfillment.assignedPackerEmployeeId ? {} : { assignedPackerEmployeeId: packerId })
+        }
       });
       await this.createEvent(tx, {
         idempotencyKey: `start-packing:${fulfillment.id}:${packerId}:${fulfillment.packingStartedByEmployeeId ?? "unassigned"}`,
@@ -521,6 +605,7 @@ export class OperationsFulfillmentService {
     const order = await this.requireOrderWithTask(orderId);
     const fulfillment = order.fulfillment!;
     if (fulfillment.status === FulfillmentStatus.PACKED) return this.orderDetail(orderId, input.adminUserId);
+    await this.assertPackerOwnsParcel(input.adminUserId, fulfillment, actor.actorEmployeeId);
     if (!fulfillment.packingStartedAt) throw new BadRequestException("Start packing before completing it.");
     this.assertTransition(order, FulfillmentStatus.PACKED);
     const packerId = input.employeeId?.trim() || fulfillment.packingStartedByEmployeeId || actor.actorEmployeeId!;

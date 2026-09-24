@@ -60,6 +60,11 @@ export class OperationsFulfillmentController {
     return this.orders.assignPicker(orderId, await this.authorizedInput(authorization, body));
   }
 
+  @Post(":orderId/assign-packer")
+  async assignPacker(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: EmployeeInput) {
+    return this.orders.assignPacker(orderId, await this.authorizedInput(authorization, body));
+  }
+
   @Post(":orderId/claim-picking")
   async claimPicking(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
     return this.orders.claimPicking(orderId, await this.authorizedInput(authorization, body));

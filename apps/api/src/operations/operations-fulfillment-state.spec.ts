@@ -10,6 +10,7 @@ import {
   allFulfillmentItemsVerified,
   barcodeMatchesOrder,
   canTransitionFulfillment,
+  canWorkWarehouseTask,
   maskCustomerPhone,
   normalizeScannedBarcode,
   orderCenterTab,
@@ -30,6 +31,48 @@ describe("unified order fulfillment state machine", () => {
     assert.equal(canTransitionFulfillment({ from: FulfillmentStatus.READY_TO_PACK, to: FulfillmentStatus.PACKED }), true);
     assert.equal(allFulfillmentItemsVerified([{ status: FulfillmentItemStatus.VERIFIED }, { status: FulfillmentItemStatus.PENDING }]), false);
     assert.equal(allFulfillmentItemsVerified([{ status: FulfillmentItemStatus.VERIFIED }, { status: FulfillmentItemStatus.VERIFIED }]), true);
+  });
+
+  it("lets a picker take an unclaimed task but never someone else's", () => {
+    const picking = (assignedEmployeeId: string | null, actorEmployeeId: string | null) =>
+      canWorkWarehouseTask({ assignedEmployeeId, actorEmployeeId, supervisor: false, unassignedIsOpen: true });
+
+    // Scanning is claiming: nobody has to press a button before starting.
+    assert.deepEqual(picking(null, "amina"), { allowed: true });
+    assert.deepEqual(picking("amina", "amina"), { allowed: true });
+    assert.deepEqual(picking("amina", "brian"), { allowed: false, reason: "OTHER_EMPLOYEE" });
+  });
+
+  it("refuses a packer any parcel a supervisor has not handed them", () => {
+    const packing = (assignedEmployeeId: string | null, actorEmployeeId: string | null) =>
+      canWorkWarehouseTask({ assignedEmployeeId, actorEmployeeId, supervisor: false, unassignedIsOpen: false });
+
+    // The whole point: an unassigned parcel is nobody's, not everybody's.
+    assert.deepEqual(packing(null, "amina"), { allowed: false, reason: "UNASSIGNED" });
+    assert.deepEqual(packing("amina", "amina"), { allowed: true });
+    assert.deepEqual(packing("amina", "brian"), { allowed: false, reason: "OTHER_EMPLOYEE" });
+  });
+
+  it("lets a supervisor act whatever the assignment says", () => {
+    for (const unassignedIsOpen of [true, false]) {
+      assert.deepEqual(
+        canWorkWarehouseTask({ assignedEmployeeId: null, actorEmployeeId: null, supervisor: true, unassignedIsOpen }),
+        { allowed: true }
+      );
+      assert.deepEqual(
+        canWorkWarehouseTask({ assignedEmployeeId: "amina", actorEmployeeId: "brian", supervisor: true, unassignedIsOpen }),
+        { allowed: true }
+      );
+    }
+  });
+
+  it("never lets an admin account with no employee behind it inherit a task", () => {
+    // An admin user that was never linked to an employee has a null actor id.
+    // Comparing null to a null assignment would quietly grant every parcel.
+    assert.deepEqual(
+      canWorkWarehouseTask({ assignedEmployeeId: "amina", actorEmployeeId: null, supervisor: false, unassignedIsOpen: true }),
+      { allowed: false, reason: "OTHER_EMPLOYEE" }
+    );
   });
 
   it("returns actionable barcode mismatch details and blocks confirmation", () => {
@@ -88,4 +131,36 @@ describe("unified order fulfillment state machine", () => {
     assert.equal(orderCenterTab({ orderStatus: OrderStatus.FULFILLING, fulfillmentStatus: FulfillmentStatus.PACKED }), "packed");
     assert.equal(orderCenterTab({ orderStatus: OrderStatus.PAID, fulfillmentStatus: FulfillmentStatus.PAID }), "waiting-pick");
   });
+});
+
+/**
+ * Packing is handed out rather than taken, which is right on a floor with
+ * several packers and fatal on a floor with one: the only person there would
+ * pick a trolley and then be told to ask a supervisor who is themselves.
+ *
+ * So the picker owns the parcel by default. It is still assigned work with a
+ * name against it — the point of assigning — and a supervisor can still hand it
+ * to somebody else before packing starts.
+ */
+it("lets the person who picked a trolley pack it without being assigned", () => {
+  const picker = "employee-picker";
+  const stranger = "employee-stranger";
+
+  // What completing the picking writes, as the service writes it: keep an
+  // existing assignment, otherwise fall to the picker.
+  const packerAfterPicking = (existing: string | null, pickedBy: string) => existing ?? pickedBy;
+  const assignedAfterPicking = packerAfterPicking(null, picker);
+  assert.equal(assignedAfterPicking, picker);
+  assert.equal(packerAfterPicking(stranger, picker), stranger, "a supervisor's assignment survives picking finishing");
+
+  assert.deepEqual(
+    canWorkWarehouseTask({ assignedEmployeeId: assignedAfterPicking, actorEmployeeId: picker, supervisor: false, unassignedIsOpen: false }),
+    { allowed: true },
+    "the picker packs their own trolley"
+  );
+  assert.deepEqual(
+    canWorkWarehouseTask({ assignedEmployeeId: assignedAfterPicking, actorEmployeeId: stranger, supervisor: false, unassignedIsOpen: false }),
+    { allowed: false, reason: "OTHER_EMPLOYEE" },
+    "and nobody else does"
+  );
 });

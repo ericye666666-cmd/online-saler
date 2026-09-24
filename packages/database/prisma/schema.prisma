@@ -187,6 +187,7 @@ model Employee {
   inventoryItemsCreated       InventoryItem[]       @relation("InventoryItemCreatedBy")
   inventoryMovements          InventoryMovement[]   @relation("InventoryMovementEmployee")
   assignedFulfillments        OrderFulfillment[]    @relation("FulfillmentAssignedPicker")
+  assignedPackingTasks        OrderFulfillment[]    @relation("FulfillmentAssignedPacker")
   packingStartedFulfillments  OrderFulfillment[]    @relation("FulfillmentPackingStartedBy")
   packedFulfillments          OrderFulfillment[]    @relation("FulfillmentPackedBy")
   dispatchedFulfillments      OrderFulfillment[]    @relation("FulfillmentDispatchedBy")
@@ -1135,6 +1136,10 @@ model OrderFulfillment {
   orderId                     String                      @unique
   status                      FulfillmentStatus           @default(PAID)
   assignedPickerEmployeeId    String?
+  /// Who the supervisor gave this parcel to. A packer may only pack parcels
+  /// assigned to them; an unassigned parcel is nobody's until someone with the
+  /// assign permission hands it out.
+  assignedPackerEmployeeId    String?
   packingStartedByEmployeeId  String?
   packedByEmployeeId          String?
   dispatchedByEmployeeId      String?
@@ -1207,6 +1212,7 @@ model OrderFulfillment {
   completedAt                 DateTime?
   order                       Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   assignedPicker              Employee?                   @relation("FulfillmentAssignedPicker", fields: [assignedPickerEmployeeId], references: [id], onDelete: SetNull)
+  assignedPacker              Employee?                   @relation("FulfillmentAssignedPacker", fields: [assignedPackerEmployeeId], references: [id], onDelete: SetNull)
   packingStartedBy            Employee?                   @relation("FulfillmentPackingStartedBy", fields: [packingStartedByEmployeeId], references: [id], onDelete: SetNull)
   packedBy                    Employee?                   @relation("FulfillmentPackedBy", fields: [packedByEmployeeId], references: [id], onDelete: SetNull)
   dispatchedBy                Employee?                   @relation("FulfillmentDispatchedBy", fields: [dispatchedByEmployeeId], references: [id], onDelete: SetNull)
@@ -1226,6 +1232,7 @@ model OrderFulfillment {
 
   @@index([status, updatedAt])
   @@index([assignedPickerEmployeeId])
+  @@index([assignedPackerEmployeeId])
   @@index([packedByEmployeeId])
   @@index([dispatchedByEmployeeId])
   @@index([deliveryRiderId])

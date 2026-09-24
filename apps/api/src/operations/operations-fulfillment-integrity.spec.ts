@@ -17,7 +17,7 @@ function fixture(t: TestContext, currentStatus: string, currentFulfillment: stri
   const stale = {
     id: "order", status: "FULFILLING", fulfillmentMethod: "KIKUYU_LOCAL_DELIVERY", totalKsh: 200,
     items: [{ id: "item", productId: "product", snapshot: { title: "Garment", barcode: "BARCODE" } }],
-    fulfillment: { id: "fulfillment", status: staleFulfillment, updatedAt: time, packingStartedAt: time, packingStartedByEmployeeId: "employee", completedAt: null, items: [{ orderItemId: "item", expectedBarcode: "BARCODE", status: "PENDING" }] }
+    fulfillment: { id: "fulfillment", status: staleFulfillment, updatedAt: time, packingStartedAt: time, packingStartedByEmployeeId: "employee", assignedPackerEmployeeId: "employee" as string | null, completedAt: null, items: [{ orderItemId: "item", expectedBarcode: "BARCODE", status: "PENDING" }] }
   };
   const current = { ...stale, status: currentStatus, fulfillment: { ...stale.fulfillment, status: currentFulfillment, completedAt: currentFulfillment === "COMPLETED" ? time : null } };
   let competing = false;
@@ -59,7 +59,12 @@ function fixture(t: TestContext, currentStatus: string, currentFulfillment: stri
   const original = prisma.$transaction;
   prisma.$transaction = (async (callback: (value: unknown) => unknown) => callback(tx)) as typeof prisma.$transaction;
   t.after(() => { prisma.$transaction = original; });
-  const service = new OperationsFulfillmentService({} as OperationsAccessService, stubPhotoStore());
+  // The packing gate asks whether the actor is a supervisor. These fixtures are
+  // about stale writes, not about permissions, so the actor is a plain packer
+  // who owns the parcel — the strictest answer that still reaches the code
+  // under test.
+  const access = { hasPermission: async () => false } as unknown as OperationsAccessService;
+  const service = new OperationsFulfillmentService(access, stubPhotoStore());
   const internals = service as unknown as {
     employeeForPermission: () => Promise<typeof actor>;
     adminForPermission: () => Promise<typeof actor>;
@@ -72,7 +77,13 @@ function fixture(t: TestContext, currentStatus: string, currentFulfillment: stri
   internals.requireOrderWithTask = async () => stale;
   internals.requireEmployee = async () => ({ id: "employee" });
   internals.orderDetail = async () => current;
-  return { service, calls, compete: () => { competing = true; } };
+  return {
+    service,
+    calls,
+    compete: () => { competing = true; },
+    unassignPacker: () => { stale.fulfillment.assignedPackerEmployeeId = null; },
+    assignPackerTo: (employeeId: string) => { stale.fulfillment.assignedPackerEmployeeId = employeeId; }
+  };
 }
 
 test("a completion that committed before cancel cannot be overwritten by cancellation", async (t) => {
@@ -97,6 +108,29 @@ test("an old packing request cannot rewrite a refunded garment as packed", async
   const h = fixture(t, "REFUNDED", "COMPLETED", "READY_TO_PACK");
   await assert.rejects(() => h.service.completePacking("order", { adminUserId: "admin", packagingMethod: "BAG", packageCount: 1 }), /packing task changed/);
   assert.deepEqual(h.calls, ["lock-order", "read-current"]);
+});
+
+test("a packer cannot pack a parcel no supervisor assigned to them", async (t) => {
+  // The rule in one test: a packer holding orders.pack, standing in front of a
+  // finished trolley nobody handed out, is refused.
+  const h = fixture(t, "FULFILLING", "READY_TO_PACK", "READY_TO_PACK");
+  h.unassignPacker();
+  await assert.rejects(
+    () => h.service.completePacking("order", { adminUserId: "admin", packagingMethod: "BAG", packageCount: 1 }),
+    /has not been assigned/
+  );
+  // Refused before any lock is taken, so a blocked packer cannot hold the row.
+  assert.deepEqual(h.calls, []);
+});
+
+test("a packer cannot pack a parcel assigned to somebody else", async (t) => {
+  const h = fixture(t, "FULFILLING", "READY_TO_PACK", "READY_TO_PACK");
+  h.assignPackerTo("another-employee");
+  await assert.rejects(
+    () => h.service.completePacking("order", { adminUserId: "admin", packagingMethod: "BAG", packageCount: 1 }),
+    /assigned to another packer/
+  );
+  assert.deepEqual(h.calls, []);
 });
 
 test("handover locks inventory after its order and refuses another active reservation", async (t) => {

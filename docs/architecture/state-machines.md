@@ -245,6 +245,28 @@ RETURN_RECEIVED -> REFUNDED
   seven-day hold is what the expiry sweep watches, and an unanswered prompt must
   not pause that clock.
 
+### Who may work a task (added 2026-09-24)
+
+Ownership is decided by `canWorkWarehouseTask` in
+`apps/api/src/operations/operations-fulfillment-state.ts`, which both gates use.
+
+| | Unassigned task | Assigned to me | Assigned to someone else |
+| --- | --- | --- | --- |
+| Picking (`orders.pick`) | allowed — the scan claims it | allowed | refused |
+| Packing (`orders.pack`) | **refused** | allowed | refused |
+| Either, with the matching assign permission | allowed | allowed | allowed |
+
+- `scanItem` claims an unclaimed order for the scanner before verifying the
+  barcode, so picking needs no separate claim call.
+- Completing the picking assigns the parcel to the picker. Packing is assigned
+  work, but assigned to nobody would stop a one-person warehouse dead: they would
+  pick a trolley and be told to ask a supervisor who is themselves. A supervisor
+  can still hand it to someone else before packing starts.
+- `startPacking` and `completePacking` both check ownership before any lock is
+  taken, so a refused packer never holds the order row.
+- An admin account with no linked employee has a null actor id and is treated as
+  "someone else" rather than matching a null assignment.
+
 ## Payment State
 
 Payment state describes money movement and M-Pesa callback handling.
