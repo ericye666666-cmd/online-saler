@@ -5,6 +5,7 @@ import {
   filterNavigation,
   firstAllowedPath,
   hasPermission,
+  landingPath,
   type NavigationModule,
   type OperationsSession
 } from "../components/admin/operations-access";
@@ -119,8 +120,33 @@ console.log("Operations access tests passed");
   const { operationsModules } = require("../components/admin/operations-admin-shell") as
     typeof import("../components/admin/operations-admin-shell");
 
-  const sessionFor = (permissions: readonly string[]) =>
-    ({ adminUser: null, roles: [], permissions } as unknown as OperationsSession);
+  const sessionFor = (permissions: readonly string[], roleCode?: string) =>
+    ({
+      adminUser: null,
+      roles: roleCode ? [{ code: roleCode }] : [],
+      permissions
+    } as unknown as OperationsSession);
+  const byCode = (code: string) => OPERATIONS_ROLE_BLUEPRINTS.find((role) => role.code === code)!;
+
+  // Signing in opens the page the role works on. A super admin holds every
+  // permission, so nothing about their permissions says where that is — the
+  // measure that works for everyone else lands them on whichever end happens to
+  // be biggest, which is why theirs is named outright.
+  assert.equal(
+    landingPath(operationsModules, sessionFor(byCode("SUPER_ADMIN").permissions, "SUPER_ADMIN")),
+    "/system/accounts"
+  );
+
+  // Naming a page must not outrank the permission to open it: an administrator
+  // whose account management was withdrawn in 角色管理 falls back to the general
+  // rule rather than onto a 403.
+  assert.notEqual(
+    landingPath(
+      operationsModules,
+      sessionFor(byCode("SUPER_ADMIN").permissions.filter((code) => code !== "page.system.accounts"), "SUPER_ADMIN")
+    ),
+    "/system/accounts"
+  );
 
   const expected: Record<string, string> = {
     WAREHOUSE_FULFILLMENT: "/orders/dispatch",

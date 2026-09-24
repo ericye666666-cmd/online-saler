@@ -96,6 +96,43 @@ export function filterNavigation<T extends NavigationModule>(modules: readonly T
  * Ties keep navigation order, so an end that comes first in the sidebar wins
  * against one further down that it matches.
  */
+/**
+ * Pages a role opens into no matter how much else it can see.
+ *
+ * Depth of access tells you where someone works only while some of the app is
+ * closed to them. A super admin can open all of it, so the measure says nothing
+ * and lands them wherever the biggest end happens to be — 数据中心 today, some
+ * other end after the next feature. Naming the end is not enough either: the
+ * first page of 系统管理 is 商品工厂配置, which is product configuration that
+ * happens to live there. The page is named because the claim is about one page.
+ *
+ * Keep this short. An entry says a role's job cannot be read from its
+ * permissions, which is true of an administrator and almost nobody else.
+ */
+const ROLE_HOME_PAGE: Record<string, string> = {
+  // Administering people is the job. A super admin holds every permission, so
+  // every other measure points somewhere arbitrary.
+  SUPER_ADMIN: "/system/accounts"
+};
+
+/**
+ * Where a role opens after signing in.
+ *
+ * Only signing in uses this. Visiting "/" on purpose afterwards stays on "/",
+ * so a super admin can still open 今日工作 from the menu — a landing preference
+ * must not turn into a page nobody can reach.
+ */
+export function landingPath(modules: readonly NavigationModule[], session: OperationsSession | null): string | null {
+  for (const role of session?.roles ?? []) {
+    const href = ROLE_HOME_PAGE[role.code];
+    // A named page still has to be one this role can open, so a permission
+    // taken away in 角色管理 drops them back to the general rule rather than
+    // onto a 403.
+    if (href && canAccessPath(href, modules, session)) return href;
+  }
+  return firstAllowedPath(modules, session);
+}
+
 export function firstAllowedPath(modules: readonly NavigationModule[], session: OperationsSession | null): string | null {
   const ends = modules
     .filter((module) => hasPermission(session, module.permission))

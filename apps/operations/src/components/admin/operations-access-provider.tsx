@@ -19,7 +19,7 @@ type OperationsAccessContextValue = {
   loading: boolean;
   session: OperationsSession | null;
   error: string;
-  login: (login: string, password: string) => Promise<void>;
+  login: (login: string, password: string) => Promise<OperationsSession>;
   logout: () => void;
   refresh: () => Promise<void>;
   hasPermission: (permission?: string) => boolean;
@@ -99,6 +99,7 @@ export function OperationsAccessProvider({ children }: { children: ReactNode }) 
       localStorage.setItem(SESSION_ACCESS_TOKEN_KEY, next.accessToken);
       localStorage.removeItem(LEGACY_SESSION_ADMIN_USER_KEY);
       setSession(next);
+      return next;
     } catch (caught) {
       setSession(null);
       setError(caught instanceof Error ? caught.message : "Could not sign in.");

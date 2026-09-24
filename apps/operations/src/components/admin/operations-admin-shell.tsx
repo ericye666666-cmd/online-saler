@@ -33,6 +33,7 @@ import {
   canAccessPath,
   firstAllowedPath,
   hasPermission,
+  landingPath,
   filterNavigation,
   roleLabels,
   type NavigationItem,
@@ -300,7 +301,7 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
   if (!session?.adminUser) return <LoginScreen />;
 
   const routeAllowed = canAccessPath(pathname, operationsModules, session);
-  const home = firstAllowedPath(operationsModules, session);
+  const home = landingPath(operationsModules, session);
   // The home page belongs to 商品中心 and needs a product permission, so every
   // other role signed in and met a 403 before touching anything. Send them to
   // their own end instead. Only "/" redirects: a deep link someone genuinely
@@ -517,6 +518,7 @@ function HomeRedirect({ to }: { to: string }) {
 function LoginScreen() {
   const { t } = useOperationsI18n();
   const { login, error } = useOperationsSession();
+  const router = useRouter();
   const [loginAccount, setLoginAccount] = useState(DEFAULT_ADMIN_LOGIN);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -526,7 +528,9 @@ function LoginScreen() {
     setBusy(true);
     setLocalError("");
     try {
-      await login(loginAccount, password);
+      const next = await login(loginAccount, password);
+      const home = landingPath(operationsModules, next);
+      if (home && window.location.pathname === "/") router.replace(home);
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : t("登录失败。"));
     } finally {
