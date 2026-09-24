@@ -20,7 +20,7 @@ import {
 } from "./operations-access-policy";
 
 type AdminUserWithAccess = AdminUser & {
-  linkedEmployee: Employee | null;
+  linkedEmployee: (Employee & { homeNode: { id: string; name: string } | null }) | null;
   roles: Array<{
     role: Role & {
       permissions: Array<{
@@ -323,7 +323,10 @@ export class OperationsAccessService {
 
   private accessInclude() {
     return {
-      linkedEmployee: true,
+      // The home node travels with the account. Which store somebody belongs to
+      // decides which parcels they may receive, so it belongs on the screen where
+      // accounts are opened rather than on a second screen nobody remembers.
+      linkedEmployee: { include: { homeNode: { select: { id: true, name: true } } } },
       roles: {
         include: {
           role: {
@@ -363,7 +366,9 @@ export class OperationsAccessService {
           ? {
               id: adminUser.linkedEmployee.id,
               employeeCode: adminUser.linkedEmployee.employeeCode,
-              name: adminUser.linkedEmployee.name
+              name: adminUser.linkedEmployee.name,
+              homeNodeId: adminUser.linkedEmployee.homeNodeId,
+              homeNodeName: adminUser.linkedEmployee.homeNode?.name ?? null
             }
           : null,
         lastLoginAt: adminUser.lastLoginAt?.toISOString() ?? null

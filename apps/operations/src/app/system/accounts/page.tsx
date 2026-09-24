@@ -34,8 +34,16 @@ export default function AccountsPage() {
     email: "",
     phone: "",
     initialPassword: "",
-    roleCode: "PRODUCT_DIGITIZATION"
+    roleCode: "PRODUCT_DIGITIZATION",
+    nodeId: ""
   });
+
+  // The stores an account can belong to, and the filter above the table. Which
+  // store somebody belongs to is what decides which parcels they may receive, so
+  // it is asked when the account is opened rather than on a second screen.
+  const [nodes, setNodes] = useState<Array<{ id: string; name: string; type: string }>>([]);
+  const [nodeSelections, setNodeSelections] = useState<Record<string, string>>({});
+  const [nodeFilter, setNodeFilter] = useState("");
 
   const load = useCallback(async () => {
     if (!adminUserId) return;
@@ -43,17 +51,28 @@ export default function AccountsPage() {
     setError("");
     try {
       const query = adminQuery(adminUserId);
-      const [nextAccounts, nextRoles] = await Promise.all([
+      const [nextAccounts, nextRoles, nextNodes] = await Promise.all([
         accessRequest<AdminUserAccount[]>(`/operations/access/accounts?${query}`),
-        accessRequest<RoleRecord[]>(`/operations/access/roles?${query}`)
+        accessRequest<RoleRecord[]>(`/operations/access/roles?${query}`),
+        // A supervisor without node permissions can still open accounts; they
+        // just cannot move anyone between stores, so an empty list is fine.
+        accessRequest<Array<{ id: string; name: string; type: string }>>("/operations/orders/nodes").catch(() => [])
       ]);
       setAccounts(nextAccounts);
       setRoles(nextRoles);
+      setNodes(nextNodes);
       setRoleSelections(
         Object.fromEntries(
           nextAccounts
             .filter((account) => account.adminUser)
             .map((account) => [account.adminUser!.id, account.roles[0]?.code ?? ""])
+        )
+      );
+      setNodeSelections(
+        Object.fromEntries(
+          nextAccounts
+            .filter((account) => account.adminUser)
+            .map((account) => [account.adminUser!.id, account.adminUser!.linkedEmployee?.homeNodeId ?? ""])
         )
       );
     } catch (caught) {
@@ -68,6 +87,34 @@ export default function AccountsPage() {
   }, [load]);
 
   const roleOptions = useMemo(() => roles.map((role) => role.code), [roles]);
+
+  const visibleAccounts = useMemo(() => {
+    if (!nodeFilter) return accounts;
+    if (nodeFilter === "none") return accounts.filter((account) => !account.adminUser?.linkedEmployee?.homeNodeId);
+    return accounts.filter((account) => account.adminUser?.linkedEmployee?.homeNodeId === nodeFilter);
+  }, [accounts, nodeFilter]);
+
+  /** Moves somebody to a store, or takes them out of one when nodeId is empty. */
+  async function assignNode(employeeId: string, nodeId: string) {
+    await accessRequest("/operations/nodes/staff", {
+      method: "POST",
+      body: JSON.stringify({ adminUserId, employeeId, nodeId: nodeId || null })
+    });
+  }
+
+  async function saveNode(accountId: string, employeeId: string | null | undefined) {
+    if (!canManage || !employeeId) return;
+    setBusy(`node-${accountId}`);
+    setError("");
+    try {
+      await assignNode(employeeId, nodeSelections[accountId] ?? "");
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("无法更新归属门店。"));
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function createAccount() {
     if (!canManage) return;
@@ -86,6 +133,31 @@ export default function AccountsPage() {
           roleCodes: [form.roleCode]
         })
       });
+
+      // Opening a rider used to take three screens: create the login here, set
+      // the home store under 履约点配置, then add them to the roster under
+      // 门店骑手. Anyone who stopped after the first had an account that could
+      // sign in and see nothing. It is one form now.
+      if (form.nodeId) {
+        const created = await accessRequest<AdminUserAccount[]>(`/operations/access/accounts?${adminQuery(adminUserId)}`);
+        const employeeId = created
+          .find((account) => account.adminUser?.loginAccount === form.loginAccount.trim().toLowerCase())
+          ?.adminUser?.linkedEmployee?.id;
+        if (employeeId) await assignNode(employeeId, form.nodeId);
+        if (form.roleCode === "DELIVERY_RIDER") {
+          await accessRequest("/operations/riders", {
+            method: "POST",
+            body: JSON.stringify({
+              adminUserId,
+              name: form.name,
+              phone: form.phone || undefined,
+              nodeId: form.nodeId,
+              loginAccount: form.loginAccount
+            })
+          });
+        }
+      }
+
       setOpen(false);
       setForm({
         name: "",
@@ -93,7 +165,8 @@ export default function AccountsPage() {
         email: "",
         phone: "",
         initialPassword: "",
-        roleCode: roleOptions[0] ?? "PRODUCT_DIGITIZATION"
+        roleCode: roleOptions[0] ?? "PRODUCT_DIGITIZATION",
+        nodeId: ""
       });
       await load();
     } catch (caught) {
@@ -190,6 +263,17 @@ export default function AccountsPage() {
                       {roleOptions.map((roleCode) => <NativeSelectOption key={roleCode} value={roleCode}>{roleOptionLabel(roleCode)}</NativeSelectOption>)}
                     </NativeSelect>
                   </FormField>
+                  <FormField label={t("归属门店")}>
+                    <NativeSelect className="w-full" value={form.nodeId} onChange={(event) => setForm((current) => ({ ...current, nodeId: event.target.value }))}>
+                      <NativeSelectOption value="">{t("不限（仓库 / 总部）")}</NativeSelectOption>
+                      {nodes.map((node) => <NativeSelectOption key={node.id} value={node.id}>{node.name}</NativeSelectOption>)}
+                    </NativeSelect>
+                    <p className="text-muted-foreground text-xs">
+                      {form.roleCode === "DELIVERY_RIDER"
+                        ? t("选了门店会同时把这个人加进该店的骑手名单，不用再去「门店骑手」建一次。")
+                        : t("门店员工只能签收发给自己门店的包裹。仓库和总部员工不设归属。")}
+                    </p>
+                  </FormField>
                 </FieldGroup>
                 <DialogFooter>
                   <Button disabled={busy === "create"} onClick={() => void createAccount()}>
@@ -209,6 +293,15 @@ export default function AccountsPage() {
         <CardHeader>
           <CardTitle>{t("后台账号")}</CardTitle>
           <CardDescription>{t("账号状态支持 ACTIVE、DISABLED 和 LOCKED。")}</CardDescription>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground text-sm">{t("按门店筛选")}</span>
+            <NativeSelect className="w-56" value={nodeFilter} onChange={(event) => setNodeFilter(event.target.value)}>
+              <NativeSelectOption value="">{t("全部门店")}</NativeSelectOption>
+              {nodes.map((node) => <NativeSelectOption key={node.id} value={node.id}>{node.name}</NativeSelectOption>)}
+              <NativeSelectOption value="none">{t("未设归属")}</NativeSelectOption>
+            </NativeSelect>
+            <Badge variant="secondary">{t("{count} 个账号", { count: visibleAccounts.length })}</Badge>
+          </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
@@ -217,13 +310,14 @@ export default function AccountsPage() {
                 <TableHead>{t("姓名")}</TableHead>
                 <TableHead>{t("账号")}</TableHead>
                 <TableHead>{t("角色")}</TableHead>
+                <TableHead>{t("归属门店")}</TableHead>
                 <TableHead>{t("状态")}</TableHead>
                 <TableHead>{t("关联员工")}</TableHead>
                 <TableHead className="text-right">{t("操作")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.map((account) => {
+              {visibleAccounts.map((account) => {
                 const adminUser = account.adminUser;
                 if (!adminUser) return null;
                 return (
@@ -247,6 +341,23 @@ export default function AccountsPage() {
                         </div>
                       ) : (
                         account.roles.map((role) => roleLabel(role.code)).join(", ") || "-"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {canManage && adminUser.linkedEmployee?.id ? (
+                        <div className="flex min-w-52 items-center gap-2">
+                          <NativeSelect
+                            className="min-w-40"
+                            value={nodeSelections[adminUser.id] ?? adminUser.linkedEmployee.homeNodeId ?? ""}
+                            onChange={(event) => setNodeSelections((current) => ({ ...current, [adminUser.id]: event.target.value }))}
+                          >
+                            <NativeSelectOption value="">{t("不限（仓库 / 总部）")}</NativeSelectOption>
+                            {nodes.map((node) => <NativeSelectOption key={node.id} value={node.id}>{node.name}</NativeSelectOption>)}
+                          </NativeSelect>
+                          <Button size="sm" variant="outline" disabled={busy === `node-${adminUser.id}`} onClick={() => void saveNode(adminUser.id, adminUser.linkedEmployee?.id)}>{t("保存")}</Button>
+                        </div>
+                      ) : (
+                        adminUser.linkedEmployee?.homeNodeName ?? "-"
                       )}
                     </TableCell>
                     <TableCell><Badge variant={adminUser.status === "ACTIVE" ? "default" : "secondary"}>{adminUser.status}</Badge></TableCell>

@@ -4,6 +4,9 @@ export type OperationsLinkedEmployee = {
   id: string;
   employeeCode: string;
   name: string;
+  /** Which store this person belongs to, or null for warehouse and head office. */
+  homeNodeId?: string | null;
+  homeNodeName?: string | null;
 };
 
 export type OperationsAdminUser = {

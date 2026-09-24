@@ -2809,5 +2809,15 @@ export const enDictionary: Record<string, string> = {
   "童装套装": "Kids sets",
   "童装睡衣": "Kids sleepwear",
   "童装短裤": "Kids shorts",
-  "窗帘": "Curtains"
+  "窗帘": "Curtains",
+  // ——— Accounts, by store ———
+  "归属门店": "Home store",
+  "按门店筛选": "Filter by store",
+  "未设归属": "No store set",
+  "{count} 个账号": "{count} accounts",
+  "无法更新归属门店。": "Could not change the home store.",
+  "选了门店会同时把这个人加进该店的骑手名单，不用再去「门店骑手」建一次。":
+    "Choosing a store also adds this person to that store's rider list, so there is no second form to fill in.",
+  "门店员工只能签收发给自己门店的包裹。仓库和总部员工不设归属。":
+    "Store staff may only receive parcels addressed to their own store. Warehouse and head-office staff have no home store."
 };
