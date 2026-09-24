@@ -19,6 +19,13 @@ if [ -z "${CRON_SECRET}" ]; then
 fi
 
 # Creates or updates one Cloud Scheduler job that POSTs to an internal route.
+#
+# gcloud echoes the whole job definition when it writes one, and that definition
+# contains the Authorization header. Whoever runs this then pastes the output
+# into a chat or a ticket to show it worked, and the bearer token goes with it —
+# which is exactly how this secret leaked on 2026-09-24. stdout goes to /dev/null
+# and the summary line below says what happened instead; stderr is left alone so
+# a real failure still reaches the screen.
 upsert_job() {
   local name="$1" path="$2" schedule="$3" deadline="$4"
   local uri="${STOREFRONT_PUBLIC_URL%/}${path}"
@@ -31,7 +38,7 @@ upsert_job() {
       --uri "${uri}" \
       --http-method POST \
       --attempt-deadline "${deadline}" \
-      --update-headers "Authorization=Bearer ${CRON_SECRET}"
+      --update-headers "Authorization=Bearer ${CRON_SECRET}" >/dev/null
   else
     gcloud scheduler jobs create http "${name}" \
       --project "${GCP_PROJECT_ID}" \
@@ -41,7 +48,7 @@ upsert_job() {
       --uri "${uri}" \
       --http-method POST \
       --attempt-deadline "${deadline}" \
-      --headers "Authorization=Bearer ${CRON_SECRET}"
+      --headers "Authorization=Bearer ${CRON_SECRET}" >/dev/null
   fi
   echo "Cloud Scheduler job ${name} in ${GCP_SCHEDULER_REGION} calls ${uri} on '${schedule}'."
 }

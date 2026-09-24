@@ -19,6 +19,10 @@ set -euo pipefail
 
 BASE_URL="${STOREFRONT_PUBLIC_URL%/}"
 
+# gcloud echoes the whole job definition when it writes one, Authorization header
+# and all. Whoever runs this then pastes the output somewhere to show it worked,
+# and the bearer token goes with it. stdout is discarded; the summary line below
+# reports the result, and stderr still carries real failures.
 configure_job() {
   local job_name="$1" path="$2" schedule="$3" description="$4"
   local uri="${BASE_URL}${path}"
@@ -31,7 +35,7 @@ configure_job() {
       --time-zone "Africa/Nairobi" \
       --uri "${uri}" \
       --http-method POST \
-      --update-headers "Authorization=Bearer ${INTERNAL_CRON_SECRET}"
+      --update-headers "Authorization=Bearer ${INTERNAL_CRON_SECRET}" >/dev/null
   else
     gcloud scheduler jobs create http "${job_name}" \
       --project "${GCP_PROJECT_ID}" \
@@ -40,7 +44,7 @@ configure_job() {
       --time-zone "Africa/Nairobi" \
       --uri "${uri}" \
       --http-method POST \
-      --headers "Authorization=Bearer ${INTERNAL_CRON_SECRET}"
+      --headers "Authorization=Bearer ${INTERNAL_CRON_SECRET}" >/dev/null
   fi
 
   echo "Cloud Scheduler job ${job_name} calls ${uri} on '${schedule}' — ${description}"
