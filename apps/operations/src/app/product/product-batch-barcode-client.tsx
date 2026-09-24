@@ -23,6 +23,7 @@ import {
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 import { DEFAULT_LABEL_SIZE, MACOS_PRINT_AGENT_DOWNLOAD_URL, PRINT_AGENT_DOWNLOAD_URL } from "../local-label-print";
 import { ProductLabelPrinter } from "./product-label-printer";
@@ -57,6 +58,14 @@ type ProductRecord = Record<string, unknown> & {
   inventoryItem?: InventoryItem | null;
   detailSourceVersion?: number;
   detailProfiles?: Array<{ id: string; status: string; sourceDataVersion: number }>;
+};
+
+type Shelf = {
+  id: string;
+  locationCode: string;
+  capacity: number;
+  currentItemCount: number;
+  remainingCapacity: number;
 };
 
 type ProductBatch = {
@@ -122,10 +131,15 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [shelves, setShelves] = useState<Shelf[]>([]);
+  const [shelfId, setShelfId] = useState("");
 
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
     const next = await loadBatch(batchId, ids.adminUserId);
+    setShelves(await request<Shelf[]>("/operations/product-batches/shelves").catch(() => []));
+    const currentShelfId = next.products.find((product) => product.inventoryItem?.locationId)?.inventoryItem?.locationId;
+    if (currentShelfId) setShelfId((selected) => selected || currentShelfId);
     const comparisonEntries = await Promise.all(next.products.map(async (product) => {
       try {
         return [product.id, await loadComparison(product.id, ids.adminUserId)] as const;
@@ -169,6 +183,11 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
 
   async function generateBarcodesAndLocations() {
     if (!batch || !allDisplaysConfirmed || !allDetailsReady) return;
+    const shelf = shelves.find((candidate) => candidate.id === shelfId);
+    if (!shelf) {
+      setError(t("请先选择这一批要放的货架。"));
+      return;
+    }
     setBusy("generate");
     setError("");
     try {
@@ -179,10 +198,10 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
       });
       await request(`/operations/product-batches/${batch.id}/generate-barcodes`, {
         method: "POST",
-        body: JSON.stringify(ids)
+        body: JSON.stringify({ ...ids, locationId: shelf.id })
       });
       await load();
-      setNotice(t("本批 {targetCount} 个 Barcode 已生成，货架位已同时预留。", { targetCount: batch.targetCount }));
+      setNotice(t("本批 {targetCount} 个 Barcode 已生成，整批放在货架 {locationCode}。", { targetCount: batch.targetCount, locationCode: shelf.locationCode }));
       router.push(`/product/barcode?batchId=${encodeURIComponent(batch.id)}`);
     } catch (caught) {
       setError(errorMessage(caught, t("无法生成 Barcode 或预留货架位。")));
@@ -250,6 +269,28 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
     } catch (caught) {
       await load().catch(() => undefined);
       setError(errorMessage(caught, t("无法处理展示图，请重试。")));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function moveBatchToShelf() {
+    if (!batch) return;
+    const shelf = shelves.find((candidate) => candidate.id === shelfId);
+    if (!shelf) return;
+    if (!window.confirm(t("把本批还在仓库里的衣服整批改到货架 {locationCode}？系统改完后，请把实物也搬过去。", { locationCode: shelf.locationCode }))) return;
+    setBusy("move-shelf");
+    setError("");
+    setNotice("");
+    try {
+      const result = await request<{ moved: number }>(`/operations/product-batches/${batch.id}/shelf`, {
+        method: "POST",
+        body: JSON.stringify({ ...ids, locationId: shelf.id })
+      });
+      await load();
+      setNotice(t("已把 {count} 件改到货架 {locationCode}。", { count: result.moved, locationCode: shelf.locationCode }));
+    } catch (caught) {
+      setError(errorMessage(caught, t("无法更换货架。")));
     } finally {
       setBusy("");
     }
@@ -351,7 +392,10 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
       </section> : null}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4">
         <p className="text-sm">{allDisplaysConfirmed ? (allDetailsReady ? t("全部展示图已确认，可以继续。") : t("展示图已全部确认，销售详情仍在后台生成。")) : t("还有 {v0} 件展示图待确认。", { v0: batch.targetCount - confirmedCount })}</p>
-        <Button disabled={Boolean(busy) || !allDisplaysConfirmed || !allDetailsReady} onClick={() => void generateBarcodesAndLocations()}>{t("继续：生成标签、打印入仓")}</Button>
+        <div className="flex flex-wrap items-end gap-3">
+          {!allLocationsReady ? <ShelfPicker shelves={shelves} value={shelfId} needed={batch.targetCount - locationCount} onChange={setShelfId} /> : null}
+          <Button disabled={Boolean(busy) || !allDisplaysConfirmed || !allDetailsReady || (!allLocationsReady && !shelfId)} onClick={() => void generateBarcodesAndLocations()}>{t("继续：生成标签、打印入仓")}</Button>
+        </div>
       </div>
     </div>;
   }
@@ -384,12 +428,15 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
       {!allBarcodesReady || !allLocationsReady ? (
         <section className="rounded-md border p-4">
           <h2 className="font-semibold">{t("生成 Barcode 并预留货架位")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("本批全部完成人工尺码确认后，系统一次生成 Barcode，并立即显示每件衣服应放的位置。")}</p>
-          <Button className="mt-4" disabled={Boolean(busy) || (!allCalibrated && barcodeCount === 0)} onClick={() => void generateBarcodesAndLocations()}>
+          <p className="mt-1 text-sm text-muted-foreground">{t("先选这一批要放的货架。系统生成 Barcode 后，整批衣服都放在这个货架上。")}</p>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+          <ShelfPicker shelves={shelves} value={shelfId} needed={batch.targetCount - locationCount} onChange={setShelfId} />
+          <Button disabled={Boolean(busy) || !shelfId || (!allCalibrated && barcodeCount === 0)} onClick={() => void generateBarcodesAndLocations()}>
             {busy === "generate" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <BarcodeIcon data-icon="inline-start" />}
             
             {t("生成 Barcode 与货架位")}
           </Button>
+          </div>
         </section>
       ) : null}
 
@@ -411,7 +458,14 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
             <section className="flex flex-col gap-4 rounded-md border p-4">
               <div>
                 <h2 className="font-semibold">{t("按货架位分组摆放")}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{t("系统已根据可用容量自动分配货架位。请按分组清单完成摆放，然后一次性确认入库。")}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{t("本批整批放在同一个货架。请按清单完成摆放，然后一次性确认入库。")}</p>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <ShelfPicker label={t("整批换到别的货架")} shelves={shelves} value={shelfId} needed={0} onChange={setShelfId} />
+                <Button variant="outline" disabled={Boolean(busy) || !shelfId || shelfGroups.every((group) => shelves.find((shelf) => shelf.id === shelfId)?.locationCode === group.locationCode)} onClick={() => void moveBatchToShelf()}>
+                  {busy === "move-shelf" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <MapPinIcon data-icon="inline-start" />}
+                  {t("整批换货架")}
+                </Button>
               </div>
               <div className="grid gap-4 lg:grid-cols-2">
                 {shelfGroups.map((group) => (
@@ -535,6 +589,26 @@ function BarcodeGraphic({ value }: { value: string }) {
     JsBarcode(ref.current, value, { format: "CODE128", displayValue: true, fontSize: 12, height: 42, margin: 0, width: 1.5 });
   }, [value]);
   return value ? <svg ref={ref} className="mt-3 h-16 w-full" aria-label={`Barcode ${value}`} /> : <div className="mt-4 text-center text-xs text-red-600">{t("Barcode 未生成")}</div>;
+}
+
+function ShelfPicker({ shelves, value, needed, onChange, label }: {
+  shelves: Shelf[];
+  value: string;
+  needed: number;
+  onChange: (shelfId: string) => void;
+  label?: string;
+}) {
+  return <label className="flex flex-col gap-1 text-sm">
+    <span className="text-muted-foreground">{label ?? t("放到哪个货架")}</span>
+    <NativeSelect value={value} onChange={(event) => onChange(event.target.value)}>
+      <NativeSelectOption value="">{t("请选择货架")}</NativeSelectOption>
+      {shelves.map((shelf) => (
+        <NativeSelectOption key={shelf.id} value={shelf.id} disabled={shelf.remainingCapacity < needed}>
+          {t("{locationCode}（已放 {count}/{capacity} 件）", { locationCode: shelf.locationCode, count: shelf.currentItemCount, capacity: shelf.capacity })}
+        </NativeSelectOption>
+      ))}
+    </NativeSelect>
+  </label>;
 }
 
 function ProgressMetric({ label, value, total }: { label: string; value: number; total: number }) {

@@ -18,33 +18,27 @@ function shelf(
   return { id, locationCode: id, capacity, currentItemCount, status, active: status !== WarehouseLocationStatus.INACTIVE };
 }
 
-test("fills a nearly full shelf before selecting another shelf", () => {
+test("puts the whole batch on the chosen shelf", () => {
   const productIds = Array.from({ length: 10 }, (_, index) => `product-${index + 1}`);
-  const assignments = buildShelfAllocationPlan(productIds, [shelf("A", 100, 95), shelf("B", 100, 20)], () => 0);
-  assert.deepEqual(assignments.slice(0, 5).map((item) => item.locationId), Array(5).fill("A"));
-  assert.deepEqual(assignments.slice(5).map((item) => item.locationId), Array(5).fill("B"));
+  const assignments = buildShelfAllocationPlan(productIds, shelf("A3", 200, 150));
+  assert.deepEqual(assignments.map((item) => item.productId), productIds);
+  assert.deepEqual(new Set(assignments.map((item) => item.locationCode)), new Set(["A3"]));
 });
 
-test("fills the last slot, reports FULL, and refuses a further assignment without another shelf", () => {
-  const [assignment] = buildShelfAllocationPlan(["product-1"], [shelf("A", 100, 99)], () => 0);
+test("fills the last slot, reports FULL, and refuses a batch the chosen shelf cannot hold", () => {
+  const [assignment] = buildShelfAllocationPlan(["product-1"], shelf("A", 200, 199));
   assert.equal(assignment.locationId, "A");
-  assert.equal(locationMetrics(shelf("A", 100, 100)).effectiveStatus, WarehouseLocationStatus.FULL);
+  assert.equal(locationMetrics(shelf("A", 200, 200)).effectiveStatus, WarehouseLocationStatus.FULL);
   assert.throws(
-    () => buildShelfAllocationPlan(["product-2"], [shelf("A", 100, 100)], () => 0),
-    /No shelf location has enough available capacity/
+    () => buildShelfAllocationPlan(["one", "two"], shelf("A", 200, 199)),
+    /room for 1 more item\(s\), not 2\. Choose another shelf/
   );
 });
 
-test("keeps one batch concentrated instead of randomizing every item", () => {
-  const productIds = Array.from({ length: 10 }, (_, index) => `product-${index + 1}`);
-  const assignments = buildShelfAllocationPlan(productIds, [shelf("A", 50, 0), shelf("B", 50, 0)], () => 0.75);
-  assert.deepEqual(new Set(assignments.map((item) => item.locationId)), new Set(["B"]));
-});
-
-test("does not allocate beyond total capacity", () => {
+test("never puts new products on an inactive shelf", () => {
   assert.throws(
-    () => buildShelfAllocationPlan(["one", "two"], [shelf("A", 100, 99)], () => 0),
-    /No shelf location has enough available capacity/
+    () => buildShelfAllocationPlan(["product-1"], shelf("A", 200, 0, WarehouseLocationStatus.INACTIVE)),
+    /not in use/
   );
 });
 
@@ -52,15 +46,6 @@ test("maps capacity and operational state to ACTIVE, FULL, and INACTIVE", () => 
   assert.equal(locationMetrics(shelf("A", 100, 99)).effectiveStatus, WarehouseLocationStatus.ACTIVE);
   assert.equal(locationMetrics(shelf("A", 100, 100)).effectiveStatus, WarehouseLocationStatus.FULL);
   assert.equal(locationMetrics(shelf("A", 100, 10, WarehouseLocationStatus.INACTIVE)).effectiveStatus, WarehouseLocationStatus.INACTIVE);
-});
-
-test("never allocates new products to an inactive shelf", () => {
-  const assignments = buildShelfAllocationPlan(
-    ["product-1"],
-    [shelf("A", 100, 0, WarehouseLocationStatus.INACTIVE), shelf("B", 100, 0)],
-    () => 0
-  );
-  assert.equal(assignments[0]?.locationId, "B");
 });
 
 test("rejects capacity below the current occupied count", () => {

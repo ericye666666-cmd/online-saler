@@ -347,8 +347,6 @@ export const enDictionary: Record<string, string> = {
   "本批": "This batch",
   "本批 {length} 件 AI 主图与商品信息已人工确认。":
     "All {length} AI main images and product details in this batch have been confirmed by hand.",
-  "本批 {targetCount} 个 Barcode 已生成，货架位已同时预留。":
-    "{targetCount} barcodes generated for this batch, with shelf locations reserved at the same time.",
   "本批 {targetCount} 件已发布并完成。": "All {targetCount} items in this batch are published and complete.",
   "本批 {targetCount} 件已全部完成入库。": "All {targetCount} items in this batch are stocked in.",
   "本批 {targetCount} 件已入库并发布。": "All {targetCount} items in this batch are stocked in and published.",
@@ -357,8 +355,6 @@ export const enDictionary: Record<string, string> = {
   "本批存在退回返工或拒绝商品。修复异常前不能整批入仓和发布。":
     "This batch has items sent back for rework or rejected. It cannot be stocked in and published until those are fixed.",
   "本批录入类型": "Intake type for this batch",
-  "本批全部完成人工尺码确认后，系统一次生成 Barcode，并立即显示每件衣服应放的位置。":
-    "Once every size in the batch is confirmed by hand, the system generates all the barcodes at once and shows where each garment goes.",
   "本批仍有商品未分配货架号。": "Some items in this batch still have no shelf location.",
   "本批商品必须全部确认通过。": "Every item in this batch must be confirmed.",
   "本批商品必须全部审核通过。": "Every item in this batch must pass review.",
@@ -474,8 +470,6 @@ export const enDictionary: Record<string, string> = {
   "抽象图案": "Abstract print",
   "出库确认": "Confirm stock-out",
   "初始状态": "Initial status",
-  "处理审核、价格、随机库位、标签打印、发布和下架。":
-    "Handle review, pricing, random shelf locations, label printing, publishing and unpublishing.",
   "处理售后": "Handle after-sales",
   "处理售后订单": "Handle after-sales orders",
   "处理异常": "Handle exception",
@@ -1538,8 +1532,6 @@ export const enDictionary: Record<string, string> = {
   "系统": "System",
   "系统会按填写的数量生成有顺序的商品位置，正式 Barcode 在全部校准完成后生成。":
     "The system creates numbered slots for the count you enter. The real barcodes are generated once everything is calibrated.",
-  "系统已根据可用容量自动分配货架位。请按分组清单完成摆放，然后一次性确认入库。":
-    "Shelf locations have been assigned automatically from the free capacity. Shelve everything by the grouped list, then confirm the stock-in all at once.",
   "系统直接使用上传原图识别分类、外观、名称和品牌。人工校准并填写尺码后，再直接由原图生成白底展示图。":
     "The system reads the category, appearance, name and brand straight from the uploaded original. Once it is calibrated and sized by hand, the white-background image is generated from that same original.",
   "系统只显示当前批次此刻允许执行的下一步。":
@@ -2822,5 +2814,21 @@ export const enDictionary: Record<string, string> = {
   "选了门店会同时把这个人加进该店的骑手名单，不用再去「门店骑手」建一次。":
     "Choosing a store also adds this person to that store's rider list, so there is no second form to fill in.",
   "门店员工只能签收发给自己门店的包裹。仓库和总部员工不设归属。":
-    "Store staff may only receive parcels addressed to their own store. Warehouse and head-office staff have no home store."
+    "Store staff may only receive parcels addressed to their own store. Warehouse and head-office staff have no home store.",
+  "请先选择这一批要放的货架。": "Choose the shelf for this batch first.",
+  "本批 {targetCount} 个 Barcode 已生成，整批放在货架 {locationCode}。": "{targetCount} barcodes generated. The whole batch goes on shelf {locationCode}.",
+  "把本批还在仓库里的衣服整批改到货架 {locationCode}？系统改完后，请把实物也搬过去。": "Move every item of this batch still in the warehouse to shelf {locationCode}? Move the garments themselves afterwards.",
+  "已把 {count} 件改到货架 {locationCode}。": "Moved {count} item(s) to shelf {locationCode}.",
+  "无法更换货架。": "Could not change the shelf.",
+  "先选这一批要放的货架。系统生成 Barcode 后，整批衣服都放在这个货架上。": "Choose the shelf for this batch. Once the barcodes are generated, the whole batch goes on that shelf.",
+  "本批整批放在同一个货架。请按清单完成摆放，然后一次性确认入库。": "The whole batch sits on one shelf. Place the items as listed, then confirm stock-in in one step.",
+  "整批换到别的货架": "Move the whole batch to another shelf",
+  "整批换货架": "Move batch",
+  "放到哪个货架": "Shelf",
+  "请选择货架": "Choose a shelf",
+  "{locationCode}（已放 {count}/{capacity} 件）": "{locationCode} ({count}/{capacity} items)",
+  "处理审核、价格、货架位、标签打印、发布和下架。": "Review, pricing, shelf, label printing, publishing and unpublishing.",
+  "本货架上的批次：": "Batches on this shelf: ",
+  "无批次": "No batch",
+  "{code}（{count} 件）": "{code} ({count} items)",
 };

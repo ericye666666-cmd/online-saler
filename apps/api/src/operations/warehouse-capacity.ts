@@ -66,35 +66,26 @@ export function assertValidCapacity(capacity: number, currentItemCount: number):
   }
 }
 
+// The warehouse has a handful of large shelves and each intake batch goes onto
+// one of them as a whole, chosen by the employee. The system never picks.
 export function buildShelfAllocationPlan(
   productIds: readonly string[],
-  shelves: readonly ShelfCapacitySnapshot[],
-  random: () => number = Math.random
+  shelf: ShelfCapacitySnapshot
 ): ShelfAssignment[] {
-  const remainingProducts = [...productIds];
-  const available = shelves
-    .map(locationMetrics)
-    .filter((shelf) => shelf.effectiveStatus === WarehouseLocationStatus.ACTIVE && shelf.remainingCapacity > 0);
-  const assignments: ShelfAssignment[] = [];
-
-  while (remainingProducts.length > 0 && available.length > 0) {
-    const randomValue = Math.max(0, Math.min(0.999999999, random()));
-    const selectedIndex = Math.floor(randomValue * available.length);
-    const [shelf] = available.splice(selectedIndex, 1);
-    const fillCount = Math.min(shelf.remainingCapacity, remainingProducts.length);
-    for (let index = 0; index < fillCount; index += 1) {
-      assignments.push({
-        productId: remainingProducts.shift()!,
-        locationId: shelf.id,
-        locationCode: shelf.locationCode
-      });
-    }
+  const metrics = locationMetrics(shelf);
+  if (metrics.effectiveStatus === WarehouseLocationStatus.INACTIVE) {
+    throw new RangeError(`Shelf ${shelf.locationCode} is not in use.`);
   }
-
-  if (remainingProducts.length > 0) {
-    throw new RangeError("No shelf location has enough available capacity.");
+  if (metrics.remainingCapacity < productIds.length) {
+    throw new RangeError(
+      `Shelf ${shelf.locationCode} has room for ${metrics.remainingCapacity} more item(s), not ${productIds.length}. Choose another shelf.`
+    );
   }
-  return assignments;
+  return productIds.map((productId) => ({
+    productId,
+    locationId: shelf.id,
+    locationCode: shelf.locationCode
+  }));
 }
 
 export async function refreshWarehouseLocationStatuses(

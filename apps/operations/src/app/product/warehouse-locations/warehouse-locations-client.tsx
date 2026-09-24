@@ -38,7 +38,7 @@ type InventoryRow = {
   id: string;
   barcode: string;
   status: string;
-  product: { productCode: string; title?: string | null };
+  product: { productCode: string; title?: string | null; batch?: { batchCode: string } | null };
 };
 
 type LocationRow = {
@@ -278,7 +278,8 @@ function LocationDialog({ mode, locations, selectedLocation, movingItem, adminUs
     <Dialog open={Boolean(mode)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{mode === "view" ? t("{v0} / {v1}，剩余 {v2}", { v0: selectedLocation?.currentItemCount ?? 0, v1: selectedLocation?.capacity ?? 0, v2: selectedLocation?.remainingCapacity ?? 0 }) : mode === "move" ? `${movingItem?.product.title ?? movingItem?.barcode} · ${movingItem?.barcode}` : t("容量可选 50、100、200 或输入自定义正整数。")}</DialogDescription></DialogHeader>
-        {mode === "view" ? <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">{selectedLocation?.inventoryItems.length ? selectedLocation.inventoryItems.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div className="min-w-0"><p className="truncate font-medium">{item.product.title ?? item.product.productCode}</p><p className="text-xs text-muted-foreground">{item.barcode} · {item.status}</p></div>{canMove ? <Button size="sm" variant="outline" onClick={() => onMove(item)}><MoveRightIcon data-icon="inline-start" />{t("移动")}</Button> : null}</div>) : <p className="text-sm text-muted-foreground">{t("当前货架位没有占用中的商品。")}</p>}</div> : (
+        {mode === "view" && selectedLocation?.inventoryItems.length ? <p className="text-sm">{t("本货架上的批次：")}{shelfBatches(selectedLocation.inventoryItems)}</p> : null}
+        {mode === "view" ? <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">{selectedLocation?.inventoryItems.length ? selectedLocation.inventoryItems.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div className="min-w-0"><p className="truncate font-medium">{item.product.title ?? item.product.productCode}</p><p className="text-xs text-muted-foreground">{item.product.batch?.batchCode ? `${item.product.batch.batchCode} · ` : ""}{item.barcode} · {item.status}</p></div>{canMove ? <Button size="sm" variant="outline" onClick={() => onMove(item)}><MoveRightIcon data-icon="inline-start" />{t("移动")}</Button> : null}</div>) : <p className="text-sm text-muted-foreground">{t("当前货架位没有占用中的商品。")}</p>}</div> : (
           <FieldGroup>
             {mode === "create" ? <Field><FieldLabel htmlFor="location-code">{t("货架位编码")}</FieldLabel><Input id="location-code" value={locationCode} onChange={(event) => setLocationCode(event.target.value)} placeholder="A-010101" /></Field> : null}
             {mode === "bulk" ? <><Field><FieldLabel htmlFor="location-prefix">{t("区域前缀")}</FieldLabel><Input id="location-prefix" value={prefix} onChange={(event) => setPrefix(event.target.value)} placeholder="A-01" /></Field><div className="grid gap-3 sm:grid-cols-2"><Field><FieldLabel htmlFor="location-start">{t("起始编号")}</FieldLabel><Input id="location-start" inputMode="numeric" value={start} onChange={(event) => setStart(event.target.value)} /></Field><Field><FieldLabel htmlFor="location-end">{t("结束编号")}</FieldLabel><Input id="location-end" inputMode="numeric" value={end} onChange={(event) => setEnd(event.target.value)} /></Field></div><p className="text-sm text-muted-foreground">{t("预览：")}{preview.slice(0, 4).join("、")}{preview.length > 4 ? t("… 共 {length} 个", { length: preview.length }) : ""}</p></> : null}
@@ -324,4 +325,18 @@ async function api<T>(path: string, query?: Record<string, string>, init?: Reque
   try { body = text ? JSON.parse(text) : {}; } catch { body = { message: text }; }
   if (!response.ok) throw new Error(body && typeof body === "object" && "message" in body ? String((body as { message?: unknown }).message) : `Request failed: ${response.status}`);
   return body as T;
+}
+
+// Garments are shelved a whole batch at a time, so the batch codes are what
+// someone looks for when walking to a shelf.
+function shelfBatches(items: InventoryRow[]) {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const code = item.product.batch?.batchCode ?? t("无批次");
+    counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([code, count]) => t("{code}（{count} 件）", { code, count }))
+    .join("、");
 }

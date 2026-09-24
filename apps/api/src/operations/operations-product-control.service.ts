@@ -15,9 +15,11 @@ import { productPublicationBlocker } from "../product/product-publication-readin
 import { loadConfirmedDisplayImage } from "../product/product-publication-evidence";
 import { STAGING_TEST_EMPLOYEE_ID } from "./operations-workspace.service";
 import {
+  MOVABLE_INVENTORY_STATUSES,
   WAREHOUSE_OCCUPYING_STATUSES,
   buildShelfAllocationPlan,
-  refreshWarehouseLocationStatuses
+  refreshWarehouseLocationStatuses,
+  type ShelfCapacitySnapshot
 } from "./warehouse-capacity";
 
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -36,16 +38,6 @@ const CONTROL_STATUSES = [
 
 function employeeIdOrDefault(employeeId?: string): string {
   return employeeId?.trim() || STAGING_TEST_EMPLOYEE_ID;
-}
-
-function defaultLocationCodes(): string[] {
-  const codes: string[] = [];
-  for (let row = 1; row <= 10; row += 1) {
-    for (let column = 1; column <= 10; column += 1) {
-      codes.push(`A-01${String(row).padStart(2, "0")}${String(column).padStart(2, "0")}`);
-    }
-  }
-  return codes;
 }
 
 @Injectable()
@@ -208,49 +200,33 @@ export class OperationsProductControlService {
     return { printedAt: now.toISOString(), productIds };
   }
 
-  async assignRandomLocation(productId: string, input: { employeeId?: string; adminUserId?: string }) {
+  async assignProductLocation(productId: string, input: { employeeId?: string; adminUserId?: string; locationId?: string }) {
     await this.assignBatchLocations([productId], input);
     return this.productDetail(productId);
   }
 
+  // Puts every product that has no shelf yet onto one shelf. The shelf is the
+  // one the employee chose, or, when none is given, the shelf the rest of the
+  // product's batch already sits on. There is no automatic choice.
   async assignBatchLocations(
     productIds: readonly string[],
-    input: { employeeId?: string; adminUserId?: string }
+    input: { employeeId?: string; adminUserId?: string; locationId?: string }
   ) {
     const employeeId = employeeIdOrDefault(input.employeeId);
     const session = await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const uniqueProductIds = [...new Set(productIds.map((id) => id.trim()).filter(Boolean))];
     if (uniqueProductIds.length === 0) return [];
-    await this.ensureDefaultLocations();
 
     await prisma.$transaction(async (transaction) => {
-      await transaction.$queryRaw(Prisma.sql`
-        SELECT "id"
-        FROM "WarehouseLocation"
-        WHERE "active" = true AND "status" <> 'INACTIVE'::"WarehouseLocationStatus"
-        ORDER BY "id"
-        FOR UPDATE
-      `);
+      await lockShelves(transaction);
 
-      const [products, existingItems, locations, counts] = await Promise.all([
+      const [products, existingItems] = await Promise.all([
         transaction.product.findMany({
           where: { id: { in: uniqueProductIds } },
           select: { id: true, barcode: true, status: true, batchId: true }
         }),
         transaction.inventoryItem.findMany({
           where: { productId: { in: uniqueProductIds } }
-        }),
-        transaction.warehouseLocation.findMany({
-          where: { active: true, status: { not: "INACTIVE" } },
-          orderBy: { locationCode: "asc" }
-        }),
-        transaction.inventoryItem.groupBy({
-          by: ["locationId"],
-          where: {
-            locationId: { not: null },
-            status: { in: WAREHOUSE_OCCUPYING_STATUSES }
-          },
-          _count: { _all: true }
         })
       ]);
 
@@ -268,26 +244,19 @@ export class OperationsProductControlService {
       const unassignedProductIds = uniqueProductIds.filter((productId) => !existingByProduct.get(productId)?.locationId);
       if (unassignedProductIds.length === 0) return;
 
-      const countByLocation = new Map(counts.map((row) => [row.locationId, row._count._all]));
+      const locationId = input.locationId?.trim() || await batchShelfId(transaction, products);
+      if (!locationId) {
+        throw new BadRequestException("Choose a shelf for this batch first.");
+      }
+      const shelf = await loadShelf(transaction, locationId);
       let assignments;
       try {
-        assignments = buildShelfAllocationPlan(
-          unassignedProductIds,
-          locations.map((location) => ({
-            id: location.id,
-            locationCode: location.locationCode,
-            capacity: location.capacity,
-            currentItemCount: countByLocation.get(location.id) ?? 0,
-            active: location.active,
-            status: location.status
-          }))
-        );
+        assignments = buildShelfAllocationPlan(unassignedProductIds, shelf);
       } catch (error) {
         throw new BadRequestException(error instanceof Error ? error.message : "No shelf location has enough available capacity.");
       }
 
       const productById = new Map(products.map((product) => [product.id, product]));
-      const assignedLocationIds: string[] = [];
       for (const assignment of assignments) {
         const product = productById.get(assignment.productId)!;
         const existing = existingByProduct.get(assignment.productId);
@@ -315,13 +284,12 @@ export class OperationsProductControlService {
             movementType: InventoryMovementType.LOCATION_ASSIGNED,
             toLocationId: assignment.locationId,
             employeeId,
-            reason: "Capacity-safe shelf location reserved at barcode generation"
+            reason: "Employee chose the shelf for the batch"
           }
         });
-        assignedLocationIds.push(assignment.locationId);
       }
 
-      await refreshWarehouseLocationStatuses(transaction, assignedLocationIds);
+      await refreshWarehouseLocationStatuses(transaction, [shelf.id]);
       await transaction.auditLog.create({
         data: {
           actorType: ActorType.EMPLOYEE,
@@ -331,17 +299,80 @@ export class OperationsProductControlService {
           module: "WAREHOUSE",
           entityType: "ProductBatch",
           entityId: products[0]?.batchId ?? null,
-          action: "WAREHOUSE_BATCH_AUTO_ASSIGNED",
+          action: "WAREHOUSE_BATCH_SHELF_ASSIGNED",
           afterJson: {
-            productIds: assignments.map((assignment) => assignment.productId),
-            assignments
+            locationCode: shelf.locationCode,
+            productIds: assignments.map((assignment) => assignment.productId)
           },
-          reason: "Random available shelves were filled sequentially within capacity."
+          reason: "The whole batch was put on the shelf the employee chose."
         }
       });
     }, { timeout: 20_000 });
 
     return Promise.all(uniqueProductIds.map((productId) => this.productDetail(productId)));
+  }
+
+  // Moves a batch's garments that are still in the warehouse onto another
+  // shelf. Paid items wait for picking where they are, so they stay put.
+  async moveProductsToShelf(
+    productIds: readonly string[],
+    input: { employeeId?: string; adminUserId?: string; locationId?: string; batchId?: string }
+  ) {
+    const employeeId = employeeIdOrDefault(input.employeeId);
+    const session = await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
+    const locationId = input.locationId?.trim();
+    if (!locationId) throw new BadRequestException("Choose the shelf to move the batch to.");
+    const uniqueProductIds = [...new Set(productIds.map((id) => id.trim()).filter(Boolean))];
+
+    return prisma.$transaction(async (transaction) => {
+      await lockShelves(transaction);
+      const shelf = await loadShelf(transaction, locationId);
+      const items = await transaction.inventoryItem.findMany({
+        where: {
+          productId: { in: uniqueProductIds },
+          locationId: { not: null },
+          status: { in: MOVABLE_INVENTORY_STATUSES }
+        }
+      });
+      const moving = items.filter((item) => item.locationId !== shelf.id);
+      if (moving.length === 0) return { locationCode: shelf.locationCode, moved: 0 };
+      try {
+        buildShelfAllocationPlan(moving.map((item) => item.productId), shelf);
+      } catch (error) {
+        throw new BadRequestException(error instanceof Error ? error.message : "No shelf location has enough available capacity.");
+      }
+
+      for (const item of moving) {
+        await transaction.inventoryItem.update({ where: { id: item.id }, data: { locationId: shelf.id } });
+        await transaction.inventoryMovement.create({
+          data: {
+            inventoryItemId: item.id,
+            productId: item.productId,
+            movementType: InventoryMovementType.MOVE,
+            fromLocationId: item.locationId,
+            toLocationId: shelf.id,
+            employeeId,
+            reason: "Employee moved the whole batch to another shelf"
+          }
+        });
+      }
+      await refreshWarehouseLocationStatuses(transaction, [shelf.id, ...moving.map((item) => item.locationId!)]);
+      await transaction.auditLog.create({
+        data: {
+          actorType: ActorType.EMPLOYEE,
+          actorId: employeeId,
+          actorAdminUserId: session.adminUser?.id ?? null,
+          sourceApp: SourceApp.OPERATIONS,
+          module: "WAREHOUSE",
+          entityType: "ProductBatch",
+          entityId: input.batchId ?? null,
+          action: "WAREHOUSE_BATCH_SHELF_MOVED",
+          afterJson: { locationCode: shelf.locationCode, productIds: moving.map((item) => item.productId) },
+          reason: "The batch was moved to another shelf."
+        }
+      });
+      return { locationCode: shelf.locationCode, moved: moving.length };
+    }, { timeout: 20_000 });
   }
 
   async confirmPlaced(productId: string, input: { employeeId?: string; adminUserId?: string }) {
@@ -355,7 +386,7 @@ export class OperationsProductControlService {
       throw new BadRequestException("Only storage-ready items can be confirmed placed.");
     }
 
-    const detail = await this.assignRandomLocation(productId, { employeeId, adminUserId: input.adminUserId });
+    const detail = await this.assignProductLocation(productId, { employeeId, adminUserId: input.adminUserId });
     const item = detail.inventoryItem;
     if (!item?.id || !item.locationId) {
       throw new BadRequestException("Assign a location before confirming placement.");
@@ -452,7 +483,6 @@ export class OperationsProductControlService {
 
   async locations(adminUserId?: string) {
     await this.access.requirePermission(adminUserId, PRODUCT_CONTROL_PAGE);
-    await this.ensureDefaultLocations();
     const locations = await prisma.warehouseLocation.findMany({
       where: { active: true },
       include: {
@@ -489,15 +519,6 @@ export class OperationsProductControlService {
     if (blocker) throw new BadRequestException(blocker);
   }
 
-  private async ensureDefaultLocations() {
-    const count = await prisma.warehouseLocation.count();
-    if (count > 0) return;
-    await prisma.warehouseLocation.createMany({
-      data: defaultLocationCodes().map((locationCode) => ({ locationCode })),
-      skipDuplicates: true
-    });
-  }
-
   private productInclude() {
     return {
       images: {
@@ -520,4 +541,53 @@ export class OperationsProductControlService {
 function startOfToday(): Date {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+async function lockShelves(transaction: Prisma.TransactionClient) {
+  await transaction.$queryRaw(Prisma.sql`
+    SELECT "id"
+    FROM "WarehouseLocation"
+    WHERE "active" = true AND "status" <> 'INACTIVE'::"WarehouseLocationStatus"
+    ORDER BY "id"
+    FOR UPDATE
+  `);
+}
+
+// The shelf most of the products' batch already sits on, so a garment added to
+// a batch late, or re-prepared, follows the rest of its batch.
+async function batchShelfId(
+  transaction: Prisma.TransactionClient,
+  products: ReadonlyArray<{ batchId: string | null }>
+): Promise<string | null> {
+  const batchIds = [...new Set(products.map((product) => product.batchId).filter((id): id is string => Boolean(id)))];
+  if (batchIds.length === 0) return null;
+  const rows = await transaction.inventoryItem.groupBy({
+    by: ["locationId"],
+    where: {
+      locationId: { not: null },
+      status: { in: WAREHOUSE_OCCUPYING_STATUSES },
+      product: { batchId: { in: batchIds } }
+    },
+    _count: { _all: true }
+  });
+  const [top] = rows.sort((left, right) => right._count._all - left._count._all);
+  return top?.locationId ?? null;
+}
+
+async function loadShelf(transaction: Prisma.TransactionClient, locationId: string): Promise<ShelfCapacitySnapshot> {
+  const [shelf, currentItemCount] = await Promise.all([
+    transaction.warehouseLocation.findUnique({ where: { id: locationId } }),
+    transaction.inventoryItem.count({
+      where: { locationId, status: { in: WAREHOUSE_OCCUPYING_STATUSES } }
+    })
+  ]);
+  if (!shelf) throw new BadRequestException("Shelf not found.");
+  return {
+    id: shelf.id,
+    locationCode: shelf.locationCode,
+    capacity: shelf.capacity,
+    currentItemCount,
+    active: shelf.active,
+    status: shelf.status
+  };
 }

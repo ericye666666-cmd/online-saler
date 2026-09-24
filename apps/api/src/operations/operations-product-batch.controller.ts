@@ -23,6 +23,10 @@ type RetakeBody = AdminEmployeeBody & {
   reason?: string;
 };
 
+type ShelfBody = AdminEmployeeBody & {
+  locationId?: string;
+};
+
 @Controller("operations/product-batches")
 export class OperationsProductBatchController {
   constructor(private readonly batches: OperationsProductBatchService, private readonly identity: OperationsRequestIdentity) {}
@@ -73,6 +77,11 @@ export class OperationsProductBatchController {
     });
   }
 
+  @Get("shelves")
+  async shelves(@Headers("authorization") authorization?: string) {
+    return this.batches.listShelves(await this.identity.adminId(authorization));
+  }
+
   @Get(":id")
   async detail(@Param("id") id: string, @Headers("authorization") authorization?: string) {
     return this.batches.batchDetail(id, await this.identity.adminId(authorization));
@@ -84,8 +93,13 @@ export class OperationsProductBatchController {
   }
 
   @Post(":id/generate-barcodes")
-  async generateBarcodes(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: AdminEmployeeBody) {
+  async generateBarcodes(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: ShelfBody) {
     return this.batches.generateBatchBarcodes(id, await this.identity.employeeInput(authorization, body));
+  }
+
+  @Post(":id/shelf")
+  async moveToShelf(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: ShelfBody) {
+    return this.batches.moveBatchToShelf(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post(":id/mark-labels-printed")

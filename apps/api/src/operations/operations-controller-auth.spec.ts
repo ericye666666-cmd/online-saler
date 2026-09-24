@@ -69,8 +69,9 @@ const protectedRoutes: Route[] = [
   batchSummary,
   { method: "GET", path: "/operations/product-batches" },
   { method: "GET", path: "/operations/product-batches/products" },
+  { method: "GET", path: "/operations/product-batches/shelves" },
   { method: "GET", path: "/operations/product-batches/batch-1" },
-  ...["run-ai", "generate-barcodes", "mark-labels-printed", "stock-in", "prepare-storage", "publish", "complete-and-publish", "cancel"].map((action): Route => ({
+  ...["run-ai", "generate-barcodes", "shelf", "mark-labels-printed", "stock-in", "prepare-storage", "publish", "complete-and-publish", "cancel"].map((action): Route => ({
     method: "POST", path: `/operations/product-batches/batch-1/${action}`
   })),
   ...["review", "recalibration", "retake"].map((action): Route => ({
@@ -183,7 +184,7 @@ test("operations HTTP boundaries authenticate tokens before any product, AI or w
   const batchService = {
     createBatch: guarded("batch.create", "action.product.create", (input) => input.adminUserId),
     summary: guarded("batch.summary", "page.product.digitalization", (adminId) => adminId),
-    ...Object.fromEntries(["listBatches", "listProducts", "batchDetail", "runBatchAi", "generateBatchBarcodes", "markBatchPrinted", "stockInBatch", "prepareBatchStorage", "publishBatch", "completeAndPublishBatch", "cancelBatch", "reviewProduct", "markProductForRecalibration", "markProductForRetake"].map((name) => [name, stub(`batch.${name}`)]))
+    ...Object.fromEntries(["listBatches", "listProducts", "batchDetail", "runBatchAi", "generateBatchBarcodes", "markBatchPrinted", "stockInBatch", "prepareBatchStorage", "publishBatch", "completeAndPublishBatch", "cancelBatch", "reviewProduct", "markProductForRecalibration", "markProductForRetake", "listShelves", "moveBatchToShelf"].map((name) => [name, stub(`batch.${name}`)]))
   };
   const warehouseService = {
     listLocations: guarded("warehouse.list", "warehouse-locations.view", (input) => input.adminUserId),
@@ -239,7 +240,7 @@ test("operations HTTP boundaries authenticate tokens before any product, AI or w
       { provide: ProductDetailAssetService, useValue: methods("detailAsset", ["generateForProfile"]) },
       { provide: OperationsWorkspaceService, useValue: methods("workspace", ["summary", "active", "start"]) },
       { provide: OperationsProductFactoryAdminService, useValue: methods("factory", ["taxonomy", "createOption", "updateOption", "configuration"]) },
-      { provide: OperationsProductControlService, useValue: methods("control", ["summary", "list", "locations", "setPrice", "prepareForStorage", "assignRandomLocation", "confirmPlaced", "publish", "unpublish", "markLabelsPrinted"]) }
+      { provide: OperationsProductControlService, useValue: methods("control", ["summary", "list", "locations", "setPrice", "prepareForStorage", "assignProductLocation", "confirmPlaced", "publish", "unpublish", "markLabelsPrinted"]) }
     ]
   })(AuthenticationHttpTestModule);
   const app = await NestFactory.create(AuthenticationHttpTestModule, { logger: false, abortOnError: false });

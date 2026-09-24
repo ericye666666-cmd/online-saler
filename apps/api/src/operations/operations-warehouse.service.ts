@@ -64,7 +64,7 @@ export class OperationsWarehouseService {
       include: {
         inventoryItems: {
           where: { status: { in: WAREHOUSE_OCCUPYING_STATUSES } },
-          include: { product: { include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } } } },
+          include: { product: { include: { images: { orderBy: { sortOrder: "asc" }, take: 1 }, batch: { select: { batchCode: true } } } } },
           orderBy: { updatedAt: "desc" }
         }
       },

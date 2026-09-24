@@ -7,6 +7,7 @@ import {
   ProductStatus,
   ReviewResult,
   SourceApp,
+  WarehouseLocationStatus,
   prisma
 } from "@online-saler/database";
 import { PRODUCT_AI_PROMPT_VERSION } from "@online-saler/shared-types";
@@ -362,7 +363,39 @@ export class OperationsProductBatchService {
     return { batchId, results };
   }
 
-  async generateBatchBarcodes(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
+  async listShelves(adminUserId?: string) {
+    await this.access.requirePermission(adminUserId, PRODUCT_EDIT_ACTION);
+    const [shelves, counts] = await Promise.all([
+      prisma.warehouseLocation.findMany({
+        where: { active: true, status: { not: WarehouseLocationStatus.INACTIVE } },
+        orderBy: { locationCode: "asc" }
+      }),
+      prisma.inventoryItem.groupBy({
+        by: ["locationId"],
+        where: { locationId: { not: null }, status: { in: WAREHOUSE_OCCUPYING_STATUSES } },
+        _count: { _all: true }
+      })
+    ]);
+    const countByShelf = new Map(counts.map((row) => [row.locationId, row._count._all]));
+    return shelves.map((shelf) => {
+      const currentItemCount = countByShelf.get(shelf.id) ?? 0;
+      return {
+        id: shelf.id,
+        locationCode: shelf.locationCode,
+        capacity: shelf.capacity,
+        currentItemCount,
+        remainingCapacity: Math.max(0, shelf.capacity - currentItemCount)
+      };
+    });
+  }
+
+  async moveBatchToShelf(batchId: string, input: { adminUserId?: string; employeeId?: string; locationId?: string }) {
+    const batch = await this.requireBatch(batchId);
+    const products = await prisma.product.findMany({ where: { batchId: batch.id }, select: { id: true } });
+    return this.productControl.moveProductsToShelf(products.map((product) => product.id), { ...input, batchId: batch.id });
+  }
+
+  async generateBatchBarcodes(batchId: string, input: { adminUserId?: string; employeeId?: string; locationId?: string }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
     await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const batch = await this.requireBatch(batchId);

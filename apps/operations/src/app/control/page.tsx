@@ -190,7 +190,7 @@ export default function ProductControlPage() {
       method: "POST",
       body: JSON.stringify({ employeeId, adminUserId })
     });
-    setMessage("Random location assigned.");
+    setMessage("Put on the same shelf as the rest of its batch.");
     await load();
   }
 
@@ -276,7 +276,7 @@ export default function ProductControlPage() {
           <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{t("商品控制")}</h1>
           <p className="mt-2 max-w-2xl text-muted-foreground text-sm">
             
-            {t("处理审核、价格、随机库位、标签打印、发布和下架。")}
+            {t("处理审核、价格、货架位、标签打印、发布和下架。")}
           </p>
         </div>
         <div className="flex gap-2">

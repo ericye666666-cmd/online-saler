@@ -196,7 +196,7 @@ test("batch completion cannot use an approved status to bypass current AI-image 
 });
 
 test("stock-in rejects reserved or sold inventory and does not mutate published products", async () => {
-  control.assignRandomLocation = (async () => records[0]) as never;
+  control.assignProductLocation = (async () => records[0]) as never;
   let writes = 0;
   prisma.$transaction = (async () => { writes++; }) as never;
   for (const status of ["RESERVED", "SOLD", "REMOVED"]) {
@@ -210,7 +210,7 @@ test("stock-in rejects reserved or sold inventory and does not mutate published 
 
 test("stock-in requires a conditional update and aborts when inventory changes during confirmation", async () => {
   records[0].inventoryItem.status = "PENDING_STOCK_IN";
-  control.assignRandomLocation = (async () => records[0]) as never;
+  control.assignProductLocation = (async () => records[0]) as never;
   let movements = 0;
   prisma.$transaction = (async (callback: (client: unknown) => Promise<unknown>) => callback({
     inventoryItem: {

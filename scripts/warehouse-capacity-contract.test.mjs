@@ -28,6 +28,12 @@ test("serializes capacity-safe batch reservations and preserves idempotency", ()
   assert.match(batchService, /assignBatchLocations\(products\.map/);
 });
 
+test("the employee chooses one shelf per batch; nothing is picked at random", () => {
+  assert.doesNotMatch(allocation, /Math\.random|ensureDefaultLocations|assignRandomLocation/);
+  assert.match(allocation, /Choose a shelf for this batch first/);
+  assert.match(batchService, /generateBatchBarcodes\(batchId: string, input: \{[^}]*locationId\?: string/);
+});
+
 test("removes shelf QR and shelf scan surfaces while retaining product Barcode picking", () => {
   assert.doesNotMatch(shelfPage, /QRCode|qrcode|二维码|打印货位/);
   assert.doesNotMatch(productController, /confirm-placed-at-location|confirmPlacedAtLocation/);

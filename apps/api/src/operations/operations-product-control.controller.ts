@@ -51,7 +51,7 @@ export class OperationsProductControlController {
 
   @Post("products/:id/location-hint")
   async locationHint(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: EmployeeBody) {
-    return this.productControl.assignRandomLocation(id, await this.identity.employeeInput(authorization, body));
+    return this.productControl.assignProductLocation(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post("products/:id/confirm-placed")
