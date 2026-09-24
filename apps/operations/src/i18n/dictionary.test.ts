@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { globSync, readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { fillPlaceholders, hasEnglishTranslation, placeholderNames, translate } from "./dictionary";
@@ -88,12 +89,21 @@ console.log(`operations i18n kids age labels ok (${englishAgeLabels.length} rows
  * screen for English-reading staff, and nothing failed. This is that check.
  */
 const sourceRoot = fileURLToPath(new URL("..", import.meta.url));
-const sourceFiles = globSync("**/*.{ts,tsx}", { cwd: sourceRoot })
-  .map((file) => file.replace(/\\/g, "/"))
-  .filter((file) => !file.includes(".test."));
-// A glob that matches nothing would make this whole check pass silently, which
+
+/** Walked by hand: `fs.globSync` is not in every Node this repo is built on. */
+function sourceFilesUnder(directory: string, prefix = ""): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) return sourceFilesUnder(join(directory, entry.name), relative);
+    if (!/\.tsx?$/.test(entry.name) || relative.includes(".test.")) return [];
+    return [relative];
+  });
+}
+
+const sourceFiles = sourceFilesUnder(sourceRoot);
+// A walk that reaches nothing would make this whole check pass silently, which
 // is the same failure it exists to catch.
-assert.ok(sourceFiles.length > 100, `only ${sourceFiles.length} source files found — the glob is not reaching them`);
+assert.ok(sourceFiles.length > 100, `only ${sourceFiles.length} source files found — the walk is not reaching them`);
 const chineseCall = /\bt\(\s*"((?:[^"\\]|\\.)*)"/g;
 const chinese = /[一-鿿]/;
 const untranslated: string[] = [];
