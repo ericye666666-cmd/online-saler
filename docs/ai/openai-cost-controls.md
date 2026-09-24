@@ -12,6 +12,10 @@ verified by these tests. The September 14 fidelity update follows an employee-re
 | Copy from employee-confirmed facts | `gpt-4o-mini` | `OPENAI_DETAIL_MODEL` |
 | Required catalog display image | `gpt-image-2.5-sunburst`, `high`, 1024 square | `OPENAI_IMAGE_EDIT_MODEL`, `OPENAI_IMAGE_EDIT_QUALITY` |
 
+`OPENAI_API_KEY` is read from the Secret Manager secret `STAGING_OPENAI_API_KEY`,
+not from a plaintext Cloud Run environment variable. The runtime service account
+needs `roles/secretmanager.secretAccessor` on it.
+
 The staging workflow sets all three models explicitly. Elsewhere, an existing
 runtime override continues to take precedence over the code default. For
 backward compatibility, an unset detail model still falls back to the configured
@@ -36,6 +40,37 @@ High-quality image editing costs more than the former mini/low configuration.
 Actual billing includes both input and output tokens. Do not reuse the old mini
 price estimate for this configuration. There is no automatic lower-quality fallback
 on model-access errors; the employee sees the failure and can report it.
+
+## Where the money actually goes — measured 2026-09-24
+
+Seven days (Sep 17-24), `online-saler-staging` key, USD 24.72 total:
+
+| Line item | Cost | Share |
+| --- | --- | --- |
+| `gpt-image-2.5-sunburst` (text input + image input + image output) | 23.02 | 93% |
+| `gpt-4o-mini` (recognition + copy) | 1.62 | 6.6% |
+| Other | 0.08 | 0.3% |
+
+Cloud Run request logs for the same window separate real generations from cache
+hits by latency, and the split is cleanly bimodal: 218 calls under one second
+(an existing job read back) against 325 calls of 15 seconds or more (an actual
+OpenAI image edit). Those 325 generations cover **325 distinct products — exactly
+1.00 generation per product, with no regeneration at all.**
+
+Per digitized item: USD 0.0708 display image + USD 0.0050 recognition and copy =
+**USD 0.076, about KSh 10** against a KSh 500-900 sale price, roughly 1.5% of revenue.
+
+Two conclusions follow, and they should be rechecked before anyone "optimizes"
+this again:
+
+- The spend is proportional to items processed, not wasted. Employees accepted
+  every generated image on the first try, so lowering quality has no rework to
+  save and would only risk the print/shape fidelity that the September 14 update
+  was made to fix.
+- The `Images` card on the OpenAI usage page reads zero for this model. GPT Image
+  2.5 Sunburst bills as tokens across three line items, not per image, so it does
+  not appear in the per-image counter. Read the `Group by -> Line Item` breakdown
+  instead; the zero is a counter that does not apply, not an absence of spend.
 
 ## Avoiding routine deployment charges
 

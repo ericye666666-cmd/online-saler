@@ -46,6 +46,7 @@ env:
   OPENAI_DETAIL_OUTPUT_USD_PER_MILLION: "0.60"
   OPENAI_IMAGE_EDIT_MODEL: gpt-image-2.5-sunburst
   OPENAI_IMAGE_EDIT_QUALITY: high
+  OPENAI_API_KEY_SECRET: STAGING_OPENAI_API_KEY
 
 jobs:
   deploy:
@@ -67,11 +68,14 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Verify OpenAI API key secret
-        env:
-          OPENAI_API_KEY_STAGING: ${{ secrets.OPENAI_API_KEY_STAGING }}
         run: |
-          if [ -z "${OPENAI_API_KEY_STAGING}" ]; then
-            echo "OPENAI_API_KEY_STAGING repository secret is not configured."
+          # The key lives in Secret Manager, never in a plaintext Cloud Run env var and
+          # never in a repository secret, so a project viewer cannot read it back.
+          if ! gcloud secrets versions describe latest \
+            --secret "${OPENAI_API_KEY_SECRET}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            echo "Secret Manager secret ${OPENAI_API_KEY_SECRET} has no accessible latest version."
+            echo "Create it once with: gcloud secrets create ${OPENAI_API_KEY_SECRET} --replication-policy=automatic"
             exit 1
           fi
 
@@ -197,9 +201,9 @@ jobs:
             OPENAI_DETAIL_OUTPUT_USD_PER_MILLION=${{ env.OPENAI_DETAIL_OUTPUT_USD_PER_MILLION }}
             OPENAI_IMAGE_EDIT_MODEL=${{ env.OPENAI_IMAGE_EDIT_MODEL }}
             OPENAI_IMAGE_EDIT_QUALITY=${{ env.OPENAI_IMAGE_EDIT_QUALITY }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY_STAGING }}
           secrets: |
             DATABASE_URL=STAGING_DATABASE_URL:latest
+            OPENAI_API_KEY=STAGING_OPENAI_API_KEY:latest
 
       - name: Verify health endpoint
         run: |
