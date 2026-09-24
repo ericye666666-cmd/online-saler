@@ -2831,4 +2831,13 @@ export const enDictionary: Record<string, string> = {
   "本货架上的批次：": "Batches on this shelf: ",
   "无批次": "No batch",
   "{code}（{count} 件）": "{code} ({count} items)",
+  "挪货架": "Move shelf",
+  "重打 Barcode": "Reprint barcode",
+  "只有还在仓库货架上的商品能挪；已付款、已拣货或已售出的不能挪。": "Only items still on a warehouse shelf can be moved; paid, picked or sold items cannot.",
+  "无法读取货架。": "Could not load the shelves.",
+  "挪货架失败。": "Could not move the item.",
+  "现在在 {code}": "now on {code}",
+  "挪到哪个货架": "Move to shelf",
+  "系统改完后，请把这件衣服实际搬到新货架上。": "Once saved, carry the garment itself to the new shelf.",
+  "确认挪到 {code}": "Move to {code}",
 };

@@ -42,6 +42,7 @@ import {
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { BagStrapField } from "./bag-strap-field";
+import { ProductLabelPrinter } from "./product-label-printer";
 import { ApparelSizeField } from "./apparel-size-field";
 import { kidsAgeRangeLabels } from "./apparel-size";
 import { Badge } from "@/components/ui/badge";
@@ -376,6 +377,9 @@ export function ProductQueuePage({ queue, title, description, management = false
   const [includeTestData, setIncludeTestData] = useState(false);
   const [editingProduct, setEditingProduct] = useState<JsonRecord | null>(null);
   const [pricingProduct, setPricingProduct] = useState<JsonRecord | null>(null);
+  const [movingProduct, setMovingProduct] = useState<JsonRecord | null>(null);
+  const [reprintProduct, setReprintProduct] = useState<JsonRecord | null>(null);
+  const canMoveShelf = hasPermission("warehouse-locations.move-product");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -523,7 +527,7 @@ export function ProductQueuePage({ queue, title, description, management = false
                   {management ? <TableCell><div>{stringValue(product.finalSizeLabel) || t("未填尺码")}</div><div>{product.priceKsh ? `${product.priceKsh} KSh` : t("未定价")}</div><div className="text-muted-foreground text-xs">{productControlLocationCode(product) || t("未归位")}</div></TableCell> : null}
                   <TableCell className="text-right">
                     <div className="flex flex-wrap justify-end gap-2">
-                      {management ? <ProductManagementActions product={product} canEdit={canEdit} canPublish={canPublish} canEditDetails={canEdit && hasPermission("page.product.details")} busy={busy} ids={ids} run={run} onPrice={() => setPricingProduct(product)} /> : null}
+                      {management ? <ProductManagementActions product={product} canEdit={canEdit} canPublish={canPublish} canEditDetails={canEdit && hasPermission("page.product.details")} canMoveShelf={canMoveShelf} busy={busy} ids={ids} run={run} onPrice={() => setPricingProduct(product)} onMoveShelf={() => setMovingProduct(product)} onReprint={() => setReprintProduct(product)} /> : null}
                       {queue === "waiting-upload" ? <UploadButton product={product} ids={ids} disabled={!canEdit || Boolean(busy)} onDone={load} /> : null}
                       {queue === "waiting-ai" ? (
                         <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy) || !latestImage(product)} onClick={() => run(`ai-${product.id}`, () => runSingleAi(product, ids))}>
@@ -565,6 +569,20 @@ export function ProductQueuePage({ queue, title, description, management = false
           </Table>
         </CardContent>
       </Card>
+      <ProductShelfDialog key={`shelf-${stringValue(movingProduct?.id)}`} product={movingProduct} ids={ids} onClose={() => setMovingProduct(null)} onSaved={() => { setMovingProduct(null); void load(); }} />
+      {reprintProduct ? <ProductLabelPrinter
+        products={[reprintProduct as JsonRecord & { id: string }]}
+        initialIndex={0}
+        onClose={() => setReprintProduct(null)}
+        onConfirm={async (printed) => {
+          await request("/operations/product-control/labels/printed", {
+            method: "POST",
+            body: JSON.stringify({ ...ids, productIds: printed.map((item) => item.id) })
+          });
+          setReprintProduct(null);
+          await load();
+        }}
+      /> : null}
       <ProductPriceDialog key={stringValue(pricingProduct?.id)} product={pricingProduct} ids={ids} onClose={() => setPricingProduct(null)} onSaved={() => { setPricingProduct(null); void load(); }} />
       <CalibrationDialog product={editingProduct} ids={ids} open={Boolean(editingProduct)} onOpenChange={(open) => !open && setEditingProduct(null)} onSaved={() => { setEditingProduct(null); void load(); }} />
     </div>
@@ -1057,10 +1075,13 @@ function ProductManagementActions(props: {
   canEdit: boolean;
   canEditDetails: boolean;
   canPublish: boolean;
+  canMoveShelf: boolean;
   busy: string;
   ids: ReturnType<typeof useOperationIds>;
   run: (label: string, action: () => Promise<void>) => Promise<void>;
   onPrice: () => void;
+  onMoveShelf: () => void;
+  onReprint: () => void;
 }) {
   const id = stringValue(props.product.id);
   const status = stringValue(props.product.status);
@@ -1069,6 +1090,8 @@ function ProductManagementActions(props: {
   const canEditDetails = props.canEditDetails && profileId && profile?.status !== "OUTDATED" && status !== "PUBLISHED";
   return <>
     <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy)} onClick={props.onPrice}>{t("改价")}</Button>
+    <Button size="sm" variant="outline" disabled={!props.canMoveShelf || Boolean(props.busy) || !canMoveProductShelf(props.product)} title={canMoveProductShelf(props.product) ? undefined : t("只有还在仓库货架上的商品能挪；已付款、已拣货或已售出的不能挪。")} onClick={props.onMoveShelf}>{t("挪货架")}</Button>
+    <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy) || !stringValue(props.product.barcode)} onClick={props.onReprint}>{t("重打 Barcode")}</Button>
     {canEditDetails ? (
       <Button size="sm" variant="outline" asChild><Link href={`/product/details/${encodeURIComponent(profileId)}?mode=edit`}>{t("编辑商品详情")}</Link></Button>
     ) : <Button size="sm" variant="outline" disabled title={status === "PUBLISHED" ? t("请先下架再编辑详情") : t("需生成有效详情，并具有详情编辑权限")}>{t("编辑商品详情")}</Button>}
@@ -1077,6 +1100,76 @@ function ProductManagementActions(props: {
     <Button size="sm" variant="outline" disabled={!props.canPublish || Boolean(props.busy) || !canUnpublishProduct(props.product)} onClick={() => props.run(`unpublish-${id}`, () => unpublishProduct(props.product, props.ids))}>{t("下架")}</Button>
     {props.product.batchId ? <Button size="sm" variant="ghost" asChild><Link href={`/product/batches/${encodeURIComponent(stringValue(props.product.batchId))}`}>{t("批次")}</Link></Button> : null}
   </>;
+}
+
+// The statuses shelf management lets an employee move (MOVABLE_INVENTORY_STATUSES):
+// a paid garment waits where the picker expects it.
+const MOVABLE_SHELF_STATUSES = new Set(["PENDING_STOCK_IN", "AVAILABLE", "RESERVED", "DEPOSIT_HELD", "RETURNED"]);
+
+function canMoveProductShelf(product: JsonRecord) {
+  const item = objectRecord(product.inventoryItem);
+  return Boolean(item && stringValue(item.id) && stringValue(item.locationId) && MOVABLE_SHELF_STATUSES.has(stringValue(item.status)));
+}
+
+type ShelfOption = { id: string; locationCode: string; capacity: number; currentItemCount: number; remainingCapacity: number };
+
+function ProductShelfDialog(props: {
+  product: JsonRecord | null;
+  ids: ReturnType<typeof useOperationIds>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [shelves, setShelves] = useState<ShelfOption[]>([]);
+  const [shelfId, setShelfId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const item = objectRecord(props.product?.inventoryItem);
+  const currentShelfId = stringValue(item?.locationId);
+  const currentCode = props.product ? productControlLocationCode(props.product) : "";
+  useEffect(() => {
+    if (!props.product) return;
+    request<ShelfOption[]>("/operations/product-batches/shelves")
+      .then(setShelves)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : t("无法读取货架。")));
+  }, [props.product]);
+  const target = shelves.find((shelf) => shelf.id === shelfId);
+  async function save() {
+    if (!props.product || !target || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await request("/operations/warehouse-locations/move-item", {
+        method: "POST",
+        body: JSON.stringify({ ...props.ids, inventoryItemId: stringValue(item?.id), locationId: target.id, note: `Moved from product management: ${currentCode} -> ${target.locationCode}` })
+      });
+      props.onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("挪货架失败。"));
+    } finally { setSaving(false); }
+  }
+  return <Dialog open={Boolean(props.product)} onOpenChange={(open) => { if (!open && !saving) props.onClose(); }}>
+    <DialogContent>
+      <DialogHeader><DialogTitle>{t("挪货架")}</DialogTitle></DialogHeader>
+      <p className="text-sm">{stringValue(props.product?.title) || stringValue(props.product?.productCode)} · {t("现在在 {code}", { code: currentCode || "-" })}</p>
+      <Field>
+        <FieldLabel>{t("挪到哪个货架")}</FieldLabel>
+        <NativeSelect value={shelfId} onChange={(event) => setShelfId(event.target.value)}>
+          <NativeSelectOption value="">{t("请选择货架")}</NativeSelectOption>
+          {shelves.filter((shelf) => shelf.id !== currentShelfId).map((shelf) => (
+            <NativeSelectOption key={shelf.id} value={shelf.id} disabled={shelf.remainingCapacity < 1}>
+              {t("{locationCode}（已放 {count}/{capacity} 件）", { locationCode: shelf.locationCode, count: shelf.currentItemCount, capacity: shelf.capacity })}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <FieldDescription>{t("系统改完后，请把这件衣服实际搬到新货架上。")}</FieldDescription>
+      </Field>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <DialogFooter>
+        <Button variant="outline" disabled={saving} onClick={props.onClose}>{t("取消")}</Button>
+        <Button disabled={!target || saving} onClick={() => void save()}>{t("确认挪到 {code}", { code: target?.locationCode ?? "" })}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }
 
 function ProductPriceDialog(props: {
