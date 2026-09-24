@@ -654,7 +654,11 @@ export class OperationsFulfillmentService {
           packageCount,
           packingStatus: packagingMethod,
           packingNote: input.note?.trim() || null,
-          ...(packageCode ? { packageCode } : {})
+          ...(packageCode ? { packageCode } : {}),
+          // The sticker names a node, so from here on the record has to name the
+          // same one. Re-routing writes both fields together; this is the other
+          // way the two could drift apart.
+          ...(node ? { fulfillmentNodeId: node.id } : {})
         }
       });
       const changed = await tx.inventoryItem.updateMany({
@@ -2007,10 +2011,18 @@ export class OperationsFulfillmentService {
     });
     for (const order of orders) {
       await prisma.$transaction(async (tx) => {
+        // The picking task inherits the order's node. A customer who chose where
+        // to collect, or a delivery routed at checkout, already answered "which
+        // store", and the store end reads that answer off the fulfillment record
+        // — its board, its scanner and its ownership check all key on this
+        // column. Leaving it for re-routing to fill meant a parcel nobody
+        // re-routed was one no store could receive.
         const fulfillment = await tx.orderFulfillment.upsert({
           where: { orderId: order.id },
-          update: {},
-          create: { orderId: order.id, status: FulfillmentStatus.PAID }
+          update: order.fulfillmentNodeId && !order.fulfillment?.fulfillmentNodeId
+            ? { fulfillmentNodeId: order.fulfillmentNodeId }
+            : {},
+          create: { orderId: order.id, status: FulfillmentStatus.PAID, fulfillmentNodeId: order.fulfillmentNodeId }
         });
         await tx.fulfillmentItem.createMany({
           data: order.items.map((item) => ({
