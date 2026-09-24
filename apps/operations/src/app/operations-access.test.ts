@@ -102,14 +102,16 @@ assert.match(accessProvider, /addEventListener\(OPERATIONS_SESSION_EXPIRED_EVENT
 
 console.log("Operations access tests passed");
 
-// --- every role has somewhere to land -------------------------------------
+// --- every role lands in the end it actually works in ---------------------
 //
 // The home page "/" belongs to 商品中心 and needs a product permission. A store
 // manager signing in on their phone therefore met "403 无权限访问" before they
 // could touch anything, and so did the warehouse, finance, customer service and
-// everyone else off the product side. The shell now sends them to their own end
-// instead, which only works if every role that can see a module can also open
-// one of its pages.
+// everyone else off the product side.
+//
+// Landing is now the end each role can open the most of. The named pairs below
+// are the ones staff would notice: a picker opening on 货架位管理 instead of the
+// morning's dispatch run is not a 403, which is exactly why it went unnoticed.
 
 {
   const { OPERATIONS_ROLE_BLUEPRINTS } = require("../../../api/src/operations/operations-access-policy") as
@@ -117,8 +119,25 @@ console.log("Operations access tests passed");
   const { operationsModules } = require("../components/admin/operations-admin-shell") as
     typeof import("../components/admin/operations-admin-shell");
 
+  const sessionFor = (permissions: readonly string[]) =>
+    ({ adminUser: null, roles: [], permissions } as unknown as OperationsSession);
+
+  const expected: Record<string, string> = {
+    WAREHOUSE_FULFILLMENT: "/orders/dispatch",
+    STORE_MANAGER: "/store",
+    DELIVERY_RIDER: "/rider",
+    ORDER_OPERATIONS: "/orders/dispatch",
+    AFFILIATE_OPERATIONS: "/affiliate",
+    CUSTOMER_SERVICE: "/customer-service",
+    // The money screens live in 数据中心, so that is where finance opens.
+    FINANCE: "/analytics",
+    DATA_ANALYST: "/analytics"
+  };
+
+  assert.equal(OPERATIONS_ROLE_BLUEPRINTS.length, 11, "a new role needs a landing page checked here");
+
   for (const role of OPERATIONS_ROLE_BLUEPRINTS) {
-    const session = { adminUser: null, roles: [], permissions: role.permissions } as unknown as OperationsSession;
+    const session = sessionFor(role.permissions);
     const landing = firstAllowedPath(operationsModules, session);
     assert.ok(landing, `${role.code} has no page it can open, so signing in would 403`);
     assert.ok(
@@ -127,6 +146,19 @@ console.log("Operations access tests passed");
     );
     // A landing of "/" would bounce the redirect back into the 403 it came from.
     assert.notEqual(landing, "/", `${role.code} must land somewhere other than the home page`);
+
+    const wanted = expected[role.code];
+    if (wanted) assert.equal(landing, wanted, `${role.code} should open on ${wanted}`);
+  }
+
+  // The three product-side roles can open "/" and are never redirected, so
+  // their landing is unasserted on purpose rather than forgotten.
+  for (const code of ["SUPER_ADMIN", "PROJECT_MANAGER", "PRODUCT_DIGITIZATION"]) {
+    const role = OPERATIONS_ROLE_BLUEPRINTS.find((item) => item.code === code)!;
+    assert.ok(
+      canAccessPath("/", operationsModules, sessionFor(role.permissions)),
+      `${code} can no longer open the home page, so it now needs a landing of its own`
+    );
   }
 }
 

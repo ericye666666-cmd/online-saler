@@ -83,19 +83,32 @@ export function filterNavigation<T extends NavigationModule>(modules: readonly T
  *
  * The home page belongs to 商品中心 and needs a product permission, so every
  * role that is not on the product side — the store desk, the warehouse, the
- * rider, finance, customer service — used to sign in and get a 403 before
- * touching anything. Rather than a special case per role, this reads the same
- * navigation the sidebar reads: the first item of the first end they can see is
- * their home, by construction.
+ * rider, finance, customer service — would sign in and get a 403 before
+ * touching anything.
+ *
+ * Their end is the one they can open the most of. Taking the first visible end
+ * instead sent the warehouse to 货架位管理, because a picker carries
+ * `module.product` for two lookup screens while their actual morning — five
+ * screens of it — is in 仓库发货. Depth of access is what distinguishes the end
+ * someone works in from the ones they can merely see into, and it needs no
+ * table of roles to keep in step with the navigation.
+ *
+ * Ties keep navigation order, so an end that comes first in the sidebar wins
+ * against one further down that it matches.
  */
 export function firstAllowedPath(modules: readonly NavigationModule[], session: OperationsSession | null): string | null {
-  for (const module of modules) {
-    if (!hasPermission(session, module.permission)) continue;
-    for (const item of module.items) {
-      if (item.href && item.href !== "/" && hasPermission(session, item.permission)) return item.href;
-    }
-  }
-  return null;
+  const ends = modules
+    .filter((module) => hasPermission(session, module.permission))
+    .map((module) => ({
+      // The home page is nobody's landing: redirecting to it is the loop this
+      // whole function exists to break.
+      open: module.items.filter((item) => item.href && item.href !== "/" && hasPermission(session, item.permission))
+    }))
+    .filter((end) => end.open.length > 0);
+
+  if (!ends.length) return null;
+  const home = [...ends].sort((left, right) => right.open.length - left.open.length)[0]!;
+  return home.open[0]!.href ?? null;
 }
 
 export function canAccessPath(pathname: string, modules: readonly NavigationModule[], session: OperationsSession | null): boolean {
