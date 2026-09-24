@@ -76,6 +76,10 @@ export function filterNavigation<T extends NavigationModule>(modules: readonly T
 }
 
 export function canAccessPath(pathname: string, modules: readonly NavigationModule[], session: OperationsSession | null): boolean {
+  // Embedded screens are not in the sidebar, so the lookup below would find no
+  // item and refuse them. They are named here instead, with the same permission
+  // as the full screen they are a phone-sized view of.
+  if (pathname === "/embed/store") return hasPermission(session, "page.orders.node");
   if (pathname === "/system/warehouse/locations") return hasPermission(session, "page.product.warehouse-locations");
   if (pathname === "/warehouse/inventory") return hasPermission(session, "warehouse-locations.view");
   if (pathname === "/warehouse" || pathname.startsWith("/warehouse/")) return hasPermission(session, "orders.view");

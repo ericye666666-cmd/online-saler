@@ -302,6 +302,15 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
   if (pathname === "/" && !routeAllowed && hasPermission(session, "page.rider.deliveries")) {
     return <RiderLanding />;
   }
+  // Embedded in another system's phone workbench. The host already provides the
+  // frame, the navigation and the identity, so this renders the screen and
+  // nothing around it — a sidebar inside somebody else's phone mock is not a
+  // smaller version of this app, it is a broken one. Sign-in and the permission
+  // check above still apply: whoever taps the tile signs in as themselves.
+  if (pathname.startsWith("/embed/")) {
+    return <div className="min-h-dvh bg-background p-3">{routeAllowed ? children : <AccessDenied />}</div>;
+  }
+
   const fallbackModule: ModuleNav = visibleModules[0] ?? operationsModules[0];
   const activeModule: ModuleNav = visibleModules.find((module) => module.key === routeModule) ?? fallbackModule;
   const routeSection = sectionForPath(pathname);
