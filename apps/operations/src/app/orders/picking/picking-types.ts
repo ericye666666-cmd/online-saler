@@ -25,6 +25,15 @@ export type PackOrder = {
   /** For the label: the node's own name, "Kinoo", with nothing composed onto it. */
   nodeName: string;
   isDelivery: boolean;
+  /**
+   * Who the parcel is for. It rides on the second label so the store counter
+   * and the rider have a name and a number without opening a screen; the
+   * picking view itself never shows any of it.
+   */
+  customerName: string | null;
+  customerPhone: string | null;
+  deliveryArea: string | null;
+  deliveryAddress: string | null;
   items: PickerItem[];
   fulfillment?: {
     status: string;

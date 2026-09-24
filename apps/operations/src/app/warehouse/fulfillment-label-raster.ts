@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { packLabelPixels, type LabelRaster } from "../product/product-label-raster";
+import { encodeLabelRaster, packLabelPixels, type LabelRaster } from "../product/product-label-raster";
 import { t } from "@/i18n/runtime";
 
 /**
@@ -148,11 +148,9 @@ function finish(canvas: HTMLCanvasElement, ctx: Pen): { preview: string; raster:
     monochrome.data.set([value, value, value, 255], pixel * 4);
   }
   ctx.putImageData(monochrome, 0, 0);
-  let binary = "";
-  for (const byte of pixels) binary += String.fromCharCode(byte);
   return {
     preview: canvas.toDataURL("image/png"),
-    raster: { width: FULFILLMENT_LABEL_WIDTH, height: FULFILLMENT_LABEL_HEIGHT, data: btoa(binary) }
+    raster: { width: FULFILLMENT_LABEL_WIDTH, height: FULFILLMENT_LABEL_HEIGHT, data: encodeLabelRaster(pixels) }
   };
 }
 

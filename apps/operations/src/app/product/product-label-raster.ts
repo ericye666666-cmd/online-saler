@@ -3,7 +3,9 @@ import type { LabelPrintPayload } from "../local-label-print";
 import { t } from "@/i18n/runtime";
 
 export type LabelRaster = { width: 480; height: 320; data: string };
-// TSPL BITMAP is packed MSB first, one bit per printer dot (1 = black).
+// Packed MSB first, one bit per printer dot, 1 = ink. That is this file's own
+// convention and what the preview reads back; TSPL wants the opposite on the
+// wire, which `encodeLabelRaster` handles.
 export function packLabelPixels(rgba: Uint8ClampedArray): Uint8Array {
   if (rgba.length !== 480 * 320 * 4) throw new Error("Invalid label dimensions");
   const bytes = new Uint8Array(480 * 320 / 8);
@@ -12,6 +14,22 @@ export function packLabelPixels(rgba: Uint8ClampedArray): Uint8Array {
     if (rgba[p + 3]! > 127 && (rgba[p]! + rgba[p + 1]! + rgba[p + 2]!) < 384) bytes[pixel >> 3]! |= 128 >> (pixel % 8);
   }
   return bytes;
+}
+
+/**
+ * The packed dots as the printer wants them, base64 for transport.
+ *
+ * TSPL reads a set bit in BITMAP as "leave this dot alone" and a clear bit as
+ * "burn it", which is the opposite of how the bits are packed above. Sending
+ * them straight through printed every label inverted — a solid black sticker
+ * with the text knocked out of it. That wastes the head and the roll, and it
+ * takes the QR with it: a reversed code is one most scanners will not read, so
+ * a store could not receive the parcel the label was on.
+ */
+export function encodeLabelRaster(pixels: Uint8Array): string {
+  let binary = "";
+  for (const byte of pixels) binary += String.fromCharCode(~byte & 0xff);
+  return btoa(binary);
 }
 
 export function renderProductLabel(payload: LabelPrintPayload): { preview: string; raster: LabelRaster } {
@@ -48,6 +66,5 @@ export function renderProductLabel(payload: LabelPrintPayload): { preview: strin
   }
   ctx.putImageData(monochrome, 0, 0);
   let binary = "";
-  for (const byte of pixels) binary += String.fromCharCode(byte);
-  return { preview: canvas.toDataURL("image/png"), raster: { width: 480, height: 320, data: btoa(binary) } };
+  return { preview: canvas.toDataURL("image/png"), raster: { width: 480, height: 320, data: encodeLabelRaster(pixels) } };
 }

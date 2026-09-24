@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import JsBarcode from "jsbarcode";
-import { packLabelPixels } from "./product-label-raster";
+import { encodeLabelRaster, packLabelPixels } from "./product-label-raster";
 import { renderFulfillmentLabels } from "../warehouse/fulfillment-label-raster";
 
 test("keeps MSB-first binary pixels and transparent background white", () => {
@@ -73,4 +73,21 @@ test("the label prints the node's own name, not a composed screen label", () => 
   const picker = readFileSync(new URL("../orders/picking/picking-client.tsx", import.meta.url), "utf8");
   assert.match(picker, /nodeName: labelOrder[.]nodeName/, "the label takes the node's own name");
   assert.doesNotMatch(picker, /nodeName: labelOrder[.]destination/, "and never the composed screen label");
+});
+
+test("the printer is sent ink as a clear bit, because TSPL prints the zeros", () => {
+  // Every dot white: packing gives all-zero, and the wire form must be all-ones
+  // or the printer burns the whole sticker. This shipped inverted — a solid
+  // black label with the text knocked out, and a QR no scanner would read.
+  const blank = new Uint8ClampedArray(480 * 320 * 4).fill(255);
+  const encoded = encodeLabelRaster(packLabelPixels(blank));
+  const bytes = Buffer.from(encoded, "base64");
+  assert.equal(bytes.length, 480 * 320 / 8);
+  assert.ok(bytes.every((byte) => byte === 0xff), "a blank label must leave every dot unburnt");
+
+  // Every dot black: the wire form is all zeros.
+  const solid = new Uint8ClampedArray(480 * 320 * 4).fill(0);
+  for (let pixel = 0; pixel < 480 * 320; pixel += 1) solid[pixel * 4 + 3] = 255;
+  const inked = Buffer.from(encodeLabelRaster(packLabelPixels(solid)), "base64");
+  assert.ok(inked.every((byte) => byte === 0x00), "a black label must burn every dot");
 });

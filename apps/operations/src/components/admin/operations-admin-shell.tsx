@@ -443,7 +443,14 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
               </DropdownMenu>
             </div>
           </div>
-          <nav className="hidden gap-1 overflow-x-auto pb-1 md:flex" aria-label="Operations modules">
+          {/*
+            Shown at every width. Hiding it below md took away the only way to
+            change ends: the sidebar lists the pages of the end you are already
+            in, so a narrow window — a laptop at 200% zoom counts — left you
+            wherever you landed with no way out. The row already scrolls
+            sideways, which is all a phone needs.
+          */}
+          <nav className="flex gap-1 overflow-x-auto pb-1" aria-label="Operations modules">
             {visibleModules.map((module) => {
               const Icon = module.icon;
               const selected = module.key === activeModule.key;

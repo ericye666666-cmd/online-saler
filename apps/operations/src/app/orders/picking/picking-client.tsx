@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { operationsRequester } from "@/lib/operations-request";
 import { t } from "@/i18n/runtime";
 import { compareShelfCodes } from "../picking-sheet-print";
+import { parseDeliveryAddress } from "@online-saler/business-rules";
 import { FulfillmentLabelPrinter } from "../../warehouse/fulfillment-label-printer";
 import { PackingView } from "./packing-view";
 import type { PackOrder } from "./picking-types";
@@ -52,6 +53,11 @@ type PickerOrder = {
   orderNumber: string;
   fulfillmentMethod: "PICKUP" | "KIKUYU_LOCAL_DELIVERY";
   fulfillmentNode?: { id: string; name: string } | null;
+  // Printed on the parcel's customer label, never shown on the picking screen.
+  customer?: { displayName?: string | null; phone?: string | null } | null;
+  whatsappPhone?: string | null;
+  deliveryAddress?: string | null;
+  deliveryNote?: string | null;
   items: Array<{
     id: string;
     displayImageUrl?: string | null;
@@ -196,6 +202,13 @@ export function PickingStation() {
       destination: destinationLabel(order),
       nodeName: (order.fulfillment?.fulfillmentNode ?? order.fulfillmentNode)?.name ?? "—",
       isDelivery: order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY",
+      customerName: order.customer?.displayName ?? null,
+      // The WhatsApp number first: the order list masks customer.phone, so it
+      // is the only one of the two that can actually be dialled off a label.
+      customerPhone: order.whatsappPhone ?? order.customer?.phone ?? null,
+      deliveryArea: order.deliveryNote ?? null,
+      // The pin and the map link belong on a screen, not under a thermal head.
+      deliveryAddress: parseDeliveryAddress(order.deliveryAddress ?? "").address || null,
       fulfillment: order.fulfillment
         ? {
             status: order.fulfillment.status,
@@ -408,10 +421,10 @@ export function PickingStation() {
             orderNumber: labelOrder.orderNumber,
             isDelivery: labelOrder.isDelivery,
             itemCount: labelOrder.items.length,
-            customerName: null,
-            customerPhone: null,
-            deliveryAddress: null,
-            deliveryArea: null,
+            customerName: labelOrder.customerName,
+            customerPhone: labelOrder.customerPhone,
+            deliveryAddress: labelOrder.deliveryAddress,
+            deliveryArea: labelOrder.deliveryArea,
             items: labelOrder.items.map((item) => ({ title: item.title, sizeLabel: item.sizeLabel, barcode: item.barcode || null }))
           }]}
           onClose={() => setLabelOrder(null)}

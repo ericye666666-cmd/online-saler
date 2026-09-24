@@ -1336,10 +1336,19 @@ export class OperationsFulfillmentService {
       // can come last — an order packed before it was routed, which is every
       // order from before nodes existed, would otherwise stay unlabelled until
       // it was recorded as sent.
-      const packageCode = order.fulfillment.packageCode
-        || (order.fulfillment.status === FulfillmentStatus.PACKED && requiresNodeTransit(node.type)
+      // Re-routing renames the parcel. A package code carries its node — the
+      // sticker on the box says PKG-THOGOT- — so keeping the old one after a
+      // move sends the warehouse sorter to the wrong pile and tells the
+      // receiving store the box is not theirs. The code is rebuilt whenever the
+      // node it names is no longer the node it goes to.
+      const routed = order.fulfillment.fulfillmentNodeId === node.id;
+      const keepExisting = order.fulfillment.packageCode && routed;
+      const packageCode = keepExisting
+        ? order.fulfillment.packageCode
+        : (order.fulfillment.packageCode || order.fulfillment.status === FulfillmentStatus.PACKED)
+            && requiresNodeTransit(node.type)
           ? buildPackageCode(order.orderNumber, node.code)
-          : null);
+          : order.fulfillment.packageCode;
       await tx.order.update({ where: { id: orderId }, data: { fulfillmentNodeId: node.id } });
       await tx.orderFulfillment.update({
         where: { id: order.fulfillment.id },
