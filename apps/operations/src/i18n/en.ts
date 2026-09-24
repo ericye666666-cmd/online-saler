@@ -17,6 +17,7 @@ export const enDictionary: Record<string, string> = {
   "系统管理": "System settings",
   "工作台": "Workspace",
   "今日工作": "Today's work",
+  "正在打开你的工作台…": "Opening your workbench…",
   "商品控制": "Product control",
   "调试工具": "Debug tools",
   "商品数字化": "Product digitisation",

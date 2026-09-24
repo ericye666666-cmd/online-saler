@@ -31,6 +31,7 @@ import {
 import {
   adminInitials,
   canAccessPath,
+  firstAllowedPath,
   hasPermission,
   filterNavigation,
   roleLabels,
@@ -299,8 +300,13 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
   if (!session?.adminUser) return <LoginScreen />;
 
   const routeAllowed = canAccessPath(pathname, operationsModules, session);
-  if (pathname === "/" && !routeAllowed && hasPermission(session, "page.rider.deliveries")) {
-    return <RiderLanding />;
+  const home = firstAllowedPath(operationsModules, session);
+  // The home page belongs to 商品中心 and needs a product permission, so every
+  // other role signed in and met a 403 before touching anything. Send them to
+  // their own end instead. Only "/" redirects: a deep link someone genuinely
+  // may not open still says so rather than quietly moving them somewhere else.
+  if (pathname === "/" && !routeAllowed && home) {
+    return <HomeRedirect to={home} />;
   }
   // Embedded in another system's phone workbench. The host already provides the
   // frame, the navigation and the identity, so this renders the screen and
@@ -468,30 +474,6 @@ export function OperationsAdminShell({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * A rider's whole world is one link. They sign in on a phone at the gate, so the
- * screen is a single tap rather than a sidebar they have to find.
- */
-function RiderLanding() {
-  const { t } = useOperationsI18n();
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
-      <Card className="w-full max-w-md shadow-sm">
-        <CardHeader>
-          <CardTitle>{t("我的配送")}</CardTitle>
-          <CardDescription>{t("打开今天派给你的配送单。")}</CardDescription>
-        </CardHeader>
-        <CardFooter>
-          <Button asChild className="h-12 w-full text-base">
-            <Link href="/rider">{t("查看我的配送单")}</Link>
-          </Button>
-        </CardFooter>
-      </Card>
-    </div>
-  );
-}
-
 function LoadingScreen() {
   const { t } = useOperationsI18n();
 
@@ -508,6 +490,26 @@ function LoadingScreen() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Sends a role to its own home. Rendered rather than redirected from an effect
+ * high in the tree so the replace happens once, after paint, with something on
+ * screen in the meantime — a blank flash on a phone reads as a crash.
+ */
+function HomeRedirect({ to }: { to: string }) {
+  const router = useRouter();
+  const { t } = useOperationsI18n();
+
+  useEffect(() => {
+    router.replace(to);
+  }, [router, to]);
+
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-muted/30 p-6">
+      <p className="text-muted-foreground text-sm">{t("正在打开你的工作台…")}</p>
     </div>
   );
 }

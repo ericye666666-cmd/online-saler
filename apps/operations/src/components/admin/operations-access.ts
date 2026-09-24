@@ -78,6 +78,26 @@ export function filterNavigation<T extends NavigationModule>(modules: readonly T
     .filter((module) => hasPermission(session, module.permission) && module.items.length > 0);
 }
 
+/**
+ * Where to send someone who has landed somewhere they cannot open.
+ *
+ * The home page belongs to 商品中心 and needs a product permission, so every
+ * role that is not on the product side — the store desk, the warehouse, the
+ * rider, finance, customer service — used to sign in and get a 403 before
+ * touching anything. Rather than a special case per role, this reads the same
+ * navigation the sidebar reads: the first item of the first end they can see is
+ * their home, by construction.
+ */
+export function firstAllowedPath(modules: readonly NavigationModule[], session: OperationsSession | null): string | null {
+  for (const module of modules) {
+    if (!hasPermission(session, module.permission)) continue;
+    for (const item of module.items) {
+      if (item.href && item.href !== "/" && hasPermission(session, item.permission)) return item.href;
+    }
+  }
+  return null;
+}
+
 export function canAccessPath(pathname: string, modules: readonly NavigationModule[], session: OperationsSession | null): boolean {
   // Embedded screens are not in the sidebar, so the lookup below would find no
   // item and refuse them. They are named here instead, with the same permission

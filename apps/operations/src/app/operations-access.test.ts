@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   canAccessPath,
   filterNavigation,
+  firstAllowedPath,
   hasPermission,
   type NavigationModule,
   type OperationsSession
@@ -100,3 +101,33 @@ assert.match(accessClient, /operationsFetch\(/);
 assert.match(accessProvider, /addEventListener\(OPERATIONS_SESSION_EXPIRED_EVENT, sessionExpired\)/);
 
 console.log("Operations access tests passed");
+
+// --- every role has somewhere to land -------------------------------------
+//
+// The home page "/" belongs to 商品中心 and needs a product permission. A store
+// manager signing in on their phone therefore met "403 无权限访问" before they
+// could touch anything, and so did the warehouse, finance, customer service and
+// everyone else off the product side. The shell now sends them to their own end
+// instead, which only works if every role that can see a module can also open
+// one of its pages.
+
+{
+  const { OPERATIONS_ROLE_BLUEPRINTS } = require("../../../api/src/operations/operations-access-policy") as
+    typeof import("../../../api/src/operations/operations-access-policy");
+  const { operationsModules } = require("../components/admin/operations-admin-shell") as
+    typeof import("../components/admin/operations-admin-shell");
+
+  for (const role of OPERATIONS_ROLE_BLUEPRINTS) {
+    const session = { adminUser: null, roles: [], permissions: role.permissions } as unknown as OperationsSession;
+    const landing = firstAllowedPath(operationsModules, session);
+    assert.ok(landing, `${role.code} has no page it can open, so signing in would 403`);
+    assert.ok(
+      canAccessPath(landing!, operationsModules, session),
+      `${role.code} would be redirected to ${landing}, which it cannot open`
+    );
+    // A landing of "/" would bounce the redirect back into the 403 it came from.
+    assert.notEqual(landing, "/", `${role.code} must land somewhere other than the home page`);
+  }
+}
+
+console.log("operations access tests passed");
