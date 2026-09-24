@@ -584,8 +584,11 @@ Operations uses one order-centered API surface:
 
 Every endpoint checks the matching `orders.*` permission on the server. Employee
 actions additionally require an active employee linked to the admin account.
-Order Center responses mask customer and payment phone numbers; server-side
-search and pickup verification continue to use the stored value.
+Order Center responses return the customer's name, full phone number, payment
+phone number and delivery address unmasked (owner decision, 2026-09-24: staff
+dial these numbers and write them on parcels). Access is controlled by the
+`orders.view` permission, not by masking. The pickup code, the delivery code
+and its hash are still never returned.
 Wrong barcode responses include expected barcode, actual barcode, product, and
 correct location.
 

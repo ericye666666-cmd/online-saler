@@ -10,7 +10,6 @@ import {
   OperationsFulfillmentService,
   type DeliveryFailureInput
 } from "../operations/operations-fulfillment.service";
-import { maskCustomerPhone } from "../operations/operations-fulfillment-state";
 import { readStoreIntegrationActor, storeActorNote } from "./store-integration-auth";
 
 /**
@@ -292,7 +291,12 @@ export class StoreIntegrationService {
       customerName: order.customer.displayName,
       // The counter needs to phone the customer; the full number is the point.
       customerPhone: order.customer.phone,
-      maskedCustomerPhone: maskCustomerPhone(order.customer.phone),
+      // Deprecated alias, kept so the store ERP's existing parser does not break.
+      // It carried a masked number until 2026-09-24, when the owner removed
+      // customer-info masking; it now carries the same full number as
+      // customerPhone. Read customerPhone -- this field will be dropped once
+      // FW-ERP no longer reads it.
+      maskedCustomerPhone: order.customer.phone,
       deliveryAddress: order.deliveryAddress,
       deliveryNote: order.deliveryNote,
       riderName: fulfillment.deliveryRiderName,

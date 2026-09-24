@@ -54,6 +54,12 @@ own page, beside the pickup code that was always shown there. It is redacted
 from every operations and rider response, cleared when the delivery completes or
 fails, and replaced on every resend.
 
+Only the codes are redacted. The customer's name, full phone number and
+delivery address are returned to operations in full and printed on the parcel's
+box label (owner decision, 2026-09-24, which removed the earlier phone masking):
+a rider or store has to be able to ring the customer, and a masked number
+cannot be dialled.
+
 The property that matters is unchanged: **the people holding the package cannot
 obtain the code**. A rider still cannot close a delivery they did not make, and
 a store still cannot close one the customer never received. What changed is that

@@ -11,7 +11,8 @@ import { t } from "@/i18n/runtime";
  * then the picking list. Nothing is dropped and nothing is summarised — the
  * strip carries what the sheet carried.
  *
- * Only the first label goes on the box. The rest travel with it, which is why
+ * Only the first label goes on the box, so it also carries the customer's name,
+ * full phone and address (or pickup point). The rest travel with it, which is why
  * every label repeats the order number and its own position in the strip: a
  * label that comes loose on a warehouse floor has to be traceable to its parcel
  * without reading the QR.
@@ -92,7 +93,10 @@ function clip(ctx: Pen, text: string, width: number): string {
 function wrap(ctx: Pen, text: string, width: number, maxLines: number): string[] {
   const lines: string[] = [];
   let current = "";
-  for (const word of text.split(/\s+/).filter(Boolean)) {
+  const words = text.split(/\s+/).filter(Boolean);
+  let consumed = 0;
+  for (const word of words) {
+    consumed += 1;
     const candidate = current ? `${current} ${word}` : word;
     if (ctx.measureText(candidate).width <= width) {
       current = candidate;
@@ -108,10 +112,19 @@ function wrap(ctx: Pen, text: string, width: number, maxLines: number): string[]
     }
     if (lines.length >= maxLines) break;
   }
-  if (current && lines.length < maxLines) lines.push(current);
+  // Anything that did not make it onto the lines -- words left in the loop, a
+  // tail that had no line left, lines past the limit -- is a cut, and a cut
+  // gets an ellipsis so nobody reads a half address as a whole one.
+  let cut = consumed < words.length || lines.length > maxLines;
+  if (current) {
+    if (lines.length < maxLines) lines.push(current);
+    else cut = true;
+  }
   if (lines.length > maxLines) lines.length = maxLines;
   const last = lines.length - 1;
-  if (last >= 0 && lines.length === maxLines) lines[last] = clip(ctx, lines[last]!, width);
+  if (last >= 0 && lines.length === maxLines) {
+    lines[last] = cut ? clip(ctx, `${lines[last]!}…`, width) : clip(ctx, lines[last]!, width);
+  }
   return lines;
 }
 
@@ -154,16 +167,32 @@ function finish(canvas: HTMLCanvasElement, ctx: Pen): { preview: string; raster:
   };
 }
 
-/** Label 1: the only one that goes on the box. */
+/** Lowest baseline the box label writes on: the die-cut edge eats the last millimetre. */
+const LAST_BASELINE = 308;
+const ADDRESS_LINE_DOTS = 24;
+
+/**
+ * Label 1: the only one that goes on the box, so it carries who the parcel is
+ * for as well as where it goes. The owner asked for the customer's name, full
+ * phone and address on the barcode label itself (2026-09-24): a parcel whose
+ * other labels came loose must still be deliverable from the box alone.
+ *
+ * Layout on 60×40 mm: store and method on the left, QR on the right, then the
+ * customer's name and phone under the method, and the address (or the pickup
+ * point) across the full width at the bottom, wrapped and cut with "…" rather
+ * than run off the edge. The item count and PAID moved into the header to make
+ * the room.
+ */
 function routingLabel(input: FulfillmentLabelInput, index: number, total: number) {
   const { canvas, ctx } = newCanvas();
-  header(ctx, input.orderNumber, index, total);
+  const items = `${input.itemCount} ${input.itemCount === 1 ? t("item") : t("items")}`;
+  header(ctx, input.orderNumber, index, total, `${items}  ${t("PAID")}`);
 
   const qr = QRCode.create(input.packageCode, { errorCorrectionLevel: "M" });
   const modules = qr.modules.size;
   const block = modules * QR_MODULE_DOTS + QR_QUIET_MODULES * 2 * QR_MODULE_DOTS;
   const qrLeft = FULFILLMENT_LABEL_WIDTH - block - QR_RIGHT_MARGIN_DOTS;
-  const qrTop = 56;
+  const qrTop = 44;
   for (let row = 0; row < modules; row += 1) {
     for (let column = 0; column < modules; column += 1) {
       if (!qr.modules.get(row, column)) continue;
@@ -177,27 +206,48 @@ function routingLabel(input: FulfillmentLabelInput, index: number, total: number
   }
   font(ctx, 14);
   ctx.textAlign = "center";
-  ctx.fillText(clip(ctx, input.packageCode, block + 40), qrLeft + block / 2, qrTop + block + 18);
+  const codeBaseline = qrTop + block + 16;
+  ctx.fillText(clip(ctx, input.packageCode, block + 40), qrLeft + block / 2, codeBaseline);
   ctx.textAlign = "left";
 
   const column = qrLeft - 28;
   const node = input.nodeName.trim().toUpperCase() || "—";
-  const nodeSize = fitFont(ctx, node, column, 58, 22);
-  ctx.fillText(node, 16, 56 + nodeSize);
+  const nodeSize = fitFont(ctx, node, column, 40, 20);
+  ctx.fillText(clip(ctx, node, column), 16, 46 + nodeSize);
 
   // A box, not a colour: a thermal head only prints black.
   const method = input.isDelivery ? t("DELIVERY") : t("CUSTOMER PICKUP");
-  const boxTop = 168;
-  const boxHeight = 54;
-  const methodSize = fitFont(ctx, method, column - 24, 28, 15);
-  const boxWidth = Math.min(column, ctx.measureText(method).width + 28);
-  ctx.lineWidth = 4;
-  ctx.strokeRect(18, boxTop + 2, boxWidth, boxHeight);
-  ctx.fillText(method, 32, boxTop + boxHeight / 2 + methodSize / 2 - 2);
+  const boxTop = 96;
+  const boxHeight = 36;
+  const methodSize = fitFont(ctx, method, column - 24, 22, 14);
+  const boxWidth = Math.min(column, ctx.measureText(method).width + 24);
+  ctx.lineWidth = 3;
+  ctx.strokeRect(18, boxTop, boxWidth, boxHeight);
+  ctx.fillText(method, 30, boxTop + boxHeight / 2 + methodSize / 2 - 3);
 
-  font(ctx, 22, true);
-  const items = `${input.itemCount} ${input.itemCount === 1 ? t("item") : t("items")}`;
-  ctx.fillText(`${items}   ${t("PAID")}`, 16, 280);
+  // Who it is for. The phone is the full number: a courier has to dial it.
+  const name = input.customerName?.trim() || t("Customer");
+  const nameSize = fitFont(ctx, name, column, 26, 16);
+  ctx.fillText(clip(ctx, name, column), 16, 138 + nameSize + 4);
+  let leftBottom = 138 + nameSize + 4;
+  const phone = input.customerPhone?.trim();
+  if (phone) {
+    const phoneSize = fitFont(ctx, phone, column, 28, 16);
+    leftBottom += phoneSize + 8;
+    ctx.fillText(clip(ctx, phone, column), 16, leftBottom);
+  }
+
+  // Where it goes, across the full width under both columns.
+  const destination = input.isDelivery
+    ? [input.deliveryArea?.trim(), input.deliveryAddress?.trim()].filter(Boolean).join(" · ")
+    : `${t("Collect at")} ${input.nodeName.trim() || "—"}`;
+  if (destination) {
+    font(ctx, 20, true);
+    const firstBaseline = Math.max(leftBottom, codeBaseline) + ADDRESS_LINE_DOTS;
+    const room = Math.max(1, Math.floor((LAST_BASELINE - firstBaseline) / ADDRESS_LINE_DOTS) + 1);
+    wrap(ctx, destination, FULFILLMENT_LABEL_WIDTH - 32, room)
+      .forEach((line, row) => ctx.fillText(line, 16, firstBaseline + row * ADDRESS_LINE_DOTS));
+  }
 
   return { ...finish(canvas, ctx), index, total, kind: "routing" as const };
 }

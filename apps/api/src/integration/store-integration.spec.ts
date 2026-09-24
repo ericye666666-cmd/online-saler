@@ -218,6 +218,19 @@ test("no delivery code or hash is ever returned", async (t) => {
   assert.ok(!json.includes("pickupCode"));
 });
 
+test("a store sees the customer's full phone, in both the new and the legacy field", async (t) => {
+  // Customer-info masking was removed on 2026-09-24. maskedCustomerPhone stays
+  // in the payload as a deprecated alias so FW-ERP's parser does not break, but
+  // it carries the same full number as customerPhone.
+  const h = fixture(t);
+  const [row] = (await h.service.board("kinoo")).incoming;
+  assert.equal(row.customerName, "Wanjiku");
+  assert.equal(row.customerPhone, "0712345678");
+  assert.equal(row.maskedCustomerPhone, "0712345678");
+  assert.equal(row.deliveryAddress, "Kinoo, near the stage");
+  assert.ok(!JSON.stringify(row).includes("•"), "no masked digits anywhere");
+});
+
 test("the board only carries this node's packages, in the piles a store thinks in", async (t) => {
   const h = fixture(t);
   const board = await h.service.board("kinoo");

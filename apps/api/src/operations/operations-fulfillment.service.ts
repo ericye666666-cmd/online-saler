@@ -54,7 +54,6 @@ import {
   canTransitionFulfillment,
   canWorkWarehouseTask,
   holderForStatus,
-  maskCustomerPhone,
   orderCenterTab,
   requiresNodeTransit,
   type OrderCenterTab,
@@ -2080,14 +2079,11 @@ export class OperationsFulfillmentService {
       fulfillment: order.fulfillment
         ? { ...order.fulfillment, deliveryCode: undefined, deliveryCodeHash: undefined, pickupVerificationValue: undefined }
         : order.fulfillment,
-      customer: {
-        ...order.customer,
-        phone: maskCustomerPhone(order.customer.phone)
-      },
-      payments: order.payments.map((payment) => ({
-        ...payment,
-        phone: maskCustomerPhone(payment.phone)
-      })),
+      // The customer's name, phone and address go through whole. Staff pack,
+      // route and ring these parcels, and a masked number cannot be dialled;
+      // the owner removed the masking on 2026-09-24. Who may open an order is
+      // still decided by the orders.view permission its callers check, not by
+      // hiding digits.
       centerTab: orderCenterTab({
         orderStatus: order.status,
         fulfillmentStatus: order.fulfillment?.status,

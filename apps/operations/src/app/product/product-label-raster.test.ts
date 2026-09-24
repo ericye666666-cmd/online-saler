@@ -75,6 +75,91 @@ test("the label prints the node's own name, not a composed screen label", () => 
   assert.doesNotMatch(picker, /nodeName: labelOrder[.]destination/, "and never the composed screen label");
 });
 
+/**
+ * A canvas stand-in that records what is written where. Rendering needs a
+ * browser, but what the label *says* only needs fillText. measureText is a
+ * rough Arial bold width: wide enough that long text really has to wrap.
+ */
+function withRecordingCanvas<T>(run: (texts: Array<{ text: string; x: number; y: number; font: string }>) => T): T {
+  const texts: Array<{ text: string; x: number; y: number; font: string }> = [];
+  const W = 480;
+  const H = 320;
+  const ctx = {
+    font: "", fillStyle: "", textBaseline: "", textAlign: "left", lineWidth: 1,
+    fillRect() {}, strokeRect() {}, putImageData() {},
+    measureText(text: string) {
+      const size = Number(/(\d+)px/.exec(ctx.font)?.[1] ?? 16);
+      return { width: text.length * size * 0.6 };
+    },
+    fillText(text: string, x: number, y: number) { texts.push({ text, x, y, font: ctx.font }); },
+    getImageData() { return { data: new Uint8ClampedArray(W * H * 4).fill(255) }; },
+    createImageData() { return { data: new Uint8ClampedArray(W * H * 4) }; }
+  };
+  const canvas = { width: 0, height: 0, getContext: () => ctx, toDataURL: () => "data:image/png;base64," };
+  const globals = globalThis as { document?: unknown };
+  const previous = globals.document;
+  globals.document = { createElement: () => canvas };
+  try {
+    return run(texts);
+  } finally {
+    globals.document = previous;
+  }
+}
+
+test("the box label carries the customer's name, full phone and delivery address", () => {
+  withRecordingCanvas((texts) => {
+    const sheets = renderFulfillmentLabels({
+      packageCode: "PKG-KINOO-10281",
+      orderNumber: "DL-20260924-10281",
+      nodeName: "Kinoo",
+      isDelivery: true,
+      itemCount: 2,
+      customerName: "Wanjiku Kamau",
+      customerPhone: "+254712345678",
+      deliveryArea: "Kinoo",
+      deliveryAddress: "Behind the petrol station, blue gate, house 12, ask for Mama Njeri at the shop next door and she will show you the way up the hill past the church and the water tank on the left",
+      items: [{ title: "Denim jacket" }, { title: "Wool scarf" }]
+    });
+    assert.equal(sheets[0]!.kind, "routing");
+    // Only the first sheet's text: that is the label that goes on the box.
+    const boxEnd = texts.findIndex((entry, i) => i > 0 && entry.text.startsWith("DL-20260924-10281") );
+    const box = texts.slice(0, boxEnd);
+    const all = box.map((entry) => entry.text).join("\n");
+    assert.match(all, /Wanjiku Kamau/, "the customer's name");
+    assert.match(all, /\+254712345678/, "the full phone number, not masked");
+    assert.doesNotMatch(all, /•/);
+    assert.match(all, /Behind the petrol station/, "the delivery address");
+    assert.match(all, /Kinoo · Behind/, "area first, then the address");
+    // A long address is cut with an ellipsis, never drawn past the edge.
+    for (const entry of box) {
+      assert.ok(entry.y <= 312, `"${entry.text}" is drawn at y=${entry.y}, off the 40 mm label`);
+      const size = Number(/(\d+)px/.exec(entry.font)?.[1] ?? 16);
+      if (entry.x === 16) assert.ok(entry.text.length * size * 0.6 <= 480 - 16, `"${entry.text}" runs off the right edge`);
+    }
+    assert.ok(box.some((entry) => entry.text.endsWith("…")), "the overlong address is truncated");
+  });
+});
+
+test("a pickup box label names the customer and the pickup point", () => {
+  withRecordingCanvas((texts) => {
+    renderFulfillmentLabels({
+      packageCode: "PKG-THOGOT-10282",
+      orderNumber: "DL-20260924-10282",
+      nodeName: "Thogoto",
+      isDelivery: false,
+      itemCount: 1,
+      customerName: "Otieno",
+      customerPhone: "0712345678",
+      items: [{ title: "Shirt" }]
+    });
+    const boxEnd = texts.findIndex((entry, i) => i > 0 && entry.text.startsWith("DL-20260924-10282"));
+    const all = texts.slice(0, boxEnd).map((entry) => entry.text).join("\n");
+    assert.match(all, /Otieno/);
+    assert.match(all, /0712345678/);
+    assert.match(all, /Collect at Thogoto/);
+  });
+});
+
 test("the printer is sent ink as a clear bit, because TSPL prints the zeros", () => {
   // Every dot white: packing gives all-zero, and the wire form must be all-ones
   // or the printer burns the whole sticker. This shipped inverted — a solid

@@ -230,18 +230,6 @@ export function allFulfillmentItemsVerified(items: ReadonlyArray<{ status: Fulfi
   return items.length > 0 && items.every((item) => item.status === FulfillmentItemStatus.VERIFIED);
 }
 
-export function maskCustomerPhone(value: string | null | undefined): string | null {
-  const digits = (value ?? "").replace(/\D/g, "");
-  if (!digits) return null;
-  if (digits.length <= 4) return "•".repeat(digits.length);
-
-  const prefixLength = digits.length >= 8 ? 3 : 0;
-  const prefix = digits.slice(0, prefixLength);
-  const suffix = digits.slice(-4);
-  const masked = "•".repeat(Math.max(2, digits.length - prefix.length - suffix.length));
-  return `${value?.trim().startsWith("+") ? "+" : ""}${prefix}${masked}${suffix}`;
-}
-
 /**
  * EXCEPTION used to be a dead end: an order that hit it could only be
  * cancelled. A resolved exception returns to the step it was on, so a package

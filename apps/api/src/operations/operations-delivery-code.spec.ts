@@ -265,6 +265,41 @@ test("no order response carries a code or its hash", async (t) => {
   assert.ok(!JSON.stringify(row).includes(CODE), "no response carries the delivery code");
 });
 
+test("an order response carries the customer's full name, phone and address", async (t) => {
+  // The owner removed customer-info masking on 2026-09-24: staff dial these
+  // numbers and write them on parcels. Only the codes above stay hidden.
+  const h = fixture(t);
+  const internals = h.service as unknown as {
+    attachInventory: (orders: unknown[]) => Promise<Array<Record<string, unknown>>>;
+  };
+  const order = {
+    id: "order",
+    orderNumber: "DL-10281",
+    pickupCode: "4417",
+    deliveryAddress: "Kikuyu Town, behind the petrol station, house 12",
+    customer: { displayName: "Wanjiku Kamau", phone: "+254712345678" },
+    payments: [{ id: "pay", phone: "254712345678", status: "SUCCEEDED" }],
+    items: [],
+    customerServiceCases: [],
+    status: "FULFILLING",
+    fulfillment: { status: "OUT_FOR_DELIVERY", deliveryCode: CODE, deliveryCodeHash: hashCustomerCode(CODE) }
+  };
+  const originalFindMany = prisma.inventoryItem.findMany;
+  prisma.inventoryItem.findMany = (async () => []) as unknown as typeof prisma.inventoryItem.findMany;
+  t.after(() => { prisma.inventoryItem.findMany = originalFindMany; });
+
+  const [row] = await internals.attachInventory([order]);
+  const customer = row.customer as Record<string, unknown>;
+  assert.equal(customer.displayName, "Wanjiku Kamau");
+  assert.equal(customer.phone, "+254712345678", "the customer's phone is returned whole");
+  assert.equal((row.payments as Array<Record<string, unknown>>)[0]!.phone, "254712345678", "so is the paying number");
+  assert.equal(row.deliveryAddress, "Kikuyu Town, behind the petrol station, house 12");
+  assert.ok(!JSON.stringify(row).includes("•"), "no masked digits anywhere");
+  // The codes are still redacted.
+  assert.equal((row.fulfillment as Record<string, unknown>).deliveryCode, undefined);
+  assert.equal(row.pickupCode, undefined);
+});
+
 // ------------------------------------------------------------------ dispatch ---
 
 test("dispatching to a rider texts a code that appears nowhere staff can read it", async (t) => {

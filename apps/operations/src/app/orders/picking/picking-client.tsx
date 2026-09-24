@@ -203,8 +203,8 @@ export function PickingStation() {
       nodeName: (order.fulfillment?.fulfillmentNode ?? order.fulfillmentNode)?.name ?? "—",
       isDelivery: order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY",
       customerName: order.customer?.displayName ?? null,
-      // The WhatsApp number first: the order list masks customer.phone, so it
-      // is the only one of the two that can actually be dialled off a label.
+      // The WhatsApp number first: it is the one the customer asked to be
+      // reached on. The account phone (returned in full) is the fallback.
       customerPhone: order.whatsappPhone ?? order.customer?.phone ?? null,
       deliveryArea: order.deliveryNote ?? null,
       // The pin and the map link belong on a screen, not under a thermal head.
