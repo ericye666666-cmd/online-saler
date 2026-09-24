@@ -73,7 +73,16 @@ export default async function OrdersPage() {
                               : ""}
                           </span>
                         ) : (
-                          <span className="ordersRowStatus">{label}</span>
+                          <span className="ordersRowStatus">
+                            {label}
+                            {/* Where to walk to, on the row. A shopper checking
+                                "is it ready yet" is usually also asking "which
+                                shop", and opening the order to find out is a
+                                step for information that fits here. */}
+                            {order.fulfillmentMethod === "PICKUP" && order.fulfillmentNode?.name
+                              ? <> · {order.fulfillmentNode.name}</>
+                              : null}
+                          </span>
                         )}
                       </span>
                       <ChevronRight size={18} aria-hidden="true" />
@@ -90,8 +99,8 @@ export default async function OrdersPage() {
               them to "contact support" is not good enough. */}
           <OrderLookupForm />
 
-          <a className="reserve-link" href={supportHref} target="_blank" rel="noopener noreferrer">
-            <MessageCircle size={16} aria-hidden="true" /> {t("support.chat")}
+          <a className="customerServiceButton" href={supportHref} target="_blank" rel="noopener noreferrer">
+            <MessageCircle size={18} aria-hidden="true" /> <span>{t("support.chat")}</span>
           </a>
         </section>
       </div>

@@ -72,6 +72,11 @@ export async function listCustomerOrders(viewers: ReadonlyArray<{
       paymentPlan: true,
       fulfillmentMethod: true,
       createdAt: true,
+      // Where it is going, so the list answers "which shop do I walk to" without
+      // opening every row. A delivery order's node is the store it is routed
+      // through, which is the shop's business and not the shopper's, so only a
+      // pickup order shows one.
+      fulfillmentNode: { select: { name: true, mapsUrl: true } },
       fulfillment: { select: { status: true } },
       items: {
         select: { snapshot: { select: { title: true, imageUrl: true } } },

@@ -125,26 +125,21 @@ export function RiderDeliveriesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-xl">{t("我的配送")}</CardTitle>
-            <CardDescription>
-              {board?.rider.name ?? "—"}
-              {" · "}
-              {t("顾客收到货以后，把短信里的 4 位数字报给你，你输进去才算送达。")}
-            </CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-            <RefreshCwIcon className={loading ? "animate-spin" : ""} />
-          </Button>
-        </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-2 text-center">
-          <Stat label={t("待配送")} value={board?.counts.awaitingDelivery ?? 0} />
-          <Stat label={t("今天已完成")} value={board?.counts.completedToday ?? 0} />
-          <Stat label={t("今天失败")} value={board?.counts.failedToday ?? 0} />
-        </CardContent>
-      </Card>
+      {/* One line, on a bike, in daylight. A rider needs the number still to do
+          and nothing else: yesterday's tally is a manager's question, and the
+          screen it was taking up is the screen the next address goes on. */}
+      <div className="flex items-center justify-between gap-3 border-b pb-3">
+        <div className="min-w-0">
+          <p className="font-bold text-2xl tabular-nums">
+            {board?.counts.awaitingDelivery ?? 0}
+            <span className="ml-2 font-normal text-base text-muted-foreground">{t("待配送")}</span>
+          </p>
+          <p className="truncate text-muted-foreground text-sm">{board?.rider.name ?? "—"}</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+          <RefreshCwIcon className={loading ? "animate-spin" : ""} />
+        </Button>
+      </div>
 
       {error ? <p className="text-destructive text-sm px-1">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-600 px-1">{message}</p> : null}
@@ -170,9 +165,6 @@ export function RiderDeliveriesPage() {
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle className="text-lg font-mono">{delivery.orderNumber}</CardTitle>
-                {delivery.packageCode ? (
-                  <Badge variant="secondary" className="font-mono text-xs">{delivery.packageCode}</Badge>
-                ) : null}
                 {failed ? <Badge variant="destructive">{t("配送失败")}</Badge> : null}
                 {returning ? <Badge variant="outline">{t("正在送回门店")}</Badge> : null}
                 {delivery.deliveryAttemptCount > 1 ? (
@@ -281,7 +273,7 @@ export function RiderDeliveriesPage() {
                         </>
                       ) : (
                         <p className="text-xs text-muted-foreground">
-                          {t("先把货交给顾客，再请顾客报出短信里的 4 位数字。没有这个号码不能完成订单。")}
+                          {t("先把货交给顾客，再请顾客报出他订单页上的 4 位数字。没有这个号码不能完成订单。")}
                         </p>
                       )}
 

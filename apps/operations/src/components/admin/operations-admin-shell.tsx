@@ -164,6 +164,7 @@ export const operationsModules: ModuleNav[] = [
     icon: TruckIcon,
     permission: "module.orders",
     items: [
+      { label: "门店手机台", href: "/store", icon: PackageCheckIcon, permission: "page.orders.node" },
       { label: "门店履约台", href: "/orders/node", icon: TruckIcon, permission: "page.orders.node" },
       { label: "门店骑手", href: "/orders/riders", icon: BikeIcon, permission: "page.orders.riders" }
     ]
@@ -261,7 +262,7 @@ export const operationsModules: ModuleNav[] = [
  */
 function moduleForPath(pathname: string): ModuleKey {
   if (pathname.startsWith("/rider")) return "rider";
-  if (pathname.startsWith("/orders/node") || pathname.startsWith("/orders/riders")) return "store";
+  if (pathname.startsWith("/store") || pathname.startsWith("/orders/node") || pathname.startsWith("/orders/riders")) return "store";
   if (pathname.startsWith("/orders/after-sales") || pathname.startsWith("/customer-service")) return "service";
   if (pathname.startsWith("/orders/finance") || pathname.startsWith("/orders/payment-review") || pathname.startsWith("/orders/deposits")) return "analytics";
   if (pathname.startsWith("/warehouse") || pathname.startsWith("/orders")) return "warehouse";

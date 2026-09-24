@@ -2733,6 +2733,34 @@ export const enDictionary: Record<string, string> = {
   "重发会生成一个新的配送码，旧码立刻失效。新码只出现在顾客自己的订单页上，客服界面永远看不到码本身。":
     "Resending issues a new delivery code and kills the old one immediately. The new one appears only on the customer's own order page; customer service never sees a code.",
   "客服": "Customer service",
-  "工单": "Cases"
-};
+  "工单": "Cases",
 
+  // ——— Store phone console ———
+  "这个账号不能操作门店包裹": "This account cannot work store parcels",
+  "要门店履约权限。找管理员在角色里加上，并把你的归属门店设好。":
+    "You need the store fulfilment permission. Ask an administrator to add it to your role and set your home store.",
+  "收货": "Receive",
+  "扫包裹码，签收从仓库送来的包裹": "Scan a package code to sign for a parcel from the warehouse",
+  "发货": "Hand over",
+  "交给顾客，或交给 Bolt 骑手": "To the customer, or to a Bolt rider",
+  "发短信": "Message",
+  "把取件链接发给顾客": "Send the customer their collection link",
+  "签收": "Sign for it",
+  "没有在途的包裹。": "No parcels on the way.",
+  "没有要交付的包裹。": "Nothing to hand over.",
+  "放到自提区": "Put it on the pickup shelf",
+  "准备发车": "Ready to send out",
+  "已标记为待发车。": "Marked ready to send out.",
+  "交付": "Hand over",
+  "交给 Bolt 骑手": "Give it to the Bolt rider",
+  "包裹已交给 Bolt 骑手。配送码在顾客自己的订单页上。":
+    "Handed to the Bolt rider. The delivery code is on the customer's own order page.",
+  "没有需要通知的顾客。": "Nobody to message.",
+  "没有手机号": "No phone number",
+
+  // ——— Rider, reworded now that no code arrives by SMS ———
+  "顾客收到货以后，把他订单页上的 4 位数字报给你，你输进去才算送达。":
+    "Once the customer has their order, they read you the four digits from their own order page. Typing those in is what completes the delivery.",
+  "先把货交给顾客，再请顾客报出他订单页上的 4 位数字。没有这个号码不能完成订单。":
+    "Hand the order over first, then ask the customer for the four digits on their own order page. Without them the order cannot be completed."
+};
