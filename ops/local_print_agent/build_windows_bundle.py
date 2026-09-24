@@ -18,9 +18,9 @@ BUNDLE_FILES = (
 FILENAME = "direct-loop-print-agent.zip"
 
 
-def source_sha256(source_dir):
+def source_sha256(source_dir, names=SOURCE_FILES):
     digest = hashlib.sha256()
-    for name in SOURCE_FILES:
+    for name in names:
         digest.update(name.encode("utf-8") + b"\0")
         digest.update((source_dir / name).read_bytes())
         digest.update(b"\0")

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { buildLabelPrintPayload, DEFAULT_PRINT_AGENT_URL, DEFAULT_PRINTER_NAME, PRINT_AGENT_DOWNLOAD_URL, printerList, selectDeliPrinter, type LocalPrinter } from "../local-label-print";
+import { buildLabelPrintPayload, DEFAULT_PRINT_AGENT_URL, DEFAULT_PRINTER_NAME, isSupportedAgentPlatform, MACOS_PRINT_AGENT_DOWNLOAD_URL, PRINT_AGENT_DOWNLOAD_URL, printerList, selectDeliPrinter, type LocalPrinter } from "../local-label-print";
 import type { JsonRecord } from "../operations-workspace-flow";
 import { renderProductLabel } from "./product-label-raster";
 import { t } from "@/i18n/runtime";
@@ -11,7 +11,7 @@ type Product = JsonRecord & { id: string; barcode?: string | null; title?: strin
 async function agentRequest(path: string, options?: RequestInit) {
   let response: Response;
   try { response = await fetch(DEFAULT_PRINT_AGENT_URL + path, { ...options, signal: AbortSignal.timeout(path === "/print/label" ? 45000 : 8000) }); }
-  catch { throw new Error(path === "/print/label" ? t("打印请求未返回，可能已经出纸。请先检查打印机；不要直接重复打印。") : t("打印助手未连接。请关闭旧助手，下载并启动新版 Windows 打印助手；浏览器询问本地网络访问时请选择允许。")); }
+  catch { throw new Error(path === "/print/label" ? t("打印请求未返回，可能已经出纸。请先检查打印机；不要直接重复打印。") : t("打印助手未连接。请关闭旧助手，下载并启动新版打印助手；浏览器询问本地网络访问时请选择允许。")); }
   const body = await response.json();
   if (!response.ok || body.ok === false) throw new Error(body.message || body.error || t("打印助手返回错误。"));
   return body;
@@ -50,12 +50,12 @@ export function ProductLabelPrinter({ products, initialIndex, onClose, onConfirm
     try {
       const health = await agentRequest("/health");
       if (!health.capabilities?.includes("online_saler_raster_v1")) throw new Error(t("检测到旧版打印助手。请关闭旧助手，再下载并启动新版；新版同时支持 ERP 与商城。"));
-      if (health.platform !== "windows") throw new Error(t("请在连接 Deli DL-720C 的 Windows 电脑上打开此页面。"));
+      if (!isSupportedAgentPlatform(health.platform)) throw new Error(t("请在连接 Deli DL-720C 的电脑上打开此页面（Windows 或 Mac）。"));
       const list = printerList((await agentRequest("/printers")).printers);
       setPrinters(list);
       const name = selectDeliPrinter(list, printer);
       const selected = list.find(p => p.name === name && p.available !== false);
-      if (!selected) throw new Error(t("未找到可用的 Deli DL-720C。请检查 USB、驱动、纸张和 Windows 打印队列。"));
+      if (!selected) throw new Error(t("未找到可用的 Deli DL-720C。请检查 USB、驱动、纸张和打印队列。"));
       setPrinter(name); setReady(true); setNotice(t("打印助手已连接，可以打印。出纸并贴好后请单独确认。"));
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(""); }
@@ -93,9 +93,10 @@ export function ProductLabelPrinter({ products, initialIndex, onClose, onConfirm
     <div className="flex flex-wrap items-center gap-3 rounded border bg-muted/30 p-3 text-sm">
       <strong>{printer}</strong><span>{ready ? t("已连接") : t("未检测 / 未就绪")}</span><span className="text-xs text-muted-foreground">{DEFAULT_PRINT_AGENT_URL}</span>
       <Button size="sm" variant="outline" disabled={!!busy} onClick={() => void detect()}>{busy === "detect" ? t("检测中…") : t("检测")}</Button>
-      <Button size="sm" variant="outline" asChild><a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">{t("下载 Windows 打印代理")}</a></Button>
+      <Button size="sm" variant="outline" asChild><a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">{t("下载打印代理（Windows）")}</a></Button>
+      <Button size="sm" variant="outline" asChild><a href={MACOS_PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent-macos.zip">{t("下载打印代理（Mac）")}</a></Button>
     </div>
-    <p className="text-sm text-muted-foreground">{t("下载后解压，双击 DirectLoopPrintAgent.exe 启动，再点击“检测”。内置运行环境，与 ERP 共用一个代理。")}</p>
+    <p className="text-sm text-muted-foreground">{t("下载后解压：Windows 双击 DirectLoopPrintAgent.exe，Mac 双击 start_online_saler_print_agent_macos.command，再点击“检测”。与 ERP 共用一个代理。")}</p>
     <div className="grid gap-5 lg:grid-cols-2">
       <section className="rounded border p-4"><h3 className="mb-4 font-semibold">{t("标签预览")}</h3>
         <div className="flex min-h-72 items-center justify-center bg-muted/40 p-4">{preview ? <img src={preview} width={480} height={320} className="h-auto w-full border bg-white" alt={t("60×40 mm 实际打印内容：商品名、尺码、货架位和条码")} /> : <p>{t("无法生成标签，请检查商品条码。")}</p>}</div>
@@ -105,7 +106,7 @@ export function ProductLabelPrinter({ products, initialIndex, onClose, onConfirm
         <label className="block text-sm">{t("打印机")}<select className="mt-2 w-full rounded border p-2" value={printer} disabled={!!busy} onChange={event => { setPrinter(event.target.value); setReady(!!printers.find(p => p.name === event.target.value && p.available !== false)); }}>{printers.length ? printers.map(p => <option key={p.name} value={p.name} disabled={p.available === false}>{p.name}{p.available === false ? t("（不可用）") : ""}</option>) : <option>{printer}</option>}</select></label>
         {error ? <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
         {notice ? <p role="status" className="rounded bg-green-50 p-3 text-sm text-green-800">{notice}</p> : null}
-        {!ready ? <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">{t("启动 Windows 打印助手后点击“检测”。与 ERP 共用一个助手，请勿同时启动两个。")}</p> : null}
+        {!ready ? <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">{t("启动打印助手后点击“检测”。与 ERP 共用一个助手，请勿同时启动两个。")}</p> : null}
         <div className="max-h-40 overflow-auto rounded border">{products.map((p, i) => <button key={p.id} disabled={!!busy} onClick={() => setIndex(i)} className={`flex w-full justify-between gap-2 border-b p-2 text-left text-sm ${i === index ? "bg-muted" : ""}`}><span className="truncate">{i + 1}. {p.title || p.barcode}</span><span className="shrink-0">{p.labelPrintedAt ? t("已贴标") : sent[p.id] === "uncertain" ? t("结果待核对") : sent[p.id] ? t("已发送，待贴标") : t("待打印")}</span></button>)}</div>
         <div className="flex flex-wrap gap-2">
           <Button disabled={!!busy || !ready || !preview || !!sent[current.id] || !!current.labelPrintedAt} onClick={() => void print([current])}>{t("打印当前标签（第")} {index + 1}  {t("张）")}</Button>

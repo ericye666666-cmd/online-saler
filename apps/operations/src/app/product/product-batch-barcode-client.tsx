@@ -24,7 +24,7 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { DEFAULT_LABEL_SIZE, PRINT_AGENT_DOWNLOAD_URL } from "../local-label-print";
+import { DEFAULT_LABEL_SIZE, MACOS_PRINT_AGENT_DOWNLOAD_URL, PRINT_AGENT_DOWNLOAD_URL } from "../local-label-print";
 import { ProductLabelPrinter } from "./product-label-printer";
 import { productStatusLabel } from "./product-factory-display";
 import { t } from "@/i18n/runtime";
@@ -365,7 +365,8 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
           <p className="mt-1 text-sm text-muted-foreground">{t("展示图已逐件确认。现在打印标签，按货架位归位后确认发布。")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild><a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">{t("下载 Windows 打印代理")}</a></Button>
+          <Button variant="outline" asChild><a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">{t("下载打印代理（Windows）")}</a></Button>
+          <Button variant="outline" asChild><a href={MACOS_PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent-macos.zip">{t("下载打印代理（Mac）")}</a></Button>
           {publishedCount < batch.targetCount ? (
             <Button variant="outline" asChild><Link href={`/product/display-review?batchId=${encodeURIComponent(batch.id)}`}><AlertTriangleIcon data-icon="inline-start" />{t("返回展示图审核")}</Link></Button>
           ) : null}

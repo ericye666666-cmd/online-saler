@@ -1,4 +1,4 @@
-# Direct Loop / ERP Deli DL-720C print helper — v1.1.0
+# Direct Loop / ERP Deli DL-720C print helper — v1.2.0
 
 ## Windows setup
 
@@ -10,11 +10,48 @@
 
 Keep the existing Deli Windows printer driver installed. The same helper supports ERP and Online Saler on port 8719. If an older helper is running, close its window before starting this version. If this version is already running, the new window says so and the existing helper continues working. The launcher never stops another process. See SOURCE.md for the ERP source version.
 
+## macOS setup
+
+The Mac download is source, not an application: the helper is standard-library
+Python, so there is nothing to compile and nothing for Gatekeeper to block.
+
+1. Download the Mac helper from the Operations label-print dialog and double-click the ZIP to unzip it.
+2. Open the unzipped `DirectLoopPrintAgent` folder and double-click `start_online_saler_print_agent_macos.command`. A Terminal window opens and stays open — that is the helper running. Leave it open while printing.
+   - If macOS says the file is from an unidentified developer, open **System Settings → Privacy & Security**, scroll to the bottom and click **Open Anyway**, then double-click it again.
+   - If it reports that `python3` is missing, run `xcode-select --install` in Terminal, accept the install, and start the helper again.
+   - Instead of double-clicking you can run `python3 agent.py` from inside that folder in Terminal. Same helper.
+3. In Operations click **检测 / Detect**. Allow local-network access if the browser asks.
+
+### The print queue the Mac needs
+
+macOS reaches the printer through CUPS, and the helper sends the label with
+`lp -o raw`, which skips every filter and puts the TSPL bytes on the wire
+unchanged. That means no Deli macOS driver is required — but a queue pointed at
+the printer is. Create one once, in Terminal, with the DL-720C plugged in:
+
+```
+lpinfo -v
+sudo lpadmin -p Deli_DL-720C -E -v 'usb://Deli/DL-720C?serial=XXXX' -m raw
+cupsenable Deli_DL-720C && cupsaccept Deli_DL-720C
+lpstat -a
+```
+
+Take the `usb://...` value from the `lpinfo -v` output; it is different on every
+machine. If your CUPS build refuses `-m raw`, use `-m drv:///sample.drv/generic.ppd`
+instead — with `-o raw` the driver is never asked to render anything, so a generic
+one is harmless. The queue name may not contain spaces, which is why it reads
+`Deli_DL-720C` here; Operations matches that to `Deli DL-720C` on its own.
+
+This CUPS step is the one part of the Mac path that cannot be verified from the
+repository. Confirm the first physical label before running a batch.
+
 ## Product labels
 
 The preview and native output share a 480×320 monochrome raster. This preserves Chinese names and prints Code 128 bars without browser page scaling. The local helper sends TSPL BITMAP bytes through the same Windows RAW spooler path as ERP. Browser page printing is not used.
 
 Print requests submit one copy of an existing product barcode. Submission does not mark a label as attached or publish inventory. The separate human confirmation records completion. Reprint keeps the same barcode. A batch stops at the first error; labels already accepted in that dialog are excluded from “remaining”. The current browser tab preserves submitted and uncertain results across dialog reopen/refresh. Uncertain requests are excluded from automatic remaining-label printing. Check physical labels before explicit reprint. A new browser tab does not know previous unconfirmed print submissions.
+
+Either operating system prints the identical raster: the label is built in the browser and the helper only chooses the last hop, the Windows RAW spooler or `lp -o raw`. Print-station mode (`print-station --config ...`) and the ERP's own label templates remain Windows-only.
 
 Only use a 60×40 mm roll. A 300 dpi device or different media size needs a separate template and is not covered by this 720/203 dpi template.
 
@@ -22,9 +59,9 @@ Only use a 60×40 mm roll. A 300 dpi device or different media size needs a sepa
 
 - `/health` must report `online_saler_raster_v1`. An older helper must be replaced before Online Saler printing.
 - `/printers` must list the actual Windows queue as available.
-- Disconnected: start the helper on the same Windows computer as the browser and printer, allow local network access, then detect again.
+- Disconnected: start the helper on the same computer as the browser and printer, allow local network access, then detect again.
 - Port busy: close the old helper; the launcher does not kill processes automatically.
 - Submission timed out: a label may already have printed. Check the printer before explicitly reprinting.
-- Missing/offline printer: check the Windows driver, USB, paper and paused jobs.
+- Missing/offline printer: check the driver, USB, paper and paused jobs. On a Mac, `lpstat -a` must list the queue and `cupsenable` it if it is paused.
 
 Software verification cannot establish actual paper feed, ink contrast or scanner readability. Validate the first physical label on the customer's printer before running the full batch.

@@ -6,6 +6,21 @@ export const DEFAULT_LABEL_SIZE: LabelSize = "60x40";
 export const DEFAULT_PRINT_AGENT_URL = "http://127.0.0.1:8719";
 export const DEFAULT_PRINTER_NAME = "Deli DL-720C";
 export const PRINT_AGENT_DOWNLOAD_URL = "/downloads/direct-loop-print-agent.zip?v=windows-exe-1";
+export const MACOS_PRINT_AGENT_DOWNLOAD_URL = "/downloads/direct-loop-print-agent-macos.zip?v=macos-source-1";
+
+/**
+ * The systems the helper can actually reach a printer from.
+ *
+ * This used to be Windows alone, and the check was worth keeping even so: the
+ * helper answers /health from anywhere, so without it a Mac looked connected and
+ * only failed at the moment somebody pressed print. Windows goes through the RAW
+ * spooler, the others through `lp -o raw`; the bytes on the wire are the same.
+ */
+export const PRINT_AGENT_PLATFORMS = ["windows", "darwin", "linux"] as const;
+
+export function isSupportedAgentPlatform(value: unknown): boolean {
+  return typeof value === "string" && PRINT_AGENT_PLATFORMS.includes(value.toLowerCase() as typeof PRINT_AGENT_PLATFORMS[number]);
+}
 
 export type LocalPrinter = {
   name: string;

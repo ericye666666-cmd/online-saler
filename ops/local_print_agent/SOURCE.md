@@ -11,9 +11,24 @@ The only transport change accepts bytes as well as ASCII strings in `_send_raw_t
 
 This is a bundled compatible snapshot, not a change to the ERP repository or deployment. Later ERP protocol changes must be checked before updating the snapshot.
 
+## macOS distribution
+
+The Mac download is the same modules with a shell launcher and no runtime: the
+helper imports only the standard library, so there is nothing to freeze and no
+binary to sign. `build_macos_bundle.py` produces `direct-loop-print-agent-macos.zip`
+alongside the Windows one, on the same runner, and its own manifest carries a
+`sourceSha256` over `agent.py`, `erp_agent.py`, `legacy_product_labels.py`,
+`start_online_saler_print_agent_macos.command`, `README.md` and `SOURCE.md`, framed
+the same way. Entries are written as UNIX so the launcher keeps its executable bit
+through a Windows build and a Finder unzip.
+
+macOS reaches the printer through `lp -o raw`, added in `agent.py` rather than in
+the vendored ERP module: the ERP snapshot keeps its Windows-only dispatch, and
+only the Online Saler product-label scope is routed by platform.
+
 ## Windows distribution
 
-Version 1.1.0 bundles the standard-library adapter, ERP module, legacy product-label module and Python runtime into `DirectLoopPrintAgent.exe` using PyInstaller 6.16.0 on a Windows x64 GitHub Actions runner. The executable defaults to the localhost API; the existing `print-station --config ...` command remains available. The runtime binds port 8719 exclusively on Windows, reports an occupied port, and never terminates an existing helper.
+Version 1.2.0 bundles the standard-library adapter, ERP module, legacy product-label module and Python runtime into `DirectLoopPrintAgent.exe` using PyInstaller 6.16.0 on a Windows x64 GitHub Actions runner. The executable defaults to the localhost API; the existing `print-station --config ...` command remains available. The runtime binds port 8719 exclusively on Windows, reports an occupied port, and never terminates an existing helper.
 
 The downloadable ZIP contains only the EXE, launcher BAT, README, this provenance document, and `version.json`. The separate download manifest includes the ZIP's SHA-256, byte length and source digest. `sourceSha256` is SHA-256 over the following files in exactly this order: `agent.py`, `erp_agent.py`, `legacy_product_labels.py`, `start_online_saler_print_agent_windows.bat`, `README.md`, `SOURCE.md`. Each contributes its UTF-8 basename, one NUL byte, its raw bytes, and one NUL byte. Windows checkout disables line-ending conversion so the same source digest can be verified during deployment.
 

@@ -6,7 +6,9 @@ import errno
 import json
 import platform
 import re
+import shutil
 import socket
+import subprocess
 import sys
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
@@ -14,7 +16,7 @@ from urllib.parse import urlparse
 import erp_agent as erp
 import legacy_product_labels as legacy
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 DEFAULT_PRINTER_NAME = "Deli DL-720C"
 ONLINE_ORIGIN = re.compile(r"^https://online-saler-operations-staging-(?:3fkoh3sliq-bq\.a|865804815203\.africa-south1)\.run\.app$|^http://(?:localhost|127\.0\.0\.1):3001$")
 _original_cors = erp._build_cors_headers
@@ -56,7 +58,7 @@ def normalize_label_payload(payload):
         return {}, "Invalid label raster."
     printer = str(payload.get("printer_name") or "").strip()
     if not printer or len(printer) > 200:
-        return {}, "Select a Windows printer."
+        return {}, "Select a printer."
     return {"printer_name": printer, "copies": 1, "template_size": "60x40", "barcode_value": barcode, "display_code": barcode, "label_payload": {**label, "raster_bytes": pixels}}, None
 
 def build_tspl_label(label_payload, *, template_size="60x40", copies=1):
@@ -66,6 +68,54 @@ def build_tspl_label(label_payload, *, template_size="60x40", copies=1):
         return legacy.build_tspl_label(label_payload["legacy_product"])
     pixels = label_payload["raster_bytes"]
     return b"SIZE 60 mm,40 mm\r\nGAP 2 mm,0 mm\r\nDENSITY 8\r\nSPEED 4\r\nDIRECTION 1\r\nCLS\r\nBITMAP 0,0,60,320,0," + pixels + b"\r\nPRINT 1,1\r\n"
+
+def send_raw_to_cups_printer(printer_name, tspl):
+    """Hands the label bytes to CUPS untouched.
+
+    Windows reaches the printer through the RAW spooler; macOS and Linux reach it
+    through `lp -o raw`, which tells CUPS to skip every filter and put the file on
+    the wire byte for byte. The DL-720C speaks TSPL, so anything that renders on
+    the way — a driver, a PPD, the PDF filter chain — feeds out a blank label.
+    """
+    if not shutil.which("lp"):
+        return False, "The 'lp' command was not found, so CUPS cannot be reached."
+    data = tspl if isinstance(tspl, bytes) else str(tspl).encode("ascii", errors="replace")
+    result = subprocess.run(["lp", "-d", printer_name, "-o", "raw", "-"], input=data, capture_output=True)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).decode("utf-8", errors="replace").strip()
+        return False, f"lp failed for '{printer_name}': {detail or 'unknown error'}"
+    return True, f"Sent {len(data)} TSPL bytes to '{printer_name}'."
+
+def print_label_cups(normalized):
+    """The macOS / Linux half of erp._print_label_windows, same return shape."""
+    requested = str(normalized.get("printer_name") or "").strip()
+    resolved, warning = erp._resolve_printer_name_unix(requested)
+    if not resolved:
+        return False, warning or "No printer name was provided.", requested, b""
+    try:
+        tspl = build_tspl_label(
+            normalized.get("label_payload") if isinstance(normalized.get("label_payload"), dict) else {},
+            template_size=normalized.get("template_size") or "60x40",
+            copies=int(normalized.get("copies") or 1))
+    except (ValueError, TypeError, KeyError) as exc:
+        return False, f"Could not build TSPL label: {exc}", resolved, b""
+    ok, message = send_raw_to_cups_printer(resolved, tspl)
+    prefix = f"{warning} " if warning else ""
+    if not ok:
+        return False, f"{prefix}Raw label print failed for '{resolved}': {message}", resolved, tspl
+    return True, f"{prefix}Print job submitted to '{resolved}' via CUPS raw printing.", resolved, tspl
+
+def print_label(normalized):
+    """Sends a built label to whichever spooler this computer happens to have.
+
+    The label itself is identical everywhere: the same 480x320 raster, the same
+    TSPL bytes. Only the last hop differs, and for a while only the Windows hop
+    existed — a Mac reached the point of pressing print and was told to go find a
+    Windows computer.
+    """
+    if platform.system() == "Windows":
+        return erp._print_label_windows(normalized)
+    return print_label_cups(normalized)
 
 class PrintAgentHandler(erp.PrintAgentHandler):
     def do_GET(self):
@@ -87,7 +137,7 @@ class PrintAgentHandler(erp.PrintAgentHandler):
                     self._send_json({"ok": False, "message": error}, 400)
                     return
                 if normalized["label_payload"].get("template_scope") == "online_saler_product":
-                    ok, message, printer, _ = erp._print_label_windows(normalized)
+                    ok, message, printer, _ = print_label(normalized)
                     self._send_json({"ok": ok, "message": message, "printer": printer, "mode": "tspl_raw", "barcode_value": normalized["barcode_value"]}, 200 if ok else 500)
                     return
                 # Preserve the original ERP dispatch and platform handling.

@@ -7,6 +7,8 @@ import {
   buildFulfillmentLabelPayload,
   DEFAULT_PRINT_AGENT_URL,
   DEFAULT_PRINTER_NAME,
+  isSupportedAgentPlatform,
+  MACOS_PRINT_AGENT_DOWNLOAD_URL,
   PRINT_AGENT_DOWNLOAD_URL,
   printerList,
   selectDeliPrinter,
@@ -49,7 +51,7 @@ async function agentRequest(path: string, options?: RequestInit) {
   } catch {
     throw new Error(path === "/print/label"
       ? t("打印请求没有返回，可能已经出纸。请先看一眼打印机，不要直接重复打印。")
-      : t("打印助手未连接。请启动 Windows 打印助手；浏览器询问本地网络访问时选择允许。"));
+      : t("打印助手未连接。请先启动打印助手；浏览器询问本地网络访问时选择允许。"));
   }
   const body = await response.json();
   if (!response.ok || body.ok === false) throw new Error(body.message || body.error || t("打印助手返回错误。"));
@@ -88,14 +90,14 @@ export function FulfillmentLabelPrinter({ labels, onClose }: { labels: Fulfillme
       if (!health.capabilities?.includes("online_saler_raster_v1")) {
         throw new Error(t("打印助手版本过旧。请关闭后下载并启动新版。"));
       }
-      if (health.platform !== "windows") {
-        throw new Error(t("请在连接 Deli DL-720C 的 Windows 电脑上打开这个页面。"));
+      if (!isSupportedAgentPlatform(health.platform)) {
+        throw new Error(t("请在连接 Deli DL-720C 的电脑上打开这个页面（Windows 或 Mac）。"));
       }
       const list = printerList((await agentRequest("/printers")).printers);
       setPrinters(list);
       const name = selectDeliPrinter(list, printer);
       if (!list.find((item) => item.name === name && item.available !== false)) {
-        throw new Error(t("没有找到可用的 Deli DL-720C。请检查 USB、驱动、纸卷和 Windows 打印队列。"));
+        throw new Error(t("没有找到可用的 Deli DL-720C。请检查 USB、驱动、纸卷和打印队列。"));
       }
       setPrinter(name);
       setReady(true);
@@ -153,7 +155,10 @@ export function FulfillmentLabelPrinter({ labels, onClose }: { labels: Fulfillme
             {busy === "detect" ? t("检测中…") : t("检测")}
           </Button>
           <Button size="sm" variant="outline" asChild>
-            <a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">{t("下载打印助手")}</a>
+            <a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">{t("下载打印助手（Windows）")}</a>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <a href={MACOS_PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent-macos.zip">{t("下载打印助手（Mac）")}</a>
           </Button>
         </div>
 
@@ -213,7 +218,7 @@ export function FulfillmentLabelPrinter({ labels, onClose }: { labels: Fulfillme
         {notice ? <p role="status" className="rounded bg-green-50 p-3 text-sm text-green-800">{notice}</p> : null}
         {!ready && !error ? (
           <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">
-            {t("先启动 Windows 打印助手，再点「检测」。和 ERP 共用一个助手，不要同时开两个。")}
+            {t("先启动打印助手，再点「检测」。和 ERP 共用一个助手，不要同时开两个。")}
           </p>
         ) : null}
 

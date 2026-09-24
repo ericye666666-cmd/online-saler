@@ -3,6 +3,7 @@ import {
   buildFulfillmentLabelPayload,
   buildLabelPrintPayload,
   isDeli720Printer,
+  isSupportedAgentPlatform,
   labelText,
   normalizeLabelSize,
   printerList,
@@ -111,5 +112,21 @@ for (const missing of ["", "   ", "PKG", "pkg!bad"]) {
 // The longest node code the package builder emits still passes the agent regex.
 assert.ok(PRINTABLE_CODE.test("PKG-LUCKYS-1A2B3C4D"));
 assert.ok(!PRINTABLE_CODE.test("PKG_KINOO_1A2B3C4D"));
+
+// The helper answers /health from any machine, so the screen decides whether this
+// one can actually reach a printer. It was Windows-only for a while, which left a
+// Mac looking connected right up to the moment somebody pressed print.
+assert.ok(isSupportedAgentPlatform("windows"));
+assert.ok(isSupportedAgentPlatform("darwin"));
+assert.ok(isSupportedAgentPlatform("Darwin"));
+assert.ok(isSupportedAgentPlatform("linux"));
+assert.ok(!isSupportedAgentPlatform("ios"));
+assert.ok(!isSupportedAgentPlatform(undefined));
+assert.ok(!isSupportedAgentPlatform(""));
+
+// A CUPS queue name cannot hold spaces, so the Mac reports Deli_DL-720C where
+// Windows reports Deli DL-720C. Both have to resolve to the same printer.
+assert.equal(selectDeliPrinter(printerList(["Deli_DL-720C"])), "Deli_DL-720C");
+assert.ok(isDeli720Printer("Deli_DL-720C"));
 
 console.log("local label print tests passed");

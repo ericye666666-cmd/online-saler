@@ -1,4 +1,4 @@
-name: Build Windows print agent
+name: Build print agent downloads
 
 on:
   workflow_call:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify standalone Windows print agent
+    name: Build and verify the Windows and macOS print helpers
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
@@ -47,17 +47,24 @@ jobs:
           --exe build/print-agent/dist/DirectLoopPrintAgent.exe
           --output-dir apps/operations/public/downloads
 
+      - name: Package the macOS source helper
+        run: >-
+          python ops/local_print_agent/build_macos_bundle.py
+          --output-dir apps/operations/public/downloads
+
       - name: Smoke-test the extracted EXE without Python on PATH
         run: >-
           python ops/local_print_agent/smoke_windows_bundle.py
           --zip apps/operations/public/downloads/direct-loop-print-agent.zip
 
-      - name: Upload tested Windows download
+      - name: Upload tested downloads
         uses: actions/upload-artifact@v4
         with:
-          name: direct-loop-print-agent-windows
+          name: direct-loop-print-agent-downloads
           path: |
             apps/operations/public/downloads/direct-loop-print-agent.zip
             apps/operations/public/downloads/direct-loop-print-agent.json
+            apps/operations/public/downloads/direct-loop-print-agent-macos.zip
+            apps/operations/public/downloads/direct-loop-print-agent-macos.json
           if-no-files-found: error
           retention-days: 30

@@ -40,10 +40,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download verified Windows print agent
+      - name: Download verified print-agent helpers
         uses: actions/download-artifact@v4
         with:
-          name: direct-loop-print-agent-windows
+          name: direct-loop-print-agent-downloads
           path: apps/operations/public/downloads
 
       - name: Authenticate to Google Cloud
@@ -185,15 +185,14 @@ jobs:
             exit 1
           fi
 
-      - name: Verify published Windows print-agent download
+      - name: Verify published print-agent downloads
         env:
           OPERATIONS_URL: ${{ steps.deploy.outputs.url }}
         run: |
-          curl --fail --show-error --silent --retry 5 \
-            "${OPERATIONS_URL}/downloads/direct-loop-print-agent.zip" \
-            --output "${RUNNER_TEMP}/published-print-agent.zip"
-          curl --fail --show-error --silent --retry 5 \
-            "${OPERATIONS_URL}/downloads/direct-loop-print-agent.json" \
-            --output "${RUNNER_TEMP}/published-print-agent.json"
-          cmp apps/operations/public/downloads/direct-loop-print-agent.zip "${RUNNER_TEMP}/published-print-agent.zip"
-          cmp apps/operations/public/downloads/direct-loop-print-agent.json "${RUNNER_TEMP}/published-print-agent.json"
+          for file in direct-loop-print-agent.zip direct-loop-print-agent.json \
+                      direct-loop-print-agent-macos.zip direct-loop-print-agent-macos.json; do
+            curl --fail --show-error --silent --retry 5 \
+              "${OPERATIONS_URL}/downloads/${file}" \
+              --output "${RUNNER_TEMP}/published-${file}"
+            cmp "apps/operations/public/downloads/${file}" "${RUNNER_TEMP}/published-${file}"
+          done

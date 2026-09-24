@@ -521,8 +521,8 @@ export const enDictionary: Record<string, string> = {
     "The print request did not come back, but the label may already have printed. Check the printer before printing again.",
   "打印剩余": "Print the rest",
   "打印助手返回错误。": "The print helper returned an error.",
-  "打印助手未连接。请关闭旧助手，下载并启动新版 Windows 打印助手；浏览器询问本地网络访问时请选择允许。":
-    "The print helper is not connected. Close the old helper, then download and start the new Windows print helper. Allow local network access when the browser asks.",
+  "打印助手未连接。请关闭旧助手，下载并启动新版打印助手；浏览器询问本地网络访问时请选择允许。":
+    "The print helper is not connected. Close the old helper, then download and start the new print helper. Allow local network access when the browser asks.",
   "打印助手已连接，可以打印。出纸并贴好后请单独确认。":
     "The print helper is connected and ready. Confirm separately once the label has printed and been stuck on.",
   "大衣": "Coat",
@@ -1044,8 +1044,8 @@ export const enDictionary: Record<string, string> = {
   "其他配饰": "Other accessories",
   "其他鞋款": "Other shoe styles",
   "其他异常": "Other exception",
-  "启动 Windows 打印助手后点击“检测”。与 ERP 共用一个助手，请勿同时启动两个。":
-    "Start the Windows print helper, then click “Detect”. It is shared with the ERP — never run two at once.",
+  "启动打印助手后点击“检测”。与 ERP 共用一个助手，请勿同时启动两个。":
+    "Start the print helper, then click “Detect”. It is shared with the ERP — never run two at once.",
   "启用": "Active",
   "起始编号": "Start number",
   "前拉链": "Front zip",
@@ -1102,8 +1102,8 @@ export const enDictionary: Record<string, string> = {
   "请选择一个批次。": "Choose a batch.",
   "请沿衣服外轮廓至少点击 6 个点，建议点击肩部、袖口和下摆转角。":
     "Click at least 6 points along the outside edge of the garment — the shoulders, cuffs and hem corners are good ones.",
-  "请在连接 Deli DL-720C 的 Windows 电脑上打开此页面。":
-    "Open this page on the Windows computer connected to the Deli DL-720C.",
+  "请在连接 Deli DL-720C 的电脑上打开此页面（Windows 或 Mac）。":
+    "Open this page on the computer connected to the Deli DL-720C (Windows or Mac).",
   "请至少选择一个尺寸并在原图上连接起点和终点。":
     "Choose at least one measurement and draw it from start to end on the original photo.",
   "区域前缀": "Zone prefix",
@@ -1471,8 +1471,8 @@ export const enDictionary: Record<string, string> = {
   "未填写电话": "No phone entered",
   "未完成的展示图或销售详情正在后台处理，完成后自动更新；已有图片可以先审核。":
     "Display images and sales details still being processed will update themselves when they finish. You can review the ones that already exist.",
-  "未找到可用的 Deli DL-720C。请检查 USB、驱动、纸张和 Windows 打印队列。":
-    "No Deli DL-720C was found. Check the USB cable, the driver, the paper and the Windows print queue.",
+  "未找到可用的 Deli DL-720C。请检查 USB、驱动、纸张和打印队列。":
+    "No Deli DL-720C was found. Check the USB cable, the driver, the paper and the print queue.",
   "未知": "Unknown",
   "未知状态": "Unknown status",
   "文案 v": "Copy v",
@@ -1558,9 +1558,10 @@ export const enDictionary: Record<string, string> = {
   "下一件": "Next item",
   "下一张": "Next photo",
   "下载": "Download",
-  "下载 Windows 打印代理": "Download the Windows print agent",
-  "下载后解压，双击 DirectLoopPrintAgent.exe 启动，再点击“检测”。内置运行环境，与 ERP 共用一个代理。":
-    "Unzip it, double-click DirectLoopPrintAgent.exe to start it, then click “Detect”. It brings its own runtime and is shared with the ERP.",
+  "下载打印代理（Windows）": "Print agent (Windows)",
+  "下载打印代理（Mac）": "Print agent (Mac)",
+  "下载后解压：Windows 双击 DirectLoopPrintAgent.exe，Mac 双击 start_online_saler_print_agent_macos.command，再点击“检测”。与 ERP 共用一个代理。":
+    "Unzip it. On Windows double-click DirectLoopPrintAgent.exe; on a Mac double-click start_online_saler_print_agent_macos.command. Then click “Detect”. One agent is shared with the ERP.",
   "先拍照并上传": "Photograph and upload first",
   "先确认适用人群，再按实物选择标准尺码。":
     "Confirm the audience first, then pick the standard size from the item itself.",
@@ -2240,14 +2241,14 @@ export const enDictionary: Record<string, string> = {
   "拣货清单": "Picking list",
   "打印请求没有返回，可能已经出纸。请先看一眼打印机，不要直接重复打印。":
     "The print request never came back, and the label may already have come out. Look at the printer before printing again.",
-  "打印助手未连接。请启动 Windows 打印助手；浏览器询问本地网络访问时选择允许。":
-    "The print helper is not connected. Start the Windows print helper, and allow local network access when the browser asks.",
+  "打印助手未连接。请先启动打印助手；浏览器询问本地网络访问时选择允许。":
+    "The print helper is not connected. Start the print helper, and allow local network access when the browser asks.",
   "打印助手版本过旧。请关闭后下载并启动新版。":
     "The print helper is out of date. Close it, download the new one and start that instead.",
-  "请在连接 Deli DL-720C 的 Windows 电脑上打开这个页面。":
-    "Open this page on the Windows computer the Deli DL-720C is plugged into.",
-  "没有找到可用的 Deli DL-720C。请检查 USB、驱动、纸卷和 Windows 打印队列。":
-    "No usable Deli DL-720C found. Check the USB cable, the driver, the roll and the Windows print queue.",
+  "请在连接 Deli DL-720C 的电脑上打开这个页面（Windows 或 Mac）。":
+    "Open this page on the computer the Deli DL-720C is plugged into (Windows or Mac).",
+  "没有找到可用的 Deli DL-720C。请检查 USB、驱动、纸卷和打印队列。":
+    "No usable Deli DL-720C found. Check the USB cable, the driver, the roll and the print queue.",
   "打印助手已连接。": "Print helper connected.",
   "已发送 {sent}/{total} 张。": "Sent {sent} of {total}.",
   "{total} 张已全部发送。每单第 1 张贴在包裹上，其余随包裹带走。":
@@ -2260,13 +2261,14 @@ export const enDictionary: Record<string, string> = {
   "60×40 mm 不干胶 · Deli DL-720C · 每单连着打几张：路由、顾客、拣货清单":
     "60×40 mm labels · Deli DL-720C · several per order: routing, customer, picking list",
   "未检测": "Not checked",
-  "下载打印助手": "Download the print helper",
+  "下载打印助手（Windows）": "Print helper (Windows)",
+  "下载打印助手（Mac）": "Print helper (Mac)",
   "第 {index} 张，共 {total} 张": "Label {index} of {total}",
   "只打这一张": "Print only this one",
   "这些单还没有包裹号，所以还没有面单可打。包裹号是打包完成时生成的，而且要先指定履约点——没有目的地就没有路由贴纸。先去「每日打单配送」指定履约点，再打包。":
     "These orders have no package code, so there is no label yet. The code is created when packing finishes, and it needs a fulfilment node first — no destination, no routing label. Route them in Daily dispatch, then pack.",
-  "先启动 Windows 打印助手，再点「检测」。和 ERP 共用一个助手，不要同时开两个。":
-    "Start the Windows print helper, then press Check. It is shared with the ERP, so do not run two of them.",
+  "先启动打印助手，再点「检测」。和 ERP 共用一个助手，不要同时开两个。":
+    "Start the print helper, then press Check. It is shared with the ERP, so do not run two of them.",
   "发送中…": "Sending…",
   "打印全部 {total} 张": "Print all {total}",
   "每单第 1 张贴在包裹上，其余随包裹带走。每张都印着订单号和张数，掉了也能对回来。面单只是贴纸，重打多少次都不影响订单。":

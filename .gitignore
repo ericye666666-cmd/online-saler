@@ -49,6 +49,8 @@ temp/
 
 apps/operations/public/downloads/direct-loop-print-agent.zip
 apps/operations/public/downloads/direct-loop-print-agent.json
+apps/operations/public/downloads/direct-loop-print-agent-macos.zip
+apps/operations/public/downloads/direct-loop-print-agent-macos.json
 
 # Local Claude Code workspace settings
 .claude/

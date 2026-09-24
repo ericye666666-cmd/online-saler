@@ -26,10 +26,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download verified Windows print agent
+      - name: Download verified print-agent helpers
         uses: actions/download-artifact@v4
         with:
-          name: direct-loop-print-agent-windows
+          name: direct-loop-print-agent-downloads
           path: apps/operations/public/downloads
 
       - name: Setup Node.js
