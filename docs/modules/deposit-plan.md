@@ -161,11 +161,13 @@ Any fourth path added later has to make the same choice.
   `expire-deposit-holds-*`, holds never expire: pieces stay off sale forever, no
   reminder goes out, and no refund is raised. See
   [staging-production.md](../deployment/staging-production.md).
-- **`page.orders.deposits` now attaches itself.** The seed tops an existing role
-  up with any blueprint permission the database has never seen, so a deployment
-  that introduces a code also grants it. Codes that already exist are left alone,
-  because those an operator may have removed on purpose. Nothing has to be ticked
-  by hand any more.
+- **`page.orders.deposits` now attaches itself.** Every API deployment offers
+  each existing role, once, every default permission it has not been offered
+  before (ledger: system setting `access.roleDefaultGrants.offered`), so a role
+  whose defaults gain a code is granted it on the next deployment. A default an
+  operator removes afterwards is never put back, a role emptied by hand stays
+  empty, and nothing is ever revoked. Nothing has to be ticked by hand any more.
+  To preview what a deployment would add, run the seed with `--dry-run`.
 - **Reminders depend on the SMS outbox being drained.** The outbox has no live
   provider yet, so today the day-4 and day-6 reminders queue and sit there. The
   deadline still enforces itself, which means a shopper can currently lose a

@@ -26,4 +26,14 @@ export type SeedRole = {
 export declare const permissions: SeedPermission[];
 export declare const roles: SeedRole[];
 
-export declare function seedStagingBaseline(prisma: unknown): Promise<{ adminUserId: string }>;
+export declare const forbiddenGrants: Record<string, string[]>;
+export declare const ROLE_GRANT_LEDGER_KEY: string;
+export declare function defaultGrantsFor(role: SeedRole): string[];
+export declare function planRoleBackfill(
+  role: SeedRole,
+  state: { exists: boolean; held: Set<string>; offered: Set<string> }
+): { create: string[]; grant: string[]; offer: string[] };
+
+export declare function seedStagingBaseline(
+  prisma: unknown
+): Promise<{ adminUserId: string; loginAccount: string; granted: Record<string, string[]> }>;

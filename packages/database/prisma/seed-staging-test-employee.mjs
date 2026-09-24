@@ -359,74 +359,151 @@ function hashPassword(password, salt = randomBytes(16).toString("hex")) {
   return `pbkdf2_sha256$120000$${salt}$${digest}`;
 }
 
-export async function seedStagingBaseline(prisma) {
-  // Which codes the database already knew about, read before anything is
-  // written. A permission that has never existed cannot have been withheld from
-  // a role on purpose, and that distinction is what the role loop below rests on.
-  const knownBefore = new Set(
-    (await prisma.permission.findMany({ select: { code: true } })).map((row) => row.code)
+/**
+ * Grants no blueprint may ever hand out, checked again at the moment of writing.
+ *
+ * Refunds are a two-person control: customer service raises the request and
+ * finance approves it. A customer service role that could also approve would be
+ * both halves, so this holds even if somebody edits the blueprint by mistake.
+ * (An administrator can still tick it by hand in role management; that is their
+ * call, not the deployment's.)
+ */
+export const forbiddenGrants = {
+  CUSTOMER_SERVICE: ["customer-service.refund-approve"]
+};
+
+/**
+ * Where the baseline remembers which default grants it has already offered each
+ * role. A single system setting rather than a new table, so the backfill needs
+ * no schema change: `{ "<ROLE_CODE>": ["<permission code>", ...] }`.
+ */
+export const ROLE_GRANT_LEDGER_KEY = "access.roleDefaultGrants.offered";
+
+/** A role's default permissions, minus anything it must never hold. */
+export function defaultGrantsFor(role) {
+  const forbidden = new Set(forbiddenGrants[role.code] ?? []);
+  return unique(role.permissions.filter((code) => !forbidden.has(code)));
+}
+
+/**
+ * What one deployment does to one role. Pure, so the rules can be tested
+ * without a database.
+ *
+ * - `offered` is what earlier deployments already offered this role. Those are
+ *   never offered again, so a permission an administrator took away stays away.
+ * - Everything else in the role's defaults is offered now: granted if the role
+ *   does not already hold it, and recorded as offered either way.
+ * - A role that exists but holds nothing was switched off by hand. It is not
+ *   filled back in; its defaults are only recorded, so it stays off.
+ * - Nothing here ever removes a grant.
+ */
+export function planRoleBackfill(role, { exists, held, offered }) {
+  const defaults = defaultGrantsFor(role);
+  const offer = defaults.filter((code) => !offered.has(code));
+  if (!exists) return { create: defaults, grant: [], offer };
+  if (held.size === 0) return { create: [], grant: [], offer };
+  return { create: [], grant: offer.filter((code) => !held.has(code)), offer };
+}
+
+function readLedger(setting) {
+  const value = setting?.valueJson;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).map(([roleCode, codes]) => [roleCode, Array.isArray(codes) ? codes.map(String) : []])
   );
-  // Roles that already existed. A role created by this run gets its permissions
-  // from the create below and needs no topping up.
+}
+
+/**
+ * Brings every role up to its defaults, additively.
+ *
+ * A feature that shipped new permission codes used to arrive invisible: the
+ * role already existed, `update: {}` left it alone, and the screens answered 403
+ * until somebody ticked boxes by hand. An earlier fix only topped roles up with
+ * codes the database had never seen, which missed every code that already
+ * existed for some other role -- the deposit board, packer hand-off and the
+ * customer service desk all fell through that gap.
+ *
+ * Now each default grant is offered exactly once per role, and the ledger
+ * remembers it. The first deployment with this code has an empty ledger, so it
+ * offers every default an existing role is missing.
+ *
+ * Only inserts: missing Permission rows, missing role links, and the ledger.
+ * Never deletes a link, never edits a role, a permission or a link that exists.
+ */
+async function backfillRolePermissions(prisma) {
   const rolesBefore = new Set(
     (await prisma.role.findMany({ select: { code: true } })).map((row) => row.code)
   );
+  const ledgerRow = await prisma.systemSetting.findUnique({ where: { key: ROLE_GRANT_LEDGER_KEY } });
+  const ledger = readLedger(ledgerRow);
 
+  // Missing permission rows are created; existing ones are left exactly as
+  // they are, description included.
   for (const permission of permissions) {
     await prisma.permission.upsert({
       where: { code: permission.code },
-      update: {
-        module: permission.module,
-        scope: permission.scope,
-        page: permission.page,
-        action: permission.action,
-        description: permission.description
-      },
+      update: {},
       create: permission
     });
   }
 
+  const granted = {};
+  let ledgerChanged = false;
   for (const role of roles) {
-    // The baseline defines defaults only for a new role. An existing role may
-    // have deliberately restricted permissions, including an empty set.
-    await prisma.role.upsert({
-      where: { code: role.code },
-      update: {},
-      create: {
-        code: role.code,
-        name: role.name,
-        description: role.description,
-        permissions: {
-          create: role.permissions.map((code) => ({ permission: { connect: { code } } }))
-        }
-      }
-    });
+    const exists = rolesBefore.has(role.code);
+    const held = exists
+      ? new Set(
+          (
+            await prisma.rolePermission.findMany({
+              where: { role: { code: role.code } },
+              select: { permission: { select: { code: true } } }
+            })
+          ).map((row) => row.permission.code)
+        )
+      : new Set();
+    const plan = planRoleBackfill(role, { exists, held, offered: new Set(ledger[role.code] ?? []) });
 
-    // A feature shipped with new permission codes used to arrive invisible:
-    // the codes were new, the role already existed, `update: {}` left it alone,
-    // and the screens were unreachable until somebody ticked boxes by hand.
-    // Nobody ever did, so store hand-off, riders, payment review and the
-    // notification outbox were all live and unusable at once.
-    //
-    // So a role is topped up with the permissions in its blueprint that the
-    // database has never seen before. Codes that already existed are left
-    // exactly as they are — those the operator may have removed on purpose,
-    // and this must not put them back.
-    if (!rolesBefore.has(role.code)) continue;
-    const brandNew = role.permissions.filter((code) => !knownBefore.has(code));
-    if (!brandNew.length) continue;
-    const current = await prisma.rolePermission.findMany({
-      where: { role: { code: role.code } },
-      select: { permission: { select: { code: true } } }
-    });
-    const held = new Set(current.map((row) => row.permission.code));
-    for (const code of brandNew) {
-      if (held.has(code)) continue;
+    if (!exists) {
+      await prisma.role.upsert({
+        where: { code: role.code },
+        update: {},
+        create: {
+          code: role.code,
+          name: role.name,
+          description: role.description,
+          permissions: {
+            create: plan.create.map((code) => ({ permission: { connect: { code } } }))
+          }
+        }
+      });
+    }
+
+    for (const code of plan.grant) {
       await prisma.rolePermission.create({
         data: { role: { connect: { code: role.code } }, permission: { connect: { code } } }
       });
     }
+    if (plan.grant.length) granted[role.code] = plan.grant;
+
+    if (plan.offer.length) {
+      ledger[role.code] = unique([...(ledger[role.code] ?? []), ...plan.offer]);
+      ledgerChanged = true;
+    }
   }
+
+  if (ledgerChanged) {
+    await prisma.systemSetting.upsert({
+      where: { key: ROLE_GRANT_LEDGER_KEY },
+      update: { valueJson: ledger },
+      create: { key: ROLE_GRANT_LEDGER_KEY, valueJson: ledger, scope: "GLOBAL" }
+    });
+  }
+
+  return granted;
+}
+
+export async function seedStagingBaseline(prisma) {
+  const granted = await backfillRolePermissions(prisma);
 
   const employee = await prisma.employee.upsert({
     where: { employeeCode: linkedEmployee.employeeCode },
@@ -488,15 +565,45 @@ export async function seedStagingBaseline(prisma) {
     }
   });
 
-  return { adminUserId: adminUser.id, loginAccount: adminUser.loginAccount };
+  return { adminUserId: adminUser.id, loginAccount: adminUser.loginAccount, granted };
+}
+
+function printGranted(granted) {
+  const entries = Object.entries(granted);
+  if (!entries.length) {
+    console.log("Role permissions: every role already had its defaults; nothing added.");
+    return;
+  }
+  for (const [roleCode, codes] of entries) {
+    console.log(`Role permissions: ${roleCode} gained ${codes.join(", ")}`);
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { PrismaClient } = await import("@prisma/client");
   const prisma = new PrismaClient();
+  // --dry-run runs the whole baseline inside a transaction and rolls it back,
+  // printing what a real deployment would add without writing anything.
+  const dryRun = process.argv.includes("--dry-run");
+  const rollback = new Error("DRY_RUN_ROLLBACK");
   try {
-    const result = await seedStagingBaseline(prisma);
-    console.log(`Staging admin access baseline ready: ${result.loginAccount}`);
+    if (dryRun) {
+      let preview;
+      try {
+        await prisma.$transaction(async (tx) => {
+          preview = await seedStagingBaseline(tx);
+          throw rollback;
+        }, { timeout: 60_000 });
+      } catch (error) {
+        if (error !== rollback) throw error;
+      }
+      console.log("Dry run: nothing was written.");
+      printGranted(preview.granted);
+    } else {
+      const result = await seedStagingBaseline(prisma);
+      printGranted(result.granted);
+      console.log(`Staging admin access baseline ready: ${result.loginAccount}`);
+    }
   } finally {
     await prisma.$disconnect();
   }
