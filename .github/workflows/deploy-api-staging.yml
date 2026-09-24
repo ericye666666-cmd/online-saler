@@ -190,6 +190,7 @@ jobs:
             --max-instances=2
             --service-account=${{ env.STAGING_RUNTIME_SERVICE_ACCOUNT }}
             --add-cloudsql-instances=${{ env.STAGING_CLOUD_SQL_INSTANCE }}
+            --remove-env-vars=OPENAI_API_KEY
           env_vars: |
             NODE_ENV=staging
             STAGING_PILOT_BATCH_ENABLED=true
@@ -201,6 +202,10 @@ jobs:
             OPENAI_DETAIL_OUTPUT_USD_PER_MILLION=${{ env.OPENAI_DETAIL_OUTPUT_USD_PER_MILLION }}
             OPENAI_IMAGE_EDIT_MODEL=${{ env.OPENAI_IMAGE_EDIT_MODEL }}
             OPENAI_IMAGE_EDIT_QUALITY=${{ env.OPENAI_IMAGE_EDIT_QUALITY }}
+          # --remove-env-vars runs before the secret is attached, so a revision that
+          # still carries the old plaintext OPENAI_API_KEY converts to the Secret Manager
+          # reference in one step, with no revision in between that has no key at all.
+          # Leaving the flag in place also stops the plaintext form from coming back.
           secrets: |
             DATABASE_URL=STAGING_DATABASE_URL:latest
             OPENAI_API_KEY=STAGING_OPENAI_API_KEY:latest
