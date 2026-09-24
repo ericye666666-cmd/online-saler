@@ -50,8 +50,8 @@ test("the header counts orders and garments separately", () => {
   const html = pickingSheetHtml([line("A-01", "DL-1"), line("A-02", "DL-1"), line("B-01", "DL-2")], new Date());
   // Two orders, three garments: a picker needs the garment count to know when
   // the trolley is full, and the order count to know how many parcels follow.
-  assert.match(html, /2 单/);
-  assert.match(html, /3 件/);
+  assert.match(html, /2 orders/);
+  assert.match(html, /3 items/);
 });
 
 test("the sheet says which garments go in one bag", () => {

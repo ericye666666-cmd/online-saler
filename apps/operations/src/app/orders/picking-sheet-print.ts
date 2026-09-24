@@ -1,13 +1,15 @@
 /**
  * The picking sheet's content and its shelf ordering, with no React in sight.
  *
+ * Printed in English regardless of who pressed print. The sheet is carried round
+ * the racks in Nairobi, and the language of the supervisor at the desk is not the
+ * language of the person reading it — the same reason the parcel label is English.
+ *
  * Split out from the dialog so the part that decides what a picker walks can be
  * tested by `node --test`: the component around it pulls in the whole operations
  * UI, and the ordering rule is the only thing here that can be wrong in a way
  * that costs someone an hour.
  */
-
-import { t } from "../../i18n/runtime";
 
 export type PickingLine = {
   locationCode: string;
@@ -74,7 +76,7 @@ export function pickingSheetHtml(lines: PickingLine[], printedAt: Date): string 
     // A band whenever the aisle changes. A picker looks up from the trolley and
     // needs to know, without re-reading, that the next few lines are elsewhere.
     const band = nextZone !== zone
-      ? `<tr class="zone"><td colspan="6">${escapeHtml(t("{zone} 区", { zone: nextZone }))}</td></tr>`
+      ? `<tr class="zone"><td colspan="6">${escapeHtml(`Aisle ${nextZone}`)}</td></tr>`
       : "";
     zone = nextZone;
     return `${band}
@@ -109,7 +111,7 @@ export function pickingSheetHtml(lines: PickingLine[], printedAt: Date): string 
     .join("");
 
   return `<!doctype html>
-<html lang="zh"><head><meta charset="utf-8"><title>${escapeHtml(t("拣货单"))}</title>
+<html lang="zh"><head><meta charset="utf-8"><title>${escapeHtml("PICKING LIST")}</title>
 <style>
   * { box-sizing: border-box; }
   @page { size: A4; margin: 12mm 10mm 14mm; }
@@ -158,35 +160,35 @@ export function pickingSheetHtml(lines: PickingLine[], printedAt: Date): string 
 <body>
   <header>
     <div>
-      <h1>${escapeHtml(t("拣货单"))}</h1>
-      <div class="counts">${escapeHtml(t("{orders} 单 · {items} 件", { orders: orders.size, items: lines.length }))}</div>
+      <h1>${escapeHtml("PICKING LIST")}</h1>
+      <div class="counts">${escapeHtml(`${orders.size} orders · ${lines.length} items`)}</div>
     </div>
     <div class="stamp">
       ${escapeHtml(printedAt.toLocaleString("zh-CN"))}<br>
-      ${escapeHtml(t("按货架位排序，从上往下走一遍"))}
+      ${escapeHtml("Sorted by shelf. Walk it top to bottom.")}
     </div>
   </header>
 
   <div class="signoff">
-    <span>${escapeHtml(t("拣货员"))}</span>
-    <span>${escapeHtml(t("开始"))}</span>
-    <span>${escapeHtml(t("完成"))}</span>
+    <span>${escapeHtml("Picker")}</span>
+    <span>${escapeHtml("Started")}</span>
+    <span>${escapeHtml("Finished")}</span>
   </div>
 
   <table>
     <thead><tr>
-      <th></th><th>${escapeHtml(t("货架位"))}</th><th>${escapeHtml(t("商品"))}</th>
-      <th>${escapeHtml(t("条码"))}</th><th>${escapeHtml(t("订单号"))}</th><th>${escapeHtml(t("目的地"))}</th>
+      <th></th><th>${escapeHtml("Shelf")}</th><th>${escapeHtml("Item")}</th>
+      <th>${escapeHtml("Barcode")}</th><th>${escapeHtml("Order")}</th><th>${escapeHtml("Destination")}</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
 
   <footer>
-    <h2>${escapeHtml(t("拣完按目的地分堆"))}</h2>
+    <h2>${escapeHtml("Then sort into piles by destination")}</h2>
     <ul>${summary}</ul>
-    <h2 class="parcels-title">${escapeHtml(t("再按订单装袋 · 一行一个包裹"))}</h2>
+    <h2 class="parcels-title">${escapeHtml("Then bag by order · one line is one parcel")}</h2>
     <ul class="parcels">${parcels}</ul>
-    <p class="note">${escapeHtml(t("这张纸不是凭证。拣完在手机拣货台逐件扫码，扫过的才算数；打包也在那里，一张卡片就是一个包裹。"))}</p>
+    <p class="note">${escapeHtml("This sheet is not a record. Scan every item on the picking station, and pack there too — one card is one parcel.")}</p>
   </footer>
 </body></html>`;
 }

@@ -20,7 +20,11 @@ export type PickerItem = {
 export type PackOrder = {
   id: string;
   orderNumber: string;
+  /** For the screen: "自提 · Kinoo". Never printed — a label is read in Kenya. */
   destination: string;
+  /** For the label: the node's own name, "Kinoo", with nothing composed onto it. */
+  nodeName: string;
+  isDelivery: boolean;
   items: PickerItem[];
   fulfillment?: {
     status: string;

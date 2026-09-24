@@ -2221,4 +2221,511 @@ export const enDictionary: Record<string, string> = {
   "中央仓（默认）": "Central warehouse (default)",
   "选定门店后，这笔退货会出现在该门店履约台的「待收退货」里。":
     "Pick a store and this return appears on that store's returns-to-receive list."
+,
+  // ——— Parcel labels and the print agent ———
+  "我的配送": "My deliveries",
+  "打开今天派给你的配送单。": "Open the deliveries assigned to you today.",
+  "查看我的配送单": "View my deliveries",
+  "浏览器无法生成面单预览，请使用电脑端 Chrome 或 Edge。":
+    "This browser cannot draw the label preview. Use Chrome or Edge on a computer.",
+  "贴包裹": "Goes on the parcel",
+  "顾客信息": "Customer details",
+  "拣货清单": "Picking list",
+  "打印请求没有返回，可能已经出纸。请先看一眼打印机，不要直接重复打印。":
+    "The print request never came back, and the label may already have come out. Look at the printer before printing again.",
+  "打印助手未连接。请启动 Windows 打印助手；浏览器询问本地网络访问时选择允许。":
+    "The print helper is not connected. Start the Windows print helper, and allow local network access when the browser asks.",
+  "打印助手版本过旧。请关闭后下载并启动新版。":
+    "The print helper is out of date. Close it, download the new one and start that instead.",
+  "请在连接 Deli DL-720C 的 Windows 电脑上打开这个页面。":
+    "Open this page on the Windows computer the Deli DL-720C is plugged into.",
+  "没有找到可用的 Deli DL-720C。请检查 USB、驱动、纸卷和 Windows 打印队列。":
+    "No usable Deli DL-720C found. Check the USB cable, the driver, the roll and the Windows print queue.",
+  "打印助手已连接。": "Print helper connected.",
+  "已发送 {sent}/{total} 张。": "Sent {sent} of {total}.",
+  "{total} 张已全部发送。每单第 1 张贴在包裹上，其余随包裹带走。":
+    "All {total} sent. The first label of each order goes on the parcel; the rest travel inside it.",
+  "已发送 {sent} 张后停止，最后印出的是 {order}。{message}":
+    "Stopped after {sent}. The last one printed was {order}. {message}",
+  "（没有一张印出）": "(nothing printed)",
+  "打印 {count} 单的面单": "Print labels for {count} orders",
+  "打印包裹面单": "Print parcel labels",
+  "60×40 mm 不干胶 · Deli DL-720C · 每单连着打几张：路由、顾客、拣货清单":
+    "60×40 mm labels · Deli DL-720C · several per order: routing, customer, picking list",
+  "未检测": "Not checked",
+  "下载打印助手": "Download the print helper",
+  "第 {index} 张，共 {total} 张": "Label {index} of {total}",
+  "只打这一张": "Print only this one",
+  "这些单还没有包裹号，所以还没有面单可打。包裹号是打包完成时生成的，而且要先指定履约点——没有目的地就没有路由贴纸。先去「每日打单配送」指定履约点，再打包。":
+    "These orders have no package code, so there is no label yet. The code is created when packing finishes, and it needs a fulfilment node first — no destination, no routing label. Route them in Daily dispatch, then pack.",
+  "先启动 Windows 打印助手，再点「检测」。和 ERP 共用一个助手，不要同时开两个。":
+    "Start the Windows print helper, then press Check. It is shared with the ERP, so do not run two of them.",
+  "发送中…": "Sending…",
+  "打印全部 {total} 张": "Print all {total}",
+  "每单第 1 张贴在包裹上，其余随包裹带走。每张都印着订单号和张数，掉了也能对回来。面单只是贴纸，重打多少次都不影响订单。":
+    "The first label of each order goes on the parcel and the rest travel inside it. Every label carries the order number and its position, so a loose one can be matched back. Labels are stickers: reprinting them changes nothing about the order.",
+
+  // ——— Notification outbox ———
+  "无法读取通知队列。": "Could not load the notification queue.",
+  "通知队列": "Notification queue",
+  "付款成功、待自提、已发货、佣金可提等消息先写进队列，再由每分钟的任务发送。没有配置短信服务商时，消息会停在待发送——这是有意的，不会静默丢掉。":
+    "Payment confirmations, ready-for-pickup notices, dispatch notices and commission alerts are written here first and sent by a job that runs every minute. With no SMS provider configured they sit as pending — deliberately, rather than being dropped in silence.",
+  "对象": "Recipient",
+  "内容": "Message",
+  "没有匹配的通知。": "No notifications match.",
+  "已尝试": "Attempts",
+  "发送": "Send",
+  "下次尝试": "Next attempt",
+  "重试": "Retry",
+
+  // ——— Fulfilment node configuration ———
+  "无法读取履约点。": "Could not load fulfilment nodes.",
+  "履约点配置": "Fulfilment nodes",
+  "中央仓 + 各门店。门店没有填手机号就收不到「有包裹发来了」的短信。关闭一个履约点前必须先清空它手上的包裹。":
+    "The central warehouse and every store. A store with no phone number gets no \"a parcel is coming\" message. A node cannot be closed while it still holds parcels.",
+  "中央仓": "Central warehouse",
+  "门店": "Store",
+  "缺手机号": "No phone number",
+  "在手包裹": "Parcels held",
+  "门店员工": "Store staff",
+  "名称": "Name",
+  "门店手机号（接收包裹通知）": "Store phone (receives parcel notices)",
+  "地址": "Address",
+  "Google Maps 链接": "Google Maps link",
+  "接受自提": "Accepts pickup",
+  "发出配送": "Dispatches deliveries",
+  "履约点已更新。": "Fulfilment node updated.",
+  "新增履约点": "Add a fulfilment node",
+  "代号只能用小写字母、数字和短横线，一旦创建不可更改。":
+    "The code takes lower-case letters, digits and hyphens, and cannot be changed once created.",
+  "代号": "Code",
+  "门店手机号": "Store phone",
+  "履约点已创建。": "Fulfilment node created.",
+  "员工归属门店": "Staff home node",
+  "门店员工只能签收发给自己门店的包裹。仓库和总部员工不设归属，可以在任何履约点操作。":
+    "Store staff may only receive parcels addressed to their own store. Warehouse and head-office staff have no home node and can act anywhere.",
+  "工号": "Staff number",
+  "归属履约点": "Home node",
+  "员工归属已更新。": "Staff home node updated.",
+  "不限（仓库 / 总部）": "Anywhere (warehouse / head office)",
+
+  // ——— The rider's phone ———
+  "无法读取你的配送单。": "Could not load your deliveries.",
+  "操作失败，请再试一次。": "That did not go through. Try again.",
+  "这个页面是给骑手的": "This page is for riders",
+  "你的账号没有骑手权限。如果你是骑手，请让店长在门店骑手名单里把你的登录账号绑定上。":
+    "This account is not a rider. If you ride for a store, ask the manager to link your login on the store's rider list.",
+  "顾客收到货以后，把短信里的 4 位数字报给你，你输进去才算送达。":
+    "Once the customer has their order, they read you four digits. Typing those in is what completes the delivery.",
+  "待配送": "Out for delivery",
+  "今天已完成": "Completed today",
+  "今天失败": "Failed today",
+  "现在没有配送单。门店派单以后会出现在这里。":
+    "Nothing to deliver right now. Dispatches from the store appear here.",
+  "正在送回门店": "On the way back to the store",
+  "次尝试": "attempts",
+  "地址未填写": "No address given",
+  "打给顾客": "Call the customer",
+  "把包裹交回门店，店员扫码签收后这单会回到待派单。":
+    "Take the parcel back to the store. Once they scan it in, the order can be dispatched again.",
+  "已标记为正在送回门店。": "Marked as on the way back to the store.",
+  "我现在把货送回门店": "I am taking it back to the store",
+  "送达": "Delivered",
+  "代收": "Left with someone",
+  "没送成": "Could not deliver",
+  "说明（可选）": "Note (optional)",
+  "顾客已经付过钱了，这单不会取消。标记失败以后把货送回门店，门店会重新派单。":
+    "The customer has already paid, so this order is not cancelled. Mark it failed, take it back to the store, and the store will send it out again.",
+  "已记录配送失败。": "Failed delivery recorded.",
+  "提交配送失败": "Report a failed delivery",
+  "顾客本人不在，但同意放在保安、前台或门口。必须拍一张放置位置的照片，而且顾客要通过电话或 WhatsApp 把 4 位数字报给你——两个都有才能完成。":
+    "The customer is not there but agreed to it being left with security, at reception or at the door. You need a photo of where you left it and the four digits from the customer by phone or WhatsApp — both, or it cannot be completed.",
+  "放在哪里（例如：交给 A 座保安）": "Where you left it (e.g. with security at Block A)",
+  "先把货交给顾客，再请顾客报出短信里的 4 位数字。没有这个号码不能完成订单。":
+    "Hand the order over first, then ask the customer for their four digits. Without them the order cannot be completed.",
+  "这单因为多次输错已经锁住了。打电话给门店，让他们给顾客重发一个新号码。":
+    "Too many wrong codes have locked this order. Call the store and ask them to send the customer a new one.",
+  "还剩": "Left:",
+  "次机会，用完这单会锁住。": "attempts before this order locks.",
+  "代收完成，订单已关闭。": "Left with someone. The order is closed.",
+  "送达完成，订单已关闭。": "Delivered. The order is closed.",
+  "照片 + 号码，完成代收": "Photo and code — complete the drop-off",
+  "核对号码并完成": "Check the code and finish",
+  "照片太大了，请重拍一张。": "That photo is too large. Take another one.",
+  "照片读取失败，请重拍。": "That photo could not be read. Take another one.",
+  "重拍放置位置": "Retake the photo",
+  "拍放置位置照片": "Photograph where you left it",
+  "放置位置": "Where it was left",
+
+  // ——— Daily dispatch run ———
+  "Have all items been placed in their assigned shelf locations?\\n\\n请确认本批 {targetCount} 件已贴好标签并按货架位放好；继续后将入仓并发布。":
+    "Have all items been placed in their assigned shelf locations?\\n\\nConfirm that all {targetCount} pieces in this batch are labelled and on their shelves. Continuing checks them in and publishes them.",
+  "定金锁定": "Held on deposit",
+  "送货上门 · 经 {name}": "Delivery · via {name}",
+  "送货上门 · 未指定履约点": "Delivery · not routed yet",
+  "自提 · {name}": "Pickup · {name}",
+  "自提 · 未指定门店": "Pickup · no store chosen",
+  "已选 {count} 单 · {items} 件": "{count} orders selected · {items} items",
+  "取消选择": "Clear selection",
+  "打拣货单": "Print picking list",
+  "打面单 {count} 单": "Print labels · {count} orders",
+  "批量领取拣货": "Claim picking in bulk",
+  "领取拣货 {count} 单": "Claim picking · {count} orders",
+  "批量发往门店": "Send to stores in bulk",
+  "发往门店 {count} 单": "Send to store · {count} orders",
+  "无法读取今天的出货任务。": "Could not load today's dispatch work.",
+  "未知错误": "unknown error",
+  "{label}：{done} 单成功，{failed} 单没成功 —— {detail}":
+    "{label}: {done} succeeded, {failed} did not — {detail}",
+  "{label}：{done} 单已完成。": "{label}: {done} orders done.",
+  "每日打单配送": "Daily dispatch",
+  "仓库一个上午的活：打拣货单、拣货核对、打包贴面单、按门店发车。改的是同一批订单，订单中心会同步更新。":
+    "A warehouse morning: print the picking list, pick and verify, pack and label, send out by store. These are the same orders the order centre shows, and it updates with them.",
+  "有订单没有处理成功": "Some orders did not go through",
+  "选择这一组的全部订单": "Select every order in this group",
+  "{count} 单": "{count} orders",
+  "这一步没有待办": "Nothing at this step",
+  "正在同步今天的出货任务。": "Loading today's dispatch work.",
+  "这一步是空的。看看上一步还有没有没做完的。":
+    "This step is empty. Check whether the previous one still has work in it.",
+  "① 打单拣货": "1. Print & pick",
+  "② 逐件核对": "2. Verify each item",
+  "③ 打包": "3. Pack",
+  "④ 打面单发车": "4. Label & send",
+  "先打一张拣货单，按货架位走一遍。领取拣货后这些单进入下一步。":
+    "Print a picking list and walk the racks once. Claiming picking moves these orders to the next step.",
+  "拿回来的每一件都要扫码核对。全部核对完，订单自动进入待打包。":
+    "Every item you bring back is scanned against its barcode. When all of them are verified the order moves to packing by itself.",
+  "开始打包 → 完成打包。填包装方式和包裹数量，完成时生成包裹号。":
+    "Start packing, then finish it. Give the packaging and the parcel count; finishing creates the package code.",
+  "先勾上整组打面单，第 1 张贴箱子、其余放进去，然后整组发往门店。没有履约点的单打不出面单——没有目的地就没有路由贴纸，要先指定。":
+    "Select the whole group and print labels: the first goes on the box, the rest inside. Then send the group to its store. An order with no fulfilment node has no label — no destination, no routing sticker — so route it first.",
+
+  // ——— The order card ———
+  "拣货": "Picking",
+  "打包": "Packing",
+  "出库": "Dispatch",
+  "骑手": "Rider",
+  "选择这一单": "Select this order",
+  "详情": "Details",
+  "配送地址：": "Delivery address:",
+  "货架位未分配": "No shelf assigned",
+  "指定履约点": "Choose a fulfilment node",
+  "发往门店": "Send to the store",
+  "确认到店": "Confirm it arrived",
+  "分配给其他拣货员": "Assign to another picker",
+  "打印面单": "Print the label",
+  "改派履约点": "Re-route to another node",
+  "异常已解决，回到原步骤": "Exception resolved — back to that step",
+  "无法履约，作废订单": "Cannot be fulfilled — write off",
+  "登记退款": "Record a refund",
+  "更多": "More",
+  "请顾客报出自提码": "Ask the customer for their pickup code",
+  "顾客自己的订单页上有 4 位自提码。订单号和手机号都印在包裹上，不能当凭证。":
+    "The four-digit pickup code is on the customer's own order page. The order number and phone are printed on the parcel, so neither proves anything.",
+  "顾客报的自提码": "Pickup code from the customer",
+  "请顾客报出配送码": "Ask the customer for their delivery code",
+  "顾客收到货以后，才会把自己订单页上的 4 位配送码报出来。没有这个号码不能确认送达——即使骑手说已经送到了。顾客打不开订单页的话，用「用 WhatsApp 发给顾客」把链接发过去。":
+    "The customer reads out the four digits from their own order page only once they have the order. Without that code a delivery cannot be completed, whatever the rider says. If they cannot open the page, send them the link with Send on WhatsApp.",
+  "顾客报的配送码": "Delivery code from the customer",
+  "这单在哪里交给顾客？": "Where is this order handed over?",
+  "选门店时，打包后需要先发往门店、门店扫码签收，才能交给顾客或叫 Bolt。选中央仓则在仓库直接交付。":
+    "With a store, the packed parcel travels there and is scanned in before it can be handed over or given to a Bolt rider. With the central warehouse it is handed over on the spot.",
+  "履约点": "Fulfilment node",
+  "回到": "Back to",
+  "写清楚问题是怎么解决的，订单会回到异常发生前的那一步继续。":
+    "Say how it was resolved. The order returns to the step it was on when the exception was raised.",
+  "这单的钱已经收了": "The money for this order has been taken",
+  "作废后订单会被取消、佣金冲回、商品按你选择的方式处理，并进入待退款列表。退款要在 M-Pesa 里操作完再回来登记凭证。":
+    "Writing it off cancels the order, reverses the commission, handles the garment the way you choose, and adds it to the refunds owed. Pay the refund in M-Pesa first, then come back and record the receipt.",
+  "商品怎么处理": "What happens to the garment",
+  "找不到 / 已损坏 / 已线下卖掉 —— 记为丢失": "Missing, damaged or sold offline — record as lost",
+  "商品还在，重新上架销售": "Still here — put it back on sale",
+  "只登记，不转账": "Recording only — no money moves",
+  "先在 M-Pesa 里把钱退给顾客，再回到这里登记金额和凭证号。系统不会自动转账。":
+    "Refund the customer in M-Pesa first, then record the amount and the receipt here. The system never moves money itself.",
+  "退款金额 KSh": "Refund amount KSh",
+  "M-Pesa 冲正 / 付款凭证号": "M-Pesa reversal or payment receipt number",
+  "用配送码确认送达": "Confirm delivery with the code",
+  "解决异常": "Resolve the exception",
+  "作废订单并处理库存": "Write off and settle the stock",
+  "登记已完成的退款": "Record a refund already paid",
+  "定金已付待尾款": "Deposit paid, balance due",
+  "定金逾期": "Deposit lapsed",
+  "发往门店中": "In transit to the store",
+  "已到店": "At the store",
+  "已线下卖掉": "Sold offline",
+  "门店未收到": "Store never received it",
+  "发错门店": "Sent to the wrong store",
+
+  // ——— Picking sheet dialog ———
+  "{orders} 单 · {items} 件 · 按货架位排序。用普通打印机打 A4，或在打印对话框里选「另存为 PDF」。":
+    "{orders} orders · {items} items · sorted by shelf. Print A4 on any printer, or choose Save as PDF in the print dialog.",
+  "拣货单": "Picking list",
+  "拣货单预览": "Picking list preview",
+  "打印": "Print",
+
+  // ——— Store rider roster ———
+  "无法读取门店列表。": "Could not load the store list.",
+  "无法读取骑手名单。": "Could not load the rider list.",
+  "骑手已加入名单。": "Rider added.",
+  "添加失败。": "Could not add them.",
+  "骑手已上班。": "Rider is on shift.",
+  "骑手已下班，不会再收到派单。": "Rider is off shift and will get no more dispatches.",
+  "门店骑手": "Store riders",
+  "这些是从本店骑车出去送货的人。派单时只会出现在上班状态的骑手。骑手要自己登录手机端，需要先在「系统 / 账号」里给他建一个登录账号，再填在下面。":
+    "The people who ride out from this store. Only riders on shift appear when dispatching. For a rider to sign in on their phone, create a login under System / Accounts first and enter it below.",
+  "全部门店": "All stores",
+  "添加骑手": "Add a rider",
+  "登录账号（可选）": "Login account (optional)",
+  "加入名单": "Add to the list",
+  "名单": "Roster",
+  "还没有骑手。": "No riders yet.",
+  "上班": "On shift",
+  "下班": "Off shift",
+  "手上": "Holding",
+  "单": "orders",
+  "没有电话": "No phone",
+  "可登录": "Can sign in",
+  "还不能登录手机端": "Cannot sign in yet",
+  "设为下班": "Set off shift",
+  "设为上班": "Set on shift",
+
+  // ——— Picking station: packing mode ———
+  "没有要打包的": "Nothing to pack",
+  "拣完货的订单会自动出现在这里。": "Orders appear here as soon as their picking is done.",
+  "已打包 · 等着贴面单": "Packed · waiting for labels",
+  "未生成包裹号": "No package code yet",
+  "{count} 件": "{count} items",
+  "打面单": "Print label",
+  "没有履约点，打不出面单": "No fulfilment node, so no label",
+  "面单要在连着 Deli 打印机的那台 Windows 电脑上打。人在货架旁边的话，先都打包完，回去在「每日打单配送」里一次全部打出来。":
+    "Labels print from the Windows computer the Deli printer is attached to. Out by the racks, pack everything first and print the whole batch from Daily dispatch when you are back.",
+  "{count} 件装一起": "{count} items in one parcel",
+  "无图": "No photo",
+  "条码缺失": "Barcode missing",
+  "一单装成两个包就填 2。完成后会生成包裹号，门店签收时扫的就是它。":
+    "If one order goes into two parcels, enter 2. Finishing creates the package code the store scans on arrival.",
+  "开始打包这一单": "Start packing this order",
+  "袋 Bag": "Bag",
+  "箱 Box": "Box",
+  "其他 Other": "Other",
+
+  // ——— Picking station: picking mode ———
+  "送货 · 经 {name}": "Delivery · via {name}",
+  "送货 · 未指定": "Delivery · not routed",
+  "读不到待拣货的订单。": "Could not load the orders waiting to be picked.",
+  "打包操作失败。": "That packing step did not go through.",
+  "有 {count} 单没能领取：{detail}": "{count} orders could not be claimed: {detail}",
+  "条码对不上。": "That barcode does not match.",
+  "这个账号不能拣货": "This account cannot pick",
+  "要拣货权限（orders.pick）。找管理员在角色里加上。":
+    "Picking needs the orders.pick permission. Ask an administrator to add it to your role.",
+  "一张卡片 = 一个包裹": "One card is one parcel",
+  "没通过": "Not accepted",
+  "扫码或输入条码": "Scan or type the barcode",
+  "核对": "Check",
+  "找不到这件，先跳过": "Cannot find it — skip for now",
+  "跳过的会排到最后再问你一次。到最后还是找不到，在订单工作台提交异常，别自己改状态。":
+    "Skipped items come back at the end. If it is still missing then, raise an exception on the order workbench rather than changing anything yourself.",
+  "有 {count} 单在等拣货": "{count} orders waiting to be picked",
+  "领取之后，系统会把所有商品按货架位排成一条路线，一件一件给你。":
+    "Once claimed, every item is put in shelf order and handed to you one at a time.",
+  "领取并开始拣货": "Claim and start picking",
+  "没有待拣的商品": "Nothing left to pick",
+  "最后核对的是：{title}": "Last verified: {title}",
+  "有 {count} 件没找到：": "{count} items were not found:",
+  "把这几件报给主管，在订单工作台提交异常。":
+    "Report these to a supervisor and raise an exception on the order workbench.",
+  "拣货员用自己的手机打开": "Pickers open this on their own phone",
+  "手机扫这个码，用自己的员工账号登录，就是左边这个界面。谁扫的码算谁拣的，所以不要共用账号。":
+    "Scan this with a phone and sign in with your own staff account to get the screen on the left. Whoever scans is recorded as the picker, so accounts are not shared.",
+  "拣货台二维码": "Picking station QR code",
+  "左边不是截图，是同一个界面。你在这里操作和拣货员在手机上操作，效果完全一样。":
+    "The screen on the left is not a picture of the app — it is the app. Working here does exactly what working on the picker's phone does.",
+
+  // ——— Payment review ———
+  "无法读取支付复核队列。": "Could not load the payment review queue.",
+  "支付人工复核": "Payment review",
+  "回调迟到、金额不符、收据重复或找不到对应订单的支付都会停在这里。确认收到款项后放行，订单会像正常付款一样进入拣货；确认没收到则释放库存。":
+    "Late callbacks, wrong amounts, duplicate receipts and payments with no matching order stop here. Release one once you have confirmed the money arrived and the order goes to picking like any other; confirm it did not and the stock is released.",
+  "只看待处理": "Waiting only",
+  "包含已处理": "Include settled",
+  "你没有支付复核权限，只能查看。": "You can view this queue but not act on it.",
+  "待复核支付": "Payments waiting for review",
+  "每一行都是一位顾客的钱。先在 M-Pesa 商户账单里核对，再做决定。":
+    "Every row is somebody's money. Check the M-Pesa merchant statement before deciding.",
+  "没有等待复核的支付。": "No payments are waiting for review.",
+  "支付金额": "Amount paid",
+  "订单金额": "Order total",
+  "M-Pesa 收据": "M-Pesa receipt",
+  "无": "None",
+  "回调次数": "Callbacks",
+  "访客": "Guest",
+  "Safaricom 查询": "Safaricom query",
+  "已由": "by",
+  "于": "on",
+  "处理": "Settled",
+  "在商户账单里核对到的 M-Pesa 收据号（放行时填写）":
+    "The M-Pesa receipt you matched in the statement (required to release)",
+  "写明你是怎么核对的，例如：商户账单 2026-09-23 14:02 收到 KSh 400，收据 SJ12ABC。":
+    "Say how you checked it — for example: merchant statement 2026-09-23 14:02, KSh 400 received, receipt SJ12ABC.",
+  "已确认收款，订单进入拣货队列。": "Payment confirmed. The order has gone to the picking queue.",
+  "确认收到款项，放行订单": "Money received — release the order",
+  "已标记未收到款项，库存已释放。": "Marked as not received. The stock has been released.",
+  "确认没有收到款项": "Money never arrived",
+  "无主回调": "Callbacks with no order",
+  "找不到对应支付请求的 M-Pesa 回调，通常是顾客直接给 Till 付款。核对后写明处理结果并关闭。":
+    "M-Pesa callbacks with no matching payment request, usually a customer who paid the till directly. Check it, write down what you did, and close it.",
+  "没有待处理的无主回调。": "No unmatched callbacks are waiting.",
+  "收据": "Receipt",
+  "结果": "Outcome",
+  "例如：顾客直接给 Till 付款，已人工建单 DL-20260923-XXXX。":
+    "For example: paid the till directly; order DL-20260923-XXXX created by hand.",
+  "回调已关闭。": "Callback closed.",
+  "记录处理结果": "Record what you did",
+  "无权限": "Not permitted",
+
+  // ——— Store fulfilment desk ———
+  "无法读取该履约点的订单。": "Could not load this node's orders.",
+  "门店履约台": "Store desk",
+  "中央仓发出的包裹到店后，先扫码签收，再交给顾客或 Bolt 骑手，最后记录真实车费。线上订单不进门店普通库存。":
+    "Parcels from the central warehouse are scanned in on arrival, then handed to the customer or a Bolt rider, and the real fare is recorded. Online orders never enter the store's own stock.",
+  "（中央仓）": "(central warehouse)",
+  "扫描包裹号": "Scan the package code",
+  "这个包裹号不在当前履约点的待处理列表里，请核对标签。":
+    "That package code is not among this node's open parcels. Check the label.",
+  "包裹属于订单": "Parcel belongs to order",
+  "暂无订单。": "No orders.",
+  "发出时间": "Sent",
+  "到店时间": "Arrived",
+  "失败原因": "Failure reason",
+  "顾客付 / 实际车费": "Customer paid / actual fare",
+  "已签收包裹。": "Parcel received.",
+  "确认收到包裹": "Confirm the parcel arrived",
+  "已通知顾客可以来取。": "The customer has been told it is ready.",
+  "放到自提区并通知顾客": "Put it on the pickup shelf and tell the customer",
+  "本店还没有上班的骑手。先到「门店骑手」里添加。":
+    "This store has no rider on shift. Add one under Store riders.",
+  "选择骑手": "Choose a rider",
+  "已交给骑手。配送码在顾客自己的订单页上——短信还没开通，请点「用 WhatsApp 发给顾客」。":
+    "Handed to the rider. The delivery code is on the customer's own order page — SMS is not live yet, so press Send on WhatsApp.",
+  "交给骑手并发送配送码": "Hand over and issue the delivery code",
+  "系统会生成一个 4 位配送码，只出现在顾客自己的订单页上。门店和骑手都看不到这个号码。":
+    "A four-digit delivery code is created and shown only on the customer's own order page. Neither the store nor the rider can see it.",
+  "自提完成。": "Picked up.",
+  "核对自提码并交付": "Check the pickup code and hand it over",
+  "请顾客报出自己订单页上的自提码。订单号和手机号都印在包裹上，不能当凭证。":
+    "Ask the customer for the pickup code on their own order page. The order number and phone are printed on the parcel, so neither proves anything.",
+  "骑手姓名": "Rider name",
+  "骑手电话": "Rider phone",
+  "已记录骑手。": "Rider recorded.",
+  "登记外部 Bolt 骑手": "Record an outside Bolt rider",
+  "包裹已交给 Bolt 骑手。配送码在顾客自己的订单页上——短信还没开通，请点「用 WhatsApp 发给顾客」。":
+    "Handed to the Bolt rider. The delivery code is on the customer's own order page — SMS is not live yet, so press Send on WhatsApp.",
+  "交给 Bolt 骑手并发送配送码": "Hand to the Bolt rider and issue the code",
+  "顾客已经付过钱，这单不会取消。等骑手把货送回门店，签收后可以重新派单。":
+    "The customer has already paid, so this order is not cancelled. When the rider brings it back and it is scanned in, it can go out again.",
+  "骑手已出发送回": "Rider is on the way back",
+  "已签收退回的包裹，可以重新派单。": "Returned parcel received. It can be dispatched again.",
+  "确认收到退回的包裹": "Confirm the returned parcel",
+  "实际 Bolt 车费 KSh": "Actual Bolt fare KSh",
+  "车费已记录。": "Fare recorded.",
+  "记录车费": "Record the fare",
+  "已生成新的配送码，旧的作废。请再点一次「用 WhatsApp 发给顾客」。":
+    "A new delivery code has been issued and the old one is dead. Press Send on WhatsApp again.",
+  "配送完成。": "Delivered.",
+  "用顾客的配送码确认送达": "Confirm delivery with the customer's code",
+  "配送码已被多次输错锁住，请重发一个新的。":
+    "Too many wrong codes have locked this order. Issue a new one.",
+  "这单没有可用的手机号，无法通知顾客。请在客服中心补一个。":
+    "This order has no usable phone number, so the customer cannot be told. Add one in the customer service desk.",
+  "用 WhatsApp 发给顾客": "Send on WhatsApp",
+
+  // ——— Finance summary ———
+  "无法读取财务汇总。": "Could not load the finance summary.",
+  "财务汇总": "Finance summary",
+  "按订单创建时间统计。所有金额都可以与 M-Pesa 商户账单逐笔对账。":
+    "Counted by the date an order was created. Every figure can be matched line by line against the M-Pesa merchant statement.",
+  "需要处理": "Needs attention",
+  "GMV（商品销售额）": "GMV (goods sold)",
+  "笔已付款订单": "paid orders",
+  "实际收款": "Cash collected",
+  "含配送费": "including delivery fees",
+  "客单价": "Average order",
+  "笔已完成": "completed orders",
+  "净收入": "Net revenue",
+  "定金计划": "Deposits",
+  "「定金在途」是已收但还没赚到的钱——尾款付清会变成销售额，逾期则大部分要退回，所以不计入净收入。「违约金收入」是逾期后留下的那部分，已经赚到，计入净收入。":
+    "Deposits held is money taken but not yet earned: pay the balance and it becomes a sale, miss the deadline and most of it goes back, so it is left out of net revenue. Forfeited deposits are the part kept after a lapse — that is earned, and it counts.",
+  "定金在途": "Deposits held",
+  "笔持有中，不计入净收入": "held, excluded from net revenue",
+  "待收尾款": "Balances due",
+  "这些单还要收到的钱": "still to be collected on these orders",
+  "违约金收入": "Forfeited deposits",
+  "笔逾期，已计入净收入": "lapsed, counted in net revenue",
+  "待退顾客": "Owed back",
+  "已退": "Refunded",
+  "逾期应退但还没在 M-Pesa 执行": "owed after a lapse but not yet paid in M-Pesa",
+  "统一按销售额 25% 计提，完成交付满 24 小时后可确认。":
+    "Accrued at 25% of the sale and confirmable 24 hours after handover.",
+  "笔": "orders",
+  "可发放": "Payable",
+  "已发放": "Paid out",
+  "已冲回": "Reversed",
+  "配送经济": "Delivery economics",
+  "顾客统一付 KSh 50，门店付的是真实 Bolt 车费。差额是公司补贴。":
+    "The customer pays a flat KSh 50 and the store pays the real Bolt fare. The difference is what the company absorbs.",
+  "配送收入": "Delivery fees collected",
+  "实际车费": "Actual fares",
+  "公司补贴": "Subsidy absorbed",
+  "单均车费": "Average fare",
+  "笔还没登记车费": "deliveries with no fare recorded",
+  "全部已登记": "all recorded",
+  "待退款": "Refunds owed",
+  "已收款但订单被作废的订单。在 M-Pesa 里退完钱后，回到订单页登记退款凭证。":
+    "Orders that were paid for and then written off. Refund in M-Pesa, then record the receipt on the order.",
+  "本期已登记退款": "Refunds recorded this period",
+  "没有欠顾客的退款。": "No refunds are owed.",
+  "已付": "Paid",
+  "待退": "Owed",
+  "下单时间": "Ordered",
+
+  // ——— Deposit board ———
+  "无法读取定金看板。": "Could not load the deposit board.",
+  "持有中订单": "Orders on hold",
+  "锁定件数": "Items held",
+  "24 小时内到期": "Due within 24 hours",
+  "2 天内到期": "Due within 2 days",
+  "定金看板": "Deposit board",
+  "已付 50% 定金、货已锁定、等尾款的订单。按到期时间从近到远排，最上面的今天就该打电话。":
+    "Orders where half was paid, the garment is off sale, and the balance is still owed. Sorted by deadline, so the ones at the top are today's phone calls.",
+  "读取中…": "Loading…",
+  "尾款只能由顾客本人在自己的 M-Pesa 手机上付，这里不提供代收操作。到期未付会自动释放库存并生成退款工单。":
+    "Only the customer can pay the balance, from their own M-Pesa phone; there is no way to take it here. A missed deadline releases the garment and raises a refund request by itself.",
+  "已付定金": "Deposit paid",
+  "到期时间": "Due",
+  "今天到期": "Due today",
+  "剩 1 天": "1 day left",
+  "剩 {days} 天": "{days} days left",
+  "尾款支付进行中，先别打扰": "Balance payment in progress — leave them to it",
+  "定金付于": "Deposit paid on",
+  "当前没有定金持有的订单": "No garments are being held on deposit",
+  "顾客在结账时选择「先付 50%」后，订单会出现在这里。":
+    "Orders appear here when a customer chooses to pay half at checkout.",
+  "已逾期的定金": "Lapsed deposits",
+  "到期未付尾款、库存已经放回去的订单。违约金是实收定金减去应退金额，退款仍需财务在 M-Pesa 手工执行。":
+    "Orders where the balance was never paid and the garment went back on sale. The forfeit is the deposit taken less what is owed back, and finance still pays that refund by hand in M-Pesa.",
+  "逾期订单": "Lapsed orders",
+  "去退款审批": "Go to refund approvals",
+  "履约状态": "Fulfilment status",
+  "原因": "Reason",
+  "系统自动": "Automatic",
+
+  // ——— Customer service ———
+  "重发会生成一个新的配送码，旧码立刻失效。新码只出现在顾客自己的订单页上，客服界面永远看不到码本身。":
+    "Resending issues a new delivery code and kills the old one immediately. The new one appears only on the customer's own order page; customer service never sees a code.",
+  "客服": "Customer service",
+  "工单": "Cases"
 };
+

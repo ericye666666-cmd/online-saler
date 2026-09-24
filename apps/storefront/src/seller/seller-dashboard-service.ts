@@ -218,10 +218,15 @@ export async function getSellerDashboardForCustomer(customer: CustomerSession | 
   };
 }
 
-export function sellerHeaderAction(activeSeller: boolean): { label: string; href: string; active: boolean } {
+/**
+ * Returns dictionary keys rather than words. The label used to be Chinese for a
+ * seller and English for everyone else, which no language switch could fix
+ * because neither string ever reached the dictionary.
+ */
+export function sellerHeaderAction(activeSeller: boolean): { labelKey: string; href: string; active: boolean } {
   return activeSeller
-    ? { label: "推广者中台", href: "/seller", active: true }
-    : { label: "Join seller", href: "/join-seller", active: false };
+    ? { labelKey: "seller.headerDashboard", href: "/seller", active: true }
+    : { labelKey: "seller.headerJoin", href: "/join-seller", active: false };
 }
 
 export function sellerRewardStatus(status: CommissionStatus): SellerRewardStatus {

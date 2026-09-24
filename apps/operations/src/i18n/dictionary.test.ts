@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { globSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-import { fillPlaceholders, placeholderNames, translate } from "./dictionary";
+import { fillPlaceholders, hasEnglishTranslation, placeholderNames, translate } from "./dictionary";
 import { enDictionary } from "./en";
 import { normalizeOperationsLocale } from "./locale";
 import { kidsAgeRangeLabels } from "../app/product/apparel-size";
@@ -75,3 +77,41 @@ assert.ok(chineseAgeLabels.some((label) => label.includes("岁")), "Kids age lab
 assert.notDeepEqual(englishAgeLabels, chineseAgeLabels, "Kids age labels are frozen to one language.");
 
 console.log(`operations i18n kids age labels ok (${englishAgeLabels.length} rows)`);
+
+/**
+ * Every Chinese string the workspace renders has to have English beside it.
+ *
+ * `translate` falls back to the Chinese source when a key is missing, which is
+ * what lets this file grow page by page without breaking the UI — and is also
+ * why a missing translation is invisible unless somebody switches to English and
+ * looks. A feature shipped over two days put four hundred Chinese strings on
+ * screen for English-reading staff, and nothing failed. This is that check.
+ */
+const sourceRoot = fileURLToPath(new URL("..", import.meta.url));
+const sourceFiles = globSync("**/*.{ts,tsx}", { cwd: sourceRoot })
+  .map((file) => file.replace(/\\/g, "/"))
+  .filter((file) => !file.includes(".test."));
+// A glob that matches nothing would make this whole check pass silently, which
+// is the same failure it exists to catch.
+assert.ok(sourceFiles.length > 100, `only ${sourceFiles.length} source files found — the glob is not reaching them`);
+const chineseCall = /\bt\(\s*"((?:[^"\\]|\\.)*)"/g;
+const chinese = /[一-鿿]/;
+const untranslated: string[] = [];
+
+for (const file of sourceFiles) {
+  const source = readFileSync(new URL(`../${file.replace(/\\/g, "/")}`, import.meta.url), "utf8");
+  for (const match of source.matchAll(chineseCall)) {
+    const key = match[1]!.replace(/\\"/g, '"');
+    if (!chinese.test(key)) continue;
+    if (hasEnglishTranslation(key)) continue;
+    untranslated.push(`${file}: ${key}`);
+  }
+}
+
+assert.deepEqual(
+  untranslated,
+  [],
+  `These Chinese strings render to English-reading staff as Chinese. Add them to enDictionary:\n${untranslated.join("\n")}`
+);
+
+console.log(`operations i18n coverage ok (${sourceFiles.length} source files, every t("中文") translated)`);

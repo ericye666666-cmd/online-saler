@@ -172,6 +172,8 @@ export function PickingStation() {
       id: order.id,
       orderNumber: order.orderNumber,
       destination: destinationLabel(order),
+      nodeName: (order.fulfillment?.fulfillmentNode ?? order.fulfillmentNode)?.name ?? "—",
+      isDelivery: order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY",
       fulfillment: order.fulfillment
         ? {
             status: order.fulfillment.status,
@@ -403,9 +405,9 @@ export function PickingStation() {
         <FulfillmentLabelPrinter
           labels={[{
             packageCode: labelOrder.fulfillment?.packageCode ?? "",
-            nodeName: labelOrder.destination,
+            nodeName: labelOrder.nodeName,
             orderNumber: labelOrder.orderNumber,
-            isDelivery: labelOrder.destination.startsWith(t("送货")),
+            isDelivery: labelOrder.isDelivery,
             itemCount: labelOrder.items.length,
             customerName: null,
             customerPhone: null,
@@ -441,11 +443,17 @@ export function PickingStationPage() {
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       <div className="w-full lg:max-w-[420px]">
-        <div className="rounded-[28px] border-4 bg-background p-3 shadow-sm lg:p-4">
+        {/* The phone frame is a desk affordance: it tells a supervisor on a
+            laptop that they are looking at the picker's screen. On an actual
+            phone it is just a border eating 28px of a 375px viewport. */}
+        <div className="bg-background lg:rounded-[28px] lg:border-4 lg:p-4 lg:shadow-sm">
           <PickingStation />
         </div>
       </div>
-      <div className="flex max-w-md flex-col gap-3 rounded-xl border p-4">
+      {/* Hidden on phones. A picker who is already holding this screen does not
+          need a QR code that opens this screen, and on a narrow viewport it
+          pushes the actual work off the bottom. */}
+      <div className="hidden max-w-md flex-col gap-3 rounded-xl border p-4 lg:flex">
         <h2 className="font-semibold">{t("拣货员用自己的手机打开")}</h2>
         <p className="text-muted-foreground text-sm">
           {t("手机扫这个码，用自己的员工账号登录，就是左边这个界面。谁扫的码算谁拣的，所以不要共用账号。")}
