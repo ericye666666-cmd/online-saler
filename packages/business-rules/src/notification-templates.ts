@@ -16,7 +16,6 @@ export type NotificationTemplateInput = {
   deliveryCode?: string | null;
   customerName?: string | null;
   nodeName?: string | null;
-  nodeMapsUrl?: string | null;
   amountKsh?: number | null;
   itemTitle?: string | null;
   itemCount?: number | null;
@@ -50,16 +49,26 @@ const templates: Record<NotificationTopicName, (input: NotificationTemplateInput
   // are the only two that matter to someone who has paid half: what is left to
   // pay, and the day it has to be paid by.
   CUSTOMER_DEPOSIT_RECEIVED: (input) =>
-    `Direct Loop: deposit received for order ${input.orderNumber}. ${items(input)} held for you. Balance ${money(input.balanceKsh)} due by ${input.dueDateLabel ?? "the due date"} or the item goes back on sale. ${input.supportPhone ?? ""}`,
+    `Direct Loop: deposit received for order ${input.orderNumber}. ${items(input)} held. Balance ${money(input.balanceKsh)} due by ${input.dueDateLabel ?? "the due date"} or it goes back on sale. ${input.supportPhone ?? ""}`,
   CUSTOMER_DEPOSIT_BALANCE_DUE: (input) =>
     `Direct Loop: ${input.daysLeft === 1 ? "last day" : `${input.daysLeft ?? ""} days left`} to pay the ${money(input.balanceKsh)} balance on order ${input.orderNumber}. Pay by ${input.dueDateLabel ?? "the due date"} to keep ${items(input)}. ${input.supportPhone ?? ""}`,
   // Says plainly that money is coming back and that it is not all of it. A
   // shopper who reads "refund" and expects the full deposit calls support.
   CUSTOMER_DEPOSIT_EXPIRED: (input) =>
-    `Direct Loop: the balance on order ${input.orderNumber} was not paid in time, so ${items(input)} went back on sale. We will send ${money(input.amountKsh)} of your deposit back to your M-Pesa number. ${input.supportPhone ?? ""}`,
+    `Direct Loop: the balance on order ${input.orderNumber} was not paid in time, so ${items(input)} went back on sale. ${money(input.amountKsh)} of your deposit returns to your M-Pesa. ${input.supportPhone ?? ""}`,
 
+  // No map link. Two reasons, and either alone would be enough.
+  //
+  // The DIRECTLOOP sender id was registered with Safaricom as Transactional
+  // against four declared message formats, none of which carries a URL, and
+  // promotional traffic on it costs KES 25,000. A shortened link is the single
+  // clearest marker a bulk-SMS filter reads as marketing.
+  //
+  // It also doubled the cost: with the link this message ran to 157 characters,
+  // which is two segments. Without it, 107 — one. The map is on the shopper's
+  // own order page, where it can be tapped rather than retyped.
   CUSTOMER_ORDER_READY_FOR_PICKUP: (input) =>
-    `Direct Loop: order ${input.orderNumber} is ready for pickup at ${input.nodeName ?? "our store"}. ${input.nodeMapsUrl ?? ""} Pickup code ${input.pickupCode ?? input.orderNumber}. ${input.supportPhone ?? ""}`,
+    `Direct Loop: order ${input.orderNumber} is ready for pickup at ${input.nodeName ?? "our store"}. Pickup code ${input.pickupCode ?? input.orderNumber}. ${input.supportPhone ?? ""}`,
   CUSTOMER_ORDER_DISPATCHED: (input) =>
     `Direct Loop: order ${input.orderNumber} is on the way${input.riderName ? ` with ${input.riderName}` : ""}. Please keep your phone on. ${input.supportPhone ?? ""}`,
   // The instruction matters as much as the digits: a code given before the goods

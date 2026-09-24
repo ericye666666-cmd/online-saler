@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-const workflow = await readFile(new URL("../.github/workflows/deploy-api-staging.yml", import.meta.url), "utf8");
+// Normalised, because a checkout on Windows carries CRLF while every assertion
+// below is written against LF. A test that passes or fails on the developer's
+// git settings rather than on the workflow teaches people to ignore it.
+const workflow = (await readFile(new URL("../.github/workflows/deploy-api-staging.yml", import.meta.url), "utf8"))
+  .replace(/\r\n/g, "\n");
 const steps = workflow.split(/^      - name: /m).slice(1);
 const namedStep = (name) => {
   const step = steps.find((entry) => entry.startsWith(`${name}\n`));

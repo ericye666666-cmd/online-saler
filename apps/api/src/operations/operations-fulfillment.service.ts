@@ -1741,7 +1741,6 @@ export class OperationsFulfillmentService {
         orderNumber: order.orderNumber,
         customerName: order.customer.displayName,
         nodeName: order.fulfillmentNode?.name ?? null,
-        nodeMapsUrl: order.fulfillmentNode?.mapsUrl ?? null,
         itemCount: order.items.length,
         amountKsh: extra.amountKsh ?? null,
         riderName: extra.riderName ?? null,
