@@ -60,6 +60,7 @@ import {
   verifyFulfillmentItemBarcode
 } from "./operations-fulfillment-state";
 import { refreshWarehouseLocationStatuses } from "./warehouse-capacity";
+import { assertOrderInScope, scopedNodeId, storeScopeFor } from "./store-scope";
 
 const ORDER_INCLUDE = {
   customer: true,
@@ -246,10 +247,11 @@ export class OperationsFulfillmentService {
   ) {}
 
   async summary(input: OrderCenterListInput) {
-    await this.access.requirePermission(input.adminUserId, "orders.view");
+    const session = await this.access.requirePermission(input.adminUserId, "orders.view");
+    const nodeId = scopedNodeId(await storeScopeFor(session), input.nodeId);
     await this.ensurePaidFulfillments();
     const orders = await prisma.order.findMany({
-      where: this.orderWhere({ ...input, scope: "all", tab: "all" }),
+      where: this.orderWhere({ ...input, nodeId, scope: "all", tab: "all" }),
       select: {
         status: true,
         fulfillment: { select: { status: true } },
@@ -270,6 +272,7 @@ export class OperationsFulfillmentService {
       "out-for-delivery": 0,
       "delivery-failed": 0,
       "returning-to-node": 0,
+      exception: 0,
       completed: 0,
       "after-sale": 0,
       cancelled: 0
@@ -288,10 +291,13 @@ export class OperationsFulfillmentService {
   }
 
   async listOrders(input: OrderCenterListInput) {
-    await this.access.requirePermission(input.adminUserId, "orders.view");
+    const session = await this.access.requirePermission(input.adminUserId, "orders.view");
+    // A store account is narrowed to its own store here, on the server, so a
+    // screen that forgets to pass nodeId still cannot list another store.
+    const nodeId = scopedNodeId(await storeScopeFor(session), input.nodeId);
     await this.ensurePaidFulfillments();
     const orders = await prisma.order.findMany({
-      where: this.orderWhere(input),
+      where: this.orderWhere({ ...input, nodeId }),
       include: ORDER_INCLUDE,
       orderBy: { createdAt: "desc" },
       take: 150
@@ -300,10 +306,28 @@ export class OperationsFulfillmentService {
   }
 
   async orderDetail(orderId: string, adminUserId?: string) {
-    await this.access.requirePermission(adminUserId, "orders.view");
+    const session = await this.access.requirePermission(adminUserId, "orders.view");
     await this.ensurePaidFulfillments(orderId);
     const order = await this.requireOrder(orderId);
+    assertOrderInScope(await storeScopeFor(session), order);
     return (await this.attachInventory([order]))[0];
+  }
+
+  /**
+   * Refuses any action on an order that belongs to a different store than the
+   * signed-in account. The controller calls it before every order action, so a
+   * store account cannot receive, hand over or cancel another store's parcel by
+   * sending its id: the list hiding it is not the only line of defence.
+   */
+  async assertOrderInStoreScope(orderId: string, adminUserId?: string) {
+    const scope = await storeScopeFor(await this.access.session(adminUserId));
+    if (!scope) return;
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { fulfillmentNodeId: true, fulfillment: { select: { fulfillmentNodeId: true } } }
+    });
+    if (!order) throw new NotFoundException("Order was not found.");
+    assertOrderInScope(scope, order);
   }
 
   async employees(adminUserId?: string) {
@@ -1301,9 +1325,11 @@ export class OperationsFulfillmentService {
 
   /** Nodes a package can be routed to. */
   async nodes(adminUserId?: string) {
-    await this.access.requirePermission(adminUserId, "nodes.view");
+    const session = await this.access.requirePermission(adminUserId, "nodes.view");
+    // A store account is offered its own store and nothing else.
+    const scope = await storeScopeFor(session);
     return prisma.fulfillmentNode.findMany({
-      where: { status: FulfillmentNodeStatus.ACTIVE },
+      where: { status: FulfillmentNodeStatus.ACTIVE, ...(scope ? { id: scope.id } : {}) },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }]
     });
   }
@@ -1421,6 +1447,11 @@ export class OperationsFulfillmentService {
         data: {
           status: FulfillmentStatus.IN_TRANSIT_TO_NODE,
           packageCode,
+          // The store's board and scanner read the node off this record. The
+          // check above used the order's node, so the record is made to name the
+          // same one: a parcel sent to Kinoo is on Kinoo's en-route list even if
+          // its task was created before the node was copied onto it.
+          fulfillmentNodeId: node.id,
           sentToNodeByEmployeeId: actor.actorEmployeeId,
           sentToNodeAt: now
         }
@@ -1993,7 +2024,7 @@ export class OperationsFulfillmentService {
     if (input.fulfillmentMethod && Object.values(FulfillmentMethod).includes(input.fulfillmentMethod)) and.push({ fulfillmentMethod: input.fulfillmentMethod });
     if (input.paymentStatus && Object.values(PaymentStatus).includes(input.paymentStatus)) and.push({ payments: { some: { status: input.paymentStatus } } });
     if (input.orderStatus && Object.values(OrderStatus).includes(input.orderStatus)) and.push({ status: input.orderStatus });
-    if (input.nodeId?.trim()) and.push({ fulfillment: { is: { fulfillmentNodeId: input.nodeId.trim() } } });
+    if (input.nodeId?.trim()) and.push(nodeWhere(input.nodeId.trim()));
     if (input.packageCode?.trim()) and.push({ fulfillment: { is: { packageCode: { contains: input.packageCode.trim(), mode: "insensitive" } } } });
     if (input.pickerEmployeeId?.trim()) and.push({ fulfillment: { is: { assignedPickerEmployeeId: input.pickerEmployeeId.trim() } } });
     if (input.packerEmployeeId?.trim()) and.push({ fulfillment: { is: { packedByEmployeeId: input.packerEmployeeId.trim() } } });
@@ -2506,23 +2537,63 @@ function labelNotPrinted() {
   });
 }
 
-function tabWhere(tab: OrderCenterTab): Prisma.OrderWhereInput {
-  // A deposit order belongs here too — it is waiting for money, just on a
-  // seven-day clock instead of a five-minute one.
-  if (tab === "pending-payment") return { status: { in: [OrderStatus.DRAFT, OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_PROCESSING, OrderStatus.DEPOSIT_PAID] } };
-  if (tab === "waiting-pick") return { fulfillment: { is: { status: FulfillmentStatus.PAID } } };
-  if (tab === "picking") return { fulfillment: { is: { status: FulfillmentStatus.PICKING } } };
-  if (tab === "ready-to-pack") return { fulfillment: { is: { status: FulfillmentStatus.READY_TO_PACK } } };
-  if (tab === "packed") return { fulfillment: { is: { status: FulfillmentStatus.PACKED } } };
-  if (tab === "in-transit-to-node") return { fulfillment: { is: { status: FulfillmentStatus.IN_TRANSIT_TO_NODE } } };
-  if (tab === "at-node") return { fulfillment: { is: { status: FulfillmentStatus.ARRIVED_AT_NODE } } };
-  if (tab === "ready-for-pickup") return { fulfillment: { is: { status: FulfillmentStatus.READY_FOR_PICKUP } } };
-  if (tab === "ready-for-dispatch") return { fulfillment: { is: { status: FulfillmentStatus.READY_FOR_DISPATCH } } };
-  if (tab === "out-for-delivery") return { fulfillment: { is: { status: FulfillmentStatus.OUT_FOR_DELIVERY } } };
-  if (tab === "completed") return { OR: [{ status: OrderStatus.COMPLETED }, { fulfillment: { is: { status: FulfillmentStatus.COMPLETED } } }] };
-  if (tab === "after-sale") return afterSaleWhere();
-  if (tab === "cancelled") return { status: { in: [OrderStatus.CANCELLED, OrderStatus.EXPIRED] } };
+/**
+ * The rows behind one status tab. It has to agree with `orderCenterTab`, which
+ * counts them: an order counted under 已取消 must not also be listed under 异常,
+ * or the numbers on the tabs stop adding up to 全部. So each tab leaves out the
+ * orders a higher-priority tab has already claimed, in the order
+ * `orderCenterTab` checks them: after-sale, cancelled, completed, exception.
+ */
+export function tabWhere(tab: OrderCenterTab): Prisma.OrderWhereInput {
+  const afterSale = afterSaleWhere();
+  const cancelled: Prisma.OrderWhereInput = { status: { in: CANCELLED_TAB_STATUSES } };
+  const completed: Prisma.OrderWhereInput = { OR: [{ status: OrderStatus.COMPLETED }, { fulfillment: { is: { status: FulfillmentStatus.COMPLETED } } }] };
+  const exception: Prisma.OrderWhereInput = { fulfillment: { is: { status: FulfillmentStatus.EXCEPTION } } };
+
+  if (tab === "after-sale") return afterSale;
+  if (tab === "cancelled") return { AND: [cancelled, { NOT: afterSale }] };
+  if (tab === "completed") return { AND: [completed, { NOT: afterSale }, { NOT: cancelled }] };
+  if (tab === "exception") return { AND: [exception, { NOT: afterSale }, { NOT: cancelled }, { NOT: completed }] };
+
+  const open: Prisma.OrderWhereInput[] = [afterSale, cancelled, completed, exception].map((where) => ({ NOT: where }));
+  const noTask: Prisma.OrderWhereInput = { fulfillment: { is: null } };
+  const paid: Prisma.OrderWhereInput = { status: { in: [OrderStatus.PAID, OrderStatus.FULFILLING] } };
+  if (tab === "pending-payment") return { AND: [...open, noTask, { NOT: paid }] };
+  if (tab === "waiting-pick") {
+    return { AND: [...open, { OR: [{ fulfillment: { is: { status: FulfillmentStatus.PAID } } }, { AND: [noTask, paid] }] }] };
+  }
+  const status = TAB_FULFILLMENT_STATUS[tab];
+  if (status) return { AND: [...open, { fulfillment: { is: { status } } }] };
   return {};
+}
+
+/** Order statuses that land on 已取消. Must match `orderCenterTab`. */
+const CANCELLED_TAB_STATUSES: OrderStatus[] = [OrderStatus.CANCELLED, OrderStatus.EXPIRED, OrderStatus.DEPOSIT_EXPIRED];
+
+const TAB_FULFILLMENT_STATUS: Partial<Record<OrderCenterTab, FulfillmentStatus>> = {
+  picking: FulfillmentStatus.PICKING,
+  "ready-to-pack": FulfillmentStatus.READY_TO_PACK,
+  packed: FulfillmentStatus.PACKED,
+  "in-transit-to-node": FulfillmentStatus.IN_TRANSIT_TO_NODE,
+  "at-node": FulfillmentStatus.ARRIVED_AT_NODE,
+  "ready-for-pickup": FulfillmentStatus.READY_FOR_PICKUP,
+  "ready-for-dispatch": FulfillmentStatus.READY_FOR_DISPATCH,
+  "out-for-delivery": FulfillmentStatus.OUT_FOR_DELIVERY,
+  "delivery-failed": FulfillmentStatus.DELIVERY_FAILED,
+  "returning-to-node": FulfillmentStatus.RETURNING_TO_NODE
+};
+
+/**
+ * Orders going to one node. The fulfillment record is what the store end
+ * trusts; an order whose task has no node yet falls back to the node on the
+ * order itself, so a parcel routed to a store is never on nobody's list.
+ */
+export function nodeWhere(nodeId: string): Prisma.OrderWhereInput {
+  return { OR: [
+    { fulfillment: { is: { fulfillmentNodeId: nodeId } } },
+    { fulfillmentNodeId: nodeId, fulfillment: { is: { fulfillmentNodeId: null } } },
+    { fulfillmentNodeId: nodeId, fulfillment: { is: null } }
+  ] };
 }
 
 function afterSaleWhere(): Prisma.OrderWhereInput {

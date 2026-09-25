@@ -2869,4 +2869,10 @@ export const enDictionary: Record<string, string> = {
   "挪到哪个货架": "Move to shelf",
   "系统改完后，请把这件衣服实际搬到新货架上。": "Once saved, carry the garment itself to the new shelf.",
   "确认挪到 {code}": "Move to {code}",
+  "在途（发往门店中）": "In transit (to store)",
+  "⑤ 在途（发往门店中）": "⑤ In transit (to store)",
+  "已经按了「发往门店」、门店还没扫码签收的包裹。门店签收后自动从这里消失。只打了面单、没按发往门店的包裹还在 ④。": "Parcels marked \"Send to store\" that the store has not scanned in yet. They leave this list once the store receives them. A parcel whose label was printed but which was never sent is still under ④.",
+  "包裹号": "Package code",
+  "目的门店": "Destination store",
+  "发出人": "Sent by",
 };

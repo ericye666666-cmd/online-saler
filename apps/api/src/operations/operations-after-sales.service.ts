@@ -4,6 +4,7 @@ import { ActorType, AfterSaleReturnReason, AfterSaleReturnStatus, CommissionAdju
 import { OperationsAccessService } from "./operations-access.service";
 import { assertRefundAmount, assertReturnWindow, commissionShares, requiredText, RETURN_REASONS } from "./operations-after-sales.rules";
 import { refreshWarehouseLocationStatuses, WAREHOUSE_OCCUPYING_STATUSES } from "./warehouse-capacity";
+import { scopedNodeId, storeScopeFor } from "./store-scope";
 
 export type AfterSalesInput = {
   idempotencyKey?: string; note?: string; orderItemId?: string; reason?: string; measurementDifferenceCm?: number;
@@ -36,7 +37,9 @@ export class OperationsAfterSalesService {
    * something it is still waiting for.
    */
   async returnsToReceive(nodeId: string, adminUserId: string) {
-    await this.access.requirePermission(adminUserId, "orders.view");
+    const session = await this.access.requirePermission(adminUserId, "orders.view");
+    // A store account sees the returns coming to its own store only.
+    nodeId = scopedNodeId(await storeScopeFor(session), nodeId) ?? nodeId;
     return {
       returns: await prisma.afterSaleReturn.findMany({
         where: { returnNodeId: nodeId, status: AfterSaleReturnStatus.APPROVED },

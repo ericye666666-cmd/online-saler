@@ -153,6 +153,7 @@ type OrderRow = {
     packageCode?: string | null;
     packageLabelPrintedAt?: string | null;
     sentToNodeAt?: string | null;
+    sentToNodeBy?: FulfillmentEmployee | null;
     arrivedAtNodeAt?: string | null;
     actualDeliveryCostKsh?: number | null;
     deliveryRiderName?: string | null;
@@ -537,7 +538,11 @@ const DISPATCH_STEPS = [
   { key: "pick", label: "① 打单拣货", statuses: ["PAID"], hint: "先打一张拣货单，按货架位走一遍。领取拣货后这些单进入下一步。" },
   { key: "scan", label: "② 逐件核对", statuses: ["PICKING"], hint: "拿回来的每一件都要扫码核对。全部核对完，订单自动进入待打包。" },
   { key: "pack", label: "③ 打包", statuses: ["READY_TO_PACK"], hint: "开始打包 → 完成打包。填包装方式和包裹数量，完成时生成包裹号。" },
-  { key: "dispatch", label: "④ 打面单发车", statuses: ["PACKED"], hint: "送货上门的单先指定中转点（门店）。然后勾上整组打面单，第 1 张贴箱子、其余放进去。面单印出后才能发往门店。" }
+  { key: "dispatch", label: "④ 打面单发车", statuses: ["PACKED"], hint: "送货上门的单先指定中转点（门店）。然后勾上整组打面单，第 1 张贴箱子、其余放进去。面单印出后才能发往门店。" },
+  // Not a job for the warehouse any more, but the question it is asked most:
+  // "we sent it — did the store get it?" A parcel stays here until the store
+  // scans it in.
+  { key: "transit", label: "⑤ 在途（发往门店中）", statuses: ["IN_TRANSIT_TO_NODE"], hint: "已经按了「发往门店」、门店还没扫码签收的包裹。门店签收后自动从这里消失。只打了面单、没按发往门店的包裹还在 ④。" }
 ] as const;
 
 type DispatchStep = (typeof DISPATCH_STEPS)[number]["key"];
@@ -737,7 +742,9 @@ export function DailyDispatchPage() {
       ) : null}
 
       <div className="flex flex-col gap-6 pb-24">
-        {groups.length ? groups.map((group) => {
+        {step === "transit" && groups.length ? (
+          <InTransitList groups={groups} />
+        ) : groups.length ? groups.map((group) => {
           const allSelected = group.orders.every((order) => selected.has(order.id));
           return (
             <section key={group.key} className="flex flex-col gap-3">
@@ -806,6 +813,49 @@ export function DailyDispatchPage() {
         <PickingSheetDialog lines={pickingLines} onClose={() => setPickingSheet(null)} />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Parcels on their way to a store, one table per store: which parcel, when it
+ * left and who sent it. Read-only — the store receives it on its own screen.
+ */
+function InTransitList({ groups }: { groups: OrderGroup[] }) {
+  return (
+    <>
+      {groups.map((group) => (
+        <section key={group.key} className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3 border-b pb-2">
+            <h2 className="font-semibold text-base">{group.label}</h2>
+            <Badge variant="secondary">{t("{count} 单", { count: group.orders.length })}</Badge>
+          </div>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">{t("订单号")}</th>
+                  <th className="px-3 py-2 font-medium">{t("包裹号")}</th>
+                  <th className="px-3 py-2 font-medium">{t("目的门店")}</th>
+                  <th className="px-3 py-2 font-medium">{t("发出时间")}</th>
+                  <th className="px-3 py-2 font-medium">{t("发出人")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.orders.map((order) => (
+                  <tr key={order.id} className="border-t">
+                    <td className="px-3 py-2"><Link className="underline" href={`/orders/${order.id}`}>{order.orderNumber}</Link></td>
+                    <td className="px-3 py-2 font-mono">{order.fulfillment?.packageCode ?? "—"}</td>
+                    <td className="px-3 py-2">{order.fulfillment?.fulfillmentNode?.name ?? order.fulfillmentNode?.name ?? "—"}</td>
+                    <td className="px-3 py-2">{order.fulfillment?.sentToNodeAt ? formatDate(order.fulfillment.sentToNodeAt) : "—"}</td>
+                    <td className="px-3 py-2">{order.fulfillment?.sentToNodeBy?.name ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+    </>
   );
 }
 

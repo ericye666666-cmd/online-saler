@@ -19,6 +19,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { operationsRequester } from "@/lib/operations-request";
 import { t } from "@/i18n/runtime";
 import { customerWhatsappUrl } from "../orders/customer-whatsapp";
+import { storeConsoleNodes } from "./store-console-nodes";
 
 /**
  * The store's phone screen, as one icon with three icons inside it.
@@ -64,7 +65,9 @@ export function StoreConsole() {
   const request = useMemo(() => operationsRequester(accessToken), [accessToken]);
 
   const [nodes, setNodes] = useState<StoreNode[]>([]);
+  const [lockedNode, setLockedNode] = useState<StoreNode | null>(null);
   const [nodeId, setNodeId] = useState("");
+  const homeNodeId = session?.adminUser?.linkedEmployee?.homeNodeId ?? null;
   const [orders, setOrders] = useState<StoreOrder[]>([]);
   const [tile, setTile] = useState<Tile | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,14 +78,17 @@ export function StoreConsole() {
     if (!accessToken) return;
     void (async () => {
       try {
-        const list = await request<StoreNode[]>("/operations/orders/nodes");
-        setNodes(list);
-        setNodeId((current) => current || list.find((node) => node.type === "STORE")?.id || list[0]?.id || "");
+        // The server already sends a store account its own store and nothing
+        // else; this decides whether to show a picker at all.
+        const { options, locked } = storeConsoleNodes(await request<StoreNode[]>("/operations/orders/nodes"), homeNodeId);
+        setNodes(options);
+        setLockedNode(locked);
+        setNodeId((current) => locked?.id || current || options[0]?.id || "");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : t("无法读取履约点。"));
       }
     })();
-  }, [accessToken, request]);
+  }, [accessToken, homeNodeId, request]);
 
   const load = useCallback(async () => {
     if (!accessToken || !nodeId) return;
@@ -144,9 +150,14 @@ export function StoreConsole() {
             <ArrowLeftIcon data-icon="inline-start" />{t("返回")}
           </Button>
         ) : null}
-        <NativeSelect className="h-10 flex-1" value={nodeId} onChange={(event) => setNodeId(event.target.value)}>
-          {nodes.map((node) => <NativeSelectOption key={node.id} value={node.id}>{node.name}</NativeSelectOption>)}
-        </NativeSelect>
+        {lockedNode ? (
+          // A store account works its own store. There is nothing to choose.
+          <p className="flex h-10 flex-1 items-center font-semibold text-lg">{lockedNode.name}</p>
+        ) : (
+          <NativeSelect className="h-10 flex-1" value={nodeId} onChange={(event) => setNodeId(event.target.value)}>
+            {nodes.map((node) => <NativeSelectOption key={node.id} value={node.id}>{node.name}</NativeSelectOption>)}
+          </NativeSelect>
+        )}
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load()}>
           <RefreshCwIcon />
         </Button>

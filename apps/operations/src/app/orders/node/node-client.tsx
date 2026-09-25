@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatKsh, formatMoment, operationsRequester } from "@/lib/operations-request";
 import { t } from "@/i18n/runtime";
 import { customerWhatsappUrl } from "../customer-whatsapp";
+import { storeConsoleNodes } from "../../store/store-console-nodes";
 
 /**
  * The store's own screen. A package arrives from the warehouse, the store scans
@@ -107,8 +108,10 @@ export function NodeWorkbenchPage() {
   const canRecordCost = hasPermission("orders.delivery-cost");
 
   const [nodes, setNodes] = useState<NodeOption[]>([]);
+  const [lockedNode, setLockedNode] = useState<NodeOption | null>(null);
   const [riders, setRiders] = useState<NodeRider[]>([]);
   const [nodeId, setNodeId] = useState("");
+  const homeNodeId = session?.adminUser?.linkedEmployee?.homeNodeId ?? null;
   const [orders, setOrders] = useState<NodeOrder[]>([]);
   const [returnsToReceive, setReturnsToReceive] = useState<NodeReturn[]>([]);
   const [scan, setScan] = useState("");
@@ -125,13 +128,15 @@ export function NodeWorkbenchPage() {
     void (async () => {
       try {
         const list = await request<NodeOption[]>("/operations/orders/nodes");
-        setNodes(list);
-        setNodeId((current) => current || list.find((node) => node.type === "STORE")?.id || list[0]?.id || "");
+        const { options, locked } = storeConsoleNodes(list, homeNodeId, { includeWarehouse: true });
+        setNodes(options);
+        setLockedNode(locked);
+        setNodeId((current) => locked?.id || current || options.find((node) => node.type === "STORE")?.id || options[0]?.id || "");
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : t("无法读取履约点。"));
       }
     })();
-  }, [accessToken, request]);
+  }, [accessToken, homeNodeId, request]);
 
   const load = useCallback(async () => {
     if (!accessToken || !nodeId) return;
@@ -238,13 +243,18 @@ export function NodeWorkbenchPage() {
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted-foreground">{t("履约点")}</span>
-              <NativeSelect value={nodeId} onChange={(event) => setNodeId(event.target.value)}>
-                {nodes.map((node) => (
-                  <NativeSelectOption key={node.id} value={node.id}>
-                    {node.name}{node.type === "WAREHOUSE" ? t("（中央仓）") : ""}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+              {lockedNode ? (
+                // A store account works its own store; there is nothing to pick.
+                <span className="flex h-9 items-center font-semibold">{lockedNode.name}</span>
+              ) : (
+                <NativeSelect value={nodeId} onChange={(event) => setNodeId(event.target.value)}>
+                  {nodes.map((node) => (
+                    <NativeSelectOption key={node.id} value={node.id}>
+                      {node.name}{node.type === "WAREHOUSE" ? t("（中央仓）") : ""}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              )}
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted-foreground">{t("扫描包裹号")}</span>

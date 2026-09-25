@@ -2,7 +2,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { legacyWarehouseRedirect, ORDER_STATUS_TABS } from "./order-center-routes";
 
-assert.equal(ORDER_STATUS_TABS.length, 12);
+// The strip shows every tab the API can put an order on, in the API's order.
+// A tab missing here is a count in 全部 with no place to click — parcels sent to
+// a store (在途) and parcels at the store (已到店) were exactly that.
+const apiState = readFileSync(
+  new URL("../../../../api/src/operations/operations-fulfillment-state.ts", import.meta.url),
+  "utf8"
+);
+const apiTabs = [...(apiState.match(/ORDER_CENTER_TABS = \[([\s\S]*?)\] as const/)?.[1] ?? "").matchAll(/"([a-z-]+)"/g)]
+  .map((match) => match[1]);
+assert.ok(apiTabs.length > 10, "could not read ORDER_CENTER_TABS from the API");
+assert.deepEqual(ORDER_STATUS_TABS.map(([value]) => value), apiTabs);
+assert.equal(ORDER_STATUS_TABS.length, 17);
+const position = (value: string) => ORDER_STATUS_TABS.findIndex(([tab]) => tab === value);
+assert.ok(position("packed") < position("in-transit-to-node"));
+assert.ok(position("in-transit-to-node") < position("at-node"));
+assert.ok(position("at-node") < position("ready-for-pickup"));
 assert.equal(legacyWarehouseRedirect("/warehouse"), "/orders");
 assert.equal(legacyWarehouseRedirect("/warehouse/picking"), "/orders/all?status=waiting-pick");
 assert.equal(legacyWarehouseRedirect("/warehouse/packing"), "/orders/all?status=ready-to-pack");

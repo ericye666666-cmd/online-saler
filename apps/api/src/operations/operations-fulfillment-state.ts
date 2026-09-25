@@ -25,23 +25,32 @@ export type FulfillmentTransitionInput = {
   customerCodeVerified?: boolean;
 };
 
-export type OrderCenterTab =
-  | "all"
-  | "pending-payment"
-  | "waiting-pick"
-  | "picking"
-  | "ready-to-pack"
-  | "packed"
-  | "in-transit-to-node"
-  | "at-node"
-  | "ready-for-pickup"
-  | "ready-for-dispatch"
-  | "out-for-delivery"
-  | "delivery-failed"
-  | "returning-to-node"
-  | "completed"
-  | "after-sale"
-  | "cancelled";
+/**
+ * Every tab of the order centre, in the order the screen shows them. The
+ * console keeps its own copy (order-center-routes.ts) and a test holds the two
+ * together, so a status the API can report is never left without a tab.
+ */
+export const ORDER_CENTER_TABS = [
+  "all",
+  "pending-payment",
+  "waiting-pick",
+  "picking",
+  "ready-to-pack",
+  "packed",
+  "in-transit-to-node",
+  "at-node",
+  "ready-for-pickup",
+  "ready-for-dispatch",
+  "out-for-delivery",
+  "delivery-failed",
+  "returning-to-node",
+  "exception",
+  "completed",
+  "after-sale",
+  "cancelled"
+] as const;
+
+export type OrderCenterTab = (typeof ORDER_CENTER_TABS)[number];
 
 export type BarcodeCheckInput = {
   orderItemId: string;
@@ -142,9 +151,17 @@ export function orderCenterTab(input: {
   hasOpenAfterSale?: boolean;
 }): OrderCenterTab {
   if (input.hasOpenAfterSale || input.orderStatus === OrderStatus.REFUNDED) return "after-sale";
-  if (input.orderStatus === OrderStatus.CANCELLED || input.orderStatus === OrderStatus.EXPIRED) return "cancelled";
+  // A lapsed deposit is a dead order like a cancelled one: the garment is back
+  // on sale. The refund it still owes is followed up on 定金单, not here.
+  if (
+    input.orderStatus === OrderStatus.CANCELLED
+    || input.orderStatus === OrderStatus.EXPIRED
+    || input.orderStatus === OrderStatus.DEPOSIT_EXPIRED
+  ) return "cancelled";
   if (input.orderStatus === OrderStatus.COMPLETED || input.fulfillmentStatus === FulfillmentStatus.COMPLETED) return "completed";
-  if (input.fulfillmentStatus === FulfillmentStatus.EXCEPTION) return "all";
+  // An exception used to fall into "all" and no tab at all, so the tab counts
+  // never added up to 全部 and the order could only be found by scrolling.
+  if (input.fulfillmentStatus === FulfillmentStatus.EXCEPTION) return "exception";
 
   const fulfillmentTabs: Partial<Record<FulfillmentStatus, OrderCenterTab>> = {
     [FulfillmentStatus.PAID]: "waiting-pick",
