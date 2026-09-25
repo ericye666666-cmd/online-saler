@@ -20,6 +20,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { formatMoment, operationsRequester } from "@/lib/operations-request";
 import { t } from "@/i18n/runtime";
 import { customerWhatsappUrl } from "../orders/customer-whatsapp";
+import { RiderFeePicker, riderFeeFromField } from "../orders/rider-fee";
 import { storeConsoleNodes } from "./store-console-nodes";
 import { boltRiderReady, storeParcelsByTile } from "./store-console-parcels";
 
@@ -69,6 +70,7 @@ export type StoreOrder = {
     sentToNodeBy?: { name: string } | null;
     arrivedAtNodeAt?: string | null;
     deliveryRiderName: string | null;
+    riderFeeKsh?: number | null;
     fulfillmentNode: { id: string; name: string } | null;
   } | null;
 };
@@ -405,6 +407,8 @@ function HandoverPanel({ orders, riders, canSeeRiders, busy, run, onDispatched }
         const choice = fields[`${order.id}:rider`] ?? "";
         const boltName = fields[`${order.id}:boltName`] ?? "";
         const boltPhone = fields[`${order.id}:boltPhone`] ?? "";
+        // No default: the hand-off stays disabled until 50 or 100 is tapped.
+        const riderFeeKsh = riderFeeFromField(fields[`${order.id}:fee`]);
         return (
           <div key={order.id} className="flex flex-col gap-3 rounded-xl border p-4">
             <ParcelDetails order={order} />
@@ -467,22 +471,24 @@ function HandoverPanel({ orders, riders, canSeeRiders, busy, run, onDispatched }
                     ) : null}
                   </>
                 ) : null}
+                <RiderFeePicker value={riderFeeKsh} disabled={busy} onChange={(fee) => set(`${order.id}:fee`, String(fee))} />
                 <Button
                   className="h-12"
-                  disabled={busy || !choice || (choice === BOLT && !boltRiderReady(boltName, boltPhone))}
+                  disabled={busy || !choice || !riderFeeKsh || (choice === BOLT && !boltRiderReady(boltName, boltPhone))}
                   onClick={() => {
-                    const done = () => onDispatched(order);
+                    if (!riderFeeKsh) return;
+                    const done = () => { set(`${order.id}:fee`, ""); onDispatched(order); };
                     if (choice === BOLT) {
                       // assign-rider only accepts a parcel that is ready to go out.
                       const steps: Array<[string, string, Record<string, unknown>]> = [];
                       if (status === "ARRIVED_AT_NODE") steps.push([order.id, "ready-for-dispatch", {}]);
-                      steps.push([order.id, "assign-rider", { riderType: "EXTERNAL", name: boltName.trim(), phone: boltPhone.trim(), company: "Bolt" }]);
-                      steps.push([order.id, "dispatch", {}]);
+                      steps.push([order.id, "assign-rider", { riderType: "EXTERNAL", name: boltName.trim(), phone: boltPhone.trim(), company: "Bolt", riderFeeKsh }]);
+                      steps.push([order.id, "dispatch", { riderFeeKsh }]);
                       void run(steps, t("包裹已交给 Bolt 骑手。配送码在顾客自己的订单页上。"), done);
                     } else {
                       // The same one-step hand-off as the desktop desk's 交给骑手并发送配送码:
                       // rider assigned, code minted, parcel out for delivery, all together.
-                      void run([[order.id, "dispatch-to-rider", { deliveryRiderId: choice }]], t("已交给骑手，骑手 App 里能看到这单。配送码在顾客自己的订单页上。"), done);
+                      void run([[order.id, "dispatch-to-rider", { deliveryRiderId: choice, riderFeeKsh }]], t("已交给骑手，骑手 App 里能看到这单。配送码在顾客自己的订单页上。"), done);
                     }
                   }}
                 >
@@ -495,6 +501,7 @@ function HandoverPanel({ orders, riders, canSeeRiders, busy, run, onDispatched }
               <div className="flex flex-col gap-2">
                 <p className="text-muted-foreground text-sm">
                   {t("配送中")}{order.fulfillment?.deliveryRiderName ? ` · ${order.fulfillment.deliveryRiderName}` : ""}
+                  {order.fulfillment?.riderFeeKsh ? ` · ${t("骑手费 KSh {fee}", { fee: order.fulfillment.riderFeeKsh })}` : ""}
                 </p>
                 <NotifyButton order={order} />
                 <div className="flex gap-2">

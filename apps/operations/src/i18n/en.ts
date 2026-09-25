@@ -2900,4 +2900,12 @@ export const enDictionary: Record<string, string> = {
   "下一步：把订单页发给顾客": "Next: send the customer their order page",
   "短信还没开通。顾客要在自己的订单页上看配送码，骑手到了再报给骑手。":
     "SMS is not live yet. The customer sees the delivery code on their own order page and reads it to the rider on arrival.",
+
+  // ——— Rider pay per delivery (KSh 50 / KSh 100) ———
+  "本单骑手费": "Rider pay for this order",
+  "先选骑手费，才能交给骑手。": "Choose the rider pay before handing the parcel over.",
+  "骑手费": "Rider pay",
+  "骑手费 KSh {fee}": "Rider pay KSh {fee}",
+  "本单骑手费 KSh {fee}": "Your pay for this delivery: KSh {fee}",
+  "已交给配送员（骑手费 KSh {fee}）": "Handed to the rider (rider pay KSh {fee})",
 };

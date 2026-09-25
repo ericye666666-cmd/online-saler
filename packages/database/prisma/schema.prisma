@@ -1148,6 +1148,12 @@ model OrderFulfillment {
   deliveryRiderId             String?
   deliveryRiderName           String?
   deliveryRiderPhone          String?
+  /// This order's rider pay in KSh, chosen by the store when it hands the
+  /// parcel to a rider: 50 or 100, nothing else. The rider earns it only once
+  /// the delivery is completed with the customer's code. Cleared when a failed
+  /// parcel is back at the store, so the next hand-off has to choose again.
+  riderFeeKsh                 Int?
+  riderFeeSetByEmployeeId     String?
   fulfillmentNodeId           String?
   packageCode                 String?                     @unique
   /// When this parcel's routing label (the one with the QR code) was last sent

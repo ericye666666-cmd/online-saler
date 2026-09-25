@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { boltRiderReady, storeParcelsByTile } from "./store-console-parcels";
+import { RIDER_FEE_OPTIONS_KSH, riderFeeFromField } from "../orders/rider-fee-options";
 
 const pickupOnTheWay = { id: "p1", fulfillmentMethod: "PICKUP", fulfillment: { status: "IN_TRANSIT_TO_NODE" } };
 const deliveryOnTheWay = { id: "d1", fulfillmentMethod: "KIKUYU_LOCAL_DELIVERY", fulfillment: { status: "IN_TRANSIT_TO_NODE" } };
@@ -33,5 +34,22 @@ assert.match(consoleSource, /\/operations\/riders/);
 
 const deskSource = readFileSync(new URL("../orders/node/node-client.tsx", import.meta.url), "utf8");
 assert.match(deskSource, /scope: "node"/);
+
+// Every rider hand-off chooses this order's rider pay, 50 or 100, with no default.
+assert.deepEqual([...RIDER_FEE_OPTIONS_KSH], [50, 100]);
+assert.equal(riderFeeFromField(""), null, "nothing is chosen until someone taps");
+assert.equal(riderFeeFromField(undefined), null);
+assert.equal(riderFeeFromField("75"), null);
+assert.equal(riderFeeFromField("50"), 50);
+assert.equal(riderFeeFromField("100"), 100);
+// The console's store-rider call, and both Bolt steps, carry the fee.
+assert.match(consoleSource, /"dispatch-to-rider", \{ deliveryRiderId: choice, riderFeeKsh \}/);
+assert.match(consoleSource, /company: "Bolt", riderFeeKsh \}/);
+assert.match(consoleSource, /"dispatch", \{ riderFeeKsh \}/);
+assert.match(consoleSource, /<RiderFeePicker/);
+assert.equal((deskSource.match(/riderFeeKsh: riderFeeFromField/g) ?? []).length, 3, "desk: store rider, Bolt register, Bolt hand-off");
+const centreSource = readFileSync(new URL("../orders/orders-client.tsx", import.meta.url), "utf8");
+assert.match(centreSource, /<RiderFeePicker/);
+assert.match(centreSource, /state\?\.kind === "assign-rider" && !riderFeeKsh/);
 
 console.log("store console parcels ok");

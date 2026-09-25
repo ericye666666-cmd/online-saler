@@ -8,6 +8,7 @@ import {
   type DeliveryCodeInput,
   type DeliveryCostInput,
   type DeliveryFailureInput,
+  type DispatchInput,
   type DispatchToRiderInput,
   type EmployeeInput,
   type LabelPrintedInput,
@@ -102,7 +103,7 @@ export class OperationsFulfillmentController {
   }
 
   @Post(":orderId/dispatch")
-  async dispatch(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
+  async dispatch(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: DispatchInput) {
     return this.orders.dispatch(orderId, await this.scopedInput(authorization, orderId, body));
   }
 

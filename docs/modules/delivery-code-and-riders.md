@@ -84,6 +84,34 @@ rider, the attempt number, the time. The digits that were typed are never stored
 - `OrderFulfillment.currentHolderType`, `currentHolderId`, `currentHolderLabel`
 - `DeliveryRider.fulfillmentNodeId`, `active`, `adminUserId`
 - `CustomerCodeAttempt`
+- `OrderFulfillment.riderFeeKsh`, `riderFeeSetByEmployeeId` — see below
+
+## Rider pay per delivery (2026-09-25)
+
+Whoever hands a delivery parcel to a rider chooses this order's rider pay: **KSh
+50 or KSh 100**, nothing else, no default. It is required by
+`dispatch-to-rider`, `assign-rider` (every assignment, re-assignments included)
+and by `dispatch` when no fee was stored at assignment; anything else is a 400.
+It is stored in the same transaction as the hand-off and written into the
+event note as `骑手费 KSh N`. A failed parcel received back at the store
+(`confirm-return`) clears it, so the next hand-off chooses again. The rider app
+shows it on the parcel card.
+
+The rider earns it only when the delivery is completed with the customer's
+code. A weekly settlement is therefore:
+
+```sql
+SELECT "deliveryRiderId", "deliveryRiderName", "deliveryRiderPhone",
+       COUNT(*) AS deliveries, SUM("riderFeeKsh") AS total_ksh
+FROM "OrderFulfillment"
+WHERE status = 'COMPLETED' AND "riderFeeKsh" IS NOT NULL
+  AND "completedAt" >= $1 AND "completedAt" < $2
+GROUP BY 1, 2, 3;
+```
+
+`deliveryRiderId` points at `DeliveryRider`: `type = INTERNAL` for a store's
+own riders (`fulfillmentNodeId`, `phone`, `employeeId`/`adminUserId`), `type =
+EXTERNAL` with `company = 'Bolt'` for Bolt riders (one row per name + phone).
 
 ## API
 

@@ -40,6 +40,8 @@ type RiderDelivery = {
   codeLocked: boolean;
   failureReason: string | null;
   completedAt: string | null;
+  /** This delivery's pay, 50 or 100 KSh; null on parcels handed over before fees existed. */
+  riderFeeKsh: number | null;
 };
 
 type RiderBoard = {
@@ -176,6 +178,10 @@ export function RiderDeliveriesPage() {
                 {delivery.nodeName ? ` · ${delivery.nodeName}` : ""}
                 {delivery.dispatchedAt ? ` · ${formatMoment(delivery.dispatchedAt)}` : ""}
               </CardDescription>
+              {delivery.riderFeeKsh ? (
+                // Earned once the customer's code closes the delivery.
+                <p className="font-semibold text-base">{t("本单骑手费 KSh {fee}", { fee: delivery.riderFeeKsh })}</p>
+              ) : null}
             </CardHeader>
 
             <CardContent className="flex flex-col gap-4">

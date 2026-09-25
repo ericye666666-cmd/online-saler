@@ -259,11 +259,12 @@ function dispatchFixture(t: TestContext, options: { status: string; riderNodeId:
 
 test("store staff hand a signed-for delivery parcel to their own rider in one step", async (t) => {
   const h = dispatchFixture(t, { status: "ARRIVED_AT_NODE", riderNodeId: KINOO });
-  await h.controller.dispatchToRider("Bearer token", "delivery-routed-after-packing", { deliveryRiderId: "rider-kinoo" });
+  await h.controller.dispatchToRider("Bearer token", "delivery-routed-after-packing", { deliveryRiderId: "rider-kinoo", riderFeeKsh: 100 });
 
   const out = h.writes.find((data) => data.status === FulfillmentStatus.OUT_FOR_DELIVERY);
   assert.ok(out, "the parcel goes out for delivery");
   assert.equal(out!.deliveryRiderId, "rider-kinoo", "assigned to the store's rider, so the rider app lists it");
+  assert.equal(out!.riderFeeKsh, 100, "the rider pay chosen on the console is stored with the hand-off");
   assert.ok(typeof out!.deliveryCodeHash === "string", "a delivery code is minted");
   assert.ok(typeof out!.deliveryCode === "string", "the customer's order page has its copy");
   assert.ok(h.writes.some((data) => data.status === FulfillmentStatus.READY_FOR_DISPATCH), "passes through ready-for-dispatch");

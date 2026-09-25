@@ -304,7 +304,7 @@ test("an order response carries the customer's full name, phone and address", as
 
 test("dispatching to a rider texts a code that appears nowhere staff can read it", async (t) => {
   const h = fixture(t, { status: "ARRIVED_AT_NODE", codeHash: null });
-  await h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1" });
+  await h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1", riderFeeKsh: 50 });
 
   const sms = bodies(h).find((body) => body.includes("Delivery code"));
   assert.ok(sms, "the customer is texted a delivery code");
@@ -330,7 +330,7 @@ test("dispatching to a rider texts a code that appears nowhere staff can read it
 
 test("dispatch moves the package to the rider in the same write as the code", async (t) => {
   const h = fixture(t, { status: "ARRIVED_AT_NODE", codeHash: null });
-  await h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1" });
+  await h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1", riderFeeKsh: 50 });
 
   const write = h.fulfillmentWrites.find((data) => data.status === "OUT_FOR_DELIVERY");
   assert.ok(write, "the package goes out for delivery");
@@ -342,7 +342,7 @@ test("dispatch moves the package to the rider in the same write as the code", as
 
 test("a second tap on dispatch does not mint a second code or send a second SMS", async (t) => {
   const h = fixture(t, { status: "OUT_FOR_DELIVERY" });
-  await h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1" });
+  await h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1", riderFeeKsh: 50 });
   assert.equal(h.notifications.length, 0);
   assert.equal(h.fulfillmentWrites.length, 0);
 });
@@ -350,7 +350,7 @@ test("a second tap on dispatch does not mint a second code or send a second SMS"
 test("a package that has not reached its node cannot be dispatched", async (t) => {
   const h = fixture(t, { status: "PACKED", codeHash: null });
   await assert.rejects(
-    () => h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1" }),
+    () => h.service.dispatchToRider("order", { adminUserId: "admin", deliveryRiderId: "rider-1", riderFeeKsh: 50 }),
     /received at its node/
   );
 });
@@ -362,7 +362,7 @@ test("dispatch needs a rider to be chosen", async (t) => {
 
 test("the older two-step dispatch also texts a code, so no order is left uncompletable", async (t) => {
   const h = fixture(t, { status: "READY_FOR_DISPATCH", codeHash: null });
-  await h.service.dispatch("order", { adminUserId: "admin" });
+  await h.service.dispatch("order", { adminUserId: "admin", riderFeeKsh: 50 });
 
   const sms = bodies(h).find((body) => body.includes("Delivery code"));
   assert.ok(sms, "confirming the handover texts a code");
@@ -376,7 +376,7 @@ test("the older dispatch refuses to hand over with no rider registered", async (
   // OUT_FOR_DELIVERY when a rider is on the order. The explicit check inside
   // dispatch is the fallback for a rider id whose relation did not load.
   await assert.rejects(
-    () => h.service.dispatch("order", { adminUserId: "admin" }),
+    () => h.service.dispatch("order", { adminUserId: "admin", riderFeeKsh: 50 }),
     /cannot move from READY_FOR_DISPATCH/
   );
   assert.equal(h.notifications.length, 0, "no code is texted for a handover that did not happen");

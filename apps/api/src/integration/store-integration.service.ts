@@ -61,7 +61,8 @@ export type StoreIntegrationInput = {
 };
 
 export type StoreReceiveInput = StoreIntegrationInput & { packageCode?: string };
-export type StoreDispatchInput = StoreIntegrationInput & { deliveryRiderId?: string };
+/** `riderFeeKsh` is this order's rider pay, 50 or 100 (KSh); required like on the store screens. */
+export type StoreDispatchInput = StoreIntegrationInput & { deliveryRiderId?: string; riderFeeKsh?: unknown };
 export type StorePickupInput = StoreIntegrationInput & { pickupCode?: string };
 
 @Injectable()
@@ -218,6 +219,7 @@ export class StoreIntegrationService {
     await this.fulfillment.dispatchToRider(orderId, {
       adminUserId,
       deliveryRiderId: riderId,
+      riderFeeKsh: input.riderFeeKsh,
       note: storeActorNote(actor, node.code, input.note)
     });
     return this.one(orderId);

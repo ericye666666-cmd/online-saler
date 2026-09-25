@@ -61,6 +61,7 @@ import {
 } from "./operations-fulfillment-state";
 import { refreshWarehouseLocationStatuses } from "./warehouse-capacity";
 import { assertOrderInScope, scopedNodeId, storeScopeFor } from "./store-scope";
+import { requireRiderFee, riderFeeNote } from "./rider-fee";
 
 const ORDER_INCLUDE = {
   customer: true,
@@ -174,10 +175,17 @@ export type RiderInput = AdminInput & {
   company?: string;
   vehicle?: string;
   estimatedDeliveryAt?: string;
+  /** This order's rider pay: 50 or 100 (KSh). Required; see rider-fee.ts. */
+  riderFeeKsh?: unknown;
 };
 export type ExceptionInput = AdminInput & { reason?: FulfillmentExceptionReason };
 /** Hands a package at a node to one of that node's riders, in one step. */
-export type DispatchToRiderInput = AdminInput & { deliveryRiderId?: string; estimatedDeliveryAt?: string };
+export type DispatchToRiderInput = AdminInput & { deliveryRiderId?: string; estimatedDeliveryAt?: string; riderFeeKsh?: unknown };
+/**
+ * Confirming a hand-off to a rider registered earlier. The fee chosen then
+ * stands; sending one here replaces it.
+ */
+export type DispatchInput = AdminInput & { riderFeeKsh?: unknown };
 /** Everything a rider submits to close or fail a delivery. */
 export type DeliveryCodeInput = AdminInput & { code?: string };
 export type DropOffInput = DeliveryCodeInput & {
@@ -209,6 +217,8 @@ export type RiderVisibleOrder = {
     customerCodeLockedAt: Date | null;
     deliveryFailureReason: DeliveryFailureReason | null;
     fulfillmentNode: { name: string } | null;
+    /** The rider's own pay for this delivery; the only money they are shown. */
+    riderFeeKsh: number | null;
   } | null;
 };
 
@@ -762,6 +772,9 @@ export class OperationsFulfillmentService {
     if (fulfillment.status !== FulfillmentStatus.READY_FOR_DISPATCH) {
       throw new BadRequestException("The order must be ready for dispatch before rider assignment.");
     }
+    // Every assignment chooses the pay again, a re-assignment included: the
+    // fee belongs to the rider who is given the parcel, not to the order.
+    const riderFeeKsh = requireRiderFee(input.riderFeeKsh);
     const riderType = input.riderType && Object.values(DeliveryRiderType).includes(input.riderType) ? input.riderType : null;
     if (!riderType) throw new BadRequestException("Rider type is required.");
     const rider = riderType === DeliveryRiderType.INTERNAL
@@ -772,6 +785,7 @@ export class OperationsFulfillmentService {
     const latest = fulfillment.deliveryAssignments[0];
     if (
       fulfillment.deliveryRiderId === rider.id
+      && fulfillment.riderFeeKsh === riderFeeKsh
       && latest?.estimatedDeliveryAt?.getTime() === estimatedDeliveryAt?.getTime()
       && (latest?.note ?? "") === (input.note?.trim() ?? "")
     ) return this.orderDetail(orderId, input.adminUserId);
@@ -789,10 +803,16 @@ export class OperationsFulfillmentService {
       });
       await tx.orderFulfillment.update({
         where: { id: fulfillment.id },
-        data: { deliveryRiderId: rider.id, deliveryRiderName: rider.name, deliveryRiderPhone: rider.phone }
+        data: {
+          deliveryRiderId: rider.id,
+          deliveryRiderName: rider.name,
+          deliveryRiderPhone: rider.phone,
+          riderFeeKsh,
+          riderFeeSetByEmployeeId: actor.actorEmployeeId
+        }
       });
       await this.createEvent(tx, {
-        idempotencyKey: `assign-rider:${fulfillment.id}:${latest?.id ?? "initial"}:${rider.id}:${estimatedDeliveryAt?.toISOString() ?? "unscheduled"}:${input.note?.trim() ?? ""}`,
+        idempotencyKey: `assign-rider:${fulfillment.id}:${latest?.id ?? "initial"}:${rider.id}:${riderFeeKsh}:${estimatedDeliveryAt?.toISOString() ?? "unscheduled"}:${input.note?.trim() ?? ""}`,
         fulfillmentId: fulfillment.id,
         orderId,
         ...actor,
@@ -801,7 +821,7 @@ export class OperationsFulfillmentService {
         action: "ASSIGN_DELIVERY_RIDER",
         oldStatus: fulfillment.status,
         newStatus: fulfillment.status,
-        note: input.note
+        note: [riderFeeNote(riderFeeKsh), input.note?.trim()].filter(Boolean).join(" · ")
       });
     });
     return this.orderDetail(orderId, input.adminUserId);
@@ -813,7 +833,7 @@ export class OperationsFulfillmentService {
    * through the same step as one-tap dispatch, so it mints and texts a delivery
    * code too rather than leaving an uncompletable order behind.
    */
-  async dispatch(orderId: string, input: AdminInput) {
+  async dispatch(orderId: string, input: DispatchInput) {
     const actor = await this.employeeForPermission(input.adminUserId, "orders.dispatch");
     const order = await this.requireOrderWithTask(orderId);
     const fulfillment = order.fulfillment!;
@@ -821,8 +841,14 @@ export class OperationsFulfillmentService {
     this.assertTransition(order, FulfillmentStatus.OUT_FOR_DELIVERY);
     const rider = fulfillment.deliveryRider;
     if (!rider) throw new BadRequestException("Assign a rider before confirming the handover.");
+    // The fee chosen when the rider was assigned stands. A rider assigned before
+    // fees existed has none, and the parcel does not leave until one is chosen.
+    const sentFee = input.riderFeeKsh !== undefined && input.riderFeeKsh !== null && input.riderFeeKsh !== "";
+    const riderFee = sentFee
+      ? { ksh: requireRiderFee(input.riderFeeKsh), setByEmployeeId: actor.actorEmployeeId }
+      : { ksh: requireRiderFee(fulfillment.riderFeeKsh), setByEmployeeId: fulfillment.riderFeeSetByEmployeeId ?? null };
     const latest = fulfillment.deliveryAssignments[0];
-    await this.handToRider(order, rider, actor, input.note, latest?.estimatedDeliveryAt ?? null);
+    await this.handToRider(order, rider, actor, input.note, latest?.estimatedDeliveryAt ?? null, riderFee);
     return this.orderDetail(orderId, input.adminUserId);
   }
 
@@ -891,8 +917,9 @@ export class OperationsFulfillmentService {
     await this.employeeBelongsToNode(actor.actorEmployeeId, fulfillment.fulfillmentNodeId);
 
     const rider = await this.requireNodeRider(input.deliveryRiderId, fulfillment.fulfillmentNodeId);
+    const riderFeeKsh = requireRiderFee(input.riderFeeKsh);
     const estimatedDeliveryAt = input.estimatedDeliveryAt ? validDate(input.estimatedDeliveryAt, "Estimated delivery time") : null;
-    await this.handToRider(order, rider, actor, input.note, estimatedDeliveryAt);
+    await this.handToRider(order, rider, actor, input.note, estimatedDeliveryAt, { ksh: riderFeeKsh, setByEmployeeId: actor.actorEmployeeId });
     return this.orderDetail(orderId, input.adminUserId);
   }
 
@@ -910,7 +937,8 @@ export class OperationsFulfillmentService {
     rider: { id: string; name: string; phone: string | null; employeeId: string | null },
     actor: Pick<EventInput, "actorAdminUserId" | "actorEmployeeId">,
     note: string | undefined,
-    estimatedDeliveryAt: Date | null
+    estimatedDeliveryAt: Date | null,
+    riderFee: { ksh: number; setByEmployeeId: string | null }
   ) {
     const fulfillment = order.fulfillment!;
     const attempt = fulfillment.deliveryAttemptCount + 1;
@@ -960,6 +988,8 @@ export class OperationsFulfillmentService {
           deliveryRiderId: rider.id,
           deliveryRiderName: rider.name,
           deliveryRiderPhone: rider.phone,
+          riderFeeKsh: riderFee.ksh,
+          riderFeeSetByEmployeeId: riderFee.setByEmployeeId,
           dispatchedByEmployeeId: actor.actorEmployeeId,
           dispatchedAt: new Date(),
           outForDeliveryAt: new Date(),
@@ -994,7 +1024,7 @@ export class OperationsFulfillmentService {
         action: "DISPATCH_TO_RIDER",
         oldStatus: FulfillmentStatus.READY_FOR_DISPATCH,
         newStatus: FulfillmentStatus.OUT_FOR_DELIVERY,
-        note: `Handed to ${rider.name}; delivery code sent to the customer (attempt ${attempt}).`
+        note: `Handed to ${rider.name} · ${riderFeeNote(riderFee.ksh)}; delivery code sent to the customer (attempt ${attempt}).`
       });
       await this.queueCustomerNotification(tx, order.id, "CUSTOMER_DELIVERY_CODE", {
         riderName: rider.name,
@@ -1188,7 +1218,10 @@ export class OperationsFulfillmentService {
       // The package is the store's problem again, not the rider's.
       deliveryRiderId: null,
       deliveryRiderName: null,
-      deliveryRiderPhone: null
+      deliveryRiderPhone: null,
+      // A failed attempt earns nothing, and the next hand-off chooses again.
+      riderFeeKsh: null,
+      riderFeeSetByEmployeeId: null
     });
     return this.orderDetail(orderId, input.adminUserId);
   }
@@ -2526,7 +2559,8 @@ export class OperationsFulfillmentService {
       codeAttemptsRemaining: Math.max(0, CUSTOMER_CODE_MAX_ATTEMPTS - fulfillment.customerCodeFailedAttempts),
       codeLocked: Boolean(fulfillment.customerCodeLockedAt),
       failureReason: fulfillment.deliveryFailureReason,
-      completedAt: fulfillment.completedAt
+      completedAt: fulfillment.completedAt,
+      riderFeeKsh: fulfillment.riderFeeKsh ?? null
     };
   }
 

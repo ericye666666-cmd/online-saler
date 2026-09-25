@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatKsh, formatMoment, operationsRequester } from "@/lib/operations-request";
 import { t } from "@/i18n/runtime";
 import { customerWhatsappUrl } from "../customer-whatsapp";
+import { RiderFeePicker, riderFeeFromField } from "../rider-fee";
 import { storeConsoleNodes } from "../../store/store-console-nodes";
 
 /**
@@ -77,6 +78,7 @@ type NodeOrder = {
     arrivedAtNodeAt: string | null;
     actualDeliveryCostKsh: number | null;
     deliveryRiderName: string | null;
+    riderFeeKsh: number | null;
     deliveryAttemptCount: number;
     deliveryFailureReason: string | null;
     deliveryFailureNote: string | null;
@@ -196,7 +198,8 @@ export function NodeWorkbenchPage() {
     try {
       await request(`/operations/orders/${orderId}/${path}`, { method: "POST", body: JSON.stringify(body) });
       setMessage(success);
-      setFields((current) => ({ ...current, [`${orderId}:note`]: "", [`${orderId}:cost`]: "" }));
+      // The fee is chosen afresh for every hand-off, never carried over.
+      setFields((current) => ({ ...current, [`${orderId}:note`]: "", [`${orderId}:cost`]: "", [`${orderId}:fee`]: "" }));
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("操作失败。"));
@@ -355,6 +358,9 @@ export function NodeWorkbenchPage() {
                     {order.fulfillment?.deliveryRiderName ? (
                       <Fact label={t("骑手")} value={order.fulfillment.deliveryRiderName} />
                     ) : null}
+                    {order.fulfillment?.riderFeeKsh ? (
+                      <Fact label={t("骑手费")} value={`KSh ${order.fulfillment.riderFeeKsh}`} />
+                    ) : null}
                     {order.fulfillment?.deliveryFailureReason ? (
                       <Fact
                         label={t("失败原因")}
@@ -407,6 +413,19 @@ export function NodeWorkbenchPage() {
 
                     {(stage.key === "at-node" || stage.key === "ready-for-dispatch")
                       && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && canDispatch ? (
+                      // One choice per hand-off, for whichever rider below gets the parcel.
+                      <div className="basis-full sm:max-w-sm">
+                        <RiderFeePicker
+                          size="sm"
+                          value={riderFeeFromField(fields[`${order.id}:fee`])}
+                          disabled={busyId === order.id}
+                          onChange={(fee) => setFields((current) => ({ ...current, [`${order.id}:fee`]: String(fee) }))}
+                        />
+                      </div>
+                    ) : null}
+
+                    {(stage.key === "at-node" || stage.key === "ready-for-dispatch")
+                      && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && canDispatch ? (
                       <div className="flex flex-wrap items-center gap-2">
                         {riders.length === 0 ? (
                           <span className="text-sm text-destructive">
@@ -428,9 +447,10 @@ export function NodeWorkbenchPage() {
                             </NativeSelect>
                             <Button
                               size="sm"
-                              disabled={busyId === order.id || !(fields[`${order.id}:riderId`] ?? "")}
+                              disabled={busyId === order.id || !(fields[`${order.id}:riderId`] ?? "") || !riderFeeFromField(fields[`${order.id}:fee`])}
                               onClick={() => void act(order.id, "dispatch-to-rider", {
                                 deliveryRiderId: fields[`${order.id}:riderId`] ?? "",
+                                riderFeeKsh: riderFeeFromField(fields[`${order.id}:fee`]),
                                 note: fields[`${order.id}:note`] ?? ""
                               }, t("已交给骑手。配送码在顾客自己的订单页上——短信还没开通，请点「用 WhatsApp 发给顾客」。"))}
                             >
@@ -492,12 +512,13 @@ export function NodeWorkbenchPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={busyId === order.id || !(fields[`${order.id}:rider`] ?? "").trim()}
+                          disabled={busyId === order.id || !(fields[`${order.id}:rider`] ?? "").trim() || !riderFeeFromField(fields[`${order.id}:fee`])}
                           onClick={() => void act(order.id, "assign-rider", {
                             riderType: "EXTERNAL",
                             name: fields[`${order.id}:rider`] ?? "",
                             phone: fields[`${order.id}:riderPhone`] ?? "",
                             company: "Bolt",
+                            riderFeeKsh: riderFeeFromField(fields[`${order.id}:fee`]),
                             note: fields[`${order.id}:note`] ?? ""
                           }, t("已记录骑手。"))}
                         >
@@ -505,8 +526,11 @@ export function NodeWorkbenchPage() {
                         </Button>
                         <Button
                           size="sm"
-                          disabled={busyId === order.id}
-                          onClick={() => void act(order.id, "dispatch", { note: fields[`${order.id}:note`] ?? "" }, t("包裹已交给 Bolt 骑手。配送码在顾客自己的订单页上——短信还没开通，请点「用 WhatsApp 发给顾客」。"))}
+                          disabled={busyId === order.id || !riderFeeFromField(fields[`${order.id}:fee`])}
+                          onClick={() => void act(order.id, "dispatch", {
+                            riderFeeKsh: riderFeeFromField(fields[`${order.id}:fee`]),
+                            note: fields[`${order.id}:note`] ?? ""
+                          }, t("包裹已交给 Bolt 骑手。配送码在顾客自己的订单页上——短信还没开通，请点「用 WhatsApp 发给顾客」。"))}
                         >
                           {t("交给 Bolt 骑手并发送配送码")}
                         </Button>

@@ -54,6 +54,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ORDER_STATUS_TABS, type OrderStatusTab } from "./order-center-routes";
 import { AfterSalesPanel } from "./after-sales-panel";
+import { RiderFeePicker, type RiderFeeKsh } from "./rider-fee";
 import { operationsRequester } from "@/lib/operations-request";
 import { operationsFormatLocale, t } from "@/i18n/runtime";
 
@@ -141,6 +142,8 @@ type OrderRow = {
     packagingMethod?: string | null;
     packageCount?: number | null;
     deliveryRiderId?: string | null;
+    /** This order's rider pay (50 or 100), chosen when the rider was given the parcel. */
+    riderFeeKsh?: number | null;
     assignedPicker?: FulfillmentEmployee | null;
     assignedPacker?: FulfillmentEmployee | null;
     packingStartedBy?: FulfillmentEmployee | null;
@@ -1044,6 +1047,7 @@ function OrderCard(props: {
   if (fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name) people.push([t("打包"), (fulfillment?.packedBy?.name ?? fulfillment?.packingStartedBy?.name)!]);
   if (fulfillment?.dispatchedBy?.name) people.push([t("出库"), fulfillment.dispatchedBy.name]);
   if (fulfillment?.deliveryRider?.name ?? fulfillment?.deliveryRiderName) people.push([t("骑手"), (fulfillment?.deliveryRider?.name ?? fulfillment?.deliveryRiderName)!]);
+  if (fulfillment?.riderFeeKsh) people.push([t("骑手费"), `KSh ${fulfillment.riderFeeKsh}`]);
   if (fulfillment?.pickupConfirmedBy?.name) people.push([t("自提确认"), fulfillment.pickupConfirmedBy.name]);
   if (fulfillment?.afterSaleOwner?.name) people.push([t("售后"), fulfillment.afterSaleOwner.name]);
   if (fulfillment?.packagingMethod) people.push([t("包装"), t("{packagingMethod} · {v1}件", { packagingMethod: fulfillment.packagingMethod, v1: fulfillment.packageCount ?? 1 })]);
@@ -1252,8 +1256,10 @@ function orderActions({ order, session, onDialog, onDirect, onLabel }: {
   if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && !unrouted && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) {
     actions.push({ key: "dispatch-ready", label: t("设为待发货"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "ready-for-dispatch") });
   }
-  if (status === "READY_FOR_DISPATCH" && order.fulfillment?.deliveryRiderId && hasPermission(session, "orders.dispatch")) {
-    actions.push({ key: "dispatch", label: t("已交给配送员"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "dispatch") });
+  // The pay was chosen when the rider was assigned. A rider assigned before
+  // fees existed has none: 分配配送员 again, which asks for it.
+  if (status === "READY_FOR_DISPATCH" && order.fulfillment?.deliveryRiderId && order.fulfillment.riderFeeKsh && hasPermission(session, "orders.dispatch")) {
+    actions.push({ key: "dispatch", label: t("已交给配送员（骑手费 KSh {fee}）", { fee: order.fulfillment.riderFeeKsh }), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "dispatch") });
   }
   if (status === "READY_FOR_DISPATCH" && hasPermission(session, "orders.assign-rider")) {
     actions.push({ key: "rider", label: t("分配配送员"), icon: <TruckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-rider", order }), variant: "outline" });
@@ -1356,6 +1362,8 @@ function OrderActionDialog(props: {
   const [company, setCompany] = useState("");
   const [vehicle, setVehicle] = useState("");
   const [estimatedDeliveryAt, setEstimatedDeliveryAt] = useState("");
+  // Never prefilled, not even on a re-assignment: every rider hand-off chooses again.
+  const [riderFeeKsh, setRiderFeeKsh] = useState<RiderFeeKsh | null>(null);
   const [verificationValue, setVerificationValue] = useState("");
   const [exceptionReason, setExceptionReason] = useState("ITEM_NOT_FOUND");
   const [nodeId, setNodeId] = useState("");
@@ -1378,7 +1386,7 @@ function OrderActionDialog(props: {
     const linkedEmployeeId = session?.adminUser?.linkedEmployee?.id ?? "";
     setEmployeeId(linkedEmployeeId);
     setBarcode(""); setPackagingMethod("BAG"); setPackageCount("1"); setRiderType("INTERNAL");
-    setName(""); setPhone(""); setCompany(""); setVehicle(""); setEstimatedDeliveryAt("");
+    setName(""); setPhone(""); setCompany(""); setVehicle(""); setEstimatedDeliveryAt(""); setRiderFeeKsh(null);
     // Never prefilled: the whole point is that the customer supplies it.
     setVerificationValue("");
     const afterSale = state.order.customerServiceCases.find((item) => item.issueType === "AFTER_SALE");
@@ -1417,7 +1425,7 @@ function OrderActionDialog(props: {
     if (state.kind === "scan") { path = `items/${state.item!.id}/scan`; body.barcode = barcode; }
     if (state.kind === "start-packing") { path = "start-packing"; body.employeeId = employeeId; }
     if (state.kind === "complete-packing") { path = "complete-packing"; body = { ...body, employeeId, packagingMethod, packageCount: Number(packageCount) }; }
-    if (state.kind === "assign-rider") { path = "assign-rider"; body = { ...body, riderType, employeeId: riderType === "INTERNAL" ? employeeId : undefined, name, phone, company, vehicle, estimatedDeliveryAt: estimatedDeliveryAt ? new Date(estimatedDeliveryAt).toISOString() : undefined }; }
+    if (state.kind === "assign-rider") { path = "assign-rider"; body = { ...body, riderType, employeeId: riderType === "INTERNAL" ? employeeId : undefined, name, phone, company, vehicle, riderFeeKsh, estimatedDeliveryAt: estimatedDeliveryAt ? new Date(estimatedDeliveryAt).toISOString() : undefined }; }
     if (state.kind === "confirm-pickup") { path = "confirm-pickup"; body = { ...body, verificationMethod: "PICKUP_CODE", verificationValue }; }
     if (state.kind === "complete-delivery") { path = "complete-delivery"; body = { ...body, code: verificationValue }; }
     if (state.kind === "exception") { path = "exception"; body.reason = exceptionReason; }
@@ -1491,6 +1499,7 @@ function OrderActionDialog(props: {
                 <SelectFilter label={t("配送员类型")} value={riderType} onChange={setRiderType} options={[["INTERNAL", t("内部员工")], ["EXTERNAL", t("外部配送员")]]} />
                 {riderType === "EXTERNAL" ? <><TextFilter label={t("姓名")} value={name} onChange={setName} /><TextFilter label={t("手机号")} value={phone} onChange={setPhone} /><TextFilter label={t("配送公司（可选）")} value={company} onChange={setCompany} /><TextFilter label={t("车辆信息（可选）")} value={vehicle} onChange={setVehicle} /></> : null}
                 <TextFilter label={t("预计配送时间")} type="datetime-local" value={estimatedDeliveryAt} onChange={setEstimatedDeliveryAt} />
+                <RiderFeePicker value={riderFeeKsh} disabled={busy} onChange={setRiderFeeKsh} />
               </>
             ) : null}
             {state.kind === "confirm-pickup" ? (
@@ -1562,7 +1571,7 @@ function OrderActionDialog(props: {
           <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{error.message}</AlertTitle><AlertDescription>{barcodeErrorDescription(error.details)}</AlertDescription></Alert>
         ) : null}
         <DialogFooter showCloseButton>
-          <Button disabled={busy} onClick={() => void submit()}>{busy ? t("正在保存...") : t("确认")}</Button>
+          <Button disabled={busy || (state?.kind === "assign-rider" && !riderFeeKsh)} onClick={() => void submit()}>{busy ? t("正在保存...") : t("确认")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
