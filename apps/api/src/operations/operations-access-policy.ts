@@ -448,7 +448,7 @@ export const OPERATIONS_ROLE_BLUEPRINTS: OperationsRoleBlueprint[] = [
   },
   {
     code: "STORE_MANAGER",
-    name: "Store Node Manager",
+    name: "Store Staff",
     description: "Receive packages at a store, hand them to its riders or the customer, and keep the rider roster.",
     permissions: [
       "module.orders",

@@ -70,7 +70,7 @@ export class OperationsRiderService {
       include: { employee: { select: { id: true } } }
     });
     if (!rider) throw new ForbiddenException("This account is not linked to a rider.");
-    if (!rider.active) throw new ForbiddenException("This rider account is not active. Ask your store manager.");
+    if (!rider.active) throw new ForbiddenException("This rider account is not active. Ask the staff at your store.");
     return {
       id: rider.id,
       name: rider.name,

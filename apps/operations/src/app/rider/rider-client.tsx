@@ -117,7 +117,7 @@ export function RiderDeliveriesPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("这个页面是给骑手的")}</CardTitle>
-          <CardDescription>{t("你的账号没有骑手权限。如果你是骑手，请让店长在门店骑手名单里把你的登录账号绑定上。")}</CardDescription>
+          <CardDescription>{t("你的账号没有骑手权限。如果你是骑手，请让门店员工在门店骑手名单里把你的登录账号绑定上。")}</CardDescription>
         </CardHeader>
       </Card>
     );

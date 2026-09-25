@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { roleLabel, roleOptionLabel } from "../role-labels";
+import { DEPARTMENTS, accountDepartments, roleLabel, roleOptionLabel, type Department } from "../role-labels";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { accessRequest, adminQuery, type AdminUserAccount, type RoleRecord } from "../access-client";
 import { t } from "@/i18n/runtime";
@@ -44,6 +44,9 @@ export default function AccountsPage() {
   const [nodes, setNodes] = useState<Array<{ id: string; name: string; type: string }>>([]);
   const [nodeSelections, setNodeSelections] = useState<Record<string, string>>({});
   const [nodeFilter, setNodeFilter] = useState("");
+  // Department is not stored anywhere: it follows from the role (role-labels.ts).
+  const [departmentFilter, setDepartmentFilter] = useState<Department | "">("");
+  const [roleFilter, setRoleFilter] = useState("");
 
   const load = useCallback(async () => {
     if (!adminUserId) return;
@@ -88,11 +91,25 @@ export default function AccountsPage() {
 
   const roleOptions = useMemo(() => roles.map((role) => role.code), [roles]);
 
+  // The roles somebody actually holds, in the same order as the role dropdown,
+  // with any hand-made role nobody listed at the end.
+  const heldRoleCodes = useMemo(() => {
+    const held = new Set(accounts.flatMap((account) => account.roles.map((role) => role.code)));
+    return [...roleOptions.filter((code) => held.has(code)), ...[...held].filter((code) => !roleOptions.includes(code)).sort()];
+  }, [accounts, roleOptions]);
+
+  // The three filters combine: an account shows only when it passes all of them.
   const visibleAccounts = useMemo(() => {
-    if (!nodeFilter) return accounts;
-    if (nodeFilter === "none") return accounts.filter((account) => !account.adminUser?.linkedEmployee?.homeNodeId);
-    return accounts.filter((account) => account.adminUser?.linkedEmployee?.homeNodeId === nodeFilter);
-  }, [accounts, nodeFilter]);
+    return accounts.filter((account) => {
+      const homeNodeId = account.adminUser?.linkedEmployee?.homeNodeId;
+      if (nodeFilter === "none" && homeNodeId) return false;
+      if (nodeFilter && nodeFilter !== "none" && homeNodeId !== nodeFilter) return false;
+      const roleCodes = account.roles.map((role) => role.code);
+      if (departmentFilter && !accountDepartments(roleCodes).includes(departmentFilter)) return false;
+      if (roleFilter && !roleCodes.includes(roleFilter)) return false;
+      return true;
+    });
+  }, [accounts, nodeFilter, departmentFilter, roleFilter]);
 
   /** Moves somebody to a store, or takes them out of one when nodeId is empty. */
   async function assignNode(employeeId: string, nodeId: string) {
@@ -300,6 +317,16 @@ export default function AccountsPage() {
               {nodes.map((node) => <NativeSelectOption key={node.id} value={node.id}>{node.name}</NativeSelectOption>)}
               <NativeSelectOption value="none">{t("未设归属")}</NativeSelectOption>
             </NativeSelect>
+            <span className="text-muted-foreground text-sm">{t("按部门筛选")}</span>
+            <NativeSelect className="w-40" value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value as Department | "")}>
+              <NativeSelectOption value="">{t("全部部门")}</NativeSelectOption>
+              {DEPARTMENTS.map((department) => <NativeSelectOption key={department} value={department}>{t(department)}</NativeSelectOption>)}
+            </NativeSelect>
+            <span className="text-muted-foreground text-sm">{t("按角色筛选")}</span>
+            <NativeSelect className="w-56" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+              <NativeSelectOption value="">{t("全部角色")}</NativeSelectOption>
+              {heldRoleCodes.map((roleCode) => <NativeSelectOption key={roleCode} value={roleCode}>{roleOptionLabel(roleCode)}</NativeSelectOption>)}
+            </NativeSelect>
             <Badge variant="secondary">{t("{count} 个账号", { count: visibleAccounts.length })}</Badge>
           </div>
         </CardHeader>
@@ -342,6 +369,11 @@ export default function AccountsPage() {
                       ) : (
                         account.roles.map((role) => roleLabel(role.code)).join(", ") || "-"
                       )}
+                      <p className="mt-1 text-muted-foreground text-xs">
+                        {t("部门：{department}", {
+                          department: accountDepartments(account.roles.map((role) => role.code)).map((department) => t(department)).join(" / ")
+                        })}
+                      </p>
                     </TableCell>
                     <TableCell>
                       {canManage && adminUser.linkedEmployee?.id ? (

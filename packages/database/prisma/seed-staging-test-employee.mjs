@@ -294,7 +294,7 @@ export const roles = [
   },
   {
     code: "STORE_MANAGER",
-    name: "Store Node Manager",
+    name: "Store Staff",
     description: "Receive packages at a store, hand them to its riders or the customer, and keep the rider roster.",
     permissions: unique(["action.orders.view","module.orders","nodes.view","orders.assign-rider","orders.complete","orders.delivery-cost","orders.dispatch","orders.node-receive","orders.resend-code","orders.view","page.orders.node","page.orders.riders","riders.manage","riders.view"])
   },

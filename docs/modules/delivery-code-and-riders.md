@@ -120,8 +120,8 @@ manager with a home node only ever sees and edits their own node's riders.
 | --- | --- |
 | `rider.deliveries` | the `DELIVERY_RIDER` role, and only that role |
 | `page.rider.deliveries` | the rider's one screen |
-| `riders.view`, `riders.manage` | store manager, order operations, project manager |
-| `orders.resend-code` | store manager, order operations, project manager |
+| `riders.view`, `riders.manage` | store staff (`STORE_MANAGER`), order operations, project manager |
+| `orders.resend-code` | store staff (`STORE_MANAGER`), order operations, project manager |
 
 The `DELIVERY_RIDER` role holds exactly two permissions. It has no orders module,
 so a rider signing in sees one screen with their own drops on it — no order list,

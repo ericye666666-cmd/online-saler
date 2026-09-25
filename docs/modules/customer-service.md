@@ -58,7 +58,7 @@ a single merged timeline of payment, fulfillment and customer service events in
 chronological order.
 
 It exists so that an agent with a customer on the phone never has to ring the
-warehouse, the store manager or the rider to answer "where is my order?".
+warehouse, the store staff or the rider to answer "where is my order?".
 
 **It never returns a pickup code, a delivery code, or the delivery code's
 hash.** Four digits is ten thousand guesses, so a hash in a JSON response is the

@@ -2315,8 +2315,8 @@ export const enDictionary: Record<string, string> = {
   "无法读取你的配送单。": "Could not load your deliveries.",
   "操作失败，请再试一次。": "That did not go through. Try again.",
   "这个页面是给骑手的": "This page is for riders",
-  "你的账号没有骑手权限。如果你是骑手，请让店长在门店骑手名单里把你的登录账号绑定上。":
-    "This account is not a rider. If you ride for a store, ask the manager to link your login on the store's rider list.",
+  "你的账号没有骑手权限。如果你是骑手，请让门店员工在门店骑手名单里把你的登录账号绑定上。":
+    "This account is not a rider. If you ride for a store, ask the store staff to link your login on the store's rider list.",
   "顾客收到货以后，把短信里的 4 位数字报给你，你输进去才算送达。":
     "Once the customer has their order, they read you four digits. Typing those in is what completes the delivery.",
   "待配送": "Out for delivery",
@@ -2772,7 +2772,7 @@ export const enDictionary: Record<string, string> = {
   "超级管理员": "Super Admin",
   "项目经理": "Project Manager",
   "仓库履约": "Order Fulfillment",
-  "门店店长": "Store Node Manager",
+  // 门店员工 (STORE_MANAGER) is already translated further up as "Store staff".
   "配送骑手": "Delivery Rider",
   "订单运营": "Order Operations",
   "推广运营": "Affiliate Operations",
@@ -2809,6 +2809,16 @@ export const enDictionary: Record<string, string> = {
   "归属门店": "Home store",
   "按门店筛选": "Filter by store",
   "未设归属": "No store set",
+  // ——— Accounts, by department and role ———
+  "按部门筛选": "Filter by department",
+  "按角色筛选": "Filter by role",
+  "全部部门": "All departments",
+  "全部角色": "All roles",
+  "部门：{department}": "Department: {department}",
+  "管理层": "Management",
+  "商品部": "Product",
+  "仓库": "Warehouse",
+  "推广": "Affiliates",
   "{count} 个账号": "{count} accounts",
   "无法更新归属门店。": "Could not change the home store.",
   "选了门店会同时把这个人加进该店的骑手名单，不用再去「门店骑手」建一次。":
