@@ -33,6 +33,9 @@ fail() {
 [ "$(uname -s)" = "Darwin" ] || fail "this installer is for macOS only. / 此安装程序仅适用于 Mac。"
 [ "$(id -u)" -ne 0 ] || fail "do not run it with sudo; run it as the normal Mac user. / 请不要用 sudo 运行，直接用平时登录的 Mac 账号运行。"
 [ -f "$SRC_DIR/agent.py" ] || fail "agent.py is not next to this script in $SRC_DIR. Unzip the whole download first. / 找不到 agent.py，请先完整解压下载的 ZIP。"
+# The install folder is wiped and refilled below; run from inside it, that would
+# delete the very files it is about to copy.
+[ "$SRC_DIR" != "$INSTALL_DIR" ] || fail "run this from the unzipped download, not from the installed copy. / 请在下载解压出来的文件夹里运行，不要在已安装的位置运行。"
 
 # /usr/bin/python3 exists even before the Command Line Tools are installed; it
 # is a stub that offers to install them. Only running it proves Python is there.
