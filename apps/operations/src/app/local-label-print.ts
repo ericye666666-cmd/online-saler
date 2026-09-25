@@ -22,6 +22,18 @@ export function isSupportedAgentPlatform(value: unknown): boolean {
   return typeof value === "string" && PRINT_AGENT_PLATFORMS.includes(value.toLowerCase() as typeof PRINT_AGENT_PLATFORMS[number]);
 }
 
+/**
+ * Safari never reaches the helper: the console is https and the helper is plain
+ * http on 127.0.0.1, which Safari blocks silently where Chrome asks for
+ * local-network access. The helper can be running perfectly and Safari still
+ * reports it missing, so name the browser instead of the helper. Chrome, Edge,
+ * Opera and Firefox all carry their own token; only real Safari is left.
+ */
+export function isSafariBrowser(userAgent: string | undefined): boolean {
+  if (!userAgent) return false;
+  return /Safari\//.test(userAgent) && !/(Chrome|Chromium|CriOS|Edg|OPR|FxiOS|Firefox)\//.test(userAgent);
+}
+
 export type LocalPrinter = {
   name: string;
   status?: string;

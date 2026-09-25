@@ -2234,6 +2234,8 @@ export const enDictionary: Record<string, string> = {
   "拣货清单": "Picking list",
   "打印请求没有返回，可能已经出纸。请先看一眼打印机，不要直接重复打印。":
     "The print request never came back, and the label may already have come out. Look at the printer before printing again.",
+  "Safari 连不上打印助手。请用 Chrome 打开作业台再打印。":
+    "Safari cannot reach the print helper. Open Operations in Chrome to print.",
   "打印助手未连接。请先启动打印助手；浏览器询问本地网络访问时选择允许。":
     "The print helper is not connected. Start the print helper, and allow local network access when the browser asks.",
   "打印助手版本过旧。请关闭后下载并启动新版。":

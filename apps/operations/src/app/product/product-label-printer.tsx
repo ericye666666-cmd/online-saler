@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { buildLabelPrintPayload, DEFAULT_PRINT_AGENT_URL, DEFAULT_PRINTER_NAME, isSupportedAgentPlatform, MACOS_PRINT_AGENT_DOWNLOAD_URL, PRINT_AGENT_DOWNLOAD_URL, printerList, selectDeliPrinter, type LocalPrinter } from "../local-label-print";
+import { buildLabelPrintPayload, DEFAULT_PRINT_AGENT_URL, DEFAULT_PRINTER_NAME, isSafariBrowser, isSupportedAgentPlatform, MACOS_PRINT_AGENT_DOWNLOAD_URL, PRINT_AGENT_DOWNLOAD_URL, printerList, selectDeliPrinter, type LocalPrinter } from "../local-label-print";
 import type { JsonRecord } from "../operations-workspace-flow";
 import { renderProductLabel } from "./product-label-raster";
 import { t } from "@/i18n/runtime";
@@ -11,7 +11,11 @@ type Product = JsonRecord & { id: string; barcode?: string | null; title?: strin
 async function agentRequest(path: string, options?: RequestInit) {
   let response: Response;
   try { response = await fetch(DEFAULT_PRINT_AGENT_URL + path, { ...options, signal: AbortSignal.timeout(path === "/print/label" ? 45000 : 8000) }); }
-  catch { throw new Error(path === "/print/label" ? t("打印请求未返回，可能已经出纸。请先检查打印机；不要直接重复打印。") : t("打印助手未连接。请关闭旧助手，下载并启动新版打印助手；浏览器询问本地网络访问时请选择允许。")); }
+  catch {
+    if (path === "/print/label") throw new Error(t("打印请求未返回，可能已经出纸。请先检查打印机；不要直接重复打印。"));
+    if (isSafariBrowser(navigator.userAgent)) throw new Error(t("Safari 连不上打印助手。请用 Chrome 打开作业台再打印。"));
+    throw new Error(t("打印助手未连接。请关闭旧助手，下载并启动新版打印助手；浏览器询问本地网络访问时请选择允许。"));
+  }
   const body = await response.json();
   if (!response.ok || body.ok === false) throw new Error(body.message || body.error || t("打印助手返回错误。"));
   return body;

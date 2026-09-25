@@ -7,6 +7,7 @@ import {
   buildFulfillmentLabelPayload,
   DEFAULT_PRINT_AGENT_URL,
   DEFAULT_PRINTER_NAME,
+  isSafariBrowser,
   isSupportedAgentPlatform,
   MACOS_PRINT_AGENT_DOWNLOAD_URL,
   PRINT_AGENT_DOWNLOAD_URL,
@@ -49,9 +50,9 @@ async function agentRequest(path: string, options?: RequestInit) {
       signal: AbortSignal.timeout(path === "/print/label" ? 45000 : 8000)
     });
   } catch {
-    throw new Error(path === "/print/label"
-      ? t("打印请求没有返回，可能已经出纸。请先看一眼打印机，不要直接重复打印。")
-      : t("打印助手未连接。请先启动打印助手；浏览器询问本地网络访问时选择允许。"));
+    if (path === "/print/label") throw new Error(t("打印请求没有返回，可能已经出纸。请先看一眼打印机，不要直接重复打印。"));
+    if (isSafariBrowser(navigator.userAgent)) throw new Error(t("Safari 连不上打印助手。请用 Chrome 打开作业台再打印。"));
+    throw new Error(t("打印助手未连接。请先启动打印助手；浏览器询问本地网络访问时选择允许。"));
   }
   const body = await response.json();
   if (!response.ok || body.ok === false) throw new Error(body.message || body.error || t("打印助手返回错误。"));
