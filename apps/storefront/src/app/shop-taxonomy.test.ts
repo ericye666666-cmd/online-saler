@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { browseHref, classifyProduct, departmentCategories, onChosenShelf, stockedGroups, stockedMenu } from "./shop-taxonomy";
+import { browseHref, browseSections, classifyProduct, departmentCategories, onChosenShelf, stockedGroups, stockedMenu } from "./shop-taxonomy";
 
 const where = (product: Parameters<typeof classifyProduct>[0]) =>
   classifyProduct(product).map((placement) => `${placement.department} > ${placement.group} > ${placement.category}`);
@@ -59,5 +59,21 @@ assert.equal(browseHref({ department: "Women", group: "Clothing", shopCategory: 
 assert.equal(browseHref({ department: "All", group: "Bags" }), "/?group=Bags");
 assert.equal(browseHref({ department: "All" }), "/?view=all");
 assert.equal(browseHref({ department: "All" }, "SELLER1"), "/?view=all&ref=SELLER1");
+
+// Browse splits clothing into Tops / Bottoms / Jackets… and gives each category a cover photo.
+const racks = [
+  { code: "A", image: "a.png", placements: classifyProduct({ category: "TSHIRTS", subcategory: "BASIC_TSHIRT", audience: "WOMEN" }) },
+  { code: "B", image: "b.png", placements: classifyProduct({ category: "TSHIRTS", subcategory: "BASIC_TSHIRT", audience: "WOMEN" }) },
+  { code: "C", image: "c.png", placements: classifyProduct({ category: "PANTS", subcategory: "MEN_JEANS", audience: "UNISEX" }) },
+  { code: "D", image: "d.png", placements: classifyProduct({ category: "JACKETS", subcategory: "DENIM_JACKETS", audience: "WOMEN" }) },
+  { code: "E", image: "e.png", placements: classifyProduct({ category: "BAG", subcategory: "HANDBAG", audience: "WOMEN" }) },
+  { code: "F", image: "f.png", placements: classifyProduct({ category: "TWO_PIECE", subcategory: "LONG_TWO_PIECE", audience: "WOMEN" }) },
+];
+const women = browseSections(racks, "Women");
+assert.deepEqual(women.map((entry) => [entry.section, entry.total, entry.group]),
+  [["Tops", 2, undefined], ["Bottoms", 1, undefined], ["Jackets & coats", 1, undefined], ["Sets & more", 1, undefined], ["Bags", 1, "Bags"]]);
+assert.deepEqual(women[0]!.categories, [{ group: "Clothing", category: "T-shirts & vests", count: 2, image: "a.png" }]);
+assert.deepEqual(browseSections(racks, "Men").map((entry) => entry.section), ["Bottoms"]);
+assert.deepEqual(browseSections(racks, "Kids"), []);
 
 console.log("Shop taxonomy tests passed");

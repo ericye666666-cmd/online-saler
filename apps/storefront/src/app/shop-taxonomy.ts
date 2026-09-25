@@ -301,3 +301,86 @@ export function onChosenShelf(placements: Placement[] | undefined, department = 
       && (group === "All" || placement.group === group)
       && (shopCategory === "All" || placement.category === shopCategory));
 }
+
+/**
+ * The picture row on Browse: shoppers think "tops", "trousers", "a jacket",
+ * not "clothing". Clothing is split into these sections; bags, shoes,
+ * accessories and home are a section each, the same as their group.
+ */
+export const sections = ["Tops", "Bottoms", "Jackets & coats", "Dresses & skirts", "Sets & more", "Shoes", "Bags", "Accessories", "Home"] as const;
+export type Section = (typeof sections)[number];
+
+const CLOTHING_SECTION: Record<string, Section> = {
+  "T-shirts & vests": "Tops", "T-shirts": "Tops", Tops: "Tops", Shirts: "Tops", "Polo shirts": "Tops",
+  "Hoodies & sweatshirts": "Tops", Knitwear: "Tops",
+  Trousers: "Bottoms", Jeans: "Bottoms", Shorts: "Bottoms", Sweatpants: "Bottoms", "Trousers & shorts": "Bottoms",
+  Jackets: "Jackets & coats", "Coats & puffers": "Jackets & coats", Suits: "Jackets & coats", "Hoodies & jackets": "Jackets & coats",
+  Dresses: "Dresses & skirts", Skirts: "Dresses & skirts", Jumpsuits: "Dresses & skirts", "Dresses & skirts": "Dresses & skirts"
+};
+
+export function sectionOf(group: Group, category: string): Section {
+  if (group !== "Clothing") return group;
+  return CLOTHING_SECTION[category] ?? "Sets & more";
+}
+
+export function isSection(value: string | null | undefined): value is Section {
+  return sections.includes(value as Section);
+}
+
+export type BrowseSection = {
+  section: Section;
+  total: number;
+  /** The whole group when the section is one (Bags, Shoes…), so it can offer "All bags". */
+  group?: Group;
+  categories: Array<{ group: Group; category: string; count: number; image?: string }>;
+};
+
+type BrowsableProduct = { code: string; image?: string | null; placements?: Placement[] };
+
+/**
+ * A department's stocked sections, in menu order, each with its categories
+ * and a cover photo per category. Covers are picked in list order (newest
+ * first) and a piece covers at most one tile, so the grid does not repeat itself.
+ */
+export function browseSections(products: BrowsableProduct[], department: Department): BrowseSection[] {
+  const covers = new Set<string>();
+  const byKey = new Map<string, { count: number; image?: string }>();
+  for (const product of products) {
+    for (const placement of product.placements ?? []) {
+      if (placement.department !== department) continue;
+      const key = `${placement.group}\u0000${placement.category}`;
+      const entry = byKey.get(key) ?? { count: 0 };
+      entry.count += 1;
+      if (!entry.image && product.image && !covers.has(product.code)) {
+        entry.image = product.image;
+        covers.add(product.code);
+      }
+      byKey.set(key, entry);
+    }
+  }
+  // A second pass lets a category whose only pieces already cover another tile still show a photo.
+  for (const product of products) {
+    for (const placement of product.placements ?? []) {
+      if (placement.department !== department || !product.image) continue;
+      const entry = byKey.get(`${placement.group}\u0000${placement.category}`);
+      if (entry && !entry.image) entry.image = product.image;
+    }
+  }
+
+  return sections
+    .map((section): BrowseSection => {
+      const categories = groups.flatMap((group) => departmentCategories[department][group]
+        .filter((category) => sectionOf(group, category) === section)
+        .flatMap((category) => {
+          const entry = byKey.get(`${group}\u0000${category}`);
+          return entry ? [{ group, category, count: entry.count, ...(entry.image ? { image: entry.image } : {}) }] : [];
+        }));
+      return {
+        section,
+        total: categories.reduce((sum, entry) => sum + entry.count, 0),
+        ...(isGroup(section) ? { group: section } : {}),
+        categories
+      };
+    })
+    .filter((entry) => entry.total > 0);
+}

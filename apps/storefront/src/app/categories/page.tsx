@@ -1,23 +1,27 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { SiteHeader } from "../components/site-header";
+import { BrowseSectionRail } from "../components/browse-section-rail";
+import { SectionIcon } from "../components/section-icon";
 import { listPublishedProducts } from "../../db/catalog";
 import { getStorefrontI18n } from "../../i18n/server";
 import { translateValue } from "../../i18n/dictionary";
 import { cardImageSrc } from "../storefront-products";
-import { browseHref, isDepartment, isGroup, stockedMenu } from "../shop-taxonomy";
+import { browseHref, browseSections, isDepartment, isGroup, isSection, sectionOf, stockedMenu } from "../shop-taxonomy";
 
 export const dynamic = "force-dynamic";
 
-type BrowseProps = { searchParams: Promise<{ d?: string; g?: string }> };
+type BrowseProps = { searchParams: Promise<{ d?: string; s?: string; g?: string }> };
 
 /**
- * Vestiaire's Browse screen: Women / Men / Kids tabs, then "Women home"
- * and one row per group — Bags, Clothing, Shoes… A group row opens its
- * categories. Only stocked rows are listed, so none leads to an empty page.
+ * Browse: Women / Men / Kids tabs, then a row of drawn sections — Tops,
+ * Bottoms, Jackets & coats, Dresses & skirts, Shoes, Bags… — to swipe
+ * through. The chosen section lays out its categories as photo tiles; a tile
+ * opens the catalogue on that category. Only stocked sections and
+ * categories are shown, so no tile leads to an empty page.
  */
 export default async function CategoriesPage({ searchParams }: BrowseProps) {
-  const [{ d, g }, products, { locale, t }] = await Promise.all([
+  const [{ d, s, g }, products, { locale, t }] = await Promise.all([
     searchParams,
     listPublishedProducts(),
     getStorefrontI18n(),
@@ -25,9 +29,15 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
   const available = products.filter((product) => product.status === "Available");
   const menu = stockedMenu(available.map((product) => product.placements ?? []));
   const active = menu.find((entry) => entry.department === (isDepartment(d) ? d : null)) ?? menu[0];
-  const openGroup = active && isGroup(g) ? active.groups.find((entry) => entry.group === g) ?? null : null;
+  const sections = active ? browseSections(available, active.department) : [];
+  // `?g=` is from before sections: Bags opens Bags, Clothing its first section.
+  const wanted = isSection(s) ? s : isGroup(g) && g !== "Clothing" ? sectionOf(g, "") : null;
+  const openSection = sections.find((entry) => entry.section === wanted)
+    ?? (g === "Clothing" ? sections.find((entry) => !entry.group) : undefined)
+    ?? sections[0];
   const department = active ? translateValue(locale, active.department) : "";
   const newest = available.find((product) => product.image);
+  const sectionHref = (section: string) => `/categories?d=${encodeURIComponent(active?.department ?? "")}&s=${encodeURIComponent(section)}`;
 
   return (
     <main className="browsePage">
@@ -47,34 +57,52 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
           ))}
         </nav>
 
-        {active && openGroup ? (
+        {active && openSection ? (
           <>
-            <Link className="browseBack" href={`/categories?d=${encodeURIComponent(active.department)}`}>
-              <ChevronLeft size={18} aria-hidden="true" /> {t("browse.back")}
-            </Link>
-            <h1 className="browseGroupTitle">{department} · {translateValue(locale, openGroup.group)}</h1>
-            <ul className="browseList">
-              <li>
-                <Link href={browseHref({ department: active.department, group: openGroup.group })}>
-                  <span>{t("browse.allInGroup", { group: translateValue(locale, openGroup.group) })}</span>
-                  <span className="browseCount">{openGroup.total}</span>
-                  <ChevronRight size={18} aria-hidden="true" />
+            <BrowseSectionRail label={department}>
+              {sections.map((entry) => {
+                const current = entry.section === openSection.section;
+                return (
+                  <Link
+                    key={entry.section}
+                    href={sectionHref(entry.section)}
+                    className={current ? "active" : ""}
+                    aria-current={current ? "true" : undefined}
+                    scroll={false}
+                  >
+                    <span className="browseSectionIcon"><SectionIcon section={entry.section} /></span>
+                    <span className="browseSectionLabel">{translateValue(locale, entry.section)}</span>
+                  </Link>
+                );
+              })}
+            </BrowseSectionRail>
+
+            <div className="browseSectionHeading">
+              <h1>{translateValue(locale, openSection.section)}</h1>
+              {openSection.group ? (
+                <Link href={browseHref({ department: active.department, group: openSection.group })}>
+                  {t("browse.seeAll")} ({openSection.total})
                 </Link>
-              </li>
-              {openGroup.categories.map((entry) => (
-                <li key={entry.category}>
-                  <Link href={browseHref({ department: active.department, group: openGroup.group, shopCategory: entry.category })}>
-                    <span>{translateValue(locale, entry.category)}</span>
-                    <span className="browseCount">{entry.count}</span>
-                    <ChevronRight size={18} aria-hidden="true" />
+              ) : (
+                <span className="browseCount">{openSection.total}</span>
+              )}
+            </div>
+
+            <ul className="browseTiles">
+              {openSection.categories.map((entry) => (
+                <li key={`${entry.group}-${entry.category}`}>
+                  <Link href={browseHref({ department: active.department, group: entry.group, shopCategory: entry.category })}>
+                    <span className="browseTileFrame">
+                      {entry.image ? <img src={cardImageSrc(entry.image)} alt="" loading="lazy" /> : null}
+                    </span>
+                    <span className="browseTileLabel">{translateValue(locale, entry.category)}</span>
+                    <span className="browseTileCount">{entry.count}</span>
                   </Link>
                 </li>
               ))}
             </ul>
-          </>
-        ) : active ? (
-          <>
-            <ul className="browseList">
+
+            <ul className="browseList browseDepartmentAll">
               <li>
                 <Link href={browseHref({ department: active.department })}>
                   <span>{t("browse.departmentHome", { department })}</span>
@@ -82,15 +110,6 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
                   <ChevronRight size={18} aria-hidden="true" />
                 </Link>
               </li>
-              {active.groups.map((entry) => (
-                <li key={entry.group}>
-                  <Link href={`/categories?d=${encodeURIComponent(active.department)}&g=${encodeURIComponent(entry.group)}`}>
-                    <span>{translateValue(locale, entry.group)}</span>
-                    <span className="browseCount">{entry.total}</span>
-                    <ChevronRight size={18} aria-hidden="true" />
-                  </Link>
-                </li>
-              ))}
             </ul>
 
             <Link className="browsePromo" href={browseHref({ department: "All" })}>
