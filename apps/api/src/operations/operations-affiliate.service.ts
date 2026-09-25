@@ -130,10 +130,50 @@ export class OperationsAffiliateService {
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
       take: 200
     });
-    return affiliates.map((affiliate) => ({
-      ...affiliate,
-      storefrontShareUrl: buildShareUrl("/", affiliate.affiliateCode)
-    }));
+    const ids = affiliates.map((affiliate) => affiliate.id);
+    const [commissionSums, paidOrders, lastOrders, lastClicks] = await Promise.all([
+      prisma.commission.groupBy({
+        by: ["affiliateId", "status"],
+        where: { affiliateId: { in: ids } },
+        _sum: { commissionAmountKsh: true }
+      }),
+      prisma.order.groupBy({
+        by: ["affiliateId"],
+        where: { affiliateId: { in: ids }, status: { in: [OrderStatus.PAID, OrderStatus.FULFILLING, OrderStatus.COMPLETED] } },
+        _count: { _all: true },
+        _sum: { itemSubtotalKsh: true }
+      }),
+      prisma.order.groupBy({
+        by: ["affiliateId"],
+        where: { affiliateId: { in: ids } },
+        _max: { createdAt: true }
+      }),
+      prisma.affiliateClick.groupBy({
+        by: ["affiliateId"],
+        where: { affiliateId: { in: ids } },
+        _max: { clickedAt: true }
+      })
+    ]);
+    const commissionKsh = (affiliateId: string, status: CommissionStatus) =>
+      commissionSums.find((row) => row.affiliateId === affiliateId && row.status === status)?._sum.commissionAmountKsh ?? 0;
+
+    return affiliates.map((affiliate) => {
+      const paid = paidOrders.find((row) => row.affiliateId === affiliate.id);
+      return {
+        ...affiliate,
+        effectiveCommissionRateBps: LAUNCH_AFFILIATE_COMMISSION_RATE_BPS,
+        stats: {
+          paidOrders: paid?._count._all ?? 0,
+          salesKsh: paid?._sum.itemSubtotalKsh ?? 0,
+          pendingCommissionKsh: commissionKsh(affiliate.id, CommissionStatus.PENDING),
+          confirmedCommissionKsh: commissionKsh(affiliate.id, CommissionStatus.CONFIRMED),
+          paidCommissionKsh: commissionKsh(affiliate.id, CommissionStatus.PAID),
+          lastClickAt: lastClicks.find((row) => row.affiliateId === affiliate.id)?._max.clickedAt ?? null,
+          lastOrderAt: lastOrders.find((row) => row.affiliateId === affiliate.id)?._max.createdAt ?? null
+        },
+        storefrontShareUrl: buildShareUrl("/", affiliate.affiliateCode)
+      };
+    });
   }
 
   async createAffiliate(input: AffiliateInput) {

@@ -43,6 +43,16 @@ type AffiliateRow = {
   status: string;
   commissionRateBps?: number | null;
   storefrontShareUrl: string;
+  effectiveCommissionRateBps: number;
+  stats: {
+    paidOrders: number;
+    salesKsh: number;
+    pendingCommissionKsh: number;
+    confirmedCommissionKsh: number;
+    paidCommissionKsh: number;
+    lastClickAt?: string | null;
+    lastOrderAt?: string | null;
+  };
   _count: {
     clicks: number;
     orders: number;
@@ -648,7 +658,7 @@ function AffiliatesView({
               <Field>
                 <FieldLabel>{t("佣金 bps")}</FieldLabel>
                 <div className="flex gap-2">
-                  <Input aria-label={t("当前推广佣金比例")} value={t("10%（当前统一比例）")} disabled />
+                  <Input aria-label={t("当前推广佣金比例")} value={t("25%（当前统一比例）")} disabled />
                   <Button disabled={busy || !form.displayName.trim()} onClick={onCreate}>{t("创建")}</Button>
                 </div>
               </Field>
@@ -682,10 +692,9 @@ function AffiliatesView({
                   </TableCell>
                   <TableCell className="font-mono text-xs">{affiliate.affiliateCode}</TableCell>
                   <TableCell><StatusBadge status={affiliate.status} /></TableCell>
-                  <TableCell>{"10%"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    
-                    {t("点击")} {affiliate._count.clicks}  {t("/ 订单")} {affiliate._count.orders}  {t("/ 佣金")} {affiliate._count.commissions}
+                  <TableCell>{rateLabel(affiliate.effectiveCommissionRateBps)}</TableCell>
+                  <TableCell className="min-w-72 text-sm">
+                    <AffiliateStats affiliate={affiliate} />
                   </TableCell>
                   <TableCell>
                     <div className="flex min-w-64 items-center gap-2">
@@ -1042,6 +1051,26 @@ async function apiRequest<T>(path: string, options?: RequestOptions): Promise<T>
 
 function money(value: number): string {
   return `KSh ${Math.round(value).toLocaleString("en-KE")}`;
+}
+
+function AffiliateStats({ affiliate }: { affiliate: AffiliateRow }) {
+  const { stats } = affiliate;
+  const clicks = affiliate._count.clicks;
+  const conversion = clicks > 0 ? `${((stats.paidOrders / clicks) * 100).toFixed(1)}%` : "-";
+  return (
+    <div className="grid gap-1">
+      <div>
+        {t("点击")} {clicks} {t("/ 订单")} {affiliate._count.orders} {t("/ 已付款")} {stats.paidOrders} · {t("转化率")} {conversion}
+      </div>
+      <div>{t("带来销售额")} {money(stats.salesKsh)}</div>
+      <div>
+        {t("佣金")}：{t("待确认")} {money(stats.pendingCommissionKsh)} · {t("已确认")} {money(stats.confirmedCommissionKsh)} · {t("已付款")} {money(stats.paidCommissionKsh)}
+      </div>
+      <div className="text-muted-foreground text-xs">
+        {t("最近点击")} {dateTime(stats.lastClickAt)} · {t("最近下单")} {dateTime(stats.lastOrderAt)}
+      </div>
+    </div>
+  );
 }
 
 function rateLabel(value?: number | null): string {
