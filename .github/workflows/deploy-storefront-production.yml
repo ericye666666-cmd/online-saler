@@ -42,6 +42,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Verify production Secret Manager prerequisites
+        id: prerequisites
         run: |
           set -euo pipefail
 
@@ -54,7 +55,7 @@ jobs:
             PRODUCTION_MPESA_CONSUMER_SECRET \
             PRODUCTION_MPESA_SHORTCODE \
             PRODUCTION_MPESA_TILL_NUMBER \
-            PRODUCTION_MPESA_PASSKEY             PRODUCTION_AFRICASTALKING_API_KEY
+            PRODUCTION_MPESA_PASSKEY
           do
             gcloud secrets versions access latest \
               --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
@@ -71,6 +72,19 @@ jobs:
           if ! [[ "${BUSINESS_SHORTCODE}" =~ ^[0-9]+$ ]] || ! [[ "${TILL_NUMBER}" =~ ^[0-9]+$ ]]; then
             echo "Production M-Pesa H.O. shortcode and Till number must both be numeric." >&2
             exit 1
+          fi
+
+          # SMS is optional: until the Africa's Talking key is stored, the storefront
+          # deploys without it and notifications stay queued instead of failing.
+          if gcloud secrets versions access latest \
+            --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
+            --secret PRODUCTION_AFRICASTALKING_API_KEY >/dev/null 2>&1; then
+            echo "sms_secret=AFRICASTALKING_API_KEY=PRODUCTION_AFRICASTALKING_API_KEY:latest" >> "${GITHUB_OUTPUT}"
+          else
+            # Repeat an entry the deploy already has, so the secrets list never
+            # carries a blank line.
+            echo "sms_secret=MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest" >> "${GITHUB_OUTPUT}"
+            echo "::warning::PRODUCTION_AFRICASTALKING_API_KEY is not in Secret Manager yet; SMS will stay queued."
           fi
 
           if [ -z "${{ vars.MPESA_CALLBACK_URL_PRODUCTION }}" ]; then
@@ -183,7 +197,7 @@ jobs:
             MPESA_SHORTCODE=PRODUCTION_MPESA_SHORTCODE:latest
             MPESA_TILL_NUMBER=PRODUCTION_MPESA_TILL_NUMBER:latest
             MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest
-            AFRICASTALKING_API_KEY=PRODUCTION_AFRICASTALKING_API_KEY:latest
+            ${{ steps.prerequisites.outputs.sms_secret }}
 
       - name: Verify Storefront production surface
         run: |
