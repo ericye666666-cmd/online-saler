@@ -10,6 +10,7 @@ import {
   type DeliveryFailureInput,
   type DispatchToRiderInput,
   type EmployeeInput,
+  type LabelPrintedInput,
   type ExceptionInput,
   type NodeInput,
   type OrderCenterListInput,
@@ -164,6 +165,11 @@ export class OperationsFulfillmentController {
   @Post(":orderId/send-to-node")
   async sendToNode(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: AdminInput) {
     return this.orders.sendToNode(orderId, await this.authorizedInput(authorization, body));
+  }
+
+  @Post(":orderId/package-label-printed")
+  async packageLabelPrinted(@Headers("authorization") authorization: string | undefined, @Param("orderId") orderId: string, @Body() body: LabelPrintedInput) {
+    return this.orders.markPackageLabelPrinted(orderId, await this.authorizedInput(authorization, body));
   }
 
   @Post(":orderId/receive-at-node")

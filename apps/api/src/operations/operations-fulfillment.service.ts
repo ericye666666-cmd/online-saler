@@ -192,6 +192,14 @@ export type RiderVisibleOrder = {
 /** A rider acting on their own delivery, resolved from their login. */
 export type RiderActor = { id: string; name: string; employeeId: string | null };
 export type NodeInput = AdminInput & { nodeId?: string };
+export type LabelPrintedInput = AdminInput & { packageCode?: string };
+
+/**
+ * Sent back when a parcel is sent to its store before its label was printed.
+ * The console matches on the code to show its own wording; the message is for
+ * everyone else.
+ */
+export const PACKAGE_LABEL_NOT_PRINTED = "PACKAGE_LABEL_NOT_PRINTED";
 export type DeliveryCostInput = AdminInput & { actualDeliveryCostKsh?: number };
 export type WriteOffInput = AdminInput & { inventoryOutcome?: InventoryOutcome };
 export type RefundInput = AdminInput & {
@@ -1353,9 +1361,17 @@ export class OperationsFulfillmentService {
           ? buildPackageCode(order.orderNumber, node.code)
           : order.fulfillment.packageCode;
       await tx.order.update({ where: { id: orderId }, data: { fulfillmentNodeId: node.id } });
+      // A printed sticker names the old code. Once the code changes that
+      // sticker is wrong, so the parcel counts as unlabelled again and has to
+      // be printed before it may leave.
+      const relabelled = (packageCode ?? null) !== (order.fulfillment.packageCode ?? null);
       await tx.orderFulfillment.update({
         where: { id: order.fulfillment.id },
-        data: { fulfillmentNodeId: node.id, ...(packageCode ? { packageCode } : {}) }
+        data: {
+          fulfillmentNodeId: node.id,
+          ...(packageCode ? { packageCode } : {}),
+          ...(relabelled ? { packageLabelPrintedAt: null, packageLabelPrintedByEmployeeId: null } : {})
+        }
       });
       await this.createEvent(tx, {
         fulfillmentId: order.fulfillment.id,
@@ -1386,6 +1402,9 @@ export class OperationsFulfillmentService {
       throw new BadRequestException("Orders handed over at the warehouse do not need a transfer.");
     }
     this.assertTransition(order, FulfillmentStatus.IN_TRANSIT_TO_NODE);
+    // The store scans the sticker to receive the parcel. A box that leaves
+    // without one arrives as a parcel nobody can check in.
+    if (!fulfillment.packageLabelPrintedAt) throw labelNotPrinted();
     const packageCode = fulfillment.packageCode || buildPackageCode(order.orderNumber, node.code);
     const now = new Date();
 
@@ -1395,6 +1414,8 @@ export class OperationsFulfillmentService {
       if (!current || current.status !== FulfillmentStatus.PACKED) {
         throw new ConflictException("Fulfillment state changed. Refresh before sending the package.");
       }
+      // Re-checked under the lock: a re-route in between clears the flag.
+      if (!current.packageLabelPrintedAt) throw labelNotPrinted();
       await tx.orderFulfillment.update({
         where: { id: fulfillment.id },
         data: {
@@ -1418,6 +1439,49 @@ export class OperationsFulfillmentService {
       await this.queueNodeNotification(tx, order, "NODE_PACKAGE_IN_TRANSIT");
     });
     return this.orderDetail(orderId, input.adminUserId);
+  }
+
+  /**
+   * Records that this parcel's routing label (the sticker with the QR code) was
+   * just sent to the printer. The console calls it after the print helper says
+   * the sheet went out; a reprint moves the time forward.
+   *
+   * The code on the sticker is checked against the current one, so a label
+   * rendered before a re-route cannot vouch for the parcel after it.
+   */
+  async markPackageLabelPrinted(orderId: string, input: LabelPrintedInput) {
+    const actor = await this.adminForPermission(input.adminUserId, "orders.pack");
+    const order = await this.requireOrderWithTask(orderId);
+    const fulfillment = order.fulfillment!;
+    if (!fulfillment.packageCode) {
+      throw new BadRequestException("This parcel has no package code yet, so it has no label to print.");
+    }
+    const printed = input.packageCode?.trim().toUpperCase();
+    if (printed && printed !== fulfillment.packageCode.toUpperCase()) {
+      throw new ConflictException(`The printed label says ${printed}, but this parcel is now ${fulfillment.packageCode}. Print the label again.`);
+    }
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await lockReservationOrder(tx, orderId);
+      const current = await tx.orderFulfillment.findUnique({ where: { id: fulfillment.id } });
+      if (!current || current.packageCode !== fulfillment.packageCode) {
+        throw new ConflictException("The package code changed. Print the label again.");
+      }
+      await tx.orderFulfillment.update({
+        where: { id: fulfillment.id },
+        data: { packageLabelPrintedAt: now, packageLabelPrintedByEmployeeId: actor.actorEmployeeId }
+      });
+      await this.createEvent(tx, {
+        fulfillmentId: fulfillment.id,
+        orderId,
+        ...actor,
+        action: "PRINT_PACKAGE_LABEL",
+        oldStatus: current.status,
+        newStatus: current.status,
+        note: fulfillment.packageCode
+      });
+    });
+    return { orderId, packageCode: fulfillment.packageCode, packageLabelPrintedAt: now.toISOString() };
   }
 
   /**
@@ -2433,6 +2497,13 @@ export class OperationsFulfillmentService {
       create: data
     });
   }
+}
+
+function labelNotPrinted() {
+  return new BadRequestException({
+    message: "Print the package label before sending the parcel to the store.",
+    code: PACKAGE_LABEL_NOT_PRINTED
+  });
 }
 
 function tabWhere(tab: OrderCenterTab): Prisma.OrderWhereInput {

@@ -2366,7 +2366,7 @@ export const enDictionary: Record<string, string> = {
     "Have all items been placed in their assigned shelf locations?\\n\\nConfirm that all {targetCount} pieces in this batch are labelled and on their shelves. Continuing checks them in and publishes them.",
   "定金锁定": "Held on deposit",
   "送货上门 · 经 {name}": "Delivery · via {name}",
-  "送货上门 · 未指定履约点": "Delivery · not routed yet",
+  "送货上门 · 未指定中转点": "Delivery · no transit store yet",
   "自提 · {name}": "Pickup · {name}",
   "自提 · 未指定门店": "Pickup · no store chosen",
   "已选 {count} 单 · {items} 件": "{count} orders selected · {items} items",
@@ -2402,8 +2402,8 @@ export const enDictionary: Record<string, string> = {
     "Every item you bring back is scanned against its barcode. When all of them are verified the order moves to packing by itself.",
   "开始打包 → 完成打包。填包装方式和包裹数量，完成时生成包裹号。":
     "Start packing, then finish it. Give the packaging and the parcel count; finishing creates the package code.",
-  "先勾上整组打面单，第 1 张贴箱子、其余放进去，然后整组发往门店。没有履约点的单打不出面单——没有目的地就没有路由贴纸，要先指定。":
-    "Select the whole group and print labels: the first goes on the box, the rest inside. Then send the group to its store. An order with no fulfilment node has no label — no destination, no routing sticker — so route it first.",
+  "送货上门的单先指定中转点（门店）。然后勾上整组打面单，第 1 张贴箱子、其余放进去。面单印出后才能发往门店。":
+    "Give delivery orders a transit store first. Then select the group and print labels: the first goes on the box, the rest inside. A parcel can be sent to its store only once its label is printed.",
 
   // ——— The order card ———
   "拣货": "Picking",
@@ -2416,6 +2416,23 @@ export const enDictionary: Record<string, string> = {
   "货架位未分配": "No shelf assigned",
   "指定履约点": "Choose a fulfilment node",
   "发往门店": "Send to the store",
+  // ——— Label before dispatch ———
+  "先打印面单": "Print the label first",
+  "先打印面单，再发往门店。": "Print the package label first, then send it to the store.",
+  "先指定中转点": "Choose a transit store first",
+  "指定中转点": "Choose a transit store",
+  "中转点": "Transit store",
+  "这单经哪家门店中转？": "Which store does this parcel travel through?",
+  "送货上门的单先送到一家门店，门店扫码签收后再叫 Bolt 送给顾客。选好后才能打面单、发往门店。":
+    "A delivery parcel goes to a store first; the store scans it in, then books Bolt to the customer. The label can be printed and the parcel sent only after you choose one.",
+  "面单已打印": "Label printed",
+  "已打印面单": "Printed the package label",
+  "重打面单": "Reprint label",
+  "{count} 单还没指定中转点，不打面单也不发车": "{count} orders have no transit store yet: no label, not sent",
+  "{count} 单还没打面单，发往门店时跳过": "{count} orders have no printed label and will be skipped when sending",
+  "第 1 张（贴包裹）印出后，这一单才能发往门店。": "The order can be sent to its store once label 1 (the one for the parcel) has printed.",
+  "面单已印出，但没能记下 {orders} 已打印，发往门店会被拦住。刷新后只重打这一单的第 1 张。":
+    "The labels printed, but {orders} could not be recorded as printed, so sending to the store will be refused. Refresh, then reprint only label 1 for that order.",
   "确认到店": "Confirm it arrived",
   "分配给其他拣货员": "Assign to another picker",
   "打印面单": "Print the label",

@@ -32,8 +32,10 @@ import { t } from "@/i18n/runtime";
  * halfway says where it stopped rather than silently leaving a parcel with a
  * routing label and no picking list.
  *
- * Reprinting is deliberately easy and carries no state: these are stickers, not
- * records. Nothing downstream counts how many were printed.
+ * Reprinting is deliberately easy. The one thing recorded is that a parcel's
+ * routing sticker (sheet 1, the QR the store scans) has been out at least once:
+ * 发往门店 is refused until it has. It is recorded only after the print helper
+ * confirms that sheet left, and a reprint just moves the time forward.
  */
 /** What each label in the strip is for, shown under its preview. */
 const SHEET_LABEL: Record<FulfillmentLabelSheet["kind"], () => string> = {
@@ -59,7 +61,12 @@ async function agentRequest(path: string, options?: RequestInit) {
   return body;
 }
 
-export function FulfillmentLabelPrinter({ labels, onClose }: { labels: FulfillmentLabelInput[]; onClose: () => void }) {
+export function FulfillmentLabelPrinter({ labels, onClose, onRoutingPrinted }: {
+  labels: FulfillmentLabelInput[];
+  onClose: () => void;
+  /** Called after an order's routing sticker was accepted by the print helper. */
+  onRoutingPrinted?: (input: FulfillmentLabelInput) => Promise<void>;
+}) {
   const [printers, setPrinters] = useState<LocalPrinter[]>([]);
   const [printer, setPrinter] = useState(DEFAULT_PRINTER_NAME);
   const [ready, setReady] = useState(false);
@@ -118,6 +125,7 @@ export function FulfillmentLabelPrinter({ labels, onClose }: { labels: Fulfillme
     setNotice("");
     let sent = 0;
     let lastOrder = "";
+    const unrecorded: string[] = [];
     try {
       for (const entry of run) {
         const payload = buildFulfillmentLabelPayload({ ...entry.input, printerName: printer });
@@ -130,8 +138,20 @@ export function FulfillmentLabelPrinter({ labels, onClose }: { labels: Fulfillme
         sent += 1;
         lastOrder = entry.input.orderNumber;
         setNotice(t("已发送 {sent}/{total} 张。", { sent, total: run.length }));
+        if (entry.sheet.kind === "routing" && entry.input.orderId && onRoutingPrinted) {
+          // The sticker is already on paper; failing to record it must not
+          // stop the rest of the roll, only be said out loud at the end.
+          try {
+            await onRoutingPrinted(entry.input);
+          } catch {
+            unrecorded.push(entry.input.orderNumber);
+          }
+        }
       }
       setNotice(t("{total} 张已全部发送。每单第 1 张贴在包裹上，其余随包裹带走。", { total: run.length }));
+      if (unrecorded.length) {
+        setError(t("面单已印出，但没能记下 {orders} 已打印，发往门店会被拦住。刷新后只重打这一单的第 1 张。", { orders: unrecorded.join("、") }));
+      }
     } catch (caught) {
       // Naming the order it stopped on matters more than the sheet number: the
       // packer has to know which parcel to go back to.
@@ -232,6 +252,9 @@ export function FulfillmentLabelPrinter({ labels, onClose }: { labels: Fulfillme
         <p className="text-xs text-muted-foreground">
           {t("每单第 1 张贴在包裹上，其余随包裹带走。每张都印着订单号和张数，掉了也能对回来。面单只是贴纸，重打多少次都不影响订单。")}
         </p>
+        {onRoutingPrinted ? (
+          <p className="text-xs text-muted-foreground">{t("第 1 张（贴包裹）印出后，这一单才能发往门店。")}</p>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

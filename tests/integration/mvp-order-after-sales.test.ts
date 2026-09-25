@@ -158,6 +158,12 @@ test("real database MVP order: two garments, payment, verified pickup, staged re
     // The order is collected from a store, so the package has to travel and be
     // scanned in before anyone can hand it over.
     await assert.rejects(fulfillment.readyForPickup(order.id, actor), /cannot move from PACKED/);
+    // The store checks the parcel in by scanning its sticker, so it may not
+    // leave until the label has been printed.
+    await assert.rejects(fulfillment.sendToNode(order.id, actor), /Print the package label/);
+    const packed = await prisma.orderFulfillment.findUniqueOrThrow({ where: { orderId: order.id } });
+    await fulfillment.markPackageLabelPrinted(order.id, { ...actor, packageCode: packed.packageCode! });
+    assert.ok((await prisma.orderFulfillment.findUniqueOrThrow({ where: { orderId: order.id } })).packageLabelPrintedAt);
     await fulfillment.sendToNode(order.id, actor);
     const inTransit = await prisma.orderFulfillment.findUniqueOrThrow({ where: { orderId: order.id } });
     assert.equal(inTransit.status, "IN_TRANSIT_TO_NODE");

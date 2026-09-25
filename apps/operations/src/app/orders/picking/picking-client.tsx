@@ -416,6 +416,7 @@ export function PickingStation() {
       {labelOrder ? (
         <FulfillmentLabelPrinter
           labels={[{
+            orderId: labelOrder.id,
             packageCode: labelOrder.fulfillment?.packageCode ?? "",
             nodeName: labelOrder.nodeName,
             orderNumber: labelOrder.orderNumber,
@@ -428,6 +429,12 @@ export function PickingStation() {
             items: labelOrder.items.map((item) => ({ title: item.title, sizeLabel: item.sizeLabel, barcode: item.barcode || null }))
           }]}
           onClose={() => setLabelOrder(null)}
+          onRoutingPrinted={async (input) => {
+            await request(`/operations/orders/${input.orderId}/package-label-printed`, {
+              method: "POST",
+              body: JSON.stringify({ packageCode: input.packageCode })
+            });
+          }}
         />
       ) : null}
     </div>

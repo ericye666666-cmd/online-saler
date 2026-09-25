@@ -45,6 +45,8 @@ export type FulfillmentLabelItem = {
 };
 
 export type FulfillmentLabelInput = {
+  /** Present when the print should be recorded against the order (the send gate reads it). */
+  orderId?: string;
   nodeName: string;
   packageCode: string;
   orderNumber: string;

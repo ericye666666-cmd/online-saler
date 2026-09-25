@@ -1150,6 +1150,11 @@ model OrderFulfillment {
   deliveryRiderPhone          String?
   fulfillmentNodeId           String?
   packageCode                 String?                     @unique
+  /// When this parcel's routing label (the one with the QR code) was last sent
+  /// to the printer. A parcel is not handed to the transfer run to its store
+  /// until this is set: a box without its sticker cannot be scanned in there.
+  packageLabelPrintedAt       DateTime?
+  packageLabelPrintedByEmployeeId String?
   sentToNodeByEmployeeId      String?
   sentToNodeAt                DateTime?
   arrivedAtNodeByEmployeeId   String?

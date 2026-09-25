@@ -9,7 +9,6 @@ import {
   AlertTriangleIcon,
   BoxIcon,
   CheckCircle2Icon,
-  ChevronDownIcon,
   ClipboardCheckIcon,
   PackageCheckIcon,
   PrinterIcon,
@@ -23,6 +22,7 @@ import {
 import { FulfillmentLabelPrinter } from "../warehouse/fulfillment-label-printer";
 import type { FulfillmentLabelInput } from "../warehouse/fulfillment-label-raster";
 import { PickingSheetDialog, type PickingLine } from "./picking-sheet";
+import { isTransitNodeOption, labelPrinted, needsDestination, planDispatchBatch, travelsToStore } from "./dispatch-readiness";
 
 import { hasPermission, type OperationsSession } from "@/components/admin/operations-access";
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
@@ -31,12 +31,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -157,6 +151,7 @@ type OrderRow = {
     deliveryRider?: DeliveryRider | null;
     fulfillmentNode?: OrderNode | null;
     packageCode?: string | null;
+    packageLabelPrintedAt?: string | null;
     sentToNodeAt?: string | null;
     arrivedAtNodeAt?: string | null;
     actualDeliveryCostKsh?: number | null;
@@ -234,6 +229,15 @@ const PAGE_META: Record<Scope, { title: string; description: string }> = {
   exceptions: { title: "异常订单", description: "集中处理找不到商品、Barcode 不匹配、损坏、配送失败和顾客取消。" }
 };
 
+/**
+ * API refusals the console words itself. The API speaks English to every
+ * client; these are the ones a warehouse worker meets mid-task, so they get the
+ * console's own language, matched on the code the API sends with them.
+ */
+const API_ERROR_MESSAGES: Record<string, () => string> = {
+  PACKAGE_LABEL_NOT_PRINTED: () => t("先打印面单，再发往门店。")
+};
+
 async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   const url = new URL(`${API_PROXY_URL}${path}`, window.location.origin);
   for (const [key, value] of Object.entries(options?.query ?? {})) if (value) url.searchParams.set(key, value);
@@ -246,7 +250,8 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   try { body = text ? JSON.parse(text) : {}; } catch { body = { message: text || `Request failed: ${response.status}` }; }
   if (!response.ok) {
     const details = body && typeof body === "object" ? body as Record<string, unknown> : undefined;
-    throw new ApiRequestError(details?.message ? String(details.message) : `Request failed: ${response.status}`, details);
+    const localized = typeof details?.code === "string" ? API_ERROR_MESSAGES[details.code]?.() : undefined;
+    throw new ApiRequestError(localized ?? (details?.message ? String(details.message) : `Request failed: ${response.status}`), details);
   }
   return body as T;
 }
@@ -254,6 +259,7 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
 /** One order as the label renderer wants it. Shared so a batch and a single print never drift. */
 function labelInput(order: OrderRow): FulfillmentLabelInput {
   return {
+    orderId: order.id,
     packageCode: order.fulfillment?.packageCode ?? "",
     nodeName: order.fulfillment?.fulfillmentNode?.name ?? order.fulfillmentNode?.name ?? "—",
     orderNumber: order.orderNumber,
@@ -273,6 +279,20 @@ function labelInput(order: OrderRow): FulfillmentLabelInput {
 }
 
 /**
+ * Records that an order's routing sticker left the printer. 发往门店 is refused
+ * until this has happened at least once for the parcel's current package code.
+ */
+function routingPrintedRecorder(accessToken: string) {
+  return async (input: FulfillmentLabelInput) => {
+    await request(`/operations/orders/${input.orderId}/package-label-printed`, {
+      method: "POST",
+      headers: authorizationHeaders(accessToken),
+      body: JSON.stringify({ packageCode: input.packageCode })
+    });
+  };
+}
+
+/**
  * Where this parcel is going, which is how the morning's work is actually
  * divided: one trolley per store, one pile for the van.
  *
@@ -285,7 +305,7 @@ function destinationOf(order: OrderRow): { key: string; label: string; sort: str
   if (order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY") {
     return node
       ? { key: `delivery:${node.id}`, label: t("送货上门 · 经 {name}", { name: node.name }), sort: `1:${node.name}` }
-      : { key: "delivery:unrouted", label: t("送货上门 · 未指定履约点"), sort: "2" };
+      : { key: "delivery:unrouted", label: t("送货上门 · 未指定中转点"), sort: "2" };
   }
   return node
     ? { key: `pickup:${node.id}`, label: t("自提 · {name}", { name: node.name }), sort: `0:${node.name}` }
@@ -443,7 +463,11 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
         onDone={async () => { setDialog(null); await load(); }}
       />
       {labelOrders?.length ? (
-        <FulfillmentLabelPrinter labels={labelOrders.map(labelInput)} onClose={() => setLabelOrders(null)} />
+        <FulfillmentLabelPrinter
+          labels={labelOrders.map(labelInput)}
+          onRoutingPrinted={routingPrintedRecorder(accessToken)}
+          onClose={() => { setLabelOrders(null); void load(); }}
+        />
       ) : null}
     </div>
   );
@@ -467,10 +491,9 @@ function BatchBar({ orders, session, busy, onClear, onPickingSheet, onLabels, on
 }) {
   if (!orders.length) return null;
   const claimable = orders.filter((order) => order.fulfillment?.status === "PAID");
-  const printable = orders.filter((order) => order.fulfillment?.packageCode);
-  const sendable = orders.filter((order) =>
-    order.fulfillment?.status === "PACKED"
-    && (order.fulfillment?.fulfillmentNode?.type ?? order.fulfillmentNode?.type) === "STORE");
+  // A parcel with no destination has no sticker, and one without a printed
+  // sticker cannot be checked in at the store — both are left out and counted.
+  const { printable, sendable, unrouted, unprinted } = planDispatchBatch(orders);
   const itemCount = orders.reduce((sum, order) => sum + order.items.length, 0);
 
   return (
@@ -498,6 +521,12 @@ function BatchBar({ orders, session, busy, onClear, onPickingSheet, onLabels, on
             </Button>
           ) : null}
         </div>
+        {unrouted.length || unprinted.length ? (
+          <div className="flex w-full flex-wrap justify-end gap-x-4 gap-y-1 text-amber-800 text-sm">
+            {unrouted.length ? <span>{t("{count} 单还没指定中转点，不打面单也不发车", { count: unrouted.length })}</span> : null}
+            {unprinted.length ? <span>{t("{count} 单还没打面单，发往门店时跳过", { count: unprinted.length })}</span> : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -508,7 +537,7 @@ const DISPATCH_STEPS = [
   { key: "pick", label: "① 打单拣货", statuses: ["PAID"], hint: "先打一张拣货单，按货架位走一遍。领取拣货后这些单进入下一步。" },
   { key: "scan", label: "② 逐件核对", statuses: ["PICKING"], hint: "拿回来的每一件都要扫码核对。全部核对完，订单自动进入待打包。" },
   { key: "pack", label: "③ 打包", statuses: ["READY_TO_PACK"], hint: "开始打包 → 完成打包。填包装方式和包裹数量，完成时生成包裹号。" },
-  { key: "dispatch", label: "④ 打面单发车", statuses: ["PACKED"], hint: "先勾上整组打面单，第 1 张贴箱子、其余放进去，然后整组发往门店。没有履约点的单打不出面单——没有目的地就没有路由贴纸，要先指定。" }
+  { key: "dispatch", label: "④ 打面单发车", statuses: ["PACKED"], hint: "送货上门的单先指定中转点（门店）。然后勾上整组打面单，第 1 张贴箱子、其余放进去。面单印出后才能发往门店。" }
 ] as const;
 
 type DispatchStep = (typeof DISPATCH_STEPS)[number]["key"];
@@ -767,7 +796,11 @@ export function DailyDispatchPage() {
         onDone={async () => { setDialog(null); await load(); }}
       />
       {labelOrders?.length ? (
-        <FulfillmentLabelPrinter labels={labelOrders.map(labelInput)} onClose={() => setLabelOrders(null)} />
+        <FulfillmentLabelPrinter
+          labels={labelOrders.map(labelInput)}
+          onRoutingPrinted={routingPrintedRecorder(accessToken)}
+          onClose={() => { setLabelOrders(null); void load(); }}
+        />
       ) : null}
       {pickingSheet?.length ? (
         <PickingSheetDialog lines={pickingLines} onClose={() => setPickingSheet(null)} />
@@ -839,7 +872,11 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
         onDone={async () => { setDialog(null); await load(); }}
       />
       {labelOrders?.length ? (
-        <FulfillmentLabelPrinter labels={labelOrders.map(labelInput)} onClose={() => setLabelOrders(null)} />
+        <FulfillmentLabelPrinter
+          labels={labelOrders.map(labelInput)}
+          onRoutingPrinted={routingPrintedRecorder(accessToken)}
+          onClose={() => { setLabelOrders(null); void load(); }}
+        />
       ) : null}
     </div>
   );
@@ -981,6 +1018,7 @@ function OrderCard(props: {
                 <StatusBadge status={fulfillment?.status ?? order.status} />
                 <StatusBadge status={payment?.status ?? "NO_PAYMENT"} />
                 {fulfillment?.packageCode ? <Badge variant="outline" className="font-mono">{fulfillment.packageCode}</Badge> : null}
+                {fulfillment?.packageLabelPrintedAt ? <Badge variant="secondary"><PrinterIcon />{t("面单已打印")}</Badge> : null}
               </div>
               <CardDescription>
                 {formatDate(order.createdAt)} · {order.customer.displayName ?? order.customer.email} · {payment?.phone ?? order.customer.phone ?? t("未留手机号")}
@@ -1074,19 +1112,20 @@ type OrderAction = {
   icon: ReactNode;
   run: () => void;
   variant?: "default" | "outline" | "destructive";
+  /** Shown under a greyed-out button: the action exists, but something has to happen first. */
+  disabledReason?: string;
 };
 
 /**
  * Everything this order can do right now, in the order a warehouse expects.
  *
- * The first entry is the one the card shows as a button; the rest go behind
- * 更多. That split is the point. A 待拣货 order has exactly one thing anyone is
- * meant to do to it, but the card used to offer five buttons at once — reassign,
- * claim, route, raise an exception, write the order off — which reads as a
- * decision to make rather than a task to do, and buries the one button the
- * picker wants under four they will use once a month.
+ * The first entry that can be pressed is the card's primary button; the rest
+ * sit beside it as outlined buttons, and the destructive ones go last. They
+ * used to hide behind 更多, and the owner could not find 打印面单 there.
  *
- * Nothing is removed. The rare actions are one click further away.
+ * An action that exists but has to wait (发往门店 before the label is printed)
+ * is shown greyed out with the reason under it, so the next step is visible
+ * rather than missing.
  */
 function orderActions({ order, session, onDialog, onDirect, onLabel }: {
   order: OrderRow;
@@ -1100,11 +1139,24 @@ function orderActions({ order, session, onDialog, onDirect, onLabel }: {
   const nodeType = order.fulfillment?.fulfillmentNode?.type ?? order.fulfillmentNode?.type ?? null;
   const atStoreNode = nodeType === "STORE";
   const hasNode = Boolean(order.fulfillment?.fulfillmentNode ?? order.fulfillmentNode);
+  const delivery = order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY";
+  const unrouted = needsDestination(order);
+  const printed = labelPrinted(order);
 
   // A packed parcel with nowhere to go is the one case where routing is the
-  // next thing to do rather than a correction, so it leads.
-  if (status === "PACKED" && !hasNode && hasPermission(session, "orders.assign-node")) {
-    actions.push({ key: "node", label: t("指定履约点"), icon: <TruckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-node", order }) });
+  // next thing to do rather than a correction, so it leads. A delivery order is
+  // routed through a store (中转点); the label and the send wait for it.
+  if (unrouted && hasPermission(session, "orders.assign-node")) {
+    actions.push({ key: "node", label: delivery ? t("指定中转点") : t("指定履约点"), icon: <TruckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-node", order }) });
+  }
+  if (unrouted && delivery) {
+    const reason = t("先指定中转点");
+    if (hasPermission(session, "orders.pack")) {
+      actions.push({ key: "label", label: t("打印面单"), icon: <PrinterIcon data-icon="inline-start" />, run: () => undefined, disabledReason: reason });
+    }
+    if (hasPermission(session, "orders.assign-node")) {
+      actions.push({ key: "send-node", label: t("发往门店"), icon: <TruckIcon data-icon="inline-start" />, run: () => undefined, disabledReason: reason });
+    }
   }
 
   if (status === "PAID" && hasPermission(session, "orders.pick")) {
@@ -1127,8 +1179,19 @@ function orderActions({ order, session, onDialog, onDirect, onLabel }: {
   if (status === "READY_TO_PACK" && hasPermission(session, "orders.pack") && order.fulfillment?.packingStartedAt) {
     actions.push({ key: "pack", label: t("完成打包"), icon: <PackageCheckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "complete-packing", order }) });
   }
-  if (status === "PACKED" && atStoreNode && hasPermission(session, "orders.assign-node")) {
-    actions.push({ key: "send-node", label: t("发往门店"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "send-to-node") });
+  // Bound for a store: print the sticker, then send. Until the print is
+  // recorded 打印面单 leads and 发往门店 waits beside it.
+  if (travelsToStore(order) && !printed && order.fulfillment?.packageCode && hasPermission(session, "orders.pack")) {
+    actions.push({ key: "label", label: t("打印面单"), icon: <PrinterIcon data-icon="inline-start" />, run: () => onLabel(order) });
+  }
+  if (travelsToStore(order) && hasPermission(session, "orders.assign-node")) {
+    actions.push({
+      key: "send-node",
+      label: t("发往门店"),
+      icon: <TruckIcon data-icon="inline-start" />,
+      run: () => void onDirect(order, "send-to-node"),
+      disabledReason: printed ? undefined : t("先打印面单")
+    });
   }
   if (status === "IN_TRANSIT_TO_NODE" && hasPermission(session, "orders.node-receive")) {
     actions.push({ key: "receive-node", label: t("确认到店"), icon: <PackageCheckIcon data-icon="inline-start" />, run: () => void onDirect(order, "receive-at-node") });
@@ -1136,7 +1199,7 @@ function orderActions({ order, session, onDialog, onDirect, onLabel }: {
   if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && order.fulfillmentMethod === "PICKUP" && hasPermission(session, "orders.pack")) {
     actions.push({ key: "pickup-ready", label: t("设为待自提"), icon: <ClipboardCheckIcon data-icon="inline-start" />, run: () => void onDirect(order, "ready-for-pickup") });
   }
-  if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) {
+  if (["PACKED", "ARRIVED_AT_NODE"].includes(status ?? "") && !(status === "PACKED" && atStoreNode) && !unrouted && order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" && hasPermission(session, "orders.assign-rider")) {
     actions.push({ key: "dispatch-ready", label: t("设为待发货"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "ready-for-dispatch") });
   }
   if (status === "READY_FOR_DISPATCH" && order.fulfillment?.deliveryRiderId && hasPermission(session, "orders.dispatch")) {
@@ -1160,11 +1223,11 @@ function orderActions({ order, session, onDialog, onDirect, onLabel }: {
   // Printable as soon as packing assigns a package code, and reprintable at any
   // later step: a sticker that falls off in a van should not need the order
   // rewound to replace it.
-  if (order.fulfillment?.packageCode && hasPermission(session, "orders.pack")) {
-    actions.push({ key: "label", label: t("打印面单"), icon: <PrinterIcon data-icon="inline-start" />, run: () => onLabel(order), variant: "outline" });
+  if (order.fulfillment?.packageCode && !actions.some((action) => action.key === "label") && hasPermission(session, "orders.pack")) {
+    actions.push({ key: "label", label: printed ? t("重打面单") : t("打印面单"), icon: <PrinterIcon data-icon="inline-start" />, run: () => onLabel(order), variant: "outline" });
   }
-  if (status && !["COMPLETED", "IN_TRANSIT_TO_NODE", "ARRIVED_AT_NODE", "READY_FOR_PICKUP", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY"].includes(status) && hasPermission(session, "orders.assign-node") && !(status === "PACKED" && !hasNode)) {
-    actions.push({ key: "node", label: hasNode ? t("改派履约点") : t("指定履约点"), icon: <TruckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-node", order }), variant: "outline" });
+  if (status && !["COMPLETED", "IN_TRANSIT_TO_NODE", "ARRIVED_AT_NODE", "READY_FOR_PICKUP", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY"].includes(status) && hasPermission(session, "orders.assign-node") && !unrouted) {
+    actions.push({ key: "node", label: hasNode ? t("改派履约点") : delivery ? t("指定中转点") : t("指定履约点"), icon: <TruckIcon data-icon="inline-start" />, run: () => onDialog({ kind: "assign-node", order }), variant: "outline" });
   }
   if (status === "OUT_FOR_DELIVERY" && hasPermission(session, "orders.resend-code")) {
     actions.push({ key: "resend-code", label: t("重发配送码"), icon: <TruckIcon data-icon="inline-start" />, run: () => void onDirect(order, "resend-delivery-code"), variant: "outline" });
@@ -1193,32 +1256,34 @@ function orderActions({ order, session, onDialog, onDirect, onLabel }: {
   return actions;
 }
 
-/** The leading action as a button; everything else one click away under 更多. */
+/**
+ * Every action as its own button, wrapping onto more lines on a phone. One
+ * primary button (the first that can be pressed), the rest outlined, anything
+ * destructive last and red — those still open their confirmation dialog.
+ */
 function OrderActionBar({ actions, busy }: { actions: OrderAction[]; busy: boolean }) {
   if (!actions.length) return null;
-  const [primary, ...rest] = actions;
+  const ordered = [
+    ...actions.filter((action) => action.variant !== "destructive"),
+    ...actions.filter((action) => action.variant === "destructive")
+  ];
+  const primary = ordered.find((action) => !action.disabledReason && action.variant !== "destructive");
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      {rest.length ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" disabled={busy}>{t("更多")}<ChevronDownIcon data-icon="inline-end" /></Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {rest.map((action) => (
-              <DropdownMenuItem
-                key={action.key}
-                disabled={busy}
-                variant={action.variant === "destructive" ? "destructive" : "default"}
-                onSelect={() => action.run()}
-              >
-                {action.icon}{action.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
-      <Button variant={primary.variant ?? "default"} disabled={busy} onClick={primary.run}>{primary.icon}{primary.label}</Button>
+    <div className="flex w-full flex-wrap items-start justify-end gap-2">
+      {ordered.map((action) => {
+        const variant = action.variant === "destructive"
+          ? "destructive"
+          : action === primary ? action.variant ?? "default" : "outline";
+        if (action.disabledReason) {
+          return (
+            <div key={action.key} className="flex flex-col items-center gap-1">
+              <Button variant="outline" disabled>{action.icon}{action.label}</Button>
+              <span className="text-muted-foreground text-xs">{action.disabledReason}</span>
+            </div>
+          );
+        }
+        return <Button key={action.key} variant={variant} disabled={busy} onClick={action.run}>{action.icon}{action.label}</Button>;
+      })}
     </div>
   );
 }
@@ -1341,11 +1406,16 @@ function OrderActionDialog(props: {
     ? employees
     : employees.filter((item) => item.id === linkedEmployeeId);
   const managedAfterSale = Boolean(state?.order.customerServiceCases.find((item) => item.issueType === "AFTER_SALE")?.afterSaleReturn);
+  // A delivery order with no node yet is being given its transit store: only
+  // stores qualify, because the parcel is labelled and checked in there.
+  const choosingTransit = state?.kind === "assign-node"
+    && state.order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY"
+    && !(state.order.fulfillment?.fulfillmentNode ?? state.order.fulfillmentNode);
   return (
     <Dialog open={Boolean(state)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{state ? dialogTitle(state.kind) : t("订单操作")}</DialogTitle>
+          <DialogTitle>{state ? choosingTransit ? t("指定中转点") : dialogTitle(state.kind) : t("订单操作")}</DialogTitle>
           <DialogDescription>{state ? t("{orderNumber} · 所有动作都会写入状态时间线。", { orderNumber: state.order.orderNumber }) : ""}</DialogDescription>
         </DialogHeader>
         {state ? (
@@ -1386,7 +1456,19 @@ function OrderActionDialog(props: {
               </>
             ) : null}
             {state.kind === "exception" ? <SelectFilter label={t("异常类型")} value={exceptionReason} onChange={setExceptionReason} options={EXCEPTION_OPTIONS} /> : null}
-            {state.kind === "assign-node" ? (
+            {choosingTransit ? (
+              <>
+                <Alert><TruckIcon /><AlertTitle>{t("这单经哪家门店中转？")}</AlertTitle><AlertDescription>{t("送货上门的单先送到一家门店，门店扫码签收后再叫 Bolt 送给顾客。选好后才能打面单、发往门店。")}</AlertDescription></Alert>
+                <SelectFilter
+                  label={t("中转点")}
+                  value={nodeId}
+                  onChange={setNodeId}
+                  options={nodes
+                    .filter((node) => node.supportsDelivery && isTransitNodeOption(node))
+                    .map((node) => [node.id, node.name] as [string, string])}
+                />
+              </>
+            ) : state.kind === "assign-node" ? (
               <>
                 <Alert><TruckIcon /><AlertTitle>{t("这单在哪里交给顾客？")}</AlertTitle><AlertDescription>{t("选门店时，打包后需要先发往门店、门店扫码签收，才能交给顾客或叫 Bolt。选中央仓则在仓库直接交付。")}</AlertDescription></Alert>
                 <SelectFilter
@@ -1499,7 +1581,7 @@ function employeeLabel(kind: DialogKind) {
 }
 
 function actionLabel(action: string) {
-  return ({ PAYMENT_CONFIRMED_PICK_TASK_CREATED: t("支付成功并生成拣货任务"), ASSIGN_PICKER: t("分配拣货员"), ASSIGN_PACKER: t("分配打包员"), CLAIM_PICKING_TASK: t("领取拣货任务"), START_PICKING: t("开始拣货"), ITEM_BARCODE_VERIFIED: t("商品 Barcode 核对成功"), BARCODE_REJECTED: t("Barcode 核对失败"), COMPLETE_PICKING: t("完成拣货"), START_PACKING: t("开始打包"), COMPLETE_PACKING: t("完成打包"), READY_FOR_PICKUP: t("等待顾客自提"), READY_FOR_DISPATCH: t("等待发货"), ASSIGN_DELIVERY_RIDER: t("分配配送员"), HAND_TO_DELIVERY_RIDER: t("已交给配送员"), CONFIRM_DELIVERY: t("确认送达"), CONFIRM_CUSTOMER_PICKUP: t("确认已取货"), SUBMIT_EXCEPTION_FACT: t("提交异常事实"), ASSIGN_AFTER_SALE_OWNER: t("分配售后负责人"), UPDATE_AFTER_SALE_CASE: t("更新售后处理"), CANCEL_ORDER: t("取消订单") } as Record<string, string>)[action] ?? action;
+  return ({ PAYMENT_CONFIRMED_PICK_TASK_CREATED: t("支付成功并生成拣货任务"), ASSIGN_PICKER: t("分配拣货员"), ASSIGN_PACKER: t("分配打包员"), CLAIM_PICKING_TASK: t("领取拣货任务"), START_PICKING: t("开始拣货"), ITEM_BARCODE_VERIFIED: t("商品 Barcode 核对成功"), BARCODE_REJECTED: t("Barcode 核对失败"), COMPLETE_PICKING: t("完成拣货"), START_PACKING: t("开始打包"), COMPLETE_PACKING: t("完成打包"), PRINT_PACKAGE_LABEL: t("已打印面单"), READY_FOR_PICKUP: t("等待顾客自提"), READY_FOR_DISPATCH: t("等待发货"), ASSIGN_DELIVERY_RIDER: t("分配配送员"), HAND_TO_DELIVERY_RIDER: t("已交给配送员"), CONFIRM_DELIVERY: t("确认送达"), CONFIRM_CUSTOMER_PICKUP: t("确认已取货"), SUBMIT_EXCEPTION_FACT: t("提交异常事实"), ASSIGN_AFTER_SALE_OWNER: t("分配售后负责人"), UPDATE_AFTER_SALE_CASE: t("更新售后处理"), CANCEL_ORDER: t("取消订单") } as Record<string, string>)[action] ?? action;
 }
 
 function statusLabel(status: string) {
