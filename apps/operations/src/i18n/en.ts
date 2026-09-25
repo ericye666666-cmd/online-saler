@@ -2875,4 +2875,29 @@ export const enDictionary: Record<string, string> = {
   "包裹号": "Package code",
   "目的门店": "Destination store",
   "发出人": "Sent by",
+
+  // ——— Store phone console: parcel details, riders ———
+  "交给顾客，或交给本店骑手 / Bolt 骑手": "To the customer, or to one of our riders / a Bolt rider",
+  "把订单页链接发给顾客": "Send the customer their order page link",
+  "已签收包裹。在「发货」里放到自提区。": "Signed for. Put it on the pickup shelf under Hand over.",
+  "已签收包裹。在「发货」里交给骑手。": "Signed for. Give it to a rider under Hand over.",
+  "无包裹号": "No package code",
+  "送货上门": "Home delivery",
+  "到店自提": "Store pickup",
+  "{time} 由 {name} 从仓库发出": "Sent from the warehouse {time} by {name}",
+  "已放到自提区。顾客凭自提码来取。": "On the pickup shelf. The customer collects it with their pickup code.",
+  "待顾客自提。请顾客报出自己订单页上的 4 位自提码。": "Waiting for the customer. Ask them for the 4-digit pickup code on their own order page.",
+  "交给哪位骑手？": "Which rider takes it?",
+  "本店还没有自己的骑手。可以先交给 Bolt 骑手；要加本店骑手，到「门店骑手」里添加。":
+    "This store has no riders of its own yet. You can still use a Bolt rider; add store riders under Store riders.",
+  "手上 {count} 单": "{count} in hand",
+  "空闲": "Free",
+  "没有骑手登录账号，骑手 App 里看不到这单": "No rider login, so this order will not show in the rider app",
+  "外部 Bolt 骑手": "Outside Bolt rider",
+  "姓名和电话都要填，电话至少 9 位数字。": "Enter both name and phone; the phone needs at least 9 digits.",
+  "已交给骑手，骑手 App 里能看到这单。配送码在顾客自己的订单页上。":
+    "Handed to the rider; it is in their rider app. The delivery code is on the customer's own order page.",
+  "下一步：把订单页发给顾客": "Next: send the customer their order page",
+  "短信还没开通。顾客要在自己的订单页上看配送码，骑手到了再报给骑手。":
+    "SMS is not live yet. The customer sees the delivery code on their own order page and reads it to the rider on arrival.",
 };

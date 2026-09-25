@@ -143,7 +143,8 @@ export function NodeWorkbenchPage() {
     setLoading(true);
     setError("");
     try {
-      setOrders(await request<NodeOrder[]>("/operations/orders", { query: { scope: "all", nodeId } }));
+      // scope=node: only parcels a store works; scope=all ran out at 150 rows of old pickup checkouts.
+      setOrders(await request<NodeOrder[]>("/operations/orders", { query: { scope: "node", nodeId } }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("无法读取该履约点的订单。"));
     } finally {

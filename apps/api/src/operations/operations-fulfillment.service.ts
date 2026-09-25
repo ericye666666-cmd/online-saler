@@ -114,7 +114,29 @@ const ORDER_INCLUDE = {
 
 type OrderDetail = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
 
-export type OrderCenterScope = "workbench" | "all" | "after-sales" | "exceptions";
+export type OrderCenterScope = "workbench" | "all" | "after-sales" | "exceptions" | "node";
+
+/**
+ * The parcels a store desk works: on the way to it, at it, or out with one of
+ * its riders. The `node` scope lists only these.
+ *
+ * It exists because the store screens used to ask for `scope=all` and sort out
+ * the statuses themselves. `all` is every order that ever named the store —
+ * including every abandoned pickup checkout, because a pickup order carries its
+ * store from the moment it is created, paid or not — and the list stops at 150,
+ * newest first. A delivery order is created days before it is routed and sent,
+ * so on a store with enough newer pickup checkouts the parcel actually on its
+ * way was the one that fell off the end, and the store could not sign for it.
+ */
+export const NODE_DESK_STATUSES: FulfillmentStatus[] = [
+  FulfillmentStatus.IN_TRANSIT_TO_NODE,
+  FulfillmentStatus.ARRIVED_AT_NODE,
+  FulfillmentStatus.READY_FOR_PICKUP,
+  FulfillmentStatus.READY_FOR_DISPATCH,
+  FulfillmentStatus.OUT_FOR_DELIVERY,
+  FulfillmentStatus.DELIVERY_FAILED,
+  FulfillmentStatus.RETURNING_TO_NODE
+];
 
 export type OrderCenterListInput = {
   adminUserId?: string;
@@ -713,7 +735,11 @@ export class OperationsFulfillmentService {
   }
 
   async readyForPickup(orderId: string, input: AdminInput) {
-    const actor = await this.employeeForPermission(input.adminUserId, "orders.pack");
+    // The warehouse shelves its own pickups (orders.pack); a store shelves the
+    // parcels it signed for. Store staff hold orders.complete, not orders.pack,
+    // and were refused the step that comes before the one they are allowed —
+    // handing the parcel over against the customer's pickup code.
+    const actor = await this.employeeForAnyPermission(input.adminUserId, ["orders.pack", "orders.complete"]);
     return this.moveToHandoff(orderId, input, actor, FulfillmentStatus.READY_FOR_PICKUP, "READY_FOR_PICKUP", {
       readyForPickupAt: new Date()
     });
@@ -2010,6 +2036,7 @@ export class OperationsFulfillmentService {
     const and: Prisma.OrderWhereInput[] = [];
     if (input.scope === "after-sales") and.push(afterSaleWhere());
     if (input.scope === "exceptions") and.push({ fulfillment: { is: { status: FulfillmentStatus.EXCEPTION } } });
+    if (input.scope === "node") and.push({ fulfillment: { is: { status: { in: NODE_DESK_STATUSES } } } });
     if (input.tab && input.tab !== "all") and.push(tabWhere(input.tab));
 
     const createdAt: Prisma.DateTimeFilter = {};
