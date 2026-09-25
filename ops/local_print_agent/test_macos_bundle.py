@@ -3,12 +3,13 @@ import json
 from pathlib import Path
 import shutil
 import stat
+import subprocess
 import tempfile
 import unittest
 import zipfile
 
 import agent
-from build_macos_bundle import BUNDLE_FILES, LAUNCHER, PREFIX, SOURCE_FILES, build_bundle
+from build_macos_bundle import BUNDLE_FILES, EXECUTABLES, INSTALLER, LAUNCHER, PREFIX, SOURCE_FILES, UNINSTALLER, build_bundle
 
 
 class MacosBundleTests(unittest.TestCase):
@@ -57,6 +58,53 @@ class MacosBundleTests(unittest.TestCase):
             # CRLF would make macOS report "bad interpreter" and print nothing useful.
             self.assertNotIn(b"\r\n", launcher)
             self.assertIn(b"python3 agent.py", launcher)
+
+    def test_install_scripts_unzip_runnable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, manifest = self.build(temp)
+            with zipfile.ZipFile(root / "downloads" / manifest["filename"]) as archive:
+                for name in (INSTALLER, UNINSTALLER):
+                    self.assertIn(name, EXECUTABLES)
+                    info = archive.getinfo(PREFIX + name)
+                    self.assertTrue((info.external_attr >> 16) & stat.S_IXUSR, name)
+                    self.assertEqual(info.create_system, 3)
+                    script = archive.read(PREFIX + name)
+                    self.assertTrue(script.startswith(b"#!/bin/sh"), name)
+                    self.assertNotIn(b"\r", script, name)
+
+    def test_installer_registers_a_login_item_that_stays_up(self):
+        # Staff never open Terminal: the helper must start at login and come back
+        # if it dies, from a copy that survives emptying Downloads.
+        text = (Path(__file__).parent / INSTALLER).read_text(encoding="utf-8")
+        for needle in (
+            'LABEL="ke.directloop.printagent"', "<key>Label</key>",
+            "<key>RunAtLoad</key>\n  <true/>", "<key>KeepAlive</key>\n  <true/>",
+            "<key>ProgramArguments</key>", "<key>WorkingDirectory</key>",
+            "<key>StandardOutPath</key>", "<key>StandardErrorPath</key>",
+            "Library/Application Support/DirectLoopPrintAgent", "Library/LaunchAgents/$LABEL.plist",
+            "Library/Logs/DirectLoopPrintAgent.log", "command -v python3", "xcode-select --install",
+            'launchctl bootstrap "$DOMAIN"', "launchctl load -w", 'launchctl bootout "$DOMAIN/$LABEL"',
+            "http://127.0.0.1:$PORT/health", "drv:///sample.drv/generic.ppd",
+        ):
+            self.assertIn(needle, text)
+        # Everything the installed copy runs must be copied out of Downloads.
+        copied = text.split('FILES="', 1)[1].split('"', 1)[0].split()
+        for name in SOURCE_FILES:
+            if name.endswith(".py"):
+                self.assertIn(name, copied)
+        self.assertIn(UNINSTALLER, copied)
+        uninstall = (Path(__file__).parent / UNINSTALLER).read_text(encoding="utf-8")
+        self.assertIn("ke.directloop.printagent", uninstall)
+        self.assertIn("launchctl bootout", uninstall)
+        self.assertNotIn("lpadmin", uninstall)
+
+    def test_shell_scripts_parse(self):
+        shell = shutil.which("sh")
+        if not shell:
+            self.skipTest("no POSIX sh on this machine")
+        for name in (LAUNCHER, INSTALLER, UNINSTALLER):
+            result = subprocess.run([shell, "-n", str(Path(__file__).parent / name)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, f"{name}: {result.stderr}")
 
     def test_changed_source_invalidates_the_manifest(self):
         with tempfile.TemporaryDirectory() as temp:

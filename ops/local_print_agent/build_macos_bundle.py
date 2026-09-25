@@ -17,10 +17,16 @@ from build_windows_bundle import source_sha256
 
 SOURCE_FILES = (
     "agent.py", "erp_agent.py", "legacy_product_labels.py",
-    "start_online_saler_print_agent_macos.command", "README.md", "SOURCE.md",
+    "start_online_saler_print_agent_macos.command", "install_macos.sh", "uninstall_macos.sh",
+    "README.md", "SOURCE.md",
 )
 BUNDLE_FILES = SOURCE_FILES + ("version.json",)
 LAUNCHER = "start_online_saler_print_agent_macos.command"
+INSTALLER = "install_macos.sh"
+UNINSTALLER = "uninstall_macos.sh"
+# Unzipped with their mode bit so they also run as ./install_macos.sh; the
+# documented `sh install_macos.sh` works either way.
+EXECUTABLES = (LAUNCHER, INSTALLER, UNINSTALLER)
 FILENAME = "direct-loop-print-agent-macos.zip"
 MANIFEST = "direct-loop-print-agent-macos.json"
 PREFIX = "DirectLoopPrintAgent/"
@@ -49,7 +55,7 @@ def build_bundle(output_dir, source_dir=Path(__file__).resolve().parent):
             # is built on the Windows runner, where ZipInfo would otherwise mark
             # every entry as FAT and macOS would discard the mode along with it.
             entry.create_system = 3
-            entry.external_attr = (0o755 if name == LAUNCHER else 0o644) << 16
+            entry.external_attr = (0o755 if name in EXECUTABLES else 0o644) << 16
             archive.writestr(entry, data)
     bundle_data = archive_path.read_bytes()
     manifest = {

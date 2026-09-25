@@ -16,7 +16,41 @@ The Mac download is source, not an application: the helper is standard-library
 Python and runs on the `python3` (3.9) that the Command Line Tools install.
 Verified end to end on a MacBook with a DL-720C on 2026-09-25.
 
+### Recommended: set it up once, then it starts by itself
+
+An admin does this once per Mac, logged in as the account staff use. After it,
+nobody opens Terminal: the helper starts at every login, restarts itself if it
+stops, and printing works after every restart of the Mac.
+
 1. Download the Mac helper from the Operations label-print dialog and double-click the ZIP to unzip it. Delete older `DirectLoopPrintAgent N` folders first so the path below is the right one.
+2. With the DL-720C plugged in and switched on, open Terminal and paste this one command:
+   ```
+   sh ~/Downloads/DirectLoopPrintAgent/install_macos.sh
+   ```
+   It copies the helper to `~/Library/Application Support/DirectLoopPrintAgent/`
+   (so the Downloads folder can be deleted afterwards), registers the login item
+   `~/Library/LaunchAgents/ke.directloop.printagent.plist`, starts it, and creates
+   the `Deli_DL-720C` print queue if it is missing — that step asks for the Mac's
+   login password once. It ends with a summary in English and Chinese.
+   - If `python3` is missing it opens the Command Line Tools installer; accept, wait for it to finish, and paste the same command again.
+   - If no USB printer is found, the helper is still installed; plug in / switch on the printer, check the USB-C hub, and paste the same command again to create the queue.
+   - macOS may show a "Background Items Added" notification naming `python3`. That is this helper; leave it allowed in System Settings → General → Login Items.
+3. In Operations click **检测 / Detect**. Allow local-network access if the browser asks.
+
+Running `sh` on the script avoids Gatekeeper, which blocks double-clicking a
+downloaded script. To upgrade, unzip a newer download and paste the same
+command; it replaces the installed copy. Output goes to
+`~/Library/Logs/DirectLoopPrintAgent.log`. To remove it (the print queue is kept):
+
+```
+sh ~/Library/Application\ Support/DirectLoopPrintAgent/uninstall_macos.sh
+```
+
+### Fallback: start it by hand in Terminal
+
+Without the installer, the helper runs only while a Terminal window stays open.
+
+1. Download and unzip as above.
 2. Start it from Terminal and leave that window open while printing:
    ```
    cd ~/Downloads/DirectLoopPrintAgent && python3 agent.py
@@ -31,8 +65,9 @@ Verified end to end on a MacBook with a DL-720C on 2026-09-25.
 macOS reaches the printer through CUPS, and the helper sends the label with
 `lp -o raw`, which skips every filter and puts the TSPL bytes on the wire
 unchanged. No Deli macOS driver is required, but a queue pointed at the printer
-is. With the DL-720C plugged in and switched on, run this once in a second
-Terminal window (it asks for the Mac's login password):
+is. `install_macos.sh` creates it; to do it by hand, with the DL-720C plugged
+in and switched on, run this once in a second Terminal window (it asks for the
+Mac's login password):
 
 ```
 URI=$(lpinfo -v | awk '/usb:\/\//{print $2; exit}'); echo "$URI"; sudo lpadmin -p Deli_DL-720C -E -v "$URI" -m drv:///sample.drv/generic.ppd; cupsenable Deli_DL-720C; cupsaccept Deli_DL-720C; lpstat -a

@@ -55,7 +55,7 @@ test("rejects a stale bundle when its source changes", async t => {
   await assert.rejects(verifyPrintAgentBundle(f.root), /ZIP is stale/);
 });
 
-const MACOS_SOURCE = ["agent.py", "erp_agent.py", "legacy_product_labels.py", "start_online_saler_print_agent_macos.command", "README.md", "SOURCE.md"];
+const MACOS_SOURCE = ["agent.py", "erp_agent.py", "legacy_product_labels.py", "start_online_saler_print_agent_macos.command", "install_macos.sh", "uninstall_macos.sh", "README.md", "SOURCE.md"];
 
 async function macosFixture(t, { executable = true } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "print-agent-macos-test-"));
@@ -71,8 +71,8 @@ async function macosFixture(t, { executable = true } = {}) {
     const data = await readFile(new URL(`../ops/local_print_agent/${name}`, import.meta.url));
     await writeFile(new URL(name, source), data);
     hash.update(name).update(separator).update(data).update(separator);
-    const isLauncher = name.endsWith(".command");
-    zip.file(`DirectLoopPrintAgent/${name}`, data, { unixPermissions: isLauncher && executable ? 0o755 : 0o644 });
+    const isScript = name.endsWith(".command") || name.endsWith(".sh");
+    zip.file(`DirectLoopPrintAgent/${name}`, data, { unixPermissions: isScript && executable ? 0o755 : 0o644 });
   }
   const version = (await readFile(new URL("agent.py", source), "utf8")).match(/^APP_VERSION = "([^"]+)"/m)[1];
   const sourceSha256 = hash.digest("hex");

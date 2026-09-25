@@ -5,7 +5,8 @@ import JSZip from "jszip";
 
 const root = new URL("../", import.meta.url);
 const sourceFiles = ["agent.py", "erp_agent.py", "legacy_product_labels.py", "start_online_saler_print_agent_windows.bat", "README.md", "SOURCE.md"];
-const macosSourceFiles = ["agent.py", "erp_agent.py", "legacy_product_labels.py", "start_online_saler_print_agent_macos.command", "README.md", "SOURCE.md"];
+const macosSourceFiles = ["agent.py", "erp_agent.py", "legacy_product_labels.py", "start_online_saler_print_agent_macos.command", "install_macos.sh", "uninstall_macos.sh", "README.md", "SOURCE.md"];
+const macosScripts = ["start_online_saler_print_agent_macos.command", "install_macos.sh", "uninstall_macos.sh"];
 const zipName = "direct-loop-print-agent.zip";
 const macosZipName = "direct-loop-print-agent-macos.zip";
 
@@ -51,13 +52,15 @@ export async function verifyMacosPrintAgentBundle(projectRoot = root) {
   for (const file of [...macosSourceFiles, "version.json"]) {
     if (!zip.file(prefix + file)) throw new Error(`macOS print-agent bundle is missing ${file}.`);
   }
-  const launcherName = prefix + "start_online_saler_print_agent_macos.command";
-  if (!((zip.file(launcherName).unixPermissions ?? 0) & 0o100)) {
-    throw new Error("The macOS launcher would unzip without its executable bit.");
-  }
-  const launcher = await zip.file(launcherName).async("string");
-  if (!launcher.startsWith("#!/bin/sh") || launcher.includes(String.fromCharCode(13))) {
-    throw new Error("The macOS launcher needs a shell shebang and Unix line endings.");
+  for (const script of macosScripts) {
+    const entry = zip.file(prefix + script);
+    if (!((entry.unixPermissions ?? 0) & 0o100)) {
+      throw new Error(`The macOS script ${script} would unzip without its executable bit.`);
+    }
+    const text = await entry.async("string");
+    if (!text.startsWith("#!/bin/sh") || text.includes(String.fromCharCode(13))) {
+      throw new Error(`The macOS script ${script} needs a shell shebang and Unix line endings.`);
+    }
   }
   const version = JSON.parse(await zip.file(prefix + "version.json").async("string"));
   if (version.version !== manifest.version || version.sourceSha256 !== manifest.sourceSha256 || !version.capabilities?.includes("online_saler_raster_v1")) {

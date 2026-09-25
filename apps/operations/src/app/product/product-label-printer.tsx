@@ -96,7 +96,7 @@ export function ProductLabelPrinter({ products, initialIndex, onClose, onConfirm
       <Button size="sm" variant="outline" asChild><a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">{t("下载打印代理（Windows）")}</a></Button>
       <Button size="sm" variant="outline" asChild><a href={MACOS_PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent-macos.zip">{t("下载打印代理（Mac）")}</a></Button>
     </div>
-    <p className="text-sm text-muted-foreground">{t("下载后解压：Windows 双击 DirectLoopPrintAgent.exe，Mac 双击 start_online_saler_print_agent_macos.command，再点击“检测”。与 ERP 共用一个代理。")}</p>
+    <p className="text-sm text-muted-foreground">{t("下载后解压：Windows 双击 DirectLoopPrintAgent.exe。Mac 第一次使用时，解压后在“终端”粘贴运行一次 sh ~/Downloads/DirectLoopPrintAgent/install_macos.sh，之后每次开机自动启动，无需再操作。然后点击“检测”。与 ERP 共用一个代理。")}</p>
     <div className="grid gap-5 lg:grid-cols-2">
       <section className="rounded border p-4"><h3 className="mb-4 font-semibold">{t("标签预览")}</h3>
         <div className="flex min-h-72 items-center justify-center bg-muted/40 p-4">{preview ? <img src={preview} width={480} height={320} className="h-auto w-full border bg-white" alt={t("60×40 mm 实际打印内容：商品名、尺码、货架位和条码")} /> : <p>{t("无法生成标签，请检查商品条码。")}</p>}</div>

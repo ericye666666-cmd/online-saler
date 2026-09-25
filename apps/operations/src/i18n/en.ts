@@ -1553,8 +1553,8 @@ export const enDictionary: Record<string, string> = {
   "下载": "Download",
   "下载打印代理（Windows）": "Print agent (Windows)",
   "下载打印代理（Mac）": "Print agent (Mac)",
-  "下载后解压：Windows 双击 DirectLoopPrintAgent.exe，Mac 双击 start_online_saler_print_agent_macos.command，再点击“检测”。与 ERP 共用一个代理。":
-    "Unzip it. On Windows double-click DirectLoopPrintAgent.exe; on a Mac double-click start_online_saler_print_agent_macos.command. Then click “Detect”. One agent is shared with the ERP.",
+  "下载后解压：Windows 双击 DirectLoopPrintAgent.exe。Mac 第一次使用时，解压后在“终端”粘贴运行一次 sh ~/Downloads/DirectLoopPrintAgent/install_macos.sh，之后每次开机自动启动，无需再操作。然后点击“检测”。与 ERP 共用一个代理。":
+    "Unzip it. On Windows double-click DirectLoopPrintAgent.exe. The first time on a Mac, unzip it and paste this once into Terminal: sh ~/Downloads/DirectLoopPrintAgent/install_macos.sh — after that it starts automatically at every login. Then click “Detect”. One agent is shared with the ERP.",
   "先拍照并上传": "Photograph and upload first",
   "先确认适用人群，再按实物选择标准尺码。":
     "Confirm the audience first, then pick the standard size from the item itself.",
