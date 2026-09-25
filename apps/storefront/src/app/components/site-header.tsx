@@ -301,7 +301,7 @@ export function SiteHeader({
                 <div className="depopMegaLinks">
                   {shelf.categories.map((item) => (
                     <button type="button" key={item.category} onClick={() => chooseSelection({ department: activeDesktopGroup.department, group: shelf.group, shopCategory: item.category })}>
-                      {translateValue(locale, item.category)} <small>{item.count}</small>
+                      {translateValue(locale, item.category)}
                     </button>
                   ))}
                 </div>
@@ -336,12 +336,12 @@ export function SiteHeader({
                     <div key={shelf.group}>
                       <h2>{translateValue(locale, shelf.group)}</h2>
                       <button className="depopMobileCategoryLink" type="button" onClick={() => chooseSelection({ department: activeMobileGroup.department, group: shelf.group })}>
-                        <span>{t("browse.allInGroup", { group: translateValue(locale, shelf.group) })} <small>{shelf.total}</small></span>
+                        <span>{t("browse.allInGroup", { group: translateValue(locale, shelf.group) })}</span>
                         <ArrowRight size={20} />
                       </button>
                       {shelf.categories.map((item) => (
                         <button className="depopMobileCategoryLink" type="button" key={item.category} onClick={() => chooseSelection({ department: activeMobileGroup.department, group: shelf.group, shopCategory: item.category })}>
-                          <span>{translateValue(locale, item.category)} <small>{item.count}</small></span>
+                          <span>{translateValue(locale, item.category)}</span>
                           <ArrowRight size={20} />
                         </button>
                       ))}

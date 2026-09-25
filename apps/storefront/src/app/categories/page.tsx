@@ -81,11 +81,9 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
               <h1>{translateValue(locale, openSection.section)}</h1>
               {openSection.group ? (
                 <Link href={browseHref({ department: active.department, group: openSection.group })}>
-                  {t("browse.seeAll")} ({openSection.total})
+                  {t("browse.seeAll")}
                 </Link>
-              ) : (
-                <span className="browseCount">{openSection.total}</span>
-              )}
+              ) : null}
             </div>
 
             <ul className="browseTiles">
@@ -96,7 +94,6 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
                       {entry.image ? <img src={cardImageSrc(entry.image)} alt="" loading="lazy" /> : null}
                     </span>
                     <span className="browseTileLabel">{translateValue(locale, entry.category)}</span>
-                    <span className="browseTileCount">{entry.count}</span>
                   </Link>
                 </li>
               ))}
@@ -106,7 +103,6 @@ export default async function CategoriesPage({ searchParams }: BrowseProps) {
               <li>
                 <Link href={browseHref({ department: active.department })}>
                   <span>{t("browse.departmentHome", { department })}</span>
-                  <span className="browseCount">{active.total}</span>
                   <ChevronRight size={18} aria-hidden="true" />
                 </Link>
               </li>
