@@ -333,7 +333,8 @@ export function NodeWorkbenchPage() {
 
                   <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
                     <Fact label={t("顾客")} value={`${order.customer.displayName ?? t("访客")} · ${order.customer.phone ?? "—"}`} />
-                    <Fact label={t("WhatsApp")} value={order.whatsappPhone ?? "—"} />
+                    {/* Checkout no longer asks for a WhatsApp number; the M-Pesa phone is the contact. */}
+                    <Fact label={t("WhatsApp")} value={order.whatsappPhone ?? order.customer.phone ?? "—"} />
                     <Fact label={t("商品")} value={order.items.map((item) => item.snapshot?.title ?? "—").join("、")} />
                     {order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" ? (
                       <Fact label={t("配送地址")} value={order.deliveryAddress ?? "—"} />

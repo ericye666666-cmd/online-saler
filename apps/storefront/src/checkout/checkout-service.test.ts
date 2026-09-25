@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { normalizeKenyaPhone } from "./checkout-service";
+import { normalizeNotificationPhone } from "@online-saler/database";
 import { KIKUYU_DELIVERY_FEE_KSH, getDeliveryFeeKsh, calculateOrderAmounts, formatDeliveryAddress, parseDeliveryAddress, deliveryMapUrl } from "@online-saler/business-rules";
 
 // Pickup is free; local delivery charges the shopper a flat KSh 50 that the
@@ -23,5 +24,11 @@ assert.equal(normalizeKenyaPhone("+254 712 345 678"), "254712345678");
 assert.equal(normalizeKenyaPhone("0112-345-678"), "254112345678");
 assert.throws(() => normalizeKenyaPhone("0201234567"), /valid Kenyan/);
 assert.throws(() => normalizeKenyaPhone("07123"), /valid Kenyan/);
+
+// Checkout no longer sends a WhatsApp number. The server stores null for it,
+// and every notification and staff screen falls back to the M-Pesa phone.
+assert.equal(normalizeNotificationPhone(undefined), null);
+assert.equal(normalizeNotificationPhone(null), null);
+assert.equal(normalizeNotificationPhone(""), null);
 
 console.log("Checkout service tests passed");

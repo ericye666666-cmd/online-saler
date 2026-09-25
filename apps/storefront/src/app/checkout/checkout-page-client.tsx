@@ -28,6 +28,7 @@ import type { ReactNode } from "react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { KIKUYU_DELIVERY_FEE_KSH } from "@online-saler/business-rules";
 import {
+  checkoutStartBody,
   deliveryRequiresAddress,
   type FulfillmentChoice
 } from "../cart-checkout-ui";
@@ -46,7 +47,7 @@ import { useStorefrontI18n } from "../../i18n/use-storefront-i18n";
 import { CUSTOMER_SERVICE_PHONE_LABEL, supportWhatsAppUrl } from "../../support/whatsapp";
 
 type CheckoutState = "loading" | "empty" | "ready" | "error";
-type CheckoutStepId = "contact" | "handoff";
+type CheckoutStepId = "payment" | "handoff";
 type PaymentPlan = "FULL" | "DEPOSIT_50";
 type Reservation = {
   orderId: string;
@@ -87,7 +88,6 @@ type PaymentState = {
 };
 type CheckoutDraft = {
   phone: string;
-  whatsappPhone: string;
   fulfillment: FulfillmentChoice;
   deliveryAddress: string;
   deliveryNote: string;
@@ -117,7 +117,6 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   const [state, setState] = useState<CheckoutState>("loading");
   const [fulfillment, setFulfillment] = useState<FulfillmentChoice>("PICKUP");
   const [phone, setPhone] = useState("");
-  const [whatsappPhone, setWhatsappPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [pickupPointId, setPickupPointId] = useState("");
@@ -142,7 +141,6 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
   useEffect(() => {
     const draft = readCheckoutDraft(draftKey);
     setPhone(draft?.phone ?? "");
-    setWhatsappPhone(draft?.whatsappPhone ?? "");
     setFulfillment(draft?.fulfillment ?? "PICKUP");
     setDeliveryAddress(draft?.deliveryAddress ?? "");
     setDeliveryNote(draft?.deliveryNote ?? "");
@@ -153,8 +151,8 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
 
   useEffect(() => {
     if (reservation || loadedDraftKey !== draftKey) return;
-    writeCheckoutDraft(draftKey, { phone, whatsappPhone, fulfillment, deliveryAddress, deliveryNote, pickupPointId });
-  }, [draftKey, loadedDraftKey, deliveryAddress, deliveryNote, fulfillment, phone, whatsappPhone, pickupPointId, reservation]);
+    writeCheckoutDraft(draftKey, { phone, fulfillment, deliveryAddress, deliveryNote, pickupPointId });
+  }, [draftKey, loadedDraftKey, deliveryAddress, deliveryNote, fulfillment, phone, pickupPointId, reservation]);
 
   useEffect(() => {
     function handleFocus() {
@@ -229,11 +227,6 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
     event.preventDefault();
     if (submitting || reservation) return;
     setError("");
-    const contact = whatsappPhone.trim().replace(/[\s()-]/g, "");
-    if (!/^\+?[0-9]{8,15}$/.test(contact)) {
-      setError(t("checkout.errWhatsapp"));
-      return;
-    }
     if (fulfillment === "PICKUP" && !pickupPoints.some((point) => point.id === pickupPointId)) {
       setError(t("checkout.errPickupPoint"));
       return;
@@ -259,19 +252,15 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
       const response = await fetch("/api/checkout/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(checkoutStartBody({
           productIds: payableItems.map((item) => item.requestedProductId),
           phone,
-          fulfillmentMethod: fulfillment,
-          deliveryAddress: deliveryRequiresAddress(fulfillment) ? deliveryAddress : null,
-          // The pickup point and the WhatsApp number are columns now, not a
-          // sentence pasted into the note, so orders can be routed and counted
-          // by store and support can search by contact number.
-          fulfillmentNodeId: fulfillment === "PICKUP" ? pickupPointId : null,
-          whatsappPhone: contact,
-          deliveryNote: deliveryNote.trim() || null,
+          fulfillment,
+          deliveryAddress,
+          deliveryNote,
+          pickupPointId,
           paymentPlan
-        })
+        }))
       });
       const result = await response.json().catch(() => ({})) as Reservation & { error?: string };
       if (!response.ok) throw new Error(result.error || t("checkout.errReserve"));
@@ -403,11 +392,7 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
 
   // One source of truth for "what is still missing", so the step rows, the step
   // buttons and the pay button never disagree about whether checkout is ready.
-  const contactBlocker = !phone.trim()
-    ? t("checkout.blockPhone")
-    : !/^\+?[0-9]{8,15}$/.test(whatsappPhone.trim().replace(/[\s()-]/g, ""))
-      ? t("checkout.blockWhatsapp")
-      : null;
+  const paymentStepBlocker = !phone.trim() ? t("checkout.blockPhone") : null;
   const selectedPickupPoint = pickupPoints.find((point) => point.id === pickupPointId);
   const handoffBlocker = fulfillment === "PICKUP"
     ? (selectedPickupPoint ? null : t("checkout.blockPickup"))
@@ -416,10 +401,10 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
     ? t("checkout.blockEmpty")
     : unavailableItems.length
       ? (buyNowId ? t("checkout.blockBuyNowGone") : t("checkout.blockRemoveUnavailable"))
-      : contactBlocker ?? handoffBlocker;
-  const contactSummary = contactBlocker
-    ? t("checkout.contactSummaryEmpty")
-    : `${phone.trim()} · WhatsApp ${whatsappPhone.trim()}`;
+      : paymentStepBlocker ?? handoffBlocker;
+  const paymentStepSummary = paymentStepBlocker
+    ? t("checkout.paymentSummaryEmpty")
+    : `M-Pesa ${phone.trim()}`;
   // The step row already carries "Pickup" or "Delivery" as its title, so the
   // summary states only the answer.
   const handoffSummary = fulfillment === "PICKUP"
@@ -469,13 +454,11 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
             ) : activeStep ? (
               <CheckoutStepPanel
                 step={activeStep}
-                blocker={activeStep === "contact" ? contactBlocker : handoffBlocker}
+                blocker={activeStep === "payment" ? paymentStepBlocker : handoffBlocker}
                 onBack={() => setActiveStep(null)}
                 submitting={submitting}
                 phone={phone}
                 setPhone={setPhone}
-                whatsappPhone={whatsappPhone}
-                setWhatsappPhone={setWhatsappPhone}
                 fulfillment={fulfillment}
                 setFulfillment={setFulfillment}
                 pickupPointId={pickupPointId}
@@ -519,10 +502,10 @@ export function CheckoutPageClient({ mapsApiKey = "", draftKey, signedIn = false
                 <div className="checkoutSteps">
                   <CheckoutStepRow
                     index={1}
-                    title={t("checkout.stepContact")}
-                    summary={contactSummary}
-                    complete={!contactBlocker}
-                    onOpen={() => setActiveStep("contact")}
+                    title={t("checkout.stepPayment")}
+                    summary={paymentStepSummary}
+                    complete={!paymentStepBlocker}
+                    onOpen={() => setActiveStep("payment")}
                   />
                   <CheckoutStepRow
                     index={2}
@@ -914,8 +897,6 @@ type CheckoutStepPanelProps = {
   submitting: boolean;
   phone: string;
   setPhone: (value: string) => void;
-  whatsappPhone: string;
-  setWhatsappPhone: (value: string) => void;
   fulfillment: FulfillmentChoice;
   setFulfillment: (value: FulfillmentChoice) => void;
   pickupPointId: string;
@@ -942,14 +923,14 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
     <div className="checkoutStepPanel">
       <header className="checkoutStepPanelHead">
         <button type="button" onClick={onBack} aria-label={t("checkout.back")}><ArrowLeft size={22} /></button>
-        <strong>{step === "contact" ? t("checkout.stepContact") : requiresAddress ? t("checkout.stepDelivery") : t("checkout.stepPickup")}</strong>
+        <strong>{step === "payment" ? t("checkout.stepPayment") : requiresAddress ? t("checkout.stepDelivery") : t("checkout.stepPickup")}</strong>
       </header>
 
       <div className="checkoutStepPanelBody">
-        {step === "contact" ? (
+        {step === "payment" ? (
           <>
             <label className="checkoutField">
-              <span>M-Pesa phone</span>
+              <span>{t("checkout.mpesaPhone")}</span>
               <input
                 autoComplete="tel"
                 inputMode="tel"
@@ -960,22 +941,6 @@ function CheckoutStepPanel(props: CheckoutStepPanelProps) {
                 value={props.phone}
                 onChange={(event) => props.setPhone(event.target.value)}
               />
-            </label>
-
-            <label className="checkoutField">
-              <span>{t("checkout.whatsappLabel")}</span>
-              <input
-                type="tel"
-                autoComplete="section-whatsapp tel"
-                name="whatsappPhone"
-                placeholder="e.g. +254 7XX XXX XXX"
-                required
-                maxLength={30}
-                aria-describedby="whatsapp-contact-help"
-                value={props.whatsappPhone}
-                onChange={(event) => props.setWhatsappPhone(event.target.value)}
-              />
-              <small id="whatsapp-contact-help">{t("checkout.whatsappHelp")}</small>
             </label>
           </>
         ) : (
@@ -1101,7 +1066,6 @@ function readCheckoutDraft(draftKey: string): CheckoutDraft | null {
     const text = (value: unknown, maximum: number) => typeof value === "string" && value.length <= maximum ? value : "";
     return {
       phone: text(fields.phone, 40),
-      whatsappPhone: text(fields.whatsappPhone, 30),
       fulfillment: fields.fulfillment === "KIKUYU_LOCAL_DELIVERY" ? "KIKUYU_LOCAL_DELIVERY" : "PICKUP",
       deliveryAddress: text(fields.deliveryAddress, 1500),
       deliveryNote: text(fields.deliveryNote, 10_000),

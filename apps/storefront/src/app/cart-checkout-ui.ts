@@ -24,3 +24,34 @@ export function checkoutStepStatus(stage: CheckoutStage, step: CheckoutStage): "
   if (stepIndex === stageIndex) return "current";
   return "pending";
 }
+
+export type CheckoutPaymentPlanChoice = "FULL" | "DEPOSIT_50";
+
+export type CheckoutStartInput = {
+  productIds: string[];
+  phone: string;
+  fulfillment: FulfillmentChoice;
+  deliveryAddress: string;
+  deliveryNote: string;
+  pickupPointId: string;
+  paymentPlan: CheckoutPaymentPlanChoice;
+};
+
+/**
+ * The body POSTed to /api/checkout/start. The shopper gives one number, the
+ * M-Pesa phone. Checkout no longer asks for a separate WhatsApp number, so
+ * none is sent; staff and notifications fall back to the M-Pesa phone.
+ */
+export function checkoutStartBody(input: CheckoutStartInput) {
+  return {
+    productIds: input.productIds,
+    phone: input.phone,
+    fulfillmentMethod: input.fulfillment,
+    deliveryAddress: deliveryRequiresAddress(input.fulfillment) ? input.deliveryAddress : null,
+    // The pickup point is a column, not a sentence pasted into the note, so
+    // orders can be routed and counted by store.
+    fulfillmentNodeId: input.fulfillment === "PICKUP" ? input.pickupPointId : null,
+    deliveryNote: input.deliveryNote.trim() || null,
+    paymentPlan: input.paymentPlan
+  };
+}
