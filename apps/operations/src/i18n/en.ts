@@ -2422,6 +2422,7 @@ export const enDictionary: Record<string, string> = {
   "先指定中转点": "Choose a transit store first",
   "指定中转点": "Choose a transit store",
   "中转点": "Transit store",
+  "未指定门店": "no store chosen",
   "这单经哪家门店中转？": "Which store does this parcel travel through?",
   "送货上门的单先送到一家门店，门店扫码签收后再叫 Bolt 送给顾客。选好后才能打面单、发往门店。":
     "A delivery parcel goes to a store first; the store scans it in, then books Bolt to the customer. The label can be printed and the parcel sent only after you choose one.",

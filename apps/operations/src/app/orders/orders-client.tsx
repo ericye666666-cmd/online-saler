@@ -1038,6 +1038,8 @@ function OrderCard(props: {
 }) {
   const { order, session, busy, showTimeline, selected, onSelect, onDialog, onDirect, onLabel } = props;
   const delivery = parseDeliveryAddress(order.deliveryAddress ?? "");
+  const isDelivery = order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY";
+  const node = order.fulfillment?.fulfillmentNode ?? order.fulfillmentNode;
   const payment = order.payments[0];
   const fulfillment = order.fulfillment;
   const afterSales = order.customerServiceCases.filter((item) => item.issueType === "AFTER_SALE");
@@ -1069,6 +1071,12 @@ function OrderCard(props: {
             <div className="flex min-w-0 flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle className="text-lg">{order.orderNumber}</CardTitle>
+                {/* How the parcel leaves decides every step after packing, so it
+                    sits next to the order number rather than in a corner. */}
+                <Badge variant={isDelivery ? "default" : "secondary"} className="text-sm">
+                  {isDelivery ? t("配送") : t("自提")}
+                  {!isDelivery ? ` · ${node?.name ?? t("未指定门店")}` : null}
+                </Badge>
                 <StatusBadge status={fulfillment?.status ?? order.status} />
                 <StatusBadge status={payment?.status ?? "NO_PAYMENT"} />
                 {fulfillment?.packageCode ? <Badge variant="outline" className="font-mono">{fulfillment.packageCode}</Badge> : null}
@@ -1077,6 +1085,13 @@ function OrderCard(props: {
               <CardDescription>
                 {formatDate(order.createdAt)} · {order.customer.displayName ?? order.customer.email} · {payment?.phone ?? order.customer.phone ?? t("未留手机号")}
               </CardDescription>
+              {isDelivery ? (
+                <p className="text-sm">
+                  <span className="text-muted-foreground">{t("配送地址：")}</span>
+                  <span className="break-words font-medium">{delivery.address || t("未填写")}</span>
+                  {node ? <span className="text-muted-foreground"> · {t("中转点")} {node.name}</span> : null}
+                </p>
+              ) : null}
               {people.length ? (
                 <CardDescription className="flex flex-wrap gap-x-3 gap-y-1">
                   {people.map(([label, value]) => (
@@ -1087,18 +1102,15 @@ function OrderCard(props: {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Badge variant="outline">{order.fulfillmentMethod === "PICKUP" ? t("自提") : t("配送")}</Badge>
             <span className="font-semibold">{money(order.totalKsh)}</span>
             {!showTimeline ? <Button size="sm" variant="ghost" asChild><Link href={`/orders/${order.id}`}>{t("详情")}</Link></Button> : null}
           </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {order.fulfillmentMethod === "KIKUYU_LOCAL_DELIVERY" ? (
+        {isDelivery && (delivery.point || order.deliveryNote) ? (
           <div className="rounded-lg border p-3 text-sm">
-            <span className="text-muted-foreground">{t("配送地址：")}</span>
-            <span className="break-words">{delivery.address || t("未填写")}</span>
-            {delivery.point ? <> · <a className="underline" href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">Google Maps ↗</a></> : null}
+            {delivery.point ? <a className="underline" href={deliveryMapUrl(delivery.point)} target="_blank" rel="noopener noreferrer">Google Maps ↗</a> : null}
             {order.deliveryNote ? <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{order.deliveryNote}</p> : null}
           </div>
         ) : null}
