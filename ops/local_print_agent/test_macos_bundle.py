@@ -1,3 +1,4 @@
+import ast
 import json
 from pathlib import Path
 import shutil
@@ -18,6 +19,16 @@ class MacosBundleTests(unittest.TestCase):
         for name in SOURCE_FILES:
             shutil.copyfile(Path(__file__).parent / name, source / name)
         return root, build_bundle(root / "downloads", source)
+
+    def test_source_runs_on_the_python_macos_ships(self):
+        # A Mac's python3 from the Command Line Tools is 3.9. Annotations such
+        # as `str | None` only evaluate on 3.10+, so every module defers them.
+        for name in SOURCE_FILES:
+            if not name.endswith(".py"):
+                continue
+            text = (Path(__file__).parent / name).read_text(encoding="utf-8")
+            ast.parse(text, feature_version=(3, 9))
+            self.assertIn("from __future__ import annotations", text, name)
 
     def test_bundle_carries_the_source_the_helper_needs(self):
         with tempfile.TemporaryDirectory() as temp:

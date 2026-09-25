@@ -1,4 +1,6 @@
 """Compatibility for existing single-product 60x40 / 40x30 clients."""
+
+from __future__ import annotations
 import re
 BARCODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9-]{3,63}$")
 DEFAULT_PRINTER_NAME = "Deli DL-720C"

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Shared ERP / Online Saler Deli 720 print adapter. See SOURCE.md."""
+
+from __future__ import annotations
 import base64
 import binascii
 import errno
