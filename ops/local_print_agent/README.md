@@ -13,37 +13,49 @@ Keep the existing Deli Windows printer driver installed. The same helper support
 ## macOS setup
 
 The Mac download is source, not an application: the helper is standard-library
-Python, so there is nothing to compile and nothing for Gatekeeper to block.
+Python and runs on the `python3` (3.9) that the Command Line Tools install.
+Verified end to end on a MacBook with a DL-720C on 2026-09-25.
 
-1. Download the Mac helper from the Operations label-print dialog and double-click the ZIP to unzip it.
-2. Open the unzipped `DirectLoopPrintAgent` folder and double-click `start_online_saler_print_agent_macos.command`. A Terminal window opens and stays open — that is the helper running. Leave it open while printing.
-   - If macOS says the file is from an unidentified developer, open **System Settings → Privacy & Security**, scroll to the bottom and click **Open Anyway**, then double-click it again.
-   - If it reports that `python3` is missing, run `xcode-select --install` in Terminal, accept the install, and start the helper again.
-   - Instead of double-clicking you can run `python3 agent.py` from inside that folder in Terminal. Same helper.
-3. In Operations click **检测 / Detect**. Allow local-network access if the browser asks.
+1. Download the Mac helper from the Operations label-print dialog and double-click the ZIP to unzip it. Delete older `DirectLoopPrintAgent N` folders first so the path below is the right one.
+2. Start it from Terminal and leave that window open while printing:
+   ```
+   cd ~/Downloads/DirectLoopPrintAgent && python3 agent.py
+   ```
+   It prints `Running on http://127.0.0.1:8719`. Typing into or dropping files on that window stops it.
+   - Double-clicking `start_online_saler_print_agent_macos.command` does the same, but macOS Gatekeeper blocks the downloaded script ("Apple could not verify…"); the Terminal command above avoids that.
+   - If `python3` is missing, macOS offers to install the Command Line Tools (or run `xcode-select --install`). Accept, wait for it to finish, and run the command again.
+3. Create the print queue once (below), then in Operations click **检测 / Detect**. Allow local-network access if the browser asks.
 
 ### The print queue the Mac needs
 
 macOS reaches the printer through CUPS, and the helper sends the label with
 `lp -o raw`, which skips every filter and puts the TSPL bytes on the wire
-unchanged. That means no Deli macOS driver is required — but a queue pointed at
-the printer is. Create one once, in Terminal, with the DL-720C plugged in:
+unchanged. No Deli macOS driver is required, but a queue pointed at the printer
+is. With the DL-720C plugged in and switched on, run this once in a second
+Terminal window (it asks for the Mac's login password):
 
 ```
-lpinfo -v
-sudo lpadmin -p Deli_DL-720C -E -v 'usb://Deli/DL-720C?serial=XXXX' -m raw
-cupsenable Deli_DL-720C && cupsaccept Deli_DL-720C
-lpstat -a
+URI=$(lpinfo -v | awk '/usb:\/\//{print $2; exit}'); echo "$URI"; sudo lpadmin -p Deli_DL-720C -E -v "$URI" -m drv:///sample.drv/generic.ppd; cupsenable Deli_DL-720C; cupsaccept Deli_DL-720C; lpstat -a
 ```
 
-Take the `usb://...` value from the `lpinfo -v` output; it is different on every
-machine. If your CUPS build refuses `-m raw`, use `-m drv:///sample.drv/generic.ppd`
-instead — with `-o raw` the driver is never asked to render anything, so a generic
-one is harmless. The queue name may not contain spaces, which is why it reads
-`Deli_DL-720C` here; Operations matches that to `Deli DL-720C` on its own.
+The last line must read `Deli_DL-720C accepting requests`. macOS refuses
+`-m raw` ("Raw queues are no longer supported"), so the queue uses the generic
+driver; with `-o raw` that driver never renders anything. The deprecation
+warning it prints is harmless. The queue name may not contain spaces, which is
+why it reads `Deli_DL-720C`; Operations matches that to `Deli DL-720C` on its own.
 
-This CUPS step is the one part of the Mac path that cannot be verified from the
-repository. Confirm the first physical label before running a batch.
+Print a test label straight from Terminal to separate printer problems from
+browser problems:
+
+```
+printf 'SIZE 60 mm,40 mm\r\nGAP 2 mm,0 mm\r\nCLS\r\nTEXT 40,60,"3",0,1,1,"MAC TEST OK"\r\nPRINT 1\r\n' | lp -d Deli_DL-720C -o raw
+```
+
+If `lpinfo -v` shows no `usb://` line, the Mac cannot see the printer at all.
+Check with `ioreg -p IOUSB -l -w0 | grep -E '"USB Product Name"|"USB Vendor Name"'`:
+the DL-720C reports itself as `USB Printer` from `Barcode Printer Co.,Ltd.`. If
+nothing but Apple's own devices is listed, the USB-C hub or cable is not
+connected; reseat it or try the other side of the Mac.
 
 ## Product labels
 
