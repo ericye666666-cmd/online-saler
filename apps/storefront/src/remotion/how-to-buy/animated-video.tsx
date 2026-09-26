@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { AbsoluteFill, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { INFO_FRAMES, INFO_SCENES } from "./info-scenes";
 import { ACCENT, CREAM, FONT, GREEN, INK, MUTED, Tap, Wordmark, useFonts, useIn } from "./shared";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
@@ -8,9 +9,10 @@ const SCENES: Array<{ frames: number; render: () => ReactNode }> = [
   { frames: 80, render: () => <Title /> },
   { frames: 115, render: () => <FindScene /> },
   { frames: 115, render: () => <BagScene /> },
-  { frames: 115, render: () => <PhoneScene /> },
+  { frames: 85, render: () => <PhoneScene /> },
   { frames: 125, render: () => <PickupScene /> },
-  { frames: 150, render: () => <PayScene /> },
+  { frames: 105, render: () => <PayScene /> },
+  ...INFO_SCENES.map((Info) => ({ frames: INFO_FRAMES, render: () => <Info /> })),
   { frames: 105, render: () => <Outro /> }
 ];
 export const ANIMATED_DURATION = SCENES.reduce((sum, s) => sum + s.frames, 0);
@@ -158,9 +160,9 @@ function BagIcon({ badge }: { badge: number }) {
 function PhoneScene() {
   const frame = useCurrentFrame();
   const number = "0712 345 678";
-  const typed = number.slice(0, Math.max(0, Math.floor((frame - 25) / 3.5)));
+  const typed = number.slice(0, Math.max(0, Math.floor((frame - 15) / 2.5)));
   const done = typed.length === number.length;
-  const ok = useIn(70, 10);
+  const ok = useIn(46, 10);
   return (
     <AbsoluteFill>
       <Header n={3} title="Add your M-Pesa number" sub="Go to your bag, tap Next, then Payment" />
@@ -187,7 +189,7 @@ function PickupScene() {
   const pick = frame >= 80;
   return (
     <AbsoluteFill>
-      <Header n={4} title="Pick up for free" sub="Choose the pickup point nearest you" />
+      <Header n={4} title="Pick up at our store: free" sub="Choose the pickup point nearest you" />
       <div style={{ position: "absolute", top: 740, left: 110, width: 860, display: "flex", flexDirection: "column", gap: 22 }}>
         {POINTS.map((point, i) => {
           const s = useIn(10 + i * 5);
@@ -207,7 +209,7 @@ function PickupScene() {
       </div>
       <Tap x={110} y={740} w={860} h={102} at={65} ring={false} />
       <div style={{ position: "absolute", bottom: 150, left: 0, right: 0, textAlign: "center", fontSize: 36, color: MUTED, fontWeight: 600, opacity: useIn(50) }}>
-        Prefer delivery? Choose courier delivery · KSh 50
+        Or door-to-door delivery in Nairobi · KSh 200
       </div>
     </AbsoluteFill>
   );
@@ -215,10 +217,10 @@ function PickupScene() {
 
 function PayScene() {
   const frame = useCurrentFrame();
-  const plan = frame >= 30 ? 0 : -1;
-  const prompt = useIn(62, 12);
-  const dots = Math.max(0, Math.min(4, Math.floor((frame - 78) / 7)));
-  const paid = useIn(112, 10);
+  const plan = frame >= 16 ? 0 : -1;
+  const prompt = useIn(40, 12);
+  const dots = Math.max(0, Math.min(4, Math.floor((frame - 50) / 5)));
+  const paid = useIn(74, 10);
   return (
     <AbsoluteFill>
       <Header n={5} title="Pay with M-Pesa" sub="Pay in full, or pay 50% now and the rest within 7 days" />
@@ -238,8 +240,8 @@ function PayScene() {
           Pay KSh 250 with M-Pesa
         </div>
       </div>
-      <Tap x={110} y={760} w={860} h={110} at={14} ring={false} />
-      <Tap x={110} y={1062} w={860} h={120} at={40} />
+      <Tap x={110} y={760} w={860} h={110} at={4} ring={false} />
+      <Tap x={110} y={1062} w={860} h={120} at={24} />
       {prompt > 0.01 ? (
         <Card style={{ position: "absolute", top: 820, left: 170, width: 740, padding: 50, transform: `scale(${0.7 + 0.3 * prompt})`, opacity: prompt }}>
           {paid < 0.5 ? (

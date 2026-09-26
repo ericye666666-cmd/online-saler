@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { AbsoluteFill, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
 import steps from "./steps.json";
+import { INFO_FRAMES, INFO_SCENES } from "./info-scenes";
 import { ACCENT, CREAM, FONT, GREEN, INK, MUTED, Phone, StepPill, Tap, Wordmark, useFonts, useIn } from "./shared";
 
 // Screenshots were taken at a 390x844 CSS viewport (2x). Tap rects are in CSS px.
@@ -28,19 +30,20 @@ const SCENES: Scene[] = [
   { shot: "03-product", step: 2, title: "Check the size and price", sub: "Then tap Add to bag", frames: 105, tapAt: 55 },
   { shot: "04-added", step: 2, title: "Added! Tap View bag", frames: 75, tapAt: 25 },
   { shot: "05-bag", step: 2, title: "Check your bag", sub: "Tap Next", frames: 80, tapAt: 32 },
-  { shot: "06-checkout", step: 3, title: "Tap Payment", sub: "to add your M-Pesa number", frames: 85, tapAt: 35 },
-  { shot: "07-phone", step: 3, title: "Type your M-Pesa number", sub: "The phone that will pay", frames: 70, tapAt: 22 },
-  { shot: "08-phone-typed", step: 3, title: "Type your M-Pesa number", sub: "Tap Save and continue", frames: 75, tapAt: 28 },
-  { shot: "09-checkout-phone", step: 4, title: "Now tap Pickup", frames: 75, tapAt: 28 },
-  { shot: "10-pickup", step: 4, title: "Pickup is free", sub: "Choose your pickup point (courier delivery is KSh 50)", frames: 110, tapAt: 50 },
-  { shot: "11-pickup-chosen", step: 4, title: "Tap Save and continue", frames: 70, tapAt: 25 },
-  { shot: "12-ready-to-pay", step: 5, title: "Pay in full, or 50% now", sub: "Then tap Pay with M-Pesa", frames: 115, tapAt: 65 },
-  { shot: "12-ready-to-pay", step: 5, title: "Enter your M-Pesa PIN", sub: "on the prompt that pops up on your phone", frames: 105, illustration: "pin" },
-  { shot: "12-ready-to-pay", step: 5, title: "Done! Your order is paid", sub: "Tap View order to follow it", frames: 95, illustration: "paid" }
+  { shot: "06-checkout", step: 3, title: "Tap Payment", sub: "to add your M-Pesa number", frames: 55, tapAt: 18 },
+  { shot: "07-phone", step: 3, title: "Type your M-Pesa number", sub: "The phone that will pay", frames: 45, tapAt: 12 },
+  { shot: "08-phone-typed", step: 3, title: "Type your M-Pesa number", sub: "Tap Save and continue", frames: 50, tapAt: 16 },
+  { shot: "09-checkout-phone", step: 4, title: "Now tap Pickup", frames: 60, tapAt: 20 },
+  { shot: "10-pickup", step: 4, title: "Pick up at our store: free", sub: "Or door-to-door delivery in Nairobi: KSh 200", frames: 100, tapAt: 50 },
+  { shot: "11-pickup-chosen", step: 4, title: "Tap Save and continue", frames: 55, tapAt: 18 },
+  { shot: "12-ready-to-pay", step: 5, title: "Pay in full, or 50% now", sub: "Then tap Pay with M-Pesa", frames: 80, tapAt: 40 },
+  { shot: "12-ready-to-pay", step: 5, title: "Enter your M-Pesa PIN", sub: "on the prompt that pops up on your phone", frames: 70, illustration: "pin" },
+  { shot: "12-ready-to-pay", step: 5, title: "Done! Your order is paid", sub: "Tap View order to follow it", frames: 65, illustration: "paid" }
 ];
 
 const starts = SCENES.reduce<number[]>((acc, scene, i) => [...acc, i === 0 ? INTRO : acc[i - 1] + SCENES[i - 1].frames], []);
-export const REAL_DURATION = INTRO + SCENES.reduce((sum, scene) => sum + scene.frames, 0) + OUTRO;
+const INFO_START = INTRO + SCENES.reduce((sum, scene) => sum + scene.frames, 0);
+export const REAL_DURATION = INFO_START + INFO_SCENES.length * INFO_FRAMES + OUTRO;
 
 function tapRect(shot: string) {
   const step = steps.find((s) => s.name === shot);
@@ -53,7 +56,7 @@ export function HowToBuyReal() {
   const frame = useCurrentFrame();
   const phoneIn = interpolate(frame, [20, 50], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const outroStart = REAL_DURATION - OUTRO;
-  const phoneOut = interpolate(frame, [outroStart - 5, outroStart + 15], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const phoneOut = interpolate(frame, [INFO_START - 5, INFO_START + 15], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill style={{ background: CREAM, fontFamily: FONT, color: INK }}>
@@ -98,11 +101,23 @@ export function HowToBuyReal() {
         </Phone>
       </div>
 
+      {INFO_SCENES.map((Info, i) => (
+        <Sequence key={i} from={INFO_START + i * INFO_FRAMES} durationInFrames={INFO_FRAMES}>
+          <InfoFade><Info /></InfoFade>
+        </Sequence>
+      ))}
+
       <Sequence from={outroStart}>
         <Outro />
       </Sequence>
     </AbsoluteFill>
   );
+}
+
+function InfoFade({ children }: { children: ReactNode }) {
+  const frame = useCurrentFrame();
+  const o = interpolate(frame, [0, 8, INFO_FRAMES - 8, INFO_FRAMES], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
 }
 
 function Caption({ scene, animate, last }: { scene: Scene; animate: boolean; last: boolean }) {
@@ -141,7 +156,7 @@ function Intro() {
 function PinPrompt() {
   const frame = useCurrentFrame();
   const pop = useIn(8, 12);
-  const dots = Math.max(0, Math.min(4, Math.floor((frame - 35) / 9)));
+  const dots = Math.max(0, Math.min(4, Math.floor((frame - 18) / 6)));
   return (
     <AbsoluteFill style={{ background: `rgba(0,0,0,${0.5 * pop})`, alignItems: "center", justifyContent: "center" }}>
       <IllustrationTag />
@@ -156,7 +171,7 @@ function PinPrompt() {
           <span style={{ color: MUTED }}>CANCEL</span><span>SEND</span>
         </div>
       </div>
-      {dots >= 4 ? <Tap x={468} y={SCREEN_H / 2 + 118} w={80} h={50} at={72} ring={false} /> : null}
+      {dots >= 4 ? <Tap x={468} y={SCREEN_H / 2 + 118} w={80} h={50} at={46} ring={false} /> : null}
     </AbsoluteFill>
   );
 }
@@ -178,7 +193,7 @@ function PaidScreen() {
       <div style={{ position: "absolute", left: 40, right: 40, bottom: 90, height: 96, borderRadius: 12, background: INK, color: "white", fontSize: 32, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", opacity: text }}>
         View order
       </div>
-      <Tap x={40} y={SCREEN_H - 186} w={SCREEN_W - 80} h={96} at={55} />
+      <Tap x={40} y={SCREEN_H - 186} w={SCREEN_W - 80} h={96} at={36} />
     </AbsoluteFill>
   );
 }
