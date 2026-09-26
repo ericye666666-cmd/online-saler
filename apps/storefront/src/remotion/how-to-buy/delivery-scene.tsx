@@ -1,11 +1,10 @@
-import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { ACCENT, GREEN, INK, MUTED, Sfx, useIn } from "./shared";
 
-// Rider delivery animation: store → rider rides → customer checks item →
-// reads the 4-digit code → delivered. Replaces the delivery text card.
+// Rider delivery animation: the rider rides from the store to the customer's
+// door, hands over the parcel, delivered.
 
-export const DELIVERY_FRAMES = 150;
+export const DELIVERY_FRAMES = 105;
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const ROAD_Y = 1250;
@@ -16,30 +15,25 @@ export function DeliveryScene() {
   const frame = useCurrentFrame();
   const head = useIn(0, 12);
   const sub = useIn(8);
-  const ride = interpolate(frame, [10, 55], [0, 1], { ...clamp, easing: (t) => 1 - Math.pow(1 - t, 2) });
+  const ride = interpolate(frame, [8, 44], [0, 1], { ...clamp, easing: (t) => 1 - Math.pow(1 - t, 2) });
   const riderX = interpolate(ride, [0, 1], [STORE_X + 60, HOUSE_X - 400]);
-  const moving = frame > 10 && frame < 55;
+  const moving = frame > 8 && frame < 44;
   const bounce = moving ? Math.sin(frame * 1.3) * 4 : 0;
-  const parcel = interpolate(frame, [58, 70], [0, 1], clamp);
-  const check = useIn(70, 10);
-  const codeStart = 86;
-  const digits = ["4", "8", "2", "7"];
-  const done = useIn(114, 9);
+  const parcel = interpolate(frame, [46, 56], [0, 1], clamp);
+  const done = useIn(60, 9);
 
   return (
     <AbsoluteFill>
-      <Sfx name="whoosh" at={10} volume={0.5} />
-      <Sfx name="pop" at={60} volume={0.5} />
-      <Sfx name="pop" at={70} volume={0.35} />
-      {[0, 1, 2, 3].map((i) => <Sfx key={i} name="type" at={codeStart + i * 5} volume={0.5} />)}
-      <Sfx name="success" at={114} volume={0.55} />
+      <Sfx name="whoosh" at={8} volume={0.5} />
+      <Sfx name="pop" at={48} volume={0.5} />
+      <Sfx name="success" at={60} volume={0.55} />
       <div style={{ position: "absolute", top: 150, left: 0, right: 0, textAlign: "center" }}>
-        <div style={{ fontSize: 34, fontWeight: 700, color: ACCENT, letterSpacing: 3, opacity: head }}>GETTING YOUR ORDER</div>
+        <div style={{ fontSize: 34, fontWeight: 700, color: ACCENT, letterSpacing: 3, opacity: head }}>STEP 3 · DELIVERY</div>
         <div style={{ fontSize: 88, fontWeight: 800, letterSpacing: -1.5, lineHeight: 1.05, marginTop: 12, opacity: head, transform: `translateY(${(1 - head) * 30}px)` }}>
-          Door to door<br />in Nairobi
+          Delivered<br />in 2 days
         </div>
-        <div style={{ display: "inline-block", marginTop: 26, background: INK, color: "white", fontSize: 48, fontWeight: 800, borderRadius: 999, padding: "12px 40px", opacity: sub, transform: `scale(${0.8 + 0.2 * sub})` }}>
-          KSh 200 flat
+        <div style={{ display: "inline-block", marginTop: 26, background: INK, color: "white", fontSize: 40, fontWeight: 800, borderRadius: 999, padding: "14px 36px", opacity: sub, transform: `scale(${0.8 + 0.2 * sub})` }}>
+          Door to door in Nairobi · KSh 200
         </div>
       </div>
 
@@ -63,44 +57,14 @@ export function DeliveryScene() {
         {parcel >= 1 ? <g transform={`translate(${HOUSE_X - 150}, ${ROAD_Y - 130})`}><Parcel /></g> : null}
       </svg>
 
-      {/* step 1: check the item */}
-      <Bubble show={check} top={1440} tone={INK}>
-        <span style={{ color: GREEN }}>✓</span> Check the item first
-      </Bubble>
-
-      {/* step 2: read the code */}
-      {frame >= codeStart - 4 ? (
-        <div style={{ position: "absolute", top: 1570, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ fontSize: 36, fontWeight: 700, color: MUTED }}>then tell the rider your delivery code</div>
-          <div style={{ display: "flex", gap: 20, marginTop: 16 }}>
-            {digits.map((d, i) => {
-              const s = interpolate(frame, [codeStart + i * 5, codeStart + i * 5 + 7], [0, 1], clamp);
-              return (
-                <div key={i} style={{ width: 100, height: 120, borderRadius: 18, background: "white", border: `4px solid ${INK}`, fontSize: 70, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", transform: `scale(${s})` }}>
-                  {d}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {/* delivered */}
       <div style={{
-        position: "absolute", top: 1010, left: 0, right: 0, textAlign: "center", opacity: done,
+        position: "absolute", top: 1480, left: 0, right: 0, textAlign: "center", opacity: done,
         transform: `scale(${interpolate(done, [0, 1], [1.8, 1])}) rotate(-4deg)`
       }}>
-        <span style={{ fontSize: 60, fontWeight: 800, color: GREEN, border: `7px solid ${GREEN}`, borderRadius: 22, padding: "10px 36px", background: "rgba(255,255,255,0.9)" }}>DELIVERED ✓</span>
+        <span style={{ fontSize: 76, fontWeight: 800, color: GREEN, border: `8px solid ${GREEN}`, borderRadius: 22, padding: "10px 36px", background: "rgba(255,255,255,0.9)" }}>DELIVERED ✓</span>
       </div>
     </AbsoluteFill>
-  );
-}
-
-function Bubble({ show, top, tone, children }: { show: number; top: number; tone: string; children: React.ReactNode }) {
-  return (
-    <div style={{ position: "absolute", top, left: 0, right: 0, display: "flex", justifyContent: "center", opacity: show, transform: `translateY(${(1 - show) * 20}px)` }}>
-      <div style={{ background: "white", color: tone, fontSize: 46, fontWeight: 800, borderRadius: 999, padding: "20px 44px", boxShadow: "0 12px 30px rgba(31,27,24,0.12)" }}>{children}</div>
-    </div>
   );
 }
 

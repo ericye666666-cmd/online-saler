@@ -1,18 +1,7 @@
 [
   {
-    "name": "01-home",
-    "url": "/",
-    "tap": {
-      "x": 160,
-      "y": 134,
-      "w": 132,
-      "h": 161.5,
-      "text": "Clothing"
-    }
-  },
-  {
     "name": "02-category",
-    "url": "/?group=Clothing",
+    "url": "/?category=Men&group=Clothing&type=Jackets",
     "tap": {
       "x": 13,
       "y": 290.5,
@@ -23,7 +12,7 @@
   },
   {
     "name": "03-product",
-    "url": "/p/92626900021",
+    "url": "/p/92626700010",
     "tap": {
       "x": 214,
       "y": 778,
@@ -34,7 +23,7 @@
   },
   {
     "name": "04-added",
-    "url": "/p/92626900021",
+    "url": "/p/92626700010",
     "tap": {
       "x": 214,
       "y": 778,
@@ -128,7 +117,7 @@
       "y": 784,
       "w": 352,
       "h": 48,
-      "text": "Pay KSh 250 with M-Pesa"
+      "text": "Pay KSh 500 with M-Pesa"
     }
   }
 ]
