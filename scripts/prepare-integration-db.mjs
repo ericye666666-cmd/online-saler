@@ -32,7 +32,8 @@ const migrations = [
   "20260924100000_assigned_packer",
   "20260925120000_package_label_printed",
   "20260925150000_rider_fee",
-  "20260926090000_commission_rate_25"
+  "20260926090000_commission_rate_25",
+  "20260926100000_return_reason_not_satisfied"
 ];
 const raw = process.env.MVP_INTEGRATION_DATABASE_URL;
 if (!raw) throw new Error("MVP_INTEGRATION_DATABASE_URL must name a disposable local test database.");
