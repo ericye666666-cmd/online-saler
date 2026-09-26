@@ -1,16 +1,16 @@
 import React, { type ReactNode } from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
+import { DELIVERY_FRAMES, DeliveryScene } from "./delivery-scene";
 import { ACCENT, GREEN, INK, MUTED, useIn } from "./shared";
 
 // "Good to know" cards shown after the buying steps: deposit hold, pickup,
 // delivery and returns. Shared by both how-to-buy videos.
 
-export const INFO_FRAMES = 135;
+const CARD_FRAMES = 115;
 
 const icons: Record<string, ReactNode> = {
   lock: <g><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></g>,
   store: <g><path d="M4 10h16v10H4z" /><path d="M3 10l2-5h14l2 5" /><path d="M10 20v-5h4v5" /></g>,
-  bike: <g><circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" /><path d="M6 17l4-7h5l3 7" /><path d="M13 6h3l1 4" /></g>,
   back: <g><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></g>
 };
 
@@ -61,16 +61,6 @@ export function PickupInfo() {
   );
 }
 
-export function DeliveryInfo() {
-  return (
-    <InfoLayout icon="bike" kicker="Getting your order" title="Door to door in Nairobi: KSh 200">
-      <Point at={14}>Choose <B>courier delivery</B> at checkout and drop a pin on the map. One flat fee: <B>KSh 200</B>.</Point>
-      <Point at={30}>A rider brings the parcel to your door. <B>Check the item first.</B></Point>
-      <Point at={46}>Then read your <B>4-digit delivery code</B> (on your order page) to the rider. Never give it before the parcel is in your hands.</Point>
-    </InfoLayout>
-  );
-}
-
 export function ReturnsInfo() {
   const frame = useCurrentFrame();
   const stamp = interpolate(frame, [62, 72], [2, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -85,4 +75,10 @@ export function ReturnsInfo() {
   );
 }
 
-export const INFO_SCENES = [DepositInfo, PickupInfo, DeliveryInfo, ReturnsInfo];
+export const INFO_SCENES = [
+  { Scene: DepositInfo, frames: CARD_FRAMES },
+  { Scene: PickupInfo, frames: CARD_FRAMES },
+  { Scene: DeliveryScene, frames: DELIVERY_FRAMES },
+  { Scene: ReturnsInfo, frames: CARD_FRAMES }
+];
+export const INFO_TOTAL = INFO_SCENES.reduce((sum, s) => sum + s.frames, 0);
