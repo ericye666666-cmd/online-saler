@@ -1,0 +1,134 @@
+[
+  {
+    "name": "01-home",
+    "url": "/",
+    "tap": {
+      "x": 160,
+      "y": 134,
+      "w": 132,
+      "h": 161.5,
+      "text": "Clothing"
+    }
+  },
+  {
+    "name": "02-category",
+    "url": "/?group=Clothing",
+    "tap": {
+      "x": 13,
+      "y": 290.5,
+      "w": 181.5,
+      "h": 181.5,
+      "text": ""
+    }
+  },
+  {
+    "name": "03-product",
+    "url": "/p/92626900021",
+    "tap": {
+      "x": 214,
+      "y": 778,
+      "w": 160,
+      "h": 54,
+      "text": "Add to bag"
+    }
+  },
+  {
+    "name": "04-added",
+    "url": "/p/92626900021",
+    "tap": {
+      "x": 214,
+      "y": 778,
+      "w": 160,
+      "h": 54,
+      "text": "View bag"
+    }
+  },
+  {
+    "name": "05-bag",
+    "url": "/cart",
+    "tap": {
+      "x": 16,
+      "y": 772,
+      "w": 358,
+      "h": 56,
+      "text": "Next"
+    }
+  },
+  {
+    "name": "06-checkout",
+    "url": "/checkout",
+    "tap": {
+      "x": 19,
+      "y": 245.609375,
+      "w": 352,
+      "h": 74,
+      "text": "1\nPayment\nM-Pesa phone"
+    }
+  },
+  {
+    "name": "07-phone",
+    "url": "/checkout",
+    "tap": {
+      "x": 81,
+      "y": 246.109375,
+      "w": 228,
+      "h": 50.5,
+      "text": ""
+    }
+  },
+  {
+    "name": "08-phone-typed",
+    "url": "/checkout",
+    "tap": {
+      "x": 81,
+      "y": 327.609375,
+      "w": 228,
+      "h": 48,
+      "text": "Save and continue"
+    }
+  },
+  {
+    "name": "09-checkout-phone",
+    "url": "/checkout",
+    "tap": {
+      "x": 19,
+      "y": 329.609375,
+      "w": 352,
+      "h": 74,
+      "text": "2\nPickup\nChoose where to collect your order"
+    }
+  },
+  {
+    "name": "10-pickup",
+    "url": "/checkout",
+    "tap": {
+      "x": 74.453125,
+      "y": 434.609375,
+      "w": 241.078125,
+      "h": 49,
+      "text": "Choose a pickup point\nKikuyu Warehouse\nThogoto\nKinoo\nLucky Summer\nPipeline\nUtawa"
+    }
+  },
+  {
+    "name": "11-pickup-chosen",
+    "url": "/checkout",
+    "tap": {
+      "x": 29.09375,
+      "y": 677.109375,
+      "w": 331.796875,
+      "h": 48,
+      "text": "Save and continue"
+    }
+  },
+  {
+    "name": "12-ready-to-pay",
+    "url": "/checkout",
+    "tap": {
+      "x": 19,
+      "y": 784,
+      "w": 352,
+      "h": 48,
+      "text": "Pay KSh 250 with M-Pesa"
+    }
+  }
+]
