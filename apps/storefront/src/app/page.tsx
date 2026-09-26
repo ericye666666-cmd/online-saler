@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 type HomeProps = {
   searchParams: Promise<{
-    ref?: string; category?: string; group?: string; type?: string; q?: string; view?: string;
+    ref?: string; category?: string; group?: string; type?: string; q?: string; view?: string; size?: string;
     source?: string; placement?: string; campaign?: string; utm_source?: string; utm_campaign?: string;
   }>;
 };
@@ -40,6 +40,7 @@ export default async function Home({ searchParams }: HomeProps) {
       : departmentCategories[department][group].includes(query.type))
     ? query.type : "All";
   const search = query.q?.trim() ?? "";
+  const size = query.size?.trim().slice(0, 40) || "All";
   const browsing = department !== "All" || group !== "All" || Boolean(search) || query.view === "all";
 
   if (!browsing) {
@@ -63,6 +64,7 @@ export default async function Home({ searchParams }: HomeProps) {
       initialGroup={group}
       initialShopCategory={shopCategory}
       initialQuery={search}
+      initialSize={size}
       scopedDepartment={department === "All" || search ? undefined : department}
       sellerRef={sellerRef}
       source={source}

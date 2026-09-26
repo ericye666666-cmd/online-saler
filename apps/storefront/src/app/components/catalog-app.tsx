@@ -116,6 +116,7 @@ export function CatalogApp({
   initialShopCategory = "All",
   initialGroup = "All",
   initialQuery = "",
+  initialSize = "All",
   scopedDepartment,
   sellerRef,
   source,
@@ -127,6 +128,8 @@ export function CatalogApp({
   initialShopCategory?: string;
   initialGroup?: Group | "All";
   initialQuery?: string;
+  /** From `?size=`, e.g. a sold piece's "See similar items" opening the list in its size. */
+  initialSize?: string;
   /** Set when only this department's pieces were loaded: going elsewhere loads a new page. */
   scopedDepartment?: Department;
   sellerRef?: string;
@@ -141,7 +144,7 @@ export function CatalogApp({
   const [group, setGroup] = useState<Group | "All">(initialGroup);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const moreRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState("All");
+  const [size, setSize] = useState(initialSize);
   const [condition, setCondition] = useState("All");
   const [brand, setBrand] = useState("All");
   const [color, setColor] = useState("All");
@@ -272,6 +275,15 @@ export function CatalogApp({
     : shelfOptions
       .filter((option) => group !== "All" ? option.category !== "All" : true)
       .map((option) => ({ label: option.label, department, group: option.group, shopCategory: option.category }));
+
+  // The size filter lives in the address too, so a refresh or a shared link keeps it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if ((params.get("size") ?? "All") === size) return;
+    if (size === "All") params.delete("size");
+    else params.set("size", size);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [size]);
 
   function updateSelectionInUrl(nextDepartment: CatalogDepartment, nextGroup: Group | "All" = "All", nextShopCategory = "All") {
     const params = new URLSearchParams(window.location.search);

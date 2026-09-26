@@ -28,6 +28,7 @@ import {
 } from "../../product-detail-commerce";
 import { localizedSizeHeadline, productSizeDisplay } from "../../product-size-display";
 import { browseHref } from "../../shop-taxonomy";
+import { similarItemsHref } from "../../similar-items";
 import { getPublishedProduct, listPublishedProducts } from "../../../db/catalog";
 import { getStorefrontI18n } from "../../../i18n/server";
 import { translateValue, type StorefrontLocale } from "../../../i18n/dictionary";
@@ -147,7 +148,12 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               <p className="pdPrice">{formatPrice(product.price)}</p>
               <p className={`pdStatus ${product.status !== "Available" ? "unavailable" : ""}`}>{status}</p>
 
-              <CatalogBuyAction product={product} chatHref={customerServiceUrl(product, sellerRef)} chatLabel={t("pd.chat")} />
+              <CatalogBuyAction
+                product={product}
+                chatHref={customerServiceUrl(product, sellerRef)}
+                chatLabel={t("pd.chat")}
+                similarHref={product.status === "Available" ? undefined : similarItemsHref(product, products, sellerRef)}
+              />
               <ProductShareSheet product={product} className="pdShareButton" />
             </div>
 

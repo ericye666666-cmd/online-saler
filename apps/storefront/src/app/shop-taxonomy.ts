@@ -64,9 +64,11 @@ export type BrowseSelection = {
   group?: Group | "All";
   shopCategory?: string;
   brand?: string;
+  /** Opens the list with the size filter already set, e.g. `size=UK 39`. */
+  size?: string;
 };
 
-/** The catalogue URL for a selection: `?category=<department>&group=<group>&type=<category>`. */
+/** The catalogue URL for a selection: `?category=<department>&group=<group>&type=<category>[&size=<size>]`. */
 export function browseHref(selection: BrowseSelection, sellerRef?: string): string {
   const params = new URLSearchParams();
   if (selection.department !== "All") params.set("category", selection.department);
@@ -74,6 +76,7 @@ export function browseHref(selection: BrowseSelection, sellerRef?: string): stri
   if (selection.shopCategory && selection.shopCategory !== "All") params.set("type", selection.shopCategory);
   // With nothing chosen this is the whole catalogue, not the home page.
   if (!params.size) params.set("view", "all");
+  if (selection.size && selection.size !== "All") params.set("size", selection.size);
   if (sellerRef) params.set("ref", sellerRef);
   return `/?${params.toString()}`;
 }

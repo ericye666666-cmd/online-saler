@@ -23,11 +23,13 @@ function bagHolds(productId: string): boolean {
   }
 }
 
-export function CatalogBuyAction({ product, chatHref, chatLabel }: {
+export function CatalogBuyAction({ product, chatHref, chatLabel, similarHref }: {
   product: CatalogProduct;
   /** Customer-service chat about this item, shown as the first button of the bar. */
   chatHref?: string;
   chatLabel?: string;
+  /** Where a sold or reserved piece sends the shopper instead of two dead buttons. */
+  similarHref?: string;
 }) {
   const { t } = useStorefrontI18n();
   const [toast, setToast] = useState("");
@@ -76,13 +78,15 @@ export function CatalogBuyAction({ product, chatHref, chatLabel }: {
 
   return (
     <div className="catalogBuyBox">
-      <div className={`catalogBuyActions ${chatHref ? "withChat" : ""}`}>
+      <div className={`catalogBuyActions ${chatHref ? "withChat" : ""} ${!available && similarHref ? "single" : ""}`}>
         {chatHref ? (
           <a className="catalogChatButton" href={chatHref} target="_blank" rel="noopener noreferrer" aria-label={chatLabel} title={chatLabel}>
             <MessageCircle size={22} strokeWidth={1.6} aria-hidden="true" />
           </a>
         ) : null}
-        {available && inBag ? (
+        {!available && similarHref ? (
+          <Link className="catalogBuyButton catalogSimilarButton" href={similarHref}>{t("product.seeSimilar")}</Link>
+        ) : available && inBag ? (
           <Link className="catalogBuyButton secondary" href="/cart">
             <Check size={17} aria-hidden="true" /> {t("product.viewBag")}
           </Link>
@@ -91,11 +95,13 @@ export function CatalogBuyAction({ product, chatHref, chatLabel }: {
             {available ? t("product.addToBag") : t("common.unavailable")}
           </button>
         )}
-        <button className="catalogBuyButton" disabled={!available || buying} type="button" onClick={buyNow}>
-          {available ? (buying ? t("product.openingCheckout") : t("product.buyNow")) : t("common.unavailable")}
-        </button>
+        {!available && similarHref ? null : (
+          <button className="catalogBuyButton" disabled={!available || buying} type="button" onClick={buyNow}>
+            {available ? (buying ? t("product.openingCheckout") : t("product.buyNow")) : t("common.unavailable")}
+          </button>
+        )}
       </div>
-      {available ? <p>{t("product.notReserved")}</p> : null}
+      {available ? <p>{t("product.notReserved")}</p> : product.status === "Reserved" ? <p>{t("product.reservedMayReturn")}</p> : null}
       {toast ? (
         <p className="catalogBuyToast" role="status">
           <Check size={16} aria-hidden="true" /> {toast} <Link href="/cart">{t("product.viewBag")}</Link>

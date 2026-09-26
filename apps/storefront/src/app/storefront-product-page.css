@@ -298,6 +298,27 @@
   margin-top: 36px;
 }
 
+/* Sold or reserved: one filled "See similar items" button in place of the two dead ones. */
+.pdPage .catalogBuyActions.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pdPage .catalogBuyActions.withChat.single {
+  grid-template-columns: 54px minmax(0, 1fr);
+}
+
+.pdPage .catalogBuyActions .catalogBuyButton.catalogSimilarButton {
+  order: 1;
+  border-color: #191919;
+  background: #191919;
+  color: #fff;
+}
+
+.pdPage .catalogBuyActions .catalogBuyButton.catalogSimilarButton:hover {
+  border-color: #ff2b08;
+  background: #ff2b08;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pdFold > summary svg {
     transition: none;
