@@ -27,7 +27,7 @@ Acceptance:
 4. Add building/house details in delivery note. Refresh to verify draft restore.
 5. On a real delivery order, verify the same address and map link in customer
    Order Detail and Operations; handoff and delivered status require actual facts.
-6. New attributed payment earns 10% of item subtotal; payment retries do not
+6. New attributed payment earns 25% of item subtotal (was 10% until 2026-09-15); payment retries do not
    recalculate existing commissions. Weekly payout remains manual and requires
    a real verified transfer reference.
 7. Customer Order Detail's support link opens WhatsApp with the order number;

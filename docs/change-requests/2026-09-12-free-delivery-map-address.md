@@ -4,6 +4,11 @@ Eric authorized this change on 2026-09-12: delivery is free, customer addresses
 should use a reusable GitHub Google Maps component, after-sales remains manual,
 and the initial affiliate rate is 10%.
 
+> **Update:** the affiliate rate is now 25%. New commissions have used 25% since
+> 2026-09-15. On 2026-09-26 the owner approved recalculating every unpaid
+> historical commission at 25% (migration `20260926090000_commission_rate_25`);
+> no commission had been paid yet. The 10% points below are the original record.
+
 - New checkout delivery charges are zero. Existing orders/payment reservations
   keep their original amount snapshots; no payment request is repriced in flight.
 - Use MIT-licensed `@vis.gl/react-google-maps`, Google Places (New), map pins and
