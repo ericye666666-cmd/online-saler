@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AbsoluteFill, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
 import steps from "./steps.json";
-import { INFO_FRAMES, INFO_SCENES } from "./info-scenes";
+import { INFO_SCENES, INFO_TOTAL } from "./info-scenes";
 import { ACCENT, CREAM, FONT, GREEN, INK, MUTED, Phone, StepPill, Tap, Wordmark, useFonts, useIn } from "./shared";
 
 // Screenshots were taken at a 390x844 CSS viewport (2x). Tap rects are in CSS px.
@@ -43,7 +43,7 @@ const SCENES: Scene[] = [
 
 const starts = SCENES.reduce<number[]>((acc, scene, i) => [...acc, i === 0 ? INTRO : acc[i - 1] + SCENES[i - 1].frames], []);
 const INFO_START = INTRO + SCENES.reduce((sum, scene) => sum + scene.frames, 0);
-export const REAL_DURATION = INFO_START + INFO_SCENES.length * INFO_FRAMES + OUTRO;
+export const REAL_DURATION = INFO_START + INFO_TOTAL + OUTRO;
 
 function tapRect(shot: string) {
   const step = steps.find((s) => s.name === shot);
@@ -101,9 +101,9 @@ export function HowToBuyReal() {
         </Phone>
       </div>
 
-      {INFO_SCENES.map((Info, i) => (
-        <Sequence key={i} from={INFO_START + i * INFO_FRAMES} durationInFrames={INFO_FRAMES}>
-          <InfoFade><Info /></InfoFade>
+      {INFO_SCENES.map(({ Scene, frames }, i) => (
+        <Sequence key={i} from={INFO_START + INFO_SCENES.slice(0, i).reduce((sum, s) => sum + s.frames, 0)} durationInFrames={frames}>
+          <InfoFade frames={frames}><Scene /></InfoFade>
         </Sequence>
       ))}
 
@@ -114,9 +114,9 @@ export function HowToBuyReal() {
   );
 }
 
-function InfoFade({ children }: { children: ReactNode }) {
+function InfoFade({ frames, children }: { frames: number; children: ReactNode }) {
   const frame = useCurrentFrame();
-  const o = interpolate(frame, [0, 8, INFO_FRAMES - 8, INFO_FRAMES], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const o = interpolate(frame, [0, 8, frames - 8, frames], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
 }
 

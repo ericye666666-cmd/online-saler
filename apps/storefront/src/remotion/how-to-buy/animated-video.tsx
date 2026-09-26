@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { AbsoluteFill, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
-import { INFO_FRAMES, INFO_SCENES } from "./info-scenes";
+import { INFO_SCENES } from "./info-scenes";
 import { ACCENT, CREAM, FONT, GREEN, INK, MUTED, Tap, Wordmark, useFonts, useIn } from "./shared";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
@@ -12,7 +12,7 @@ const SCENES: Array<{ frames: number; render: () => ReactNode }> = [
   { frames: 85, render: () => <PhoneScene /> },
   { frames: 125, render: () => <PickupScene /> },
   { frames: 105, render: () => <PayScene /> },
-  ...INFO_SCENES.map((Info) => ({ frames: INFO_FRAMES, render: () => <Info /> })),
+  ...INFO_SCENES.map(({ Scene, frames }) => ({ frames, render: () => <Scene /> })),
   { frames: 105, render: () => <Outro /> }
 ];
 export const ANIMATED_DURATION = SCENES.reduce((sum, s) => sum + s.frames, 0);
