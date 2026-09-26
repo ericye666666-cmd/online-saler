@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { continueRender, delayRender, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Sequence, continueRender, delayRender, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 
 export const FPS = 30;
 export const INK = "#1f1b18";
@@ -66,7 +66,8 @@ export function Phone({ screenW, screenH, children, style }: { screenW: number; 
 export function Tap({ x, y, w, h, at, ring = true }: { x: number; y: number; w: number; h: number; at: number; ring?: boolean }) {
   const frame = useCurrentFrame();
   const t = frame - at;
-  if (t < 0) return null;
+  const sound = <Sfx name="tap" at={at + 12} volume={0.55} />;
+  if (t < 0) return sound;
   const appear = interpolate(t, [0, 8], [0, 1], { extrapolateRight: "clamp" });
   const press = interpolate(t, [10, 16, 22], [1, 0.82, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const ripple = interpolate(t, [14, 34], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -75,6 +76,7 @@ export function Tap({ x, y, w, h, at, ring = true }: { x: number; y: number; w: 
   const dot = 76;
   return (
     <>
+      {sound}
       {ring ? (
         <div style={{
           position: "absolute", left: x - 8, top: y - 8, width: w + 16, height: h + 16, borderRadius: 18,
@@ -91,5 +93,57 @@ export function Tap({ x, y, w, h, at, ring = true }: { x: number; y: number; w: 
         opacity: appear, transform: `scale(${appear * press})`
       }} />
     </>
+  );
+}
+
+/** One-shot UI sound from public/audio at a frame of the enclosing sequence. */
+export function Sfx({ name, at, volume = 0.6 }: { name: "tap" | "type" | "pop" | "whoosh" | "success"; at: number; volume?: number }) {
+  return (
+    <Sequence from={Math.max(0, Math.round(at))} durationInFrames={30} layout="none">
+      <Audio src={staticFile(`audio/${name}.wav`)} volume={volume} />
+    </Sequence>
+  );
+}
+
+/** Background track, faded out over the last second. */
+export function Music({ duration }: { duration: number }) {
+  return (
+    <Audio
+      src={staticFile("audio/music.wav")}
+      volume={(f) => 0.42 * interpolate(f, [duration - 30, duration], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })}
+    />
+  );
+}
+
+/** Soft drifting colour blobs behind everything. */
+export function Backdrop() {
+  const frame = useCurrentFrame();
+  const blob = (x: number, y: number, r: number, color: string, speed: number, phase: number) => (
+    <div style={{
+      position: "absolute", width: r * 2, height: r * 2, borderRadius: "50%", background: color, filter: "blur(60px)",
+      left: x - r + Math.sin(frame / speed + phase) * 60, top: y - r + Math.cos(frame / (speed * 1.3) + phase) * 50
+    }} />
+  );
+  return (
+    <AbsoluteFill style={{ background: CREAM, overflow: "hidden" }}>
+      {blob(120, 260, 300, "rgba(232,76,53,0.14)", 40, 0)}
+      {blob(980, 900, 340, "rgba(24,169,87,0.10)", 50, 2)}
+      {blob(200, 1700, 320, "rgba(232,76,53,0.10)", 45, 4)}
+    </AbsoluteFill>
+  );
+}
+
+/** Five-segment progress bar across the top; `step` 1..total, 0 hides it. */
+export function ProgressBar({ step, total, animate = true }: { step: number; total: number; animate?: boolean }) {
+  const frame = useCurrentFrame();
+  const fill = animate ? interpolate(frame, [0, 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
+  return (
+    <div style={{ position: "absolute", top: 34, left: 60, right: 60, display: "flex", gap: 12 }}>
+      {Array.from({ length: total }, (_, i) => (
+        <div key={i} style={{ flex: 1, height: 10, borderRadius: 5, background: "rgba(31,27,24,0.12)", overflow: "hidden" }}>
+          <div style={{ height: "100%", background: ACCENT, width: `${i < step - 1 ? 100 : i === step - 1 ? fill * 100 : 0}%` }} />
+        </div>
+      ))}
+    </div>
   );
 }

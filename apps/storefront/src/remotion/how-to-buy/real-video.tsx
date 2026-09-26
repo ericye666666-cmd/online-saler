@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { AbsoluteFill, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
 import steps from "./steps.json";
 import { INFO_SCENES, INFO_TOTAL } from "./info-scenes";
-import { ACCENT, CREAM, FONT, GREEN, INK, MUTED, Phone, StepPill, Tap, Wordmark, useFonts, useIn } from "./shared";
+import { ACCENT, Backdrop, FONT, GREEN, INK, MUTED, Music, Phone, ProgressBar, Sfx, StepPill, Tap, Wordmark, useFonts, useIn } from "./shared";
 
 // Screenshots were taken at a 390x844 CSS viewport (2x). Tap rects are in CSS px.
 const VIEW_W = 390;
@@ -22,23 +22,23 @@ type Scene = {
   illustration?: "pin" | "paid";
 };
 
-const INTRO = 75;
-const OUTRO = 110;
+const INTRO = 45;
+const OUTRO = 60;
 const SCENES: Scene[] = [
-  { shot: "01-home", step: 1, title: "Open dloop.co.ke", sub: "Tap a category", frames: 90, tapAt: 38 },
-  { shot: "02-category", step: 1, title: "Tap an item you like", frames: 80, tapAt: 30 },
-  { shot: "03-product", step: 2, title: "Check the size and price", sub: "Then tap Add to bag", frames: 105, tapAt: 55 },
-  { shot: "04-added", step: 2, title: "Added! Tap View bag", frames: 75, tapAt: 25 },
-  { shot: "05-bag", step: 2, title: "Check your bag", sub: "Tap Next", frames: 80, tapAt: 32 },
-  { shot: "06-checkout", step: 3, title: "Tap Payment", sub: "to add your M-Pesa number", frames: 55, tapAt: 18 },
-  { shot: "07-phone", step: 3, title: "Type your M-Pesa number", sub: "The phone that will pay", frames: 45, tapAt: 12 },
-  { shot: "08-phone-typed", step: 3, title: "Type your M-Pesa number", sub: "Tap Save and continue", frames: 50, tapAt: 16 },
-  { shot: "09-checkout-phone", step: 4, title: "Now tap Pickup", frames: 60, tapAt: 20 },
-  { shot: "10-pickup", step: 4, title: "Pick up at our store: free", sub: "Or door-to-door delivery in Nairobi: KSh 200", frames: 100, tapAt: 50 },
-  { shot: "11-pickup-chosen", step: 4, title: "Tap Save and continue", frames: 55, tapAt: 18 },
-  { shot: "12-ready-to-pay", step: 5, title: "Pay in full, or 50% now", sub: "Then tap Pay with M-Pesa", frames: 80, tapAt: 40 },
-  { shot: "12-ready-to-pay", step: 5, title: "Enter your M-Pesa PIN", sub: "on the prompt that pops up on your phone", frames: 70, illustration: "pin" },
-  { shot: "12-ready-to-pay", step: 5, title: "Done! Your order is paid", sub: "Tap View order to follow it", frames: 65, illustration: "paid" }
+  { shot: "01-home", step: 1, title: "Open dloop.co.ke", sub: "Tap a category", frames: 60, tapAt: 28 },
+  { shot: "02-category", step: 1, title: "Tap an item you like", frames: 45, tapAt: 18 },
+  { shot: "03-product", step: 2, title: "Check the size and price", sub: "Then tap Add to bag", frames: 60, tapAt: 30 },
+  { shot: "04-added", step: 2, title: "Added! Tap View bag", frames: 45, tapAt: 16 },
+  { shot: "05-bag", step: 2, title: "Check your bag", sub: "Tap Next", frames: 45, tapAt: 18 },
+  { shot: "06-checkout", step: 3, title: "Tap Payment", sub: "to add your M-Pesa number", frames: 45, tapAt: 16 },
+  { shot: "07-phone", step: 3, title: "Type your M-Pesa number", sub: "The phone that will pay", frames: 30, tapAt: 4 },
+  { shot: "08-phone-typed", step: 3, title: "Type your M-Pesa number", sub: "Tap Save and continue", frames: 45, tapAt: 22 },
+  { shot: "09-checkout-phone", step: 4, title: "Now tap Pickup", frames: 45, tapAt: 16 },
+  { shot: "10-pickup", step: 4, title: "Pick up at our store: free", sub: "Or door-to-door delivery in Nairobi: KSh 200", frames: 60, tapAt: 30 },
+  { shot: "11-pickup-chosen", step: 4, title: "Tap Save and continue", frames: 30, tapAt: 6 },
+  { shot: "12-ready-to-pay", step: 5, title: "Pay in full, or 50% now", sub: "Then tap Pay with M-Pesa", frames: 60, tapAt: 32 },
+  { shot: "12-ready-to-pay", step: 5, title: "Enter your M-Pesa PIN", sub: "on the prompt that pops up on your phone", frames: 45, illustration: "pin" },
+  { shot: "12-ready-to-pay", step: 5, title: "Done! Your order is paid", sub: "Tap View order to follow it", frames: 45, illustration: "paid" }
 ];
 
 const starts = SCENES.reduce<number[]>((acc, scene, i) => [...acc, i === 0 ? INTRO : acc[i - 1] + SCENES[i - 1].frames], []);
@@ -54,19 +54,23 @@ function tapRect(shot: string) {
 export function HowToBuyReal() {
   useFonts();
   const frame = useCurrentFrame();
-  const phoneIn = interpolate(frame, [20, 50], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const phoneIn = interpolate(frame, [14, 40], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: (t) => 1 - Math.pow(1 - t, 3) });
   const outroStart = REAL_DURATION - OUTRO;
   const phoneOut = interpolate(frame, [INFO_START - 5, INFO_START + 15], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
-    <AbsoluteFill style={{ background: CREAM, fontFamily: FONT, color: INK }}>
+    <AbsoluteFill style={{ fontFamily: FONT, color: INK }}>
+      <Backdrop />
+      <Music duration={REAL_DURATION} />
       <Sequence durationInFrames={INTRO + 10}>
         <Intro />
       </Sequence>
 
       {SCENES.map((scene, i) => (
         <Sequence key={i} from={starts[i]} durationInFrames={scene.frames}>
-          <Caption scene={scene} animate={i === 0 || SCENES[i - 1].title !== scene.title} last={i === SCENES.length - 1 || SCENES[i + 1].title !== scene.title} />
+          <Caption scene={scene} newStep={i === 0 || SCENES[i - 1].step !== scene.step} animate={i === 0 || SCENES[i - 1].title !== scene.title} last={i === SCENES.length - 1 || SCENES[i + 1].title !== scene.title} />
+          {i === 0 || SCENES[i - 1].step !== scene.step ? <Sfx name="whoosh" at={0} volume={0.35} /> : null}
+          {scene.shot === "07-phone" ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => <Sfx key={k} name="type" at={8 + k * 2} volume={0.35} />) : null}
         </Sequence>
       ))}
 
@@ -77,13 +81,20 @@ export function HowToBuyReal() {
         <Phone screenW={SCREEN_W} screenH={SCREEN_H}>
           {SCENES.map((scene, i) => {
             const local = frame - starts[i];
-            // Screens cross-fade: each fades in over its first 8 frames and stays until the next one covers it.
-            const opacity = i === 0 ? 1 : interpolate(local, [0, 8], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+            // Each screen slides in from the right over 8 frames and stays until the next one covers it.
+            const enter = i === 0 ? 1 : interpolate(local, [0, 8], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: (t) => 1 - Math.pow(1 - t, 3) });
+            const sameScreen = i > 0 && SCENES[i - 1].shot === scene.shot;
             const visible = local >= 0 && (i === SCENES.length - 1 || frame < starts[i + 1] + 8) || (i === 0 && frame < starts[0]);
             if (!visible) return null;
             const rect = tapRect(scene.shot);
+            // Push in slightly towards what is about to be tapped, so small buttons read on a phone.
+            const zoom = rect && scene.tapAt !== undefined && !scene.illustration
+              ? interpolate(local, [0, scene.tapAt + 6], [1, 1.1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: (t) => t * (2 - t) })
+              : 1;
+            const origin = rect ? `${rect.x + rect.w / 2}px ${rect.y + rect.h / 2}px` : "50% 50%";
             return (
-              <div key={i} style={{ position: "absolute", inset: 0, opacity }}>
+              <div key={i} style={{ position: "absolute", inset: 0, overflow: "hidden", transform: sameScreen ? undefined : `translateX(${(1 - enter) * 100}%)`, boxShadow: enter < 1 ? "-20px 0 40px rgba(0,0,0,0.2)" : undefined }}>
+               <div style={{ position: "absolute", inset: 0, transform: `scale(${zoom})`, transformOrigin: origin }}>
                 <Img src={staticFile(`real/${scene.shot}.png`)} style={{ width: SCREEN_W, height: SCREEN_H, display: "block" }} />
                 {scene.illustration ? (
                   <Sequence from={starts[i]} durationInFrames={scene.frames}>
@@ -95,6 +106,7 @@ export function HowToBuyReal() {
                     <Tap {...rect} at={scene.tapAt} />
                   </Sequence>
                 ) : null}
+               </div>
               </div>
             );
           })}
@@ -120,13 +132,14 @@ function InfoFade({ frames, children }: { frames: number; children: ReactNode })
   return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
 }
 
-function Caption({ scene, animate, last }: { scene: Scene; animate: boolean; last: boolean }) {
+function Caption({ scene, newStep, animate, last }: { scene: Scene; newStep: boolean; animate: boolean; last: boolean }) {
   const frame = useCurrentFrame();
   const enter = useIn(0, 16);
   const shown = animate ? enter : 1;
   const exit = last ? interpolate(frame, [scene.frames - 6, scene.frames], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
   return (
-    <AbsoluteFill style={{ alignItems: "center", paddingTop: 70, textAlign: "center" }}>
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: 80, textAlign: "center" }}>
+      <ProgressBar step={scene.step} total={TOTAL_STEPS} animate={newStep} />
       <StepPill index={scene.step} total={TOTAL_STEPS} />
       <div style={{ opacity: shown * exit, transform: `translateY(${(1 - shown) * 30}px)`, padding: "0 60px" }}>
         <div style={{ fontSize: 68, fontWeight: 800, lineHeight: 1.1, marginTop: 28, letterSpacing: -1 }}>{scene.title}</div>
@@ -140,7 +153,7 @@ function Intro() {
   const frame = useCurrentFrame();
   const a = useIn(0);
   const b = useIn(10);
-  const out = interpolate(frame, [INTRO - 10, INTRO], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const out = interpolate(frame, [INTRO - 8, INTRO], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
     <AbsoluteFill style={{ alignItems: "center", paddingTop: 150, textAlign: "center", opacity: out }}>
       <div style={{ transform: `scale(${0.8 + 0.2 * a})`, opacity: a }}><Wordmark size={96} /></div>
@@ -156,7 +169,7 @@ function Intro() {
 function PinPrompt() {
   const frame = useCurrentFrame();
   const pop = useIn(8, 12);
-  const dots = Math.max(0, Math.min(4, Math.floor((frame - 18) / 6)));
+  const dots = Math.max(0, Math.min(4, Math.floor((frame - 10) / 4)));
   return (
     <AbsoluteFill style={{ background: `rgba(0,0,0,${0.5 * pop})`, alignItems: "center", justifyContent: "center" }}>
       <IllustrationTag />
@@ -171,15 +184,16 @@ function PinPrompt() {
           <span style={{ color: MUTED }}>CANCEL</span><span>SEND</span>
         </div>
       </div>
-      {dots >= 4 ? <Tap x={468} y={SCREEN_H / 2 + 118} w={80} h={50} at={46} ring={false} /> : null}
+      {dots >= 4 ? <Tap x={468} y={SCREEN_H / 2 + 118} w={80} h={50} at={26} ring={false} /> : null}
+      {[0, 1, 2, 3].map((k) => <Sfx key={k} name="type" at={10 + k * 4} volume={0.4} />)}
     </AbsoluteFill>
   );
 }
 
 /** Illustration of the "Payment successful" screen shown after paying. */
 function PaidScreen() {
-  const check = useIn(6, 10);
-  const text = useIn(16);
+  const check = useIn(3, 10);
+  const text = useIn(10);
   return (
     <AbsoluteFill style={{ background: "white", alignItems: "center", paddingTop: 300, fontFamily: FONT }}>
       <IllustrationTag />
@@ -193,7 +207,8 @@ function PaidScreen() {
       <div style={{ position: "absolute", left: 40, right: 40, bottom: 90, height: 96, borderRadius: 12, background: INK, color: "white", fontSize: 32, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", opacity: text }}>
         View order
       </div>
-      <Tap x={40} y={SCREEN_H - 186} w={SCREEN_W - 80} h={96} at={36} />
+      <Tap x={40} y={SCREEN_H - 186} w={SCREEN_W - 80} h={96} at={26} />
+      <Sfx name="success" at={3} volume={0.55} />
     </AbsoluteFill>
   );
 }

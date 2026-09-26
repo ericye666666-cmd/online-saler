@@ -3,11 +3,11 @@
 Two short vertical (1080x1920) videos that show customers how to buy on
 dloop.co.ke, for sharing on WhatsApp when someone is stuck.
 
-- `HowToBuyReal` (~47 s): real screenshots of the live shop in a phone frame,
+- `HowToBuyReal` (~39 s): real screenshots of the live shop in a phone frame,
   with tap markers and captions. The M-Pesa PIN prompt and "Payment successful"
   screens are drawn and labelled "Illustration", because filming them would need a
   real payment.
-- `HowToBuyAnimated` (~30 s): motion-graphics version of the same five steps,
+- `HowToBuyAnimated` (~32 s): motion-graphics version of the same five steps,
   using real product photos.
 
 This is a separate Remotion entry (`index.ts`). It is not part of the storefront
@@ -27,6 +27,16 @@ cp public/real/steps.json steps.json
 ```
 
 Check the captions in `real-video.tsx` still match the screens.
+
+## Music and sounds
+
+The soundtrack (120 BPM, Afro-pop feel) and the tap / whoosh / success sounds
+are synthesised by a script, so there is no third-party audio or licence. The
+WAV files are not committed; generate them before rendering:
+
+```bash
+node apps/storefront/src/remotion/how-to-buy/audio/generate-audio.mjs
+```
 
 ## Render
 

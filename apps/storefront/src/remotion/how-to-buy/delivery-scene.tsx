@@ -1,11 +1,11 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { ACCENT, GREEN, INK, MUTED, useIn } from "./shared";
+import { ACCENT, GREEN, INK, MUTED, Sfx, useIn } from "./shared";
 
 // Rider delivery animation: store → rider rides → customer checks item →
 // reads the 4-digit code → delivered. Replaces the delivery text card.
 
-export const DELIVERY_FRAMES = 190;
+export const DELIVERY_FRAMES = 150;
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const ROAD_Y = 1250;
@@ -16,18 +16,23 @@ export function DeliveryScene() {
   const frame = useCurrentFrame();
   const head = useIn(0, 12);
   const sub = useIn(8);
-  const ride = interpolate(frame, [18, 80], [0, 1], { ...clamp, easing: (t) => 1 - Math.pow(1 - t, 2) });
+  const ride = interpolate(frame, [10, 55], [0, 1], { ...clamp, easing: (t) => 1 - Math.pow(1 - t, 2) });
   const riderX = interpolate(ride, [0, 1], [STORE_X + 60, HOUSE_X - 400]);
-  const moving = frame > 18 && frame < 80;
+  const moving = frame > 10 && frame < 55;
   const bounce = moving ? Math.sin(frame * 1.3) * 4 : 0;
-  const parcel = interpolate(frame, [84, 100], [0, 1], clamp);
-  const check = useIn(100, 10);
-  const codeStart = 122;
+  const parcel = interpolate(frame, [58, 70], [0, 1], clamp);
+  const check = useIn(70, 10);
+  const codeStart = 86;
   const digits = ["4", "8", "2", "7"];
-  const done = useIn(158, 9);
+  const done = useIn(114, 9);
 
   return (
     <AbsoluteFill>
+      <Sfx name="whoosh" at={10} volume={0.5} />
+      <Sfx name="pop" at={60} volume={0.5} />
+      <Sfx name="pop" at={70} volume={0.35} />
+      {[0, 1, 2, 3].map((i) => <Sfx key={i} name="type" at={codeStart + i * 5} volume={0.5} />)}
+      <Sfx name="success" at={114} volume={0.55} />
       <div style={{ position: "absolute", top: 150, left: 0, right: 0, textAlign: "center" }}>
         <div style={{ fontSize: 34, fontWeight: 700, color: ACCENT, letterSpacing: 3, opacity: head }}>GETTING YOUR ORDER</div>
         <div style={{ fontSize: 88, fontWeight: 800, letterSpacing: -1.5, lineHeight: 1.05, marginTop: 12, opacity: head, transform: `translateY(${(1 - head) * 30}px)` }}>
@@ -69,7 +74,7 @@ export function DeliveryScene() {
           <div style={{ fontSize: 36, fontWeight: 700, color: MUTED }}>then tell the rider your delivery code</div>
           <div style={{ display: "flex", gap: 20, marginTop: 16 }}>
             {digits.map((d, i) => {
-              const s = interpolate(frame, [codeStart + i * 6, codeStart + i * 6 + 8], [0, 1], clamp);
+              const s = interpolate(frame, [codeStart + i * 5, codeStart + i * 5 + 7], [0, 1], clamp);
               return (
                 <div key={i} style={{ width: 100, height: 120, borderRadius: 18, background: "white", border: `4px solid ${INK}`, fontSize: 70, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", transform: `scale(${s})` }}>
                   {d}
