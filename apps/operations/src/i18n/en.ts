@@ -995,6 +995,7 @@ export const enDictionary: Record<string, string> = {
   "配送地址": "Delivery address",
   "配送公司（可选）": "Delivery company (optional)",
   "配送失败": "Delivery failed",
+  "顾客不满意（3 天内可退）": "Customer not satisfied (within 3 days)",
   "配送损坏": "Damaged in delivery",
   "配送问题": "Delivery problems",
   "配送与支持": "Delivery and support",
@@ -1240,8 +1241,8 @@ export const enDictionary: Record<string, string> = {
     "This account handles the request and the physical acceptance. Approval and logging the refund need the customer-service approval permission.",
   "申请说明：": "Request note:",
   "申请退货": "Request a return",
-  "申请需在完成交付后 24 小时内提交；系统按实际交付时间核验。":
-    "A request has to be made within 24 hours of delivery, checked against the actual delivery time.",
+  "申请需在完成交付后 3 天内提交；系统按实际交付时间核验。":
+    "A request has to be made within 3 days of delivery, checked against the actual delivery time.",
   "身高 {v0}": "Height {v0}",
   "深蓝": "Dark blue",
   "深绿": "Dark green",
@@ -1794,8 +1795,8 @@ export const enDictionary: Record<string, string> = {
   "暂无数据": "No data yet",
   "暂无数据说明": "No notes on the data yet",
   "暂无数据源": "No data source yet",
-  "暂无退货申请。已付款并完成交付的商品，可在交付后 24 小时内提交符合原因的申请。":
-    "No return requests yet. A paid, delivered item can be requested for return within 24 hours of delivery, with a valid reason.",
+  "暂无退货申请。已付款并完成交付的商品，可在交付后 3 天内提交退货申请。":
+    "No return requests yet. A paid, delivered item can be returned within 3 days of delivery.",
   "暂无已完成校准的批次。": "No fully calibrated batches yet.",
   "粘胶/人造丝": "Viscose / rayon",
   "展示图": "Display image",
@@ -2701,8 +2702,8 @@ export const enDictionary: Record<string, string> = {
   "已发放": "Paid out",
   "已冲回": "Reversed",
   "配送经济": "Delivery economics",
-  "顾客统一付 KSh 50，门店付的是真实 Bolt 车费。差额是公司补贴。":
-    "The customer pays a flat KSh 50 and the store pays the real Bolt fare. The difference is what the company absorbs.",
+  "顾客统一付 KSh 200，门店付的是真实 Bolt 车费。差额是公司补贴。":
+    "The customer pays a flat KSh 200 and the store pays the real Bolt fare. The difference is what the company absorbs.",
   "配送收入": "Delivery fees collected",
   "实际车费": "Actual fares",
   "公司补贴": "Subsidy absorbed",

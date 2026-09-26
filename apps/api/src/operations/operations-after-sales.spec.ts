@@ -8,11 +8,11 @@ import { OperationsAccessService } from "./operations-access.service";
 import { prisma } from "@online-saler/database";
 
 const completedAt = new Date("2026-09-06T08:00:00Z");
-test("24-hour eligibility accepts the exact boundary and rejects undelivered, future and expired requests", () => {
-  assert.doesNotThrow(() => assertReturnWindow(completedAt, new Date("2026-09-07T08:00:00Z")));
-  assert.throws(() => assertReturnWindow(completedAt, new Date("2026-09-07T08:00:00.001Z")), /24 hours/);
-  assert.throws(() => assertReturnWindow(undefined, completedAt), /24 hours/);
-  assert.throws(() => assertReturnWindow(new Date("2026-09-07T08:00:00Z"), completedAt), /24 hours/);
+test("3-day eligibility accepts the exact boundary and rejects undelivered, future and expired requests", () => {
+  assert.doesNotThrow(() => assertReturnWindow(completedAt, new Date("2026-09-09T08:00:00Z")));
+  assert.throws(() => assertReturnWindow(completedAt, new Date("2026-09-09T08:00:00.001Z")), /3 days/);
+  assert.throws(() => assertReturnWindow(undefined, completedAt), /3 days/);
+  assert.throws(() => assertReturnWindow(new Date("2026-09-07T08:00:00Z"), completedAt), /3 days/);
 });
 
 test("refunds cannot exceed sold line, order total, or actual successful payments across installments", () => {

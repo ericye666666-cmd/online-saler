@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
+import { RETURN_REQUEST_WINDOW_HOURS } from "@online-saler/business-rules";
 
-export const RETURN_REASONS = ["WRONG_ITEM", "PHOTO_MISMATCH", "UNDISCLOSED_DEFECT", "MEASUREMENT_DIFFERENCE", "DELIVERY_DAMAGE"] as const;
+export const RETURN_REASONS = ["WRONG_ITEM", "PHOTO_MISMATCH", "UNDISCLOSED_DEFECT", "MEASUREMENT_DIFFERENCE", "DELIVERY_DAMAGE", "NOT_SATISFIED"] as const;
 export const ACTIVE_RETURN_STATUSES = ["REQUESTED", "APPROVED", "RECEIVED"] as const;
 
 export function requiredText(value: unknown, label: string, max = 2000): string {
@@ -9,8 +10,8 @@ export function requiredText(value: unknown, label: string, max = 2000): string 
 }
 
 export function assertReturnWindow(completedAt: Date | null | undefined, now: Date) {
-  if (!completedAt || now.getTime() < completedAt.getTime() || now.getTime() - completedAt.getTime() > 24 * 60 * 60 * 1000) {
-    throw new BadRequestException("Return requests must be received within 24 hours after completed delivery or pickup.");
+  if (!completedAt || now.getTime() < completedAt.getTime() || now.getTime() - completedAt.getTime() > RETURN_REQUEST_WINDOW_HOURS * 60 * 60 * 1000) {
+    throw new BadRequestException("Return requests must be received within 3 days after completed delivery or pickup.");
   }
 }
 

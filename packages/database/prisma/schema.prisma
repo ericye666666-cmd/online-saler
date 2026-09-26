@@ -1822,6 +1822,7 @@ enum AfterSaleReturnReason {
   UNDISCLOSED_DEFECT
   MEASUREMENT_DIFFERENCE
   DELIVERY_DAMAGE
+  NOT_SATISFIED
 }
 
 enum CommissionAdjustmentKind {

@@ -3,13 +3,13 @@ import { normalizeKenyaPhone } from "./checkout-service";
 import { normalizeNotificationPhone } from "@online-saler/database";
 import { KIKUYU_DELIVERY_FEE_KSH, getDeliveryFeeKsh, calculateOrderAmounts, formatDeliveryAddress, parseDeliveryAddress, deliveryMapUrl } from "@online-saler/business-rules";
 
-// Pickup is free; local delivery charges the shopper a flat KSh 50 that the
+// Pickup is free; Nairobi delivery charges the shopper a flat KSh 200 that the
 // node's actual Bolt fare is later measured against.
 assert.equal(getDeliveryFeeKsh("PICKUP"), 0);
 assert.equal(getDeliveryFeeKsh("KIKUYU_LOCAL_DELIVERY"), KIKUYU_DELIVERY_FEE_KSH);
-assert.equal(KIKUYU_DELIVERY_FEE_KSH, 50);
+assert.equal(KIKUYU_DELIVERY_FEE_KSH, 200);
 assert.equal(calculateOrderAmounts([{ productId: "unique-shirt", unitPriceKsh: 300 }], getDeliveryFeeKsh("PICKUP")).totalKsh, 300);
-assert.equal(calculateOrderAmounts([{ productId: "unique-shirt", unitPriceKsh: 300 }], getDeliveryFeeKsh("KIKUYU_LOCAL_DELIVERY")).totalKsh, 350);
+assert.equal(calculateOrderAmounts([{ productId: "unique-shirt", unitPriceKsh: 300 }], getDeliveryFeeKsh("KIKUYU_LOCAL_DELIVERY")).totalKsh, 500);
 const pin = { lat: -1.246, lng: 36.663 };
 const address = formatDeliveryAddress("Kikuyu test landmark", pin);
 assert.deepEqual(parseDeliveryAddress(address), { address: "Kikuyu test landmark", point: pin });

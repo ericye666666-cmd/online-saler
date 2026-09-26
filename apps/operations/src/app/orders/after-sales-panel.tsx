@@ -54,7 +54,8 @@ const REASONS = [
   ["PHOTO_MISMATCH", "实物与照片不符"],
   ["UNDISCLOSED_DEFECT", "未披露的瑕疵"],
   ["MEASUREMENT_DIFFERENCE", "实测尺寸差异超过 3 cm"],
-  ["DELIVERY_DAMAGE", "配送损坏"]
+  ["DELIVERY_DAMAGE", "配送损坏"],
+  ["NOT_SATISFIED", "顾客不满意（3 天内可退）"]
 ] as const;
 const STATUS_LABELS: Record<ReturnRecord["status"], string> = {
   REQUESTED: "待审核", APPROVED: "待退回验收", REJECTED: "已拒绝",
@@ -147,7 +148,7 @@ export function AfterSalesPanel({ order, session, onOrderChanged }: {
         {error ? <Alert variant="destructive"><AlertTriangleIcon /><AlertTitle>{t("售后记录读取失败")}</AlertTitle><AlertDescription>{error}  {t("请刷新后再操作。")}</AlertDescription></Alert> : null}
         {success ? <p className="flex items-center gap-2 text-sm" role="status"><CheckCircle2Icon className="size-4 shrink-0" />{success}</p> : null}
         {loading && !loaded ? <p className="text-muted-foreground text-sm" role="status">{t("正在读取售后记录…")}</p> : null}
-        {loaded && records.length === 0 ? <p className="text-muted-foreground text-sm">{t("暂无退货申请。已付款并完成交付的商品，可在交付后 24 小时内提交符合原因的申请。")}</p> : null}
+        {loaded && records.length === 0 ? <p className="text-muted-foreground text-sm">{t("暂无退货申请。已付款并完成交付的商品，可在交付后 3 天内提交退货申请。")}</p> : null}
         {records.map((record) => {
           const item = order.items.find((candidate) => candidate.id === record.orderItemId);
           const refunded = record.refunds.reduce((sum, refund) => sum + refund.amountKsh, 0);
@@ -300,7 +301,7 @@ function AfterSaleDialog({ action, order, eligibleItems, token, onClose, onDone 
               {reason === "MEASUREMENT_DIFFERENCE" ? <Field><FieldLabel htmlFor="after-sale-difference">{t("实际差异（cm，需超过 3）")}</FieldLabel><Input id="after-sale-difference" type="number" min="3.01" step="0.01" required value={difference} onChange={(event) => setDifference(event.target.value)} disabled={busy} /></Field> : null}
               <Choice id="after-sale-return-node" label={t("顾客退回门店")} value={returnNodeId} onChange={setReturnNodeId} options={[["", t("中央仓（默认）")], ...nodes.map((node) => [node.id, node.name] as [string, string])]} disabled={busy} />
               <p className="text-muted-foreground text-sm">{t("选定门店后，这笔退货会出现在该门店履约台的「待收退货」里。")}</p>
-              <p className="text-muted-foreground text-sm">{t("申请需在完成交付后 24 小时内提交；系统按实际交付时间核验。")}</p>
+              <p className="text-muted-foreground text-sm">{t("申请需在完成交付后 3 天内提交；系统按实际交付时间核验。")}</p>
             </> : null}
             {action.kind === "receive" ? <>
               <Field><FieldLabel htmlFor="after-sale-barcode">{t("扫描实际退回商品条码")}</FieldLabel><Input id="after-sale-barcode" required autoComplete="off" value={barcode} onChange={(event) => setBarcode(event.target.value)} disabled={busy} /></Field>

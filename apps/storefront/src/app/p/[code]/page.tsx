@@ -220,13 +220,6 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
 
               <Fold title={t("pd.returns")}>
                 <p>{t("pd.returnsIntro")}</p>
-                <ul>
-                  <li>{t("pd.returnsWrong")}</li>
-                  <li>{t("pd.returnsPhotos")}</li>
-                  <li>{t("pd.returnsDefect")}</li>
-                  <li>{t("pd.returnsMeasure")}</li>
-                  <li>{t("pd.returnsDamage")}</li>
-                </ul>
                 <p>{t("pd.returnsHow")}</p>
               </Fold>
 

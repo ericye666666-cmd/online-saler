@@ -1,5 +1,5 @@
 /**
- * Delivery economics. The customer pays a flat KSh 50 delivery fee; the node
+ * Delivery economics. The customer pays a flat KSh 200 delivery fee; the node
  * pays whatever Bolt actually charges. Those two numbers are never the same,
  * so every delivered order records both and the difference is the subsidy the
  * company absorbed.

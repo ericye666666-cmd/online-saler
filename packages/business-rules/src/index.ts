@@ -1,9 +1,11 @@
 export const RESERVATION_MINUTES = 5;
 export const MAX_ACTIVE_RESERVATIONS_PER_PHONE = 5;
-export const KIKUYU_DELIVERY_FEE_KSH = 50;
+/** Door-to-door delivery within Nairobi, one flat fee (owner, 2026-09-26). Pickup is free. */
+export const KIKUYU_DELIVERY_FEE_KSH = 200;
 export const AFFILIATE_ATTRIBUTION_DAYS = 7;
 export const COMMISSION_CONFIRMATION_HOURS = 24;
-export const RETURN_REQUEST_WINDOW_HOURS = 24;
+/** Customers may bring an item back to a store within 3 days for any reason (owner, 2026-09-26). */
+export const RETURN_REQUEST_WINDOW_HOURS = 72;
 export const SIGNIFICANT_MEASUREMENT_ERROR_CM = 3;
 
 export function createReservationExpiry(now = new Date()): Date {

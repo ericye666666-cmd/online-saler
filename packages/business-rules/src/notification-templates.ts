@@ -78,7 +78,7 @@ const templates: Record<NotificationTopicName, (input: NotificationTemplateInput
   CUSTOMER_DELIVERY_FAILED: (input) =>
     `Direct Loop: we could not deliver order ${input.orderNumber} today${input.reason ? ` (${input.reason})` : ""}. Your payment is safe and we will try again. ${input.supportPhone ?? ""}`,
   CUSTOMER_ORDER_COMPLETED: (input) =>
-    `Direct Loop: order ${input.orderNumber} is complete. If anything is wrong, tell us within 24 hours on ${input.supportPhone ?? "WhatsApp"}.`,
+    `Direct Loop: order ${input.orderNumber} is complete. Not happy with it? Bring it back to our store within 3 days for an M-Pesa refund. ${input.supportPhone ?? ""}`,
   CUSTOMER_REFUND_RECORDED: (input) =>
     `Direct Loop: a refund of ${money(input.amountKsh)} for order ${input.orderNumber} has been sent to your M-Pesa number. ${input.supportPhone ?? ""}`,
 

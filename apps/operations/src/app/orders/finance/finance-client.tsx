@@ -15,7 +15,7 @@ import { t } from "@/i18n/runtime";
 
 /**
  * What finance reconciles against the M-Pesa statement: money in, money back
- * out, what the affiliates are owed, and how much of each KSh 50 delivery fee
+ * out, what the affiliates are owed, and how much of each KSh 200 delivery fee
  * the company ended up covering itself.
  */
 
@@ -206,7 +206,7 @@ export function FinancePage() {
               <CardHeader>
                 <CardTitle>{t("配送经济")}</CardTitle>
                 <CardDescription>
-                  {t("顾客统一付 KSh 50，门店付的是真实 Bolt 车费。差额是公司补贴。")}
+                  {t("顾客统一付 KSh 200，门店付的是真实 Bolt 车费。差额是公司补贴。")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-2 sm:grid-cols-2">

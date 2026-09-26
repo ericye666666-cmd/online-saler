@@ -102,9 +102,10 @@ claimed differently, because the risks are different.
   routed to a node by operations before the package leaves the warehouse.
 - A package bound for a store is sent, then scanned in on arrival, before it
   can be handed to anyone. Warehouse handovers skip both steps.
-- Kikuyu warehouse pickup is free.
-- Local delivery charges the customer a flat KSh 50 (2026-09-23; it was 0 under
-  the 2026-09-12 launch policy). The node pays the real Bolt fare, which is
+- Pickup at any store or the Kikuyu warehouse is free.
+- Door-to-door delivery within Nairobi charges the customer a flat KSh 200
+  (2026-09-26; it was KSh 50 from 2026-09-23 and 0 under the 2026-09-12 launch
+  policy). The node pays the real Bolt fare, which is
   recorded per order; the difference is the company's delivery subsidy.
 - Redelivery is arranged manually without an automatic delivery charge.
 - A fulfillment exception remembers the step it interrupted, so a resolved
@@ -112,18 +113,15 @@ claimed differently, because the risks are different.
 
 ## Returns
 
-2026-09-12: after-sales is handled by customer service manually. The following
-existing criteria remain reference for staff; do not add automated decisions or refunds.
+2026-09-26 (owner): a customer who is not satisfied may bring the item back to a
+store within 3 days (72 hours) of completed delivery or pickup, for any reason,
+and is refunded on M-Pesa. Staff record it in the Operations after-sales panel;
+"Customer not satisfied" is a return reason alongside the earlier ones (wrong
+item, photo mismatch, undisclosed defect, measurement more than 3 cm off,
+delivery damage). Refunds stay manual; do not add automated decisions or refunds.
 
-Returns are accepted only when:
-
-- The wrong item was delivered.
-- The received item is materially different from the photos.
-- A major defect was not disclosed.
-- A key measurement differs by more than 3 cm.
-- The item was seriously damaged during delivery.
-
-Return requests must be submitted within 24 hours after delivery.
+Until 2026-09-26 returns were accepted only for those five reasons and within
+24 hours.
 
 ## Refunds
 
