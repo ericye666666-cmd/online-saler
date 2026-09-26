@@ -1,12 +1,12 @@
 import React, { type ReactNode } from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { DELIVERY_FRAMES, DeliveryScene } from "./delivery-scene";
-import { ACCENT, GREEN, INK, MUTED, useIn } from "./shared";
+import { ACCENT, GREEN, INK, MUTED, Sfx, useIn } from "./shared";
 
 // "Good to know" cards shown after the buying steps: deposit hold, pickup,
 // delivery and returns. Shared by both how-to-buy videos.
 
-const CARD_FRAMES = 115;
+const CARD_FRAMES = 90;
 
 const icons: Record<string, ReactNode> = {
   lock: <g><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></g>,
@@ -44,9 +44,9 @@ const B = ({ children }: { children: ReactNode }) => <b style={{ fontWeight: 800
 export function DepositInfo() {
   return (
     <InfoLayout icon="lock" kicker="Not ready to pay it all?" title="Pay 50% to hold it">
-      <Point at={14}>Pay <B>half now</B> and the piece is <B>held for you for 7 days</B>. Nobody else can buy it.</Point>
-      <Point at={30}>Pay the rest any time in those 7 days from <B>your order page</B>. Then we prepare your order.</Point>
-      <Point at={46} tone={MUTED}>Miss the 7 days: the piece goes back on sale and you get <B>30% of the price</B> back. (KSh 1,000 item: you paid 500, you get 300 back.)</Point>
+      <Point at={8}>Pay <B>half now</B>. We <B>hold the piece for 7 days</B>.</Point>
+      <Point at={20}>Pay the rest from <B>your order page</B> within the 7 days.</Point>
+      <Point at={32} tone={MUTED}>Too late? It goes back on sale and you get <B>30% of the price</B> back.</Point>
     </InfoLayout>
   );
 }
@@ -54,21 +54,22 @@ export function DepositInfo() {
 export function PickupInfo() {
   return (
     <InfoLayout icon="store" kicker="Getting your order" title="Pick up at our store: free">
-      <Point at={14}>We prepare your order and <B>call or WhatsApp you</B> when it is ready.</Point>
-      <Point at={30}>Go to the pickup point you chose and show the <B>pickup code</B> on your order page.</Point>
-      <Point at={46} tone={MUTED}>Kikuyu Warehouse · Thogoto · Kinoo · Lucky Summer · Pipeline · Utawala</Point>
+      <Point at={8}>We <B>call or WhatsApp you</B> when it is ready.</Point>
+      <Point at={20}>Show the <B>pickup code</B> from your order page.</Point>
+      <Point at={32} tone={MUTED}>Kikuyu Warehouse · Thogoto · Kinoo · Lucky Summer · Pipeline · Utawala</Point>
     </InfoLayout>
   );
 }
 
 export function ReturnsInfo() {
   const frame = useCurrentFrame();
-  const stamp = interpolate(frame, [62, 72], [2, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const stamp = interpolate(frame, [34, 42], [2, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
     <InfoLayout icon="back" kicker="Not happy with it?" title="Return it within 3 days">
-      <Point at={14}>Changed your mind or it doesn't fit? Bring it back to <B>our store within 3 days</B> of getting it.</Point>
-      <Point at={30}>We refund your money to <B>M-Pesa</B>.</Point>
-      <div style={{ alignSelf: "center", marginTop: 40, fontSize: 56, fontWeight: 800, color: GREEN, border: `6px solid ${GREEN}`, borderRadius: 20, padding: "14px 34px", transform: `scale(${stamp}) rotate(-4deg)`, opacity: frame > 62 ? 1 : 0 }}>
+      <Point at={8}>Changed your mind? Bring it back to <B>our store within 3 days</B>.</Point>
+      <Point at={18}>We refund you on <B>M-Pesa</B>.</Point>
+      <Sfx name="pop" at={34} volume={0.5} />
+      <div style={{ alignSelf: "center", marginTop: 40, fontSize: 56, fontWeight: 800, color: GREEN, border: `6px solid ${GREEN}`, borderRadius: 20, padding: "14px 34px", transform: `scale(${stamp}) rotate(-4deg)`, opacity: frame > 34 ? 1 : 0 }}>
         3-DAY RETURNS
       </div>
     </InfoLayout>
@@ -79,6 +80,6 @@ export const INFO_SCENES = [
   { Scene: DepositInfo, frames: CARD_FRAMES },
   { Scene: PickupInfo, frames: CARD_FRAMES },
   { Scene: DeliveryScene, frames: DELIVERY_FRAMES },
-  { Scene: ReturnsInfo, frames: CARD_FRAMES }
+  { Scene: ReturnsInfo, frames: 75 }
 ];
 export const INFO_TOTAL = INFO_SCENES.reduce((sum, s) => sum + s.frames, 0);

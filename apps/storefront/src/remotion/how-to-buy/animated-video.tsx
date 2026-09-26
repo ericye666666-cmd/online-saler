@@ -1,19 +1,19 @@
 import type { CSSProperties, ReactNode } from "react";
 import { AbsoluteFill, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
 import { INFO_SCENES } from "./info-scenes";
-import { ACCENT, CREAM, FONT, GREEN, INK, MUTED, Tap, Wordmark, useFonts, useIn } from "./shared";
+import { ACCENT, Backdrop, FONT, GREEN, INK, MUTED, Music, ProgressBar, Sfx, Tap, Wordmark, useFonts, useIn } from "./shared";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
 const SCENES: Array<{ frames: number; render: () => ReactNode }> = [
-  { frames: 80, render: () => <Title /> },
-  { frames: 115, render: () => <FindScene /> },
-  { frames: 115, render: () => <BagScene /> },
-  { frames: 85, render: () => <PhoneScene /> },
-  { frames: 125, render: () => <PickupScene /> },
-  { frames: 105, render: () => <PayScene /> },
+  { frames: 60, render: () => <Title /> },
+  { frames: 90, render: () => <FindScene /> },
+  { frames: 90, render: () => <BagScene /> },
+  { frames: 60, render: () => <PhoneScene /> },
+  { frames: 90, render: () => <PickupScene /> },
+  { frames: 90, render: () => <PayScene /> },
   ...INFO_SCENES.map(({ Scene, frames }) => ({ frames, render: () => <Scene /> })),
-  { frames: 105, render: () => <Outro /> }
+  { frames: 60, render: () => <Outro /> }
 ];
 export const ANIMATED_DURATION = SCENES.reduce((sum, s) => sum + s.frames, 0);
 
@@ -21,13 +21,16 @@ export function HowToBuyAnimated() {
   useFonts();
   let from = 0;
   return (
-    <AbsoluteFill style={{ background: CREAM, fontFamily: FONT, color: INK }}>
+    <AbsoluteFill style={{ fontFamily: FONT, color: INK }}>
+      <Backdrop />
+      <Music duration={ANIMATED_DURATION} />
       {SCENES.map((scene, i) => {
         const start = from;
         from += scene.frames;
         return (
           <Sequence key={i} from={start} durationInFrames={scene.frames}>
             <SceneFade frames={scene.frames}>{scene.render()}</SceneFade>
+            {i > 0 ? <Sfx name="whoosh" at={0} volume={0.3} /> : null}
           </Sequence>
         );
       })}
@@ -37,15 +40,18 @@ export function HowToBuyAnimated() {
 
 function SceneFade({ frames, children }: { frames: number; children: ReactNode }) {
   const frame = useCurrentFrame();
-  const o = interpolate(frame, [0, 8, frames - 8, frames], [0, 1, 1, 0], clamp);
-  const y = interpolate(frame, [0, 10], [40, 0], clamp);
-  return <AbsoluteFill style={{ opacity: o, transform: `translateY(${y}px)` }}>{children}</AbsoluteFill>;
+  const o = interpolate(frame, [0, 6, frames - 6, frames], [0, 1, 1, 0], clamp);
+  const x = interpolate(frame, [0, 9], [120, 0], { ...clamp, easing: (t) => 1 - Math.pow(1 - t, 3) });
+  const out = interpolate(frame, [frames - 6, frames], [0, -120], clamp);
+  return <AbsoluteFill style={{ opacity: o, transform: `translateX(${x + out}px)` }}>{children}</AbsoluteFill>;
 }
 
 function Header({ n, title, sub }: { n: number; title: string; sub?: string }) {
   const a = useIn(0, 12);
   const b = useIn(6);
   return (
+    <>
+    <ProgressBar step={n} total={5} />
     <div style={{ position: "absolute", top: 150, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
       <div style={{
         width: 150, height: 150, borderRadius: "50%", background: ACCENT, color: "white", fontSize: 92, fontWeight: 800,
@@ -54,6 +60,7 @@ function Header({ n, title, sub }: { n: number; title: string; sub?: string }) {
       <div style={{ fontSize: 82, fontWeight: 800, marginTop: 36, letterSpacing: -1.5, lineHeight: 1.05, opacity: b, transform: `translateY(${(1 - b) * 30}px)`, padding: "0 70px" }}>{title}</div>
       {sub ? <div style={{ fontSize: 40, fontWeight: 600, color: MUTED, marginTop: 18, opacity: b, padding: "0 80px", lineHeight: 1.3 }}>{sub}</div> : null}
     </div>
+    </>
   );
 }
 
@@ -63,13 +70,14 @@ function Card({ children, style }: { children: ReactNode; style?: CSSProperties 
 
 function Title() {
   const a = useIn(0);
-  const b = useIn(12);
+  const b = useIn(8);
   const frame = useCurrentFrame();
   const products = ["p1", "p2", "p3", "p4"];
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+      {products.map((p, i) => <Sfx key={p} name="pop" at={2 + i * 4} volume={0.25} />)}
       {products.map((p, i) => {
-        const s = useIn(4 + i * 5);
+        const s = useIn(2 + i * 4);
         const angle = [-14, 10, -8, 12][i];
         const pos = [[-330, -560], [330, -520], [-320, 560], [330, 600]][i];
         const drift = Math.sin((frame + i * 20) / 18) * 8;
@@ -90,13 +98,13 @@ function Title() {
 function FindScene() {
   const frame = useCurrentFrame();
   const products = ["p1", "p2", "p3", "p4"];
-  const zoom = interpolate(frame, [70, 90], [0, 1], clamp);
+  const zoom = interpolate(frame, [52, 66], [0, 1], clamp);
   return (
     <AbsoluteFill>
       <Header n={1} title="Find something you love" sub="Open dloop.co.ke and browse" />
       <div style={{ position: "absolute", top: 720, left: 110, width: 860, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
         {products.map((p, i) => {
-          const s = useIn(10 + i * 5);
+          const s = useIn(6 + i * 4);
           const chosen = i === 0;
           const scale = chosen ? 1 + zoom * 0.08 : 1 - zoom * 0.06;
           return (
@@ -107,16 +115,16 @@ function FindScene() {
           );
         })}
       </div>
-      <Tap x={110} y={720} w={410} h={420} at={55} ring={false} />
+      <Tap x={110} y={720} w={410} h={420} at={38} ring={false} />
     </AbsoluteFill>
   );
 }
 
 function BagScene() {
   const frame = useCurrentFrame();
-  const fly = interpolate(frame, [58, 82], [0, 1], { ...clamp, easing: (t) => t * t });
-  const badge = useIn(82, 8);
-  const pressed = frame >= 50;
+  const fly = interpolate(frame, [36, 54], [0, 1], { ...clamp, easing: (t) => t * t });
+  const badge = useIn(54, 8);
+  const pressed = frame >= 32;
   return (
     <AbsoluteFill>
       <Header n={2} title="Tap Add to bag" sub="Every piece is one of a kind" />
@@ -138,7 +146,8 @@ function BagScene() {
           boxShadow: "0 10px 20px rgba(0,0,0,0.2)"
         }} />
       ) : null}
-      <Tap x={200} y={1470} w={680} h={104} at={36} />
+      <Tap x={200} y={1470} w={680} h={104} at={20} />
+      <Sfx name="pop" at={54} volume={0.5} />
     </AbsoluteFill>
   );
 }
@@ -160,11 +169,12 @@ function BagIcon({ badge }: { badge: number }) {
 function PhoneScene() {
   const frame = useCurrentFrame();
   const number = "0712 345 678";
-  const typed = number.slice(0, Math.max(0, Math.floor((frame - 15) / 2.5)));
+  const typed = number.slice(0, Math.max(0, Math.floor((frame - 8) / 1.6)));
   const done = typed.length === number.length;
-  const ok = useIn(46, 10);
+  const ok = useIn(30, 10);
   return (
     <AbsoluteFill>
+      {Array.from({ length: 12 }, (_, k) => <Sfx key={k} name="type" at={8 + k * 1.6} volume={0.3} />)}
       <Header n={3} title="Add your M-Pesa number" sub="Go to your bag, tap Next, then Payment" />
       <Card style={{ position: "absolute", top: 780, left: 110, width: 860, padding: 50 }}>
         <div style={{ fontSize: 30, fontWeight: 700, color: MUTED, letterSpacing: 2 }}>M-PESA PHONE</div>
@@ -186,13 +196,13 @@ const POINTS = ["Kikuyu Warehouse", "Thogoto", "Kinoo", "Lucky Summer", "Pipelin
 
 function PickupScene() {
   const frame = useCurrentFrame();
-  const pick = frame >= 80;
+  const pick = frame >= 56;
   return (
     <AbsoluteFill>
       <Header n={4} title="Pick up at our store: free" sub="Choose the pickup point nearest you" />
       <div style={{ position: "absolute", top: 740, left: 110, width: 860, display: "flex", flexDirection: "column", gap: 22 }}>
         {POINTS.map((point, i) => {
-          const s = useIn(10 + i * 5);
+          const s = useIn(6 + i * 4);
           const chosen = pick && i === 0;
           return (
             <div key={point} style={{
@@ -207,8 +217,8 @@ function PickupScene() {
           );
         })}
       </div>
-      <Tap x={110} y={740} w={860} h={102} at={65} ring={false} />
-      <div style={{ position: "absolute", bottom: 150, left: 0, right: 0, textAlign: "center", fontSize: 36, color: MUTED, fontWeight: 600, opacity: useIn(50) }}>
+      <Tap x={110} y={740} w={860} h={102} at={44} ring={false} />
+      <div style={{ position: "absolute", bottom: 150, left: 0, right: 0, textAlign: "center", fontSize: 36, color: MUTED, fontWeight: 600, opacity: useIn(30) }}>
         Or door-to-door delivery in Nairobi · KSh 200
       </div>
     </AbsoluteFill>
@@ -217,10 +227,10 @@ function PickupScene() {
 
 function PayScene() {
   const frame = useCurrentFrame();
-  const plan = frame >= 16 ? 0 : -1;
-  const prompt = useIn(40, 12);
-  const dots = Math.max(0, Math.min(4, Math.floor((frame - 50) / 5)));
-  const paid = useIn(74, 10);
+  const plan = frame >= 12 ? 0 : -1;
+  const prompt = useIn(30, 12);
+  const dots = Math.max(0, Math.min(4, Math.floor((frame - 38) / 4)));
+  const paid = useIn(58, 10);
   return (
     <AbsoluteFill>
       <Header n={5} title="Pay with M-Pesa" sub="Pay in full, or pay 50% now and the rest within 7 days" />
@@ -240,8 +250,10 @@ function PayScene() {
           Pay KSh 250 with M-Pesa
         </div>
       </div>
-      <Tap x={110} y={760} w={860} h={110} at={4} ring={false} />
-      <Tap x={110} y={1062} w={860} h={120} at={24} />
+      <Tap x={110} y={760} w={860} h={110} at={0} ring={false} />
+      <Tap x={110} y={1062} w={860} h={120} at={14} />
+      {[0, 1, 2, 3].map((k) => <Sfx key={k} name="type" at={38 + k * 4} volume={0.4} />)}
+      <Sfx name="success" at={58} volume={0.55} />
       {prompt > 0.01 ? (
         <Card style={{ position: "absolute", top: 820, left: 170, width: 740, padding: 50, transform: `scale(${0.7 + 0.3 * prompt})`, opacity: prompt }}>
           {paid < 0.5 ? (
