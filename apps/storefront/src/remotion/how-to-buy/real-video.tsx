@@ -85,20 +85,15 @@ export function HowToBuyReal() {
         <Phone screenW={SCREEN_W} screenH={SCREEN_H}>
           {SCENES.map((scene, i) => {
             const local = frame - starts[i];
-            // Each screen slides in from the right and stays until the next one covers it.
-            const enter = i === 0 ? 1 : interpolate(local, [0, 7], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: (t) => 1 - Math.pow(1 - t, 3) });
+            // Screens cross-fade quickly; the phone itself stays still.
             const sameScreen = i > 0 && SCENES[i - 1].shot === scene.shot;
+            const opacity = i === 0 || sameScreen ? 1 : interpolate(local, [0, 5], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
             const visible = (local >= 0 && (i === SCENES.length - 1 || frame < starts[i + 1] + 8)) || (i === 0 && frame < starts[0]);
             if (!visible) return null;
             const rect = tapRect(scene.shot);
-            // Push in slightly towards what is about to be tapped, so small buttons read on a phone.
-            const zoom = rect && scene.tapAt !== undefined && !scene.illustration
-              ? interpolate(local, [0, scene.tapAt + 6], [1, 1.1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: (t) => t * (2 - t) })
-              : 1;
-            const origin = rect ? `${rect.x + rect.w / 2}px ${rect.y + rect.h / 2}px` : "50% 50%";
             return (
-              <div key={i} style={{ position: "absolute", inset: 0, overflow: "hidden", transform: sameScreen ? undefined : `translateX(${(1 - enter) * 100}%)`, boxShadow: enter < 1 ? "-20px 0 40px rgba(0,0,0,0.2)" : undefined }}>
-                <div style={{ position: "absolute", inset: 0, transform: `scale(${zoom})`, transformOrigin: origin }}>
+              <div key={i} style={{ position: "absolute", inset: 0, overflow: "hidden", opacity }}>
+                <div style={{ position: "absolute", inset: 0 }}>
                   <Img src={staticFile(`real/${scene.shot}.png`)} style={{ width: SCREEN_W, height: SCREEN_H, display: "block" }} />
                   {scene.illustration ? (
                     <Sequence from={starts[i]} durationInFrames={scene.frames}>
