@@ -44,7 +44,8 @@ const SHEET_LABEL: Record<FulfillmentLabelSheet["kind"], () => string> = {
   picking: () => t("拣货清单")
 };
 
-async function agentRequest(path: string, options?: RequestInit) {
+/** Exported for the packing station, which prints inline instead of in this dialog. */
+export async function agentRequest(path: string, options?: RequestInit) {
   let response: Response;
   try {
     response = await fetch(DEFAULT_PRINT_AGENT_URL + path, {
@@ -59,6 +60,37 @@ async function agentRequest(path: string, options?: RequestInit) {
   const body = await response.json();
   if (!response.ok || body.ok === false) throw new Error(body.message || body.error || t("打印助手返回错误。"));
   return body;
+}
+
+/**
+ * Asks the local print helper for the Deli DL-720C. Throws with a message a
+ * packer can act on when the helper is missing, too old, or has no usable Deli.
+ */
+export async function detectLabelPrinter(preferred: string = DEFAULT_PRINTER_NAME): Promise<{ list: LocalPrinter[]; name: string }> {
+  const health = await agentRequest("/health");
+  if (!health.capabilities?.includes("online_saler_raster_v1")) {
+    throw new Error(t("打印助手版本过旧。请关闭后下载并启动新版。"));
+  }
+  if (!isSupportedAgentPlatform(health.platform)) {
+    throw new Error(t("请在连接 Deli DL-720C 的电脑上打开这个页面（Windows 或 Mac）。"));
+  }
+  const list = printerList((await agentRequest("/printers")).printers);
+  const name = selectDeliPrinter(list, preferred);
+  if (!list.find((item) => item.name === name && item.available !== false)) {
+    throw new Error(t("没有找到可用的 Deli DL-720C。请检查 USB、驱动、纸卷和打印队列。"));
+  }
+  return { list, name };
+}
+
+/** Sends one rendered sheet to the printer through the local print helper. */
+export async function printLabelSheet(input: FulfillmentLabelInput, sheet: FulfillmentLabelSheet, printerName: string) {
+  const payload = buildFulfillmentLabelPayload({ ...input, printerName });
+  payload.label_payload.raster = sheet.raster;
+  await agentRequest("/print/label", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
 }
 
 export function FulfillmentLabelPrinter({ labels, onClose, onRoutingPrinted }: {
@@ -94,19 +126,8 @@ export function FulfillmentLabelPrinter({ labels, onClose, onRoutingPrinted }: {
     setReady(false);
     setError("");
     try {
-      const health = await agentRequest("/health");
-      if (!health.capabilities?.includes("online_saler_raster_v1")) {
-        throw new Error(t("打印助手版本过旧。请关闭后下载并启动新版。"));
-      }
-      if (!isSupportedAgentPlatform(health.platform)) {
-        throw new Error(t("请在连接 Deli DL-720C 的电脑上打开这个页面（Windows 或 Mac）。"));
-      }
-      const list = printerList((await agentRequest("/printers")).printers);
+      const { list, name } = await detectLabelPrinter(printer);
       setPrinters(list);
-      const name = selectDeliPrinter(list, printer);
-      if (!list.find((item) => item.name === name && item.available !== false)) {
-        throw new Error(t("没有找到可用的 Deli DL-720C。请检查 USB、驱动、纸卷和打印队列。"));
-      }
       setPrinter(name);
       setReady(true);
       setNotice(t("打印助手已连接。"));
@@ -128,13 +149,7 @@ export function FulfillmentLabelPrinter({ labels, onClose, onRoutingPrinted }: {
     const unrecorded: string[] = [];
     try {
       for (const entry of run) {
-        const payload = buildFulfillmentLabelPayload({ ...entry.input, printerName: printer });
-        payload.label_payload.raster = entry.sheet.raster;
-        await agentRequest("/print/label", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
+        await printLabelSheet(entry.input, entry.sheet, printer);
         sent += 1;
         lastOrder = entry.input.orderNumber;
         setNotice(t("已发送 {sent}/{total} 张。", { sent, total: run.length }));

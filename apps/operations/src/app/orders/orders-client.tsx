@@ -93,7 +93,7 @@ type FulfillmentEvent = {
   deliveryRider?: DeliveryRider | null;
   orderItem?: { snapshot?: { title?: string | null } | null } | null;
 };
-type NodeOption = {
+export type NodeOption = {
   id: string;
   code: string;
   name: string;
@@ -104,7 +104,7 @@ type NodeOption = {
 
 type OrderNode = { id: string; code: string; name: string; type: "WAREHOUSE" | "STORE" };
 
-type OrderRow = {
+export type OrderRow = {
   id: string;
   orderNumber: string;
   status: string;
@@ -261,7 +261,7 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
 }
 
 /** One order as the label renderer wants it. Shared so a batch and a single print never drift. */
-function labelInput(order: OrderRow): FulfillmentLabelInput {
+export function labelInput(order: OrderRow): FulfillmentLabelInput {
   return {
     orderId: order.id,
     packageCode: order.fulfillment?.packageCode ?? "",
