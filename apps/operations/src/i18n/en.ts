@@ -2915,4 +2915,77 @@ export const enDictionary: Record<string, string> = {
   "骑手费 KSh {fee}": "Rider pay KSh {fee}",
   "本单骑手费 KSh {fee}": "Your pay for this delivery: KSh {fee}",
   "已交给配送员（骑手费 KSh {fee}）": "Handed to the rider (rider pay KSh {fee})",
+
+  // ——— Packing station (打包台): one PC, scan → pack → print → send ———
+  "打包台": "Packing station",
+  "① 扫码核对": "① Scan and check",
+  "② 顾客信息 · 打包": "② Customer · pack",
+  "③ 打印面单": "③ Print labels",
+  "④ 发往目的地": "④ Send off",
+  "送货上门 · 还没选中转门店": "Home delivery · no transit store chosen yet",
+  "自提 · 还没选门店": "Pickup · no store chosen yet",
+  "{name}（中央仓）": "{name} (central warehouse)",
+  "已贴好，发往 {name}": "Labelled — send to {name}",
+  "已放上自提架，设为待自提": "On the pickup shelf — mark ready for pickup",
+  "已打包好，设为待发货": "Packed — mark ready for dispatch",
+  "先选目的地": "Choose a destination first",
+  "读不到待打包的订单。": "Could not load the orders waiting to be packed.",
+  "这一单已经核对完了。先把它做完，或者点「换一单」。":
+    "This order is already fully checked. Finish it first, or press \"Switch order\".",
+  "{barcode} 不是这一单的衣服。先放一边，把这一单的扫完。":
+    "{barcode} is not part of this order. Put it aside and finish scanning this one.",
+  "这件已经扫过了：{title}": "Already scanned: {title}",
+  "{barcode} 没有待发的订单。可能还没卖出、已经发走了，或者条码不对。":
+    "{barcode} has no order waiting to go out. It may be unsold, already sent, or the barcode is wrong.",
+  "核对没通过。": "The check did not pass.",
+  "打不开这一单。": "Could not open this order.",
+  "先选这一单发往哪里。": "Choose where this order is going first.",
+  "打包没完成。": "Packing was not completed.",
+  "目的地没保存。": "The destination was not saved.",
+  "打印机已连接：{name}。今天之内不用再检测。": "Printer connected: {name}. No need to detect it again today.",
+  "没找到打印机。": "No printer found.",
+  "打印了 {sent} 张后停止。{message}": "Stopped after printing {sent} labels. {message}",
+  "{total} 张已打印。第 1 张贴在包裹上，其余放进包裹。":
+    "{total} labels printed. Stick the first on the parcel and put the rest inside.",
+  "面单没打出来。": "The labels did not print.",
+  "{orderNumber} 已完成：{destination}。扫下一件。": "{orderNumber} done: {destination}. Scan the next garment.",
+  "没能发出。": "Could not send it off.",
+  "这个账号不能打包": "This account cannot pack",
+  "要拣货和打包权限（orders.pick、orders.pack）。找管理员在角色里加上。":
+    "It needs the picking and packing permissions (orders.pick, orders.pack). Ask an admin to add them to the role.",
+  "在连着面单打印机的电脑上用。扫一件衣服，就打开它所在的订单：核对 → 打包 → 打印面单 → 发出，一个人在这一页做完。":
+    "Use it on the computer connected to the label printer. Scan a garment to open its order: check → pack → print labels → send, all by one person on this page.",
+  "打印机：{name}": "Printer: {name}",
+  "打印机未检测": "Printer not detected",
+  "检测打印机": "Detect printer",
+  "这个账号没有关联员工": "This account is not linked to an employee",
+  "拣货和打包都记在员工名下。找管理员在账号管理里给这个账号关联员工。":
+    "Picking and packing are recorded against an employee. Ask an admin to link one to this account under Account management.",
+  "扫这一单的下一件": "Scan the next garment of this order",
+  "扫一件衣服的条码，开始打包": "Scan a garment's barcode to start packing",
+  "正在处理…": "Working…",
+  "扫下一件": "Scan the next garment",
+  "用扫码枪扫衣服吊牌上的条码。系统会找到它所在的已付款订单，第一次扫就算你领了这一单。也可以在右边点一单打开。":
+    "Scan the barcode on the garment's tag. The system finds the paid order it belongs to, and the first scan makes that order yours. You can also open an order from the list on the right.",
+  "等待打包": "Waiting to pack",
+  "还差 {count} 件": "{count} still to scan",
+  "待打面单": "Label to print",
+  "待发出": "Ready to send",
+  "没有等待打包的订单。": "No orders waiting to be packed.",
+  "换一单": "Switch order",
+  "把下面这几件找齐，一件一件扫。全部扫完自动进入下一步。":
+    "Gather the garments below and scan them one by one. When all are scanned the next step opens by itself.",
+  "刚扫过：{title}": "Just scanned: {title}",
+  "去哪里": "Going to",
+  "未填写地址": "No address given",
+  "这单在哪里自提？": "Where will this order be picked up?",
+  "保存目的地": "Save destination",
+  "装好了，完成打包": "Packed — finish packing",
+  "一单装成两个包就填 2。完成后生成包裹号，下一步打面单。":
+    "If the order fills two parcels, enter 2. Finishing creates the package code; labels are next.",
+  "正在打印…": "Printing…",
+  "会连着打几张：第 1 张贴在包裹上（门店扫它签收），其余放进包裹。":
+    "Several labels print in a row: stick the first on the parcel (the store scans it to receive), put the rest inside.",
+  "在中央仓直接交给顾客或骑手，不用贴面单。": "Handed to the customer or rider at the central warehouse — no label needed.",
+  "这个账号不能做这一步，请主管在订单工作台处理。": "This account cannot do this step. Ask a supervisor to do it in the order workbench.",
 };
