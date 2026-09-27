@@ -115,6 +115,21 @@ const DIRECT_RULES: ProductTransitionRule[] = [
   }
 ];
 
+// Intake steps an archived garment may be restored to. Never AI_PROCESSING (the job is gone) and
+// never a live status (publishing has its own checks).
+const RESTORABLE_STATUSES: ReadonlySet<ProductStatus> = new Set([
+  ProductStatus.DRAFT,
+  ProductStatus.PHOTOGRAPHED,
+  ProductStatus.AI_PROCESSED,
+  ProductStatus.CALIBRATION_PENDING,
+  ProductStatus.CALIBRATED,
+  ProductStatus.BARCODE_ASSIGNED,
+  ProductStatus.REVIEW_PENDING,
+  ProductStatus.REWORK_REQUIRED,
+  ProductStatus.APPROVED,
+  ProductStatus.READY_FOR_STORAGE
+]);
+
 export class ProductStateMachine {
   assertCanTransition(context: ProductTransitionContext): ProductTransitionRule {
     if (context.fromStatus === context.toStatus) {
@@ -156,6 +171,23 @@ export class ProductStateMachine {
     }
 
     return this.requireTransitionConditions(rule, context);
+  }
+
+  /**
+   * The one way out of ARCHIVED: an explicit restore, back to the intake step the garment was on
+   * before it was archived. Normal transitions still refuse to leave ARCHIVED.
+   */
+  assertCanRestore(context: { fromStatus: ProductStatus; toStatus: ProductStatus; reason?: string }): ProductTransitionRule {
+    if (context.fromStatus !== ProductStatus.ARCHIVED) {
+      throw stateConflict("Only archived products can be restored.", context);
+    }
+    if (!RESTORABLE_STATUSES.has(context.toStatus)) {
+      throw stateConflict("Archived products can only return to an intake step.", context);
+    }
+    return this.requireTransitionConditions(
+      { fromStatus: ProductStatus.ARCHIVED, toStatus: context.toStatus, action: "PRODUCT_RESTORE", reasonRequired: true },
+      context
+    );
   }
 
   private requireTransitionConditions(

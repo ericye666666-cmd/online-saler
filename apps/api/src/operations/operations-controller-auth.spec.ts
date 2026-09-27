@@ -74,7 +74,7 @@ const protectedRoutes: Route[] = [
   ...["run-ai", "generate-barcodes", "shelf", "mark-labels-printed", "stock-in", "prepare-storage", "publish", "complete-and-publish", "cancel"].map((action): Route => ({
     method: "POST", path: `/operations/product-batches/batch-1/${action}`
   })),
-  ...["review", "recalibration", "retake"].map((action): Route => ({
+  ...["review", "recalibration", "retake", "restore"].map((action): Route => ({
     method: "POST", path: `/operations/product-batches/products/product-1/${action}`, body: { result: "APPROVED", reason: "Test" }
   })),
   analyticsRead,

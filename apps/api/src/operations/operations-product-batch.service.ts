@@ -32,6 +32,7 @@ import { productApprovalBlocker, productContentBlocker } from "../product/produc
 import { refreshWarehouseLocationStatuses, WAREHOUSE_OCCUPYING_STATUSES } from "./warehouse-capacity";
 import { BatchCancellationError, planBatchCancellation } from "./product-batch-cancellation";
 import { ProductStateMachine } from "../product/product-state-machine";
+import { ProductRestorationError, planProductRestoration } from "./product-restoration";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -851,6 +852,190 @@ export class OperationsProductBatchService {
     };
   }
 
+  /**
+   * Undoes an archive, for garments that are still in the warehouse and should be sold after all.
+   * Each item goes back to the step it was on before it was archived (read from its archive audit
+   * entry). Items archived by a batch cancellation come back together with the rest of that batch,
+   * and go back onto the shelf the cancellation took them off when it still has room. With
+   * `dryRun` it only reports what would happen.
+   */
+  async restoreProduct(productId: string, input: { adminUserId?: string; employeeId?: string; reason?: string; dryRun?: boolean }) {
+    const session = await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
+    const employeeId = employeeIdOrDefault(input.employeeId);
+    const reason = input.reason?.trim() ?? "";
+    const dryRun = input.dryRun === true;
+    if (!dryRun && !reason) throw new BadRequestException("A reason is required to restore a product.");
+    const stateMachine = new ProductStateMachine();
+
+    try {
+      return await prisma.$transaction(async (transaction) => {
+        const product = await transaction.product.findUnique({ where: { id: productId }, include: { batch: true } });
+        if (!product) throw new NotFoundException("Product not found.");
+        if (product.status !== ProductStatus.ARCHIVED) throw new ProductRestorationError(`${product.productCode} is not archived.`);
+        const batch = product.batch;
+
+        let productIds = [product.id];
+        if (batch?.status === ProductBatchStatus.CANCELLED) {
+          const cancellation = await transaction.auditLog.findFirst({
+            where: { module: "PRODUCT_FACTORY", entityType: "ProductBatch", entityId: batch.id, action: "PRODUCT_BATCH_CANCELLED" },
+            orderBy: { createdAt: "desc" }
+          });
+          const archivedIds = stringArray(objectValue(cancellation?.afterJson)?.archivedProductIds);
+          if (archivedIds.includes(product.id)) productIds = archivedIds;
+        }
+
+        const products = await transaction.product.findMany({
+          where: { id: { in: productIds }, status: ProductStatus.ARCHIVED },
+          include: { inventoryItem: true },
+          orderBy: { batchItemNumber: "asc" }
+        });
+        const archiveEntries = await transaction.auditLog.findMany({
+          where: { module: "Product", entityType: "Product", entityId: { in: products.map((item) => item.id) }, action: "PRODUCT_ARCHIVE" },
+          orderBy: { createdAt: "desc" }
+        });
+        const previousStatusById = new Map<string, ProductStatus | null>();
+        for (const entry of archiveEntries) {
+          if (!entry.entityId || previousStatusById.has(entry.entityId)) continue;
+          previousStatusById.set(entry.entityId, productStatusValue(objectValue(entry.beforeJson)?.status));
+        }
+
+        const unshelvedItemIds = products
+          .map((item) => item.inventoryItem)
+          .filter((item): item is NonNullable<typeof item> => Boolean(item && !item.locationId))
+          .map((item) => item.id);
+        const releases = unshelvedItemIds.length === 0 ? [] : await transaction.inventoryMovement.findMany({
+          where: { inventoryItemId: { in: unshelvedItemIds }, fromLocationId: { not: null }, toLocationId: null },
+          include: { fromLocation: true },
+          orderBy: { createdAt: "desc" }
+        });
+        const previousShelfByItem = new Map<string, { id: string; locationCode: string }>();
+        for (const release of releases) {
+          if (previousShelfByItem.has(release.inventoryItemId) || !release.fromLocation) continue;
+          previousShelfByItem.set(release.inventoryItemId, { id: release.fromLocation.id, locationCode: release.fromLocation.locationCode });
+        }
+        const shelfIds = [...new Set([...previousShelfByItem.values()].map((shelf) => shelf.id))];
+        const [shelfRows, shelfCounts] = await Promise.all([
+          transaction.warehouseLocation.findMany({ where: { id: { in: shelfIds } } }),
+          transaction.inventoryItem.groupBy({
+            by: ["locationId"],
+            where: { locationId: { in: shelfIds }, status: { in: WAREHOUSE_OCCUPYING_STATUSES } },
+            _count: { _all: true }
+          })
+        ]);
+        const countByShelf = new Map(shelfCounts.map((row) => [row.locationId, row._count._all]));
+
+        const plan = planProductRestoration(
+          products.map((item) => ({
+            id: item.id,
+            productCode: item.productCode,
+            status: item.status,
+            barcode: item.barcode,
+            previousStatus: previousStatusById.get(item.id) ?? null,
+            inventoryItem: item.inventoryItem
+              ? { id: item.inventoryItem.id, status: item.inventoryItem.status, locationId: item.inventoryItem.locationId }
+              : null,
+            previousShelf: item.inventoryItem ? previousShelfByItem.get(item.inventoryItem.id) ?? null : null
+          })),
+          shelfRows.map((shelf) => ({
+            id: shelf.id,
+            locationCode: shelf.locationCode,
+            capacity: shelf.capacity,
+            currentItemCount: countByShelf.get(shelf.id) ?? 0,
+            active: shelf.active && shelf.status !== WarehouseLocationStatus.INACTIVE
+          }))
+        );
+        const reopenBatch = Boolean(batch && batch.status !== ProductBatchStatus.OPEN);
+        const summary = {
+          batchId: batch?.id ?? null,
+          batchCode: batch?.batchCode ?? null,
+          batchReopened: reopenBatch,
+          restored: plan.restore.map((item) => ({ productCode: item.productCode, status: item.toStatus })),
+          shelfReturns: plan.shelfReturns.map((item) => ({
+            productCode: item.productCode,
+            locationCode: item.locationCode,
+            physicallyShelved: item.physicallyShelved
+          })),
+          needsShelf: plan.needsShelf.map((item) => item.productCode),
+          dryRun
+        };
+        if (dryRun) return summary;
+
+        for (const item of plan.restore) {
+          const rule = stateMachine.assertCanRestore({ fromStatus: item.fromStatus, toStatus: item.toStatus, reason });
+          const changed = await transaction.product.updateMany({
+            where: { id: item.id, status: ProductStatus.ARCHIVED },
+            data: { status: item.toStatus }
+          });
+          if (changed.count !== 1) {
+            throw new ProductRestorationError(`${item.productCode} changed while restoring. Refresh and try again.`);
+          }
+          await transaction.auditLog.create({
+            data: {
+              actorType: ActorType.EMPLOYEE,
+              actorId: employeeId,
+              actorAdminUserId: session.adminUser?.id ?? null,
+              sourceApp: SourceApp.OPERATIONS,
+              module: "Product",
+              entityType: "Product",
+              entityId: item.id,
+              action: rule.action,
+              beforeJson: { status: ProductStatus.ARCHIVED },
+              afterJson: { status: item.toStatus, batchId: batch?.id ?? null },
+              reason
+            }
+          });
+        }
+
+        for (const shelfReturn of plan.shelfReturns) {
+          const changed = await transaction.inventoryItem.updateMany({
+            where: { id: shelfReturn.inventoryItemId, locationId: null },
+            data: { locationId: shelfReturn.locationId }
+          });
+          if (changed.count !== 1) {
+            throw new ProductRestorationError(`${shelfReturn.productCode} changed while restoring. Refresh and try again.`);
+          }
+          await transaction.inventoryMovement.create({
+            data: {
+              inventoryItemId: shelfReturn.inventoryItemId,
+              productId: shelfReturn.productId,
+              movementType: InventoryMovementType.LOCATION_ASSIGNED,
+              toLocationId: shelfReturn.locationId,
+              employeeId,
+              reason: `Shelf restored: product restored (${reason})`
+            }
+          });
+        }
+        await refreshWarehouseLocationStatuses(transaction, [...new Set(plan.shelfReturns.map((item) => item.locationId))]);
+
+        if (batch && reopenBatch) {
+          await transaction.productBatch.update({ where: { id: batch.id }, data: { status: ProductBatchStatus.OPEN } });
+          await transaction.auditLog.create({
+            data: {
+              actorType: ActorType.EMPLOYEE,
+              actorId: employeeId,
+              actorAdminUserId: session.adminUser?.id ?? null,
+              sourceApp: SourceApp.OPERATIONS,
+              module: "PRODUCT_FACTORY",
+              entityType: "ProductBatch",
+              entityId: batch.id,
+              action: "PRODUCT_BATCH_REOPENED",
+              beforeJson: { status: batch.status },
+              afterJson: { status: ProductBatchStatus.OPEN, restoredProductIds: plan.restore.map((item) => item.id) },
+              reason
+            }
+          });
+        }
+        return summary;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 20_000 });
+    } catch (error) {
+      if (error instanceof ProductRestorationError) throw new BadRequestException(error.message);
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new BadRequestException("The products changed while restoring. Refresh and try again.");
+      }
+      throw error;
+    }
+  }
+
   private async requireBatch(batchId: string) {
     const batch = await prisma.productBatch.findUnique({ where: { id: batchId } });
     if (!batch) throw new NotFoundException("Product batch not found.");
@@ -932,4 +1117,16 @@ export class OperationsProductBatchService {
       }
     } as const;
   }
+}
+
+function objectValue(value: Prisma.JsonValue | undefined): Record<string, Prisma.JsonValue> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, Prisma.JsonValue> : null;
+}
+
+function stringArray(value: Prisma.JsonValue | undefined): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function productStatusValue(value: Prisma.JsonValue | undefined): ProductStatus | null {
+  return typeof value === "string" && (Object.values(ProductStatus) as string[]).includes(value) ? value as ProductStatus : null;
 }

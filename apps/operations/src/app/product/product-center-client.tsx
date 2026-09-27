@@ -32,6 +32,7 @@ import {
   PlusIcon,
   PrinterIcon,
   RefreshCwIcon,
+  RotateCcwIcon,
   SaveIcon,
   ScanBarcodeIcon,
   UploadIcon,
@@ -379,6 +380,7 @@ export function ProductQueuePage({ queue, title, description, management = false
   const [pricingProduct, setPricingProduct] = useState<JsonRecord | null>(null);
   const [movingProduct, setMovingProduct] = useState<JsonRecord | null>(null);
   const [reprintProduct, setReprintProduct] = useState<JsonRecord | null>(null);
+  const [restoringProduct, setRestoringProduct] = useState<JsonRecord | null>(null);
   const canMoveShelf = hasPermission("warehouse-locations.move-product");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -528,6 +530,12 @@ export function ProductQueuePage({ queue, title, description, management = false
                   <TableCell className="text-right">
                     <div className="flex flex-wrap justify-end gap-2">
                       {management ? <ProductManagementActions product={product} canEdit={canEdit} canPublish={canPublish} canEditDetails={canEdit && hasPermission("page.product.details")} canMoveShelf={canMoveShelf} busy={busy} ids={ids} run={run} onPrice={() => setPricingProduct(product)} onMoveShelf={() => setMovingProduct(product)} onReprint={() => setReprintProduct(product)} /> : null}
+                      {stringValue(product.status) === "ARCHIVED" ? (
+                        <Button size="sm" variant="outline" disabled={!canApprove || Boolean(busy)} title={canApprove ? undefined : t("需要商品审核权限")} onClick={() => setRestoringProduct(product)}>
+                          <RotateCcwIcon data-icon="inline-start" />
+                          {t("恢复")}
+                        </Button>
+                      ) : null}
                       {queue === "waiting-upload" ? <UploadButton product={product} ids={ids} disabled={!canEdit || Boolean(busy)} onDone={load} /> : null}
                       {queue === "waiting-ai" ? (
                         <Button size="sm" variant="outline" disabled={!canEdit || Boolean(busy) || !latestImage(product)} onClick={() => run(`ai-${product.id}`, () => runSingleAi(product, ids))}>
@@ -583,6 +591,7 @@ export function ProductQueuePage({ queue, title, description, management = false
           await load();
         }}
       /> : null}
+      <RestoreProductDialog key={`restore-${stringValue(restoringProduct?.id)}`} product={restoringProduct} ids={ids} onClose={() => setRestoringProduct(null)} onRestored={() => void load()} />
       <ProductPriceDialog key={stringValue(pricingProduct?.id)} product={pricingProduct} ids={ids} onClose={() => setPricingProduct(null)} onSaved={() => { setPricingProduct(null); void load(); }} />
       <CalibrationDialog product={editingProduct} ids={ids} open={Boolean(editingProduct)} onOpenChange={(open) => !open && setEditingProduct(null)} onSaved={() => { setEditingProduct(null); void load(); }} />
     </div>
@@ -1091,7 +1100,7 @@ function ProductManagementActions(props: {
   return <>
     <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy)} onClick={props.onPrice}>{t("改价")}</Button>
     <Button size="sm" variant="outline" disabled={!props.canMoveShelf || Boolean(props.busy) || !canMoveProductShelf(props.product)} title={canMoveProductShelf(props.product) ? undefined : t("只有还在仓库货架上的商品能挪；已付款、已拣货或已售出的不能挪。")} onClick={props.onMoveShelf}>{t("挪货架")}</Button>
-    <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy) || !stringValue(props.product.barcode)} onClick={props.onReprint}>{t("重打 Barcode")}</Button>
+    <Button size="sm" variant="outline" disabled={!props.canEdit || Boolean(props.busy) || !stringValue(props.product.barcode)} title={stringValue(props.product.barcode) ? undefined : t("这件还没有条码。已拒绝的商品先点「恢复」，走完校准后会生成条码。")} onClick={props.onReprint}>{t("重打 Barcode")}</Button>
     {canEditDetails ? (
       <Button size="sm" variant="outline" asChild><Link href={`/product/details/${encodeURIComponent(profileId)}?mode=edit`}>{t("编辑商品详情")}</Link></Button>
     ) : <Button size="sm" variant="outline" disabled title={status === "PUBLISHED" ? t("请先下架再编辑详情") : t("需生成有效详情，并具有详情编辑权限")}>{t("编辑商品详情")}</Button>}
@@ -1204,6 +1213,96 @@ function ProductPriceDialog(props: {
       <Field><FieldLabel htmlFor="management-price">{t("售价（KSh）")}</FieldLabel><Input id="management-price" type="number" min={1} step={1} value={price} disabled={saving} onChange={(event) => setPrice(event.target.value)} /><FieldDescription>{t("输入大于 0 的整数。保存后应用于后续购买。")}</FieldDescription></Field>
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       <DialogFooter><Button variant="outline" disabled={saving} onClick={props.onClose}>{t("取消")}</Button><Button disabled={saving || !valid} onClick={() => void save()}>{saving ? t("保存中…") : t("保存价格")}</Button></DialogFooter>
+    </DialogContent>
+  </Dialog>;
+}
+
+type RestoreSummary = {
+  batchCode: string | null;
+  batchReopened: boolean;
+  restored: Array<{ productCode: string; status: string }>;
+  shelfReturns: Array<{ productCode: string; locationCode: string; physicallyShelved: boolean }>;
+  needsShelf: string[];
+  dryRun: boolean;
+};
+
+// Brings an archived garment back into the intake flow. The server first reports what would
+// happen (a cancelled batch comes back as a whole), and only the second call changes anything.
+function RestoreProductDialog(props: {
+  product: JsonRecord | null;
+  ids: ReturnType<typeof useOperationIds>;
+  onClose: () => void;
+  onRestored: () => void;
+}) {
+  const productId = stringValue(props.product?.id);
+  const [preview, setPreview] = useState<RestoreSummary | null>(null);
+  const [result, setResult] = useState<RestoreSummary | null>(null);
+  const [reason, setReason] = useState(t("衣服实物还在仓库，恢复后继续上架"));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!productId) return;
+    let cancelled = false;
+    request<RestoreSummary>(`/operations/product-batches/products/${encodeURIComponent(productId)}/restore`, {
+      method: "POST",
+      body: JSON.stringify({ ...props.ids, dryRun: true })
+    }).then((summary) => { if (!cancelled) setPreview(summary); })
+      .catch((caught) => { if (!cancelled) setError(caught instanceof Error ? caught.message : t("读取恢复信息失败。")); });
+    return () => { cancelled = true; };
+  }, [productId, props.ids]);
+
+  async function restore() {
+    if (!productId || saving || !reason.trim()) return;
+    setSaving(true);
+    setError("");
+    try {
+      const summary = await request<RestoreSummary>(`/operations/product-batches/products/${encodeURIComponent(productId)}/restore`, {
+        method: "POST",
+        body: JSON.stringify({ ...props.ids, reason: reason.trim() })
+      });
+      setResult(summary);
+      props.onRestored();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("恢复失败。"));
+    } finally { setSaving(false); }
+  }
+
+  const summary = result ?? preview;
+  const stepCounts = summary ? summary.restored.reduce<Record<string, number>>((acc, item) => {
+    const label = productStatusLabel(item.status);
+    acc[label] = (acc[label] ?? 0) + 1;
+    return acc;
+  }, {}) : {};
+  const putBack = summary?.shelfReturns.filter((item) => item.physicallyShelved) ?? [];
+
+  return <Dialog open={Boolean(props.product)} onOpenChange={(open) => { if (!open && !saving) props.onClose(); }}>
+    <DialogContent>
+      <DialogHeader><DialogTitle>{result ? t("已恢复") : t("恢复商品")}</DialogTitle></DialogHeader>
+      <p className="text-sm">{stringValue(props.product?.title) || stringValue(props.product?.productCode)}</p>
+      {!summary && !error ? <p className="text-muted-foreground text-sm">{t("正在读取…")}</p> : null}
+      {summary ? <div className="flex flex-col gap-3 text-sm">
+        {summary.batchCode && summary.restored.length > 1
+          ? <p>{t("这件衣服所在的批次 {batch} 是整批取消的，会整批一起恢复，共 {count} 件。", { batch: summary.batchCode, count: summary.restored.length })}</p>
+          : <p>{t("恢复 {count} 件。", { count: summary.restored.length })}</p>}
+        <div>
+          <div className="text-muted-foreground">{t("恢复后回到这一步：")}</div>
+          <ul className="list-disc pl-5">{Object.entries(stepCounts).map(([label, count]) => <li key={label}>{label} · {count}</li>)}</ul>
+        </div>
+        {putBack.length > 0 ? <StatusMessage tone="neutral">
+          {t("这些衣服当时已经从货架上取下来了，请放回原货架：")}
+          <ul className="list-disc pl-5">{putBack.map((item) => <li key={item.productCode}>{item.productCode} → {item.locationCode}</li>)}</ul>
+        </StatusMessage> : null}
+        {summary.needsShelf.length > 0 ? <p className="text-muted-foreground">{t("{count} 件原货架已满或已停用，入库时再选货架。", { count: summary.needsShelf.length })}</p> : null}
+        {result ? <p>{t("之后在「批次」里接着走原来的流程：上传照片、校准、生成条码并打印、审核、入库、上架。")}</p> : null}
+      </div> : null}
+      {!result ? <Field><FieldLabel htmlFor="restore-reason">{t("恢复原因")}</FieldLabel><Input id="restore-reason" value={reason} disabled={saving} onChange={(event) => setReason(event.target.value)} /></Field> : null}
+      {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+      <DialogFooter>
+        {result
+          ? <Button onClick={props.onClose}>{t("完成")}</Button>
+          : <><Button variant="outline" disabled={saving} onClick={props.onClose}>{t("取消")}</Button><Button disabled={saving || !preview || !reason.trim()} onClick={() => void restore()}>{saving ? t("恢复中…") : t("确认恢复")}</Button></>}
+      </DialogFooter>
     </DialogContent>
   </Dialog>;
 }

@@ -23,6 +23,10 @@ type RetakeBody = AdminEmployeeBody & {
   reason?: string;
 };
 
+type RestoreBody = RetakeBody & {
+  dryRun?: boolean;
+};
+
 type ShelfBody = AdminEmployeeBody & {
   locationId?: string;
 };
@@ -130,6 +134,11 @@ export class OperationsProductBatchController {
   @Post(":id/cancel")
   async cancel(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: RetakeBody) {
     return this.batches.cancelBatch(id, await this.identity.employeeInput(authorization, body));
+  }
+
+  @Post("products/:id/restore")
+  async restoreProduct(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: RestoreBody) {
+    return this.batches.restoreProduct(id, await this.identity.employeeInput(authorization, body));
   }
 
   @Post("products/:id/review")
