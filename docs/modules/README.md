@@ -30,3 +30,5 @@ Each module should define:
 - [customer-service.md](customer-service.md) — global customer search, the Order
   360 view, cases with owners and SLAs, escalation, and the two-person refund
   approval gate.
+- [business-reports.md](business-reports.md) — the owner's automatic daily,
+  weekly and monthly report emails, and how to switch them on.

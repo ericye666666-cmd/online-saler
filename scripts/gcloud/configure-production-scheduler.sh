@@ -10,6 +10,7 @@ VIDEO_JOB_NAME="${VIDEO_JOB_NAME:-render-affiliate-videos-production}"
 RECONCILE_JOB_NAME="${RECONCILE_JOB_NAME:-reconcile-mpesa-payments-production}"
 NOTIFY_JOB_NAME="${NOTIFY_JOB_NAME:-send-notifications-production}"
 DEPOSIT_JOB_NAME="${DEPOSIT_JOB_NAME:-expire-deposit-holds-production}"
+REPORT_JOB_PREFIX="${REPORT_JOB_PREFIX:-business-report}"
 SECRET_NAME="${SECRET_NAME:-PRODUCTION_INTERNAL_CRON_SECRET}"
 CRON_SECRET="$(gcloud secrets versions access latest --project "${GCP_PROJECT_ID}" --secret "${SECRET_NAME}")"
 
@@ -72,3 +73,11 @@ upsert_job "${NOTIFY_JOB_NAME}" "/api/internal/send-notifications" "* * * * *" "
 # refund is ever raised. That is the worst of the three states to be in, which
 # is why it belongs here and not in a runbook step somebody has to remember.
 upsert_job "${DEPOSIT_JOB_NAME}" "/api/internal/expire-deposit-holds" "0 * * * *" "300s"
+
+# The owner's daily, weekly and monthly report emails, each about a period that
+# has just finished (Nairobi time). Five minutes apart so the Monday and the 1st
+# do not build three reports at once. Read only; until the Resend key and the
+# recipient are in Secret Manager the route answers "not sent" and moves on.
+upsert_job "${REPORT_JOB_PREFIX}-daily-production" "/api/internal/send-business-report?period=daily" "0 7 * * *" "300s"
+upsert_job "${REPORT_JOB_PREFIX}-weekly-production" "/api/internal/send-business-report?period=weekly" "5 7 * * 1" "300s"
+upsert_job "${REPORT_JOB_PREFIX}-monthly-production" "/api/internal/send-business-report?period=monthly" "10 7 1 * *" "300s"

@@ -87,6 +87,23 @@ jobs:
             echo "::warning::PRODUCTION_AFRICASTALKING_API_KEY is not in Secret Manager yet; SMS will stay queued."
           fi
 
+          # The daily/weekly/monthly report emails are optional the same way.
+          # The recipient list is a secret too: this repository is public, and a
+          # plain variable would print the owner's address in the deploy log.
+          if gcloud secrets versions access latest \
+              --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
+              --secret PRODUCTION_RESEND_API_KEY >/dev/null 2>&1 \
+            && gcloud secrets versions access latest \
+              --project "${{ vars.GCP_PROJECT_ID_PRODUCTION }}" \
+              --secret PRODUCTION_BUSINESS_REPORT_EMAIL_TO >/dev/null 2>&1; then
+            echo "report_key_secret=RESEND_API_KEY=PRODUCTION_RESEND_API_KEY:latest" >> "${GITHUB_OUTPUT}"
+            echo "report_to_secret=BUSINESS_REPORT_EMAIL_TO=PRODUCTION_BUSINESS_REPORT_EMAIL_TO:latest" >> "${GITHUB_OUTPUT}"
+          else
+            echo "report_key_secret=MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest" >> "${GITHUB_OUTPUT}"
+            echo "report_to_secret=MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest" >> "${GITHUB_OUTPUT}"
+            echo "::warning::PRODUCTION_RESEND_API_KEY or PRODUCTION_BUSINESS_REPORT_EMAIL_TO is not in Secret Manager yet; report emails will not be sent."
+          fi
+
           if [ -z "${{ vars.MPESA_CALLBACK_URL_PRODUCTION }}" ]; then
             echo "MPESA_CALLBACK_URL_PRODUCTION is required." >&2
             exit 1
@@ -198,6 +215,8 @@ jobs:
             MPESA_TILL_NUMBER=PRODUCTION_MPESA_TILL_NUMBER:latest
             MPESA_PASSKEY=PRODUCTION_MPESA_PASSKEY:latest
             ${{ steps.prerequisites.outputs.sms_secret }}
+            ${{ steps.prerequisites.outputs.report_key_secret }}
+            ${{ steps.prerequisites.outputs.report_to_secret }}
 
       - name: Verify Storefront production surface
         run: |
