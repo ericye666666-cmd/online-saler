@@ -3006,17 +3006,4 @@ export const enDictionary: Record<string, string> = {
     "Several labels print in a row: stick the first on the parcel (the store scans it to receive), put the rest inside.",
   "在中央仓直接交给顾客或骑手，不用贴面单。": "Handed to the customer or rider at the central warehouse — no label needed.",
   "这个账号不能做这一步，请主管在订单工作台处理。": "This account cannot do this step. Ask a supervisor to do it in the order workbench.",
-  // ——— One-off cleanup of cancelled-batch leftovers (2026-09-28); remove with cancelled-batch-cleanup-dialog.tsx ———
-  "清理整批取消留下的商品": "Clean up items left by cancelled batches",
-  "读取失败。": "Could not load.",
-  "删除失败。": "Delete failed.",
-  "已删除": "Deleted",
-  "已永久删除 {count} 件整批取消留下的商品。": "Permanently deleted {count} item(s) left by cancelled batches.",
-  "没有整批取消留下的商品需要清理。": "There are no items left by cancelled batches to clean up.",
-  "以下 {count} 件是以前整批取消时留下的「已拒绝」商品，会被永久删除，就当没录过，删除后无法恢复。审核时被拒绝的商品不在这里，不会被删除。":
-    "These {count} item(s) were left as \"Rejected\" when their batch was cancelled. They will be permanently deleted, as if never entered. This cannot be undone. Items rejected at review are not listed and are not deleted.",
-  "{count} 件关联过顾客订单，保留不删：": "{count} item(s) were on a customer order and are kept:",
-  "输入 {word} 确认删除": "Type {word} to confirm",
-  "删除中…": "Deleting…",
-  "永久删除 {count} 件": "Delete {count} item(s) permanently",
 };
