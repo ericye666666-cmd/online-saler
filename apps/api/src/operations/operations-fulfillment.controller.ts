@@ -37,6 +37,11 @@ export class OperationsFulfillmentController {
     return this.orders.summary({ ...query, adminUserId: await this.access.requireAccessToken(authorization) });
   }
 
+  @Get("fulfillment-counts")
+  async fulfillmentCounts(@Headers("authorization") authorization: string | undefined, @Query() query: OrderCenterListInput) {
+    return this.orders.fulfillmentStatusCounts({ ...query, adminUserId: await this.access.requireAccessToken(authorization) });
+  }
+
   @Get("employees")
   async employees(@Headers("authorization") authorization?: string) {
     return this.orders.employees(await this.access.requireAccessToken(authorization));

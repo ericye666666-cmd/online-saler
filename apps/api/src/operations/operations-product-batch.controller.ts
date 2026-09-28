@@ -69,7 +69,9 @@ export class OperationsProductBatchController {
     @Query("employeeId") employeeId?: string,
     @Query("dateFrom") dateFrom?: string,
     @Query("dateTo") dateTo?: string,
-    @Query("includeTestData") includeTestData?: string
+    @Query("includeTestData") includeTestData?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
   ) {
     return this.batches.listProducts({
       adminUserId: await this.identity.adminId(authorization),
@@ -81,7 +83,9 @@ export class OperationsProductBatchController {
       employeeId,
       dateFrom,
       dateTo,
-      includeTestData: includeTestData === "true"
+      includeTestData: includeTestData === "true",
+      page,
+      pageSize
     });
   }
 

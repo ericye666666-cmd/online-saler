@@ -62,6 +62,7 @@ import {
 import { refreshWarehouseLocationStatuses } from "./warehouse-capacity";
 import { assertOrderInScope, scopedNodeId, storeScopeFor } from "./store-scope";
 import { requireRiderFee, riderFeeNote } from "./rider-fee";
+import { listPage, listPageRequest, listPageWindow } from "./list-page";
 
 const ORDER_INCLUDE = {
   customer: true,
@@ -160,7 +161,27 @@ export type OrderCenterListInput = {
   /** Narrows the list to one store's packages, for the node workbench. */
   nodeId?: string;
   packageCode?: string;
+  /**
+   * One or more fulfillment statuses, comma separated: the steps of 每日打单配送
+   * (PAID, PICKING, READY_TO_PACK, PACKED, IN_TRANSIT_TO_NODE).
+   */
+  fulfillmentStatus?: string;
+  /** Asking for a page turns the list into `{ items, total, page, pageSize, pageCount }`. */
+  page?: string | number;
+  pageSize?: string | number;
 };
+
+/** The photos the enlarged view pages through: the order's own photo first, no repeats. */
+export function orderItemImageUrls(snapshotUrl: string | null | undefined, productUrls: string[]): string[] {
+  return [...new Set([snapshotUrl, ...productUrls].filter((url): url is string => Boolean(url)))];
+}
+
+/** The comma-separated fulfillment statuses a screen asked for, unknown ones dropped. */
+export function fulfillmentStatusFilter(value?: string): FulfillmentStatus[] {
+  if (!value?.trim()) return [];
+  const known = new Set<string>(Object.values(FulfillmentStatus));
+  return [...new Set(value.split(",").map((part) => part.trim()).filter((part) => known.has(part)))] as FulfillmentStatus[];
+}
 
 export type AdminInput = { adminUserId?: string; note?: string };
 export type EmployeeInput = AdminInput & { employeeId?: string };
@@ -328,13 +349,46 @@ export class OperationsFulfillmentService {
     // screen that forgets to pass nodeId still cannot list another store.
     const nodeId = scopedNodeId(await storeScopeFor(session), input.nodeId);
     await this.ensurePaidFulfillments();
-    const orders = await prisma.order.findMany({
-      where: this.orderWhere({ ...input, nodeId }),
-      include: ORDER_INCLUDE,
-      orderBy: { createdAt: "desc" },
-      take: 150
+    const where = this.orderWhere({ ...input, nodeId });
+    const paging = listPageRequest(input.page, input.pageSize);
+    if (!paging) {
+      // The store console, picking and pack-station screens read one unpaged
+      // list, capped as before; only the order centre and 每日打单配送 page.
+      const orders = await prisma.order.findMany({ where, include: ORDER_INCLUDE, orderBy: { createdAt: "desc" }, take: 150 });
+      return this.attachInventory(orders);
+    }
+    const total = await prisma.order.count({ where });
+    const window = listPageWindow(paging, total);
+    const orders = total
+      ? await prisma.order.findMany({
+          where,
+          include: ORDER_INCLUDE,
+          // id breaks ties so two orders placed in the same millisecond never
+          // swap between pages.
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip: window.skip,
+          take: window.take
+        })
+      : [];
+    return listPage(await this.attachInventory(orders), total, paging);
+  }
+
+  /**
+   * How many orders sit at each fulfillment status, for the step badges on
+   * 每日打单配送. The list there is paged, so the badges cannot be counted from
+   * the rows on screen any more.
+   */
+  async fulfillmentStatusCounts(input: OrderCenterListInput) {
+    const session = await this.access.requirePermission(input.adminUserId, "orders.view");
+    const nodeId = scopedNodeId(await storeScopeFor(session), input.nodeId);
+    await this.ensurePaidFulfillments();
+    const rows = await prisma.order.findMany({
+      where: this.orderWhere({ ...input, nodeId, tab: "all", fulfillmentStatus: undefined }),
+      select: { fulfillment: { select: { status: true } } }
     });
-    return this.attachInventory(orders);
+    const counts = Object.fromEntries(Object.values(FulfillmentStatus).map((status) => [status, 0])) as Record<FulfillmentStatus, number>;
+    for (const row of rows) if (row.fulfillment) counts[row.fulfillment.status] += 1;
+    return counts;
   }
 
   async orderDetail(orderId: string, adminUserId?: string) {
@@ -2071,6 +2125,8 @@ export class OperationsFulfillmentService {
     if (input.scope === "exceptions") and.push({ fulfillment: { is: { status: FulfillmentStatus.EXCEPTION } } });
     if (input.scope === "node") and.push({ fulfillment: { is: { status: { in: NODE_DESK_STATUSES } } } });
     if (input.tab && input.tab !== "all") and.push(tabWhere(input.tab));
+    const fulfillmentStatuses = fulfillmentStatusFilter(input.fulfillmentStatus);
+    if (fulfillmentStatuses.length) and.push({ fulfillment: { is: { status: { in: fulfillmentStatuses } } } });
 
     const createdAt: Prisma.DateTimeFilter = {};
     if (input.dateFrom) createdAt.gte = validDate(input.dateFrom, "Start date");
@@ -2209,7 +2265,8 @@ export class OperationsFulfillmentService {
           select: {
             images: {
               orderBy: { sortOrder: "asc" },
-              take: 1,
+              // Enough for the enlarged view to page through a garment's photos.
+              take: 8,
               select: { id: true, publicUrl: true }
             }
           }
@@ -2252,6 +2309,12 @@ export class OperationsFulfillmentService {
         return {
           ...item,
           displayImageUrl: item.snapshot?.imageUrl || currentImage?.publicUrl || (currentImage ? `/products/${item.productId}/images/${currentImage.id}/content` : null),
+          // Every photo of the garment, for the enlarged view; the one shown on
+          // the card comes first.
+          imageUrls: orderItemImageUrls(
+            item.snapshot?.imageUrl,
+            (inventoryItem?.product.images ?? []).map((image) => image.publicUrl || `/products/${item.productId}/images/${image.id}/content`)
+          ),
           inventoryItem: inventoryItem ? {
             id: inventoryItem.id,
             barcode: inventoryItem.barcode,

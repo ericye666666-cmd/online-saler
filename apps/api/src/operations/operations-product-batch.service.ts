@@ -34,6 +34,7 @@ import { BatchCancellationError, planBatchCancellation } from "./product-batch-c
 import { ProductStateMachine } from "../product/product-state-machine";
 import { ProductRestorationError, planProductRestoration } from "./product-restoration";
 import { hardDeleteProducts } from "./product-hard-delete";
+import { listPage, listPageRequest, listPageWindow } from "./list-page";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -65,6 +66,9 @@ type ListInput = {
   dateFrom?: string;
   dateTo?: string;
   includeTestData?: boolean;
+  /** Asking for a page turns the reply into `{ items, total, page, pageSize, pageCount }`. */
+  page?: string | number;
+  pageSize?: string | number;
 };
 
 type ReviewInput = {
@@ -324,12 +328,20 @@ export class OperationsProductBatchService {
       };
     }
 
-    return prisma.product.findMany({
-      where,
-      include: this.productInclude(),
-      orderBy: [{ batchId: "desc" }, { batchItemNumber: "asc" }, { updatedAt: "desc" }],
-      take: 200
-    });
+    const orderBy = [{ batchId: "desc" }, { batchItemNumber: "asc" }, { updatedAt: "desc" }, { id: "asc" }] as const;
+    const paging = listPageRequest(input.page, input.pageSize);
+    if (!paging) {
+      // The intake queues still read one unpaged list, capped as before.
+      return prisma.product.findMany({ where, include: this.productInclude(), orderBy: [...orderBy], take: 200 });
+    }
+    // 商品管理 pages through everything that matches: the total is counted
+    // first so a page past the end can be answered with the last page.
+    const total = await prisma.product.count({ where });
+    const window = listPageWindow(paging, total);
+    const items = total
+      ? await prisma.product.findMany({ where, include: this.productInclude(), orderBy: [...orderBy], skip: window.skip, take: window.take })
+      : [];
+    return listPage(items, total, paging);
   }
 
   async runBatchAi(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
