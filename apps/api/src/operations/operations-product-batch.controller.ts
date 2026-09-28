@@ -27,6 +27,10 @@ type RestoreBody = RetakeBody & {
   dryRun?: boolean;
 };
 
+type CancelBody = RetakeBody & {
+  dryRun?: boolean;
+};
+
 type ShelfBody = AdminEmployeeBody & {
   locationId?: string;
 };
@@ -132,7 +136,7 @@ export class OperationsProductBatchController {
   }
 
   @Post(":id/cancel")
-  async cancel(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: RetakeBody) {
+  async cancel(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: CancelBody) {
     return this.batches.cancelBatch(id, await this.identity.employeeInput(authorization, body));
   }
 

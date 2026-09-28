@@ -106,13 +106,12 @@ type ProductBatch = {
 
 type BatchCancellationResult = {
   batchId: string;
+  deletedCount: number;
   archivedCount: number;
+  archivedProductCodes: string[];
   keptCount: number;
   releasedShelves: Array<{ productCode: string; locationCode: string | null; physicallyShelved: boolean }>;
 };
-
-// Mirrors the API: items that already went live stay as they are when a batch is cancelled.
-const BATCH_CANCELLATION_KEPT_STATUSES = new Set(["PUBLISHED", "UNPUBLISHED", "ARCHIVED"]);
 
 type ProductSummary = {
   employeeId: string;
@@ -451,16 +450,22 @@ function CancelBatchDialog({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // The API decides what is deleted and what is kept (it knows which items are on an order).
+  const [preview, setPreview] = useState<BatchCancellationResult | null>(null);
 
   useEffect(() => {
     setReason("");
     setError("");
-  }, [batch?.id]);
-
-  const products = batch?.products ?? [];
-  const archived = products.filter((product) => !BATCH_CANCELLATION_KEPT_STATUSES.has(product.status));
-  const kept = products.length - archived.length;
-  const shelved = archived.filter((product) => Boolean(product.inventoryItem?.locationId)).length;
+    setPreview(null);
+    if (!batch) return;
+    let cancelled = false;
+    request<BatchCancellationResult>(`/operations/product-batches/${batch.id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ ...ids, dryRun: true })
+    }).then((result) => { if (!cancelled) setPreview(result); })
+      .catch((caught) => { if (!cancelled) setError(caught instanceof Error ? caught.message : t("取消批次失败。")); });
+    return () => { cancelled = true; };
+  }, [batch, ids]);
 
   async function confirm() {
     if (!batch) return;
@@ -488,13 +493,17 @@ function CancelBatchDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("取消批次 {batchCode}", { batchCode: batch?.batchCode ?? "" })}</DialogTitle>
-          <DialogDescription>{t("取消后批次不再出现在进行中列表，此操作不能撤销。商品和照片不会被删除，处理记录会保留。")}</DialogDescription>
+          <DialogDescription>{t("取消后这批就当没录过，此操作不能撤销。")}</DialogDescription>
         </DialogHeader>
-        <ul className="space-y-1.5 rounded-md border bg-muted/30 p-3 text-sm">
-          <li>{t("{count} 件未上架商品将标记为已拒绝", { count: archived.length })}</li>
-          {kept ? <li>{t("{count} 件已上架商品保持不变", { count: kept })}</li> : null}
-          {shelved ? <li>{t("{count} 个已预留的货架位将被释放", { count: shelved })}</li> : null}
-        </ul>
+        {preview ? <ul className="space-y-1.5 rounded-md border bg-muted/30 p-3 text-sm">
+          <li className="font-medium text-destructive">{t("这批里 {count} 件未上架商品会被永久删除，就当没录过", { count: preview.deletedCount })}</li>
+          {preview.archivedCount ? <li>
+            {t("{count} 件关联过顾客订单，不删除，改为已拒绝：", { count: preview.archivedCount })}
+            <span className="font-mono text-xs"> {preview.archivedProductCodes.join(", ")}</span>
+          </li> : null}
+          {preview.keptCount ? <li>{t("{count} 件已上架或已拒绝的商品保持不变", { count: preview.keptCount })}</li> : null}
+          {preview.releasedShelves.length ? <li>{t("{count} 个已预留的货架位将被释放", { count: preview.releasedShelves.length })}</li> : null}
+        </ul> : !error ? <p className="text-muted-foreground text-sm">{t("正在读取…")}</p> : null}
         <Field>
           <FieldLabel htmlFor="cancel-batch-reason">{t("取消原因")}</FieldLabel>
           <Textarea
@@ -508,8 +517,8 @@ function CancelBatchDialog({
         {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>{t("返回")}</Button>
-          <Button variant="destructive" disabled={busy || !reason.trim()} onClick={() => void confirm()}>
-            {busy ? t("正在取消…") : t("确认取消批次")}
+          <Button variant="destructive" disabled={busy || !preview || !reason.trim()} onClick={() => void confirm()}>
+            {busy ? t("正在取消…") : t("取消批次并删除 {count} 件", { count: preview?.deletedCount ?? 0 })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -522,8 +531,9 @@ function BatchCancelledNotice({ result, onDismiss }: { result: BatchCancellation
   return (
     <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm">
       <div className="flex items-start justify-between gap-3">
-        <p>{t("已取消批次 {batchCode}：{archived} 件标记为已拒绝，释放 {released} 个货架位。", {
+        <p>{t("已取消批次 {batchCode}：永久删除 {deleted} 件，{archived} 件因关联订单改为已拒绝，释放 {released} 个货架位。", {
           batchCode: result.batchCode,
+          deleted: result.deletedCount,
           archived: result.archivedCount,
           released: result.releasedShelves.length
         })}</p>

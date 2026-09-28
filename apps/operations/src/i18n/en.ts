@@ -2041,10 +2041,10 @@ export const enDictionary: Record<string, string> = {
   // ——— Batch cancellation ———
   "取消批次": "Cancel batch",
   "取消批次 {batchCode}": "Cancel batch {batchCode}",
-  "取消后批次不再出现在进行中列表，此操作不能撤销。商品和照片不会被删除，处理记录会保留。":
-    "Once cancelled, the batch leaves the in-progress list and this cannot be undone. No items or photos are deleted, and the history is kept.",
-  "{count} 件未上架商品将标记为已拒绝": "{count} unpublished items will be marked as rejected",
-  "{count} 件已上架商品保持不变": "{count} published items stay as they are",
+  "取消后这批就当没录过，此操作不能撤销。": "Once cancelled, the batch counts as never entered. This cannot be undone.",
+  "这批里 {count} 件未上架商品会被永久删除，就当没录过": "{count} unpublished item(s) in this batch will be permanently deleted, as if never entered",
+  "{count} 件关联过顾客订单，不删除，改为已拒绝：": "{count} item(s) were on a customer order, so they are not deleted but marked as rejected:",
+  "{count} 件已上架或已拒绝的商品保持不变": "{count} published or rejected item(s) stay as they are",
   "{count} 个已预留的货架位将被释放": "{count} reserved shelf locations will be freed",
   "取消原因": "Reason for cancelling",
   "例如：测试批次 / 录错数量 / 货品退回供应商": "For example: test batch / wrong quantity entered / goods returned to supplier",
@@ -2052,9 +2052,9 @@ export const enDictionary: Record<string, string> = {
   "取消批次失败。": "Could not cancel the batch.",
   "返回": "Back",
   "正在取消…": "Cancelling…",
-  "确认取消批次": "Cancel the batch",
-  "已取消批次 {batchCode}：{archived} 件标记为已拒绝，释放 {released} 个货架位。":
-    "Batch {batchCode} cancelled: {archived} items marked as rejected, {released} shelf locations freed.",
+  "取消批次并删除 {count} 件": "Cancel batch and delete {count} item(s)",
+  "已取消批次 {batchCode}：永久删除 {deleted} 件，{archived} 件因关联订单改为已拒绝，释放 {released} 个货架位。":
+    "Batch {batchCode} cancelled: {deleted} item(s) permanently deleted, {archived} marked as rejected because of an order, {released} shelf locations freed.",
   "以下商品已经放上货架，请把实物取下：": "These items were already put on a shelf — take them back off:",
 
   // ——— Customer service desk: search, order 360, cases, refunds ———

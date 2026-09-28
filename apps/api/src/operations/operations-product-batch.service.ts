@@ -729,14 +729,16 @@ export class OperationsProductBatchService {
   }
 
   /**
-   * Stops an intake that will not be finished. Unfinished items are archived with the reason and
-   * their shelf slots are freed; items that already went live are left untouched. Nothing is
-   * deleted, and the whole cancellation commits or rolls back as one.
+   * Stops an intake that will not be finished, as if it was never entered. Unfinished items are
+   * deleted with their stock record and their shelf slots are freed; an unfinished item that was
+   * ever on a customer order is archived instead. Items that already went live are left untouched.
+   * The whole cancellation commits or rolls back as one. With `dryRun` it only reports the plan.
    */
-  async cancelBatch(batchId: string, input: { adminUserId?: string; employeeId?: string; reason?: string }) {
+  async cancelBatch(batchId: string, input: { adminUserId?: string; employeeId?: string; reason?: string; dryRun?: boolean }) {
     const session = await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
     const employeeId = employeeIdOrDefault(input.employeeId);
     const reason = input.reason?.trim() ?? "";
+    const dryRun = input.dryRun === true;
     const stateMachine = new ProductStateMachine();
 
     let plan: ReturnType<typeof planBatchCancellation>;
@@ -749,7 +751,54 @@ export class OperationsProductBatchService {
           include: { inventoryItem: { include: { location: { select: { locationCode: true } } } } },
           orderBy: { batchItemNumber: "asc" }
         });
-        const cancellation = planBatchCancellation(batch, products, reason);
+        const orderCounts = products.length === 0 ? [] : await transaction.orderItem.groupBy({
+          by: ["productId"],
+          where: { productId: { in: products.map((product) => product.id) } },
+          _count: { _all: true }
+        });
+        const orderCountById = new Map(orderCounts.map((row) => [row.productId, row._count._all]));
+        const cancellation = planBatchCancellation(
+          batch,
+          products.map((product) => ({ ...product, orderItemCount: orderCountById.get(product.id) ?? 0 })),
+          reason,
+          { preview: dryRun }
+        );
+        if (dryRun) return cancellation;
+
+        const deleteIds = cancellation.delete.map((product) => product.id);
+        if (deleteIds.length > 0) {
+          // These image tables hold a productId without a foreign key, so they are not cascaded.
+          await transaction.productImageVariantAsset.deleteMany({ where: { productId: { in: deleteIds } } });
+          await transaction.productImageProcessingJob.deleteMany({ where: { productId: { in: deleteIds } } });
+          await transaction.productMainImageSelection.deleteMany({ where: { productId: { in: deleteIds } } });
+          // Conditional on the statuses we planned from: if anything moved an item meanwhile (e.g. it
+          // was just published), the count misses and the whole cancellation rolls back.
+          let deleted = 0;
+          for (const product of cancellation.delete) {
+            const result = await transaction.product.deleteMany({ where: { id: product.id, batchId, status: product.status } });
+            deleted += result.count;
+          }
+          if (deleted !== deleteIds.length) {
+            throw new BatchCancellationError("An item in this batch changed while cancelling. Refresh the batch and try again.");
+          }
+          await transaction.auditLog.create({
+            data: {
+              actorType: ActorType.EMPLOYEE,
+              actorId: employeeId,
+              actorAdminUserId: session.adminUser?.id ?? null,
+              sourceApp: SourceApp.OPERATIONS,
+              module: "PRODUCT_FACTORY",
+              entityType: "ProductBatch",
+              entityId: batchId,
+              action: "PRODUCT_BATCH_CANCEL_DELETE",
+              beforeJson: {
+                products: cancellation.delete.map((product) => ({ id: product.id, productCode: product.productCode, status: product.status }))
+              },
+              afterJson: { deletedProductCodes: cancellation.delete.map((product) => product.productCode) },
+              reason: `Batch ${batch.batchCode} cancelled: ${reason}`
+            }
+          });
+        }
 
         for (const product of cancellation.archive) {
           const rule = stateMachine.assertCanTransition({
@@ -784,6 +833,8 @@ export class OperationsProductBatchService {
         }
 
         for (const release of cancellation.releases) {
+          // A deleted item's stock record went with it; only its shelf count needs refreshing below.
+          if (release.deleted) continue;
           await transaction.inventoryItem.update({
             where: { id: release.inventoryItemId },
             data: { locationId: null }
@@ -818,6 +869,7 @@ export class OperationsProductBatchService {
             beforeJson: { status: batch.status },
             afterJson: {
               status: ProductBatchStatus.CANCELLED,
+              deletedProductIds: deleteIds,
               archivedProductIds: cancellation.archive.map((product) => product.id),
               keptProductIds: cancellation.kept.map((product) => product.id),
               releasedShelves: cancellation.releases.map((release) => ({
@@ -841,8 +893,12 @@ export class OperationsProductBatchService {
 
     return {
       batchId,
-      status: ProductBatchStatus.CANCELLED,
+      status: dryRun ? undefined : ProductBatchStatus.CANCELLED,
+      dryRun,
+      deletedCount: plan.delete.length,
       archivedCount: plan.archive.length,
+      /** Unfinished items kept (archived) because a customer order points at them. */
+      archivedProductCodes: plan.archive.map((product) => product.productCode),
       keptCount: plan.kept.length,
       releasedShelves: plan.releases.map((release) => ({
         productCode: release.productCode,

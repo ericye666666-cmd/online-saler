@@ -26,7 +26,7 @@ function product(
 }
 
 describe("planBatchCancellation", () => {
-  it("archives every unfinished item and leaves items that already went live alone", () => {
+  it("deletes every unfinished item and leaves items that already went live alone", () => {
     const plan = planBatchCancellation(open, [
       product("01", ProductStatus.DRAFT),
       product("02", ProductStatus.CALIBRATION_PENDING),
@@ -35,7 +35,8 @@ describe("planBatchCancellation", () => {
       product("05", ProductStatus.ARCHIVED)
     ], "Wrong stock delivered");
 
-    assert.deepEqual(plan.archive.map((item) => item.id), ["01", "02"]);
+    assert.deepEqual(plan.delete.map((item) => item.id), ["01", "02"]);
+    assert.deepEqual(plan.archive, []);
     assert.deepEqual(plan.kept.map((item) => item.id), ["03", "04", "05"]);
     // Live items keep their shelf; only unfinished items give theirs back.
     assert.deepEqual(plan.releases, []);
@@ -48,10 +49,26 @@ describe("planBatchCancellation", () => {
       product("03", ProductStatus.CALIBRATED)
     ], "Cancelled");
 
-    assert.deepEqual(plan.releases.map(({ productId, locationCode, physicallyShelved }) => ({ productId, locationCode, physicallyShelved })), [
-      { productId: "01", locationCode: "A-01", physicallyShelved: false },
-      { productId: "02", locationCode: "B-02", physicallyShelved: true }
+    assert.deepEqual(plan.releases.map(({ productId, locationCode, physicallyShelved, deleted }) => ({ productId, locationCode, physicallyShelved, deleted })), [
+      { productId: "01", locationCode: "A-01", physicallyShelved: false, deleted: true },
+      { productId: "02", locationCode: "B-02", physicallyShelved: true, deleted: true }
     ]);
+  });
+
+  it("archives instead of deleting an unfinished item that was on a customer order", () => {
+    const plan = planBatchCancellation(open, [
+      product("01", ProductStatus.DRAFT),
+      { ...product("02", ProductStatus.READY_FOR_STORAGE, { status: InventoryItemStatus.AVAILABLE, locationId: "A", locationCode: "A-01" }), orderItemCount: 1 }
+    ], "Cancelled");
+
+    assert.deepEqual(plan.delete.map((item) => item.id), ["01"]);
+    assert.deepEqual(plan.archive.map((item) => item.id), ["02"]);
+    assert.deepEqual(plan.releases.map(({ productId, deleted }) => ({ productId, deleted })), [{ productId: "02", deleted: false }]);
+  });
+
+  it("previews without a reason", () => {
+    const plan = planBatchCancellation(open, [product("01", ProductStatus.DRAFT)], undefined, { preview: true });
+    assert.deepEqual(plan.delete.map((item) => item.id), ["01"]);
   });
 
   it("refuses to touch an item whose inventory is tied to a customer order", () => {

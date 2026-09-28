@@ -1,11 +1,13 @@
 import { InventoryItemStatus, ProductBatchStatus, ProductStatus } from "@online-saler/database";
 
 /**
- * Cancelling a batch stops an intake that will never be finished. It never deletes anything:
- * unfinished items are archived with the reason, and any shelf slot they were holding is freed.
+ * Cancelling a batch stops an intake that will never be finished. Its unfinished items are treated
+ * as if they were never entered: they are deleted, together with their stock record, and any shelf
+ * slot they held is freed.
  *
- * Items that already went live (PUBLISHED, or UNPUBLISHED after going live) are left exactly as
- * they are — they belong to product management now, not to the intake.
+ * An unfinished item that was ever on a customer order is archived instead, so the order history
+ * stays whole. Items that already went live (PUBLISHED, or UNPUBLISHED after going live), and items
+ * already archived, are left exactly as they are.
  */
 export const BATCH_CANCELLATION_KEPT_STATUSES: ReadonlySet<ProductStatus> = new Set([
   ProductStatus.PUBLISHED,
@@ -23,6 +25,8 @@ export type CancellableProduct = {
   id: string;
   productCode: string;
   status: ProductStatus;
+  /** Order lines that point at this item, from any order in any state. */
+  orderItemCount?: number;
   inventoryItem: {
     id: string;
     status: InventoryItemStatus;
@@ -39,9 +43,14 @@ export type ShelfRelease = {
   locationCode: string | null;
   /** True when staff already put the garment on the shelf and must take it back off. */
   physicallyShelved: boolean;
+  /** True when the item is deleted with the batch, so its stock record goes too. */
+  deleted: boolean;
 };
 
 export type BatchCancellationPlan = {
+  /** Unfinished items that are deleted as if never entered. */
+  delete: CancellableProduct[];
+  /** Unfinished items that were on a customer order: archived, not deleted. */
   archive: CancellableProduct[];
   kept: CancellableProduct[];
   releases: ShelfRelease[];
@@ -52,7 +61,8 @@ export class BatchCancellationError extends Error {}
 export function planBatchCancellation(
   batch: { status: ProductBatchStatus },
   products: readonly CancellableProduct[],
-  reason: string | undefined
+  reason: string | undefined,
+  options: { preview?: boolean } = {}
 ): BatchCancellationPlan {
   if (batch.status === ProductBatchStatus.CANCELLED) {
     throw new BatchCancellationError("This batch is already cancelled.");
@@ -60,15 +70,17 @@ export function planBatchCancellation(
   if (batch.status !== ProductBatchStatus.OPEN) {
     throw new BatchCancellationError("Only batches that are still in progress can be cancelled.");
   }
-  if (!reason?.trim()) {
+  if (!options.preview && !reason?.trim()) {
     throw new BatchCancellationError("A reason is required to cancel a batch.");
   }
 
-  const archive = products.filter((product) => !BATCH_CANCELLATION_KEPT_STATUSES.has(product.status));
+  const unfinished = products.filter((product) => !BATCH_CANCELLATION_KEPT_STATUSES.has(product.status));
   const kept = products.filter((product) => BATCH_CANCELLATION_KEPT_STATUSES.has(product.status));
+  const archive = unfinished.filter((product) => (product.orderItemCount ?? 0) > 0);
+  const toDelete = unfinished.filter((product) => (product.orderItemCount ?? 0) === 0);
 
   const releases: ShelfRelease[] = [];
-  for (const product of archive) {
+  for (const product of unfinished) {
     const item = product.inventoryItem;
     if (!item) continue;
     // An unpublished item can only hold a reservation or sit on the shelf. Anything else means a
@@ -85,9 +97,10 @@ export function planBatchCancellation(
       productCode: product.productCode,
       locationId: item.locationId,
       locationCode: item.location?.locationCode ?? null,
-      physicallyShelved: item.status === InventoryItemStatus.AVAILABLE
+      physicallyShelved: item.status === InventoryItemStatus.AVAILABLE,
+      deleted: toDelete.includes(product)
     });
   }
 
-  return { archive, kept, releases };
+  return { delete: toDelete, archive, kept, releases };
 }
