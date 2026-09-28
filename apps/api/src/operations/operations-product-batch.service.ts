@@ -33,6 +33,7 @@ import { refreshWarehouseLocationStatuses, WAREHOUSE_OCCUPYING_STATUSES } from "
 import { BatchCancellationError, planBatchCancellation } from "./product-batch-cancellation";
 import { ProductStateMachine } from "../product/product-state-machine";
 import { ProductRestorationError, planProductRestoration } from "./product-restoration";
+import { hardDeleteProducts } from "./product-hard-delete";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -767,17 +768,9 @@ export class OperationsProductBatchService {
 
         const deleteIds = cancellation.delete.map((product) => product.id);
         if (deleteIds.length > 0) {
-          // These image tables hold a productId without a foreign key, so they are not cascaded.
-          await transaction.productImageVariantAsset.deleteMany({ where: { productId: { in: deleteIds } } });
-          await transaction.productImageProcessingJob.deleteMany({ where: { productId: { in: deleteIds } } });
-          await transaction.productMainImageSelection.deleteMany({ where: { productId: { in: deleteIds } } });
-          // Conditional on the statuses we planned from: if anything moved an item meanwhile (e.g. it
-          // was just published), the count misses and the whole cancellation rolls back.
-          let deleted = 0;
-          for (const product of cancellation.delete) {
-            const result = await transaction.product.deleteMany({ where: { id: product.id, batchId, status: product.status } });
-            deleted += result.count;
-          }
+          // If anything moved an item meanwhile (e.g. it was just published), the count misses and
+          // the whole cancellation rolls back.
+          const deleted = await hardDeleteProducts(transaction, cancellation.delete);
           if (deleted !== deleteIds.length) {
             throw new BatchCancellationError("An item in this batch changed while cancelling. Refresh the batch and try again.");
           }

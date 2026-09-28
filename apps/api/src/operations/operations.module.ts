@@ -32,6 +32,7 @@ import { OperationsRiderController, OperationsRiderRosterController } from "./op
 import { OperationsRiderService } from "./operations-rider.service";
 import { OperationsProductBatchController } from "./operations-product-batch.controller";
 import { OperationsProductBatchService } from "./operations-product-batch.service";
+import { CancelledBatchCleanupController, CancelledBatchCleanupService } from "./cancelled-batch-cleanup";
 import { OperationsProductControlController } from "./operations-product-control.controller";
 import { OperationsProductControlService } from "./operations-product-control.service";
 import { OperationsProductFactoryAdminController } from "./operations-product-factory-admin.controller";
@@ -48,6 +49,8 @@ import { OperationsWarehouseService } from "./operations-warehouse.service";
     OperationsAccessController,
     OperationsWorkspaceController,
     OperationsProductBatchController,
+    // One-off cleanup (2026-09-28); remove with cancelled-batch-cleanup.ts.
+    CancelledBatchCleanupController,
     OperationsProductControlController,
     OperationsProductFactoryAdminController,
     OperationsFulfillmentController,
@@ -69,6 +72,7 @@ import { OperationsWarehouseService } from "./operations-warehouse.service";
     OperationsAfterSalesService,
     OperationsWorkspaceService,
     OperationsProductBatchService,
+    CancelledBatchCleanupService,
     OperationsProductControlService,
     OperationsProductFactoryAdminService,
     OperationsFulfillmentService,

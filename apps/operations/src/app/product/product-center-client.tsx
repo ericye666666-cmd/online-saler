@@ -44,6 +44,7 @@ import { useOperationsSession } from "@/components/admin/operations-access-provi
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { BagStrapField } from "./bag-strap-field";
 import { ProductLabelPrinter } from "./product-label-printer";
+import { CancelledBatchCleanupButton } from "./cancelled-batch-cleanup-dialog";
 import { ApparelSizeField } from "./apparel-size-field";
 import { kidsAgeRangeLabels } from "./apparel-size";
 import { Badge } from "@/components/ui/badge";
@@ -458,11 +459,15 @@ export function ProductQueuePage({ queue, title, description, management = false
         title={title}
         description={description}
         action={
-          <Button variant="outline" onClick={exportCsv}>
-            <DownloadIcon data-icon="inline-start" />
-            
-            {t("导出")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {/* One-off cleanup (2026-09-28); remove with cancelled-batch-cleanup-dialog.tsx. */}
+            {management && canApprove ? <CancelledBatchCleanupButton ids={ids} request={request} onDone={() => void load()} /> : null}
+            <Button variant="outline" onClick={exportCsv}>
+              <DownloadIcon data-icon="inline-start" />
+              
+              {t("导出")}
+            </Button>
+          </div>
         }
       />
       <Card>
