@@ -10,7 +10,7 @@ import {
 assert.equal(productStatusLabel("DRAFT"), "待上传");
 assert.equal(productStatusLabel("CALIBRATION_PENDING"), "待人工校准");
 assert.equal(productStatusLabel("AI_PROCESSED"), "AI 识别完成");
-assert.equal(productStatusLabel("PUBLISHED"), "已发布");
+assert.equal(productStatusLabel("PUBLISHED"), "上架中");
 assert.equal(productStatusLabel("FUTURE_STATE"), "FUTURE_STATE");
 
 // Two statuses sharing one label made the row badge (and any list of statuses) ambiguous.

@@ -14,7 +14,7 @@ export const PRODUCT_STATUS_LABELS: Record<string, string> = {
   REWORK_REQUIRED: "待返工",
   APPROVED: "审核通过",
   READY_FOR_STORAGE: "待扫码入库",
-  PUBLISHED: "已发布",
+  PUBLISHED: "上架中",
   UNPUBLISHED: "已下架",
   ARCHIVED: "已拒绝"
 };
