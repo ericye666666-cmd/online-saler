@@ -17,6 +17,21 @@ These rules define the first 1,000-item Kikuyu MVP.
   `DEPOSIT_HELD`, and must never be sold over the counter. It still occupies a
   shelf and still counts against warehouse capacity.
 
+## Product intake (2026-09-28, owner decision)
+
+- Cancelling a whole intake batch means the batch was never entered. Its items
+  that are not yet on sale are permanently deleted with their inventory
+  records; they do not remain as "rejected" (`ARCHIVED`) and do not appear in
+  product management. Items already published or unpublished stay. An item
+  that is tied to a customer order, or whose stock has moved beyond
+  `PENDING_STOCK_IN`/`AVAILABLE`, is never deleted this way.
+- The cancel dialog states how many items will be deleted before anything
+  happens, and the deletion is written to the audit log.
+- An item rejected at review (not by cancelling its batch) stays "rejected"
+  and can be restored.
+- There is no general "delete rejected items" button. Deletion happens only as
+  part of cancelling a batch.
+
 ## Deposit plan (50% deposit, 7-day hold)
 
 Added 2026-09-23. A shopper who cannot pay in full today may pay half and hold
