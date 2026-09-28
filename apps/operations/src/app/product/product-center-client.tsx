@@ -35,6 +35,7 @@ import {
   RotateCcwIcon,
   SaveIcon,
   ScanBarcodeIcon,
+  Trash2Icon,
   UploadIcon,
   WandSparklesIcon,
   XCircleIcon
@@ -381,6 +382,7 @@ export function ProductQueuePage({ queue, title, description, management = false
   const [movingProduct, setMovingProduct] = useState<JsonRecord | null>(null);
   const [reprintProduct, setReprintProduct] = useState<JsonRecord | null>(null);
   const [restoringProduct, setRestoringProduct] = useState<JsonRecord | null>(null);
+  const [purgeOpen, setPurgeOpen] = useState(false);
   const canMoveShelf = hasPermission("warehouse-locations.move-product");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -458,11 +460,17 @@ export function ProductQueuePage({ queue, title, description, management = false
         title={title}
         description={description}
         action={
-          <Button variant="outline" onClick={exportCsv}>
-            <DownloadIcon data-icon="inline-start" />
-            
-            {t("导出")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {management && canApprove ? <Button variant="outline" onClick={() => setPurgeOpen(true)}>
+              <Trash2Icon data-icon="inline-start" />
+              {t("删除已拒绝商品")}
+            </Button> : null}
+            <Button variant="outline" onClick={exportCsv}>
+              <DownloadIcon data-icon="inline-start" />
+              
+              {t("导出")}
+            </Button>
+          </div>
         }
       />
       <Card>
@@ -591,6 +599,7 @@ export function ProductQueuePage({ queue, title, description, management = false
           await load();
         }}
       /> : null}
+      {purgeOpen ? <PurgeArchivedProductsDialog ids={ids} onClose={() => setPurgeOpen(false)} onPurged={() => void load()} /> : null}
       <RestoreProductDialog key={`restore-${stringValue(restoringProduct?.id)}`} product={restoringProduct} ids={ids} onClose={() => setRestoringProduct(null)} onRestored={() => void load()} />
       <ProductPriceDialog key={stringValue(pricingProduct?.id)} product={pricingProduct} ids={ids} onClose={() => setPricingProduct(null)} onSaved={() => { setPricingProduct(null); void load(); }} />
       <CalibrationDialog product={editingProduct} ids={ids} open={Boolean(editingProduct)} onOpenChange={(open) => !open && setEditingProduct(null)} onSaved={() => { setEditingProduct(null); void load(); }} />
@@ -1302,6 +1311,89 @@ function RestoreProductDialog(props: {
         {result
           ? <Button onClick={props.onClose}>{t("完成")}</Button>
           : <><Button variant="outline" disabled={saving} onClick={props.onClose}>{t("取消")}</Button><Button disabled={saving || !preview || !reason.trim()} onClick={() => void restore()}>{saving ? t("恢复中…") : t("确认恢复")}</Button></>}
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>;
+}
+
+type PurgeSummary = {
+  products: Array<{ productCode: string; title: string | null; batchCode: string | null }>;
+  kept: Array<{ productCode: string; reason: string }>;
+  batches: string[];
+};
+
+const PURGE_CONFIRM_WORD = "DELETE";
+
+function PurgeArchivedProductsDialog(props: {
+  ids: ReturnType<typeof useOperationIds>;
+  onClose: () => void;
+  onPurged: () => void;
+}) {
+  const [preview, setPreview] = useState<PurgeSummary | null>(null);
+  const [result, setResult] = useState<PurgeSummary | null>(null);
+  const [confirmWord, setConfirmWord] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    request<PurgeSummary>("/operations/product-batches/archived-products/purge", {
+      method: "POST",
+      body: JSON.stringify({ ...props.ids, dryRun: true })
+    }).then((summary) => { if (!cancelled) setPreview(summary); })
+      .catch((caught) => { if (!cancelled) setError(caught instanceof Error ? caught.message : t("读取已拒绝商品失败。")); });
+    return () => { cancelled = true; };
+  }, [props.ids]);
+
+  async function purge() {
+    if (!preview || saving || confirmWord.trim() !== PURGE_CONFIRM_WORD) return;
+    setSaving(true);
+    setError("");
+    try {
+      const summary = await request<PurgeSummary>("/operations/product-batches/archived-products/purge", {
+        method: "POST",
+        body: JSON.stringify({ ...props.ids, expectedCount: preview.products.length })
+      });
+      setResult(summary);
+      props.onPurged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("删除失败。"));
+    } finally { setSaving(false); }
+  }
+
+  const summary = result ?? preview;
+  const nothingToDelete = Boolean(preview && preview.products.length === 0);
+
+  return <Dialog open onOpenChange={(open) => { if (!open && !saving) props.onClose(); }}>
+    <DialogContent>
+      <DialogHeader><DialogTitle>{result ? t("已删除") : t("永久删除已拒绝商品")}</DialogTitle></DialogHeader>
+      {!summary && !error ? <p className="text-muted-foreground text-sm">{t("正在读取…")}</p> : null}
+      {summary ? <div className="flex flex-col gap-3 text-sm">
+        {result
+          ? <p>{t("已永久删除 {count} 件商品和 {batches} 个已取消的批次。", { count: result.products.length, batches: result.batches.length })}</p>
+          : nothingToDelete
+            ? <p>{t("没有可以删除的已拒绝商品。")}</p>
+            : <>
+              <StatusMessage tone="danger">{t("将永久删除 {count} 件已拒绝商品，连同照片、库存和操作记录，删除后无法恢复。实物还在仓库的衣服，删除后需要新建批次重新录入。", { count: summary.products.length })}</StatusMessage>
+              {summary.batches.length > 0 ? <p>{t("删除后这些已取消的批次没有商品了，会一起删除：{batches}", { batches: summary.batches.join(", ") })}</p> : null}
+            </>}
+        {!result && summary.products.length > 0 ? <ul className="max-h-60 overflow-y-auto rounded-md border p-2 font-mono text-xs">
+          {summary.products.map((item) => <li key={item.productCode}>{item.productCode}{item.title ? ` · ${item.title}` : ""}</li>)}
+        </ul> : null}
+        {summary.kept.length > 0 ? <div>
+          <div className="text-muted-foreground">{t("{count} 件关联过顾客订单，保留不删：", { count: summary.kept.length })}</div>
+          <ul className="list-disc pl-5 text-xs">{summary.kept.map((item) => <li key={item.productCode}>{item.productCode} · {item.reason}</li>)}</ul>
+        </div> : null}
+      </div> : null}
+      {!result && preview && !nothingToDelete ? <Field>
+        <FieldLabel htmlFor="purge-confirm">{t("输入 {word} 确认删除", { word: PURGE_CONFIRM_WORD })}</FieldLabel>
+        <Input id="purge-confirm" value={confirmWord} disabled={saving} autoComplete="off" onChange={(event) => setConfirmWord(event.target.value)} />
+      </Field> : null}
+      {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+      <DialogFooter>
+        {result || nothingToDelete
+          ? <Button onClick={props.onClose}>{t("完成")}</Button>
+          : <><Button variant="outline" disabled={saving} onClick={props.onClose}>{t("取消")}</Button><Button variant="destructive" disabled={saving || !preview || confirmWord.trim() !== PURGE_CONFIRM_WORD} onClick={() => void purge()}>{saving ? t("删除中…") : t("永久删除")}</Button></>}
       </DialogFooter>
     </DialogContent>
   </Dialog>;

@@ -3006,4 +3006,18 @@ export const enDictionary: Record<string, string> = {
     "Several labels print in a row: stick the first on the parcel (the store scans it to receive), put the rest inside.",
   "在中央仓直接交给顾客或骑手，不用贴面单。": "Handed to the customer or rider at the central warehouse — no label needed.",
   "这个账号不能做这一步，请主管在订单工作台处理。": "This account cannot do this step. Ask a supervisor to do it in the order workbench.",
+  "删除已拒绝商品": "Delete rejected items",
+  "读取已拒绝商品失败。": "Could not load the rejected items.",
+  "删除失败。": "Delete failed.",
+  "已删除": "Deleted",
+  "永久删除已拒绝商品": "Permanently delete rejected items",
+  "已永久删除 {count} 件商品和 {batches} 个已取消的批次。": "Permanently deleted {count} item(s) and {batches} cancelled batch(es).",
+  "没有可以删除的已拒绝商品。": "There are no rejected items to delete.",
+  "将永久删除 {count} 件已拒绝商品，连同照片、库存和操作记录，删除后无法恢复。实物还在仓库的衣服，删除后需要新建批次重新录入。":
+    "This permanently deletes {count} rejected item(s) with their photos, stock and history. It cannot be undone. Garments still in the warehouse will have to be entered again in a new batch.",
+  "删除后这些已取消的批次没有商品了，会一起删除：{batches}": "These cancelled batches will be empty and are deleted too: {batches}",
+  "{count} 件关联过顾客订单，保留不删：": "{count} item(s) were on a customer order and are kept:",
+  "输入 {word} 确认删除": "Type {word} to confirm",
+  "删除中…": "Deleting…",
+  "永久删除": "Delete permanently",
 };

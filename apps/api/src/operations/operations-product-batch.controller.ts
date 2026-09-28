@@ -27,6 +27,11 @@ type RestoreBody = RetakeBody & {
   dryRun?: boolean;
 };
 
+type PurgeBody = AdminEmployeeBody & {
+  dryRun?: boolean;
+  expectedCount?: number;
+};
+
 type ShelfBody = AdminEmployeeBody & {
   locationId?: string;
 };
@@ -134,6 +139,11 @@ export class OperationsProductBatchController {
   @Post(":id/cancel")
   async cancel(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: RetakeBody) {
     return this.batches.cancelBatch(id, await this.identity.employeeInput(authorization, body));
+  }
+
+  @Post("archived-products/purge")
+  async purgeArchivedProducts(@Headers("authorization") authorization: string | undefined, @Body() body: PurgeBody) {
+    return this.batches.purgeArchivedProducts(await this.identity.employeeInput(authorization, body));
   }
 
   @Post("products/:id/restore")

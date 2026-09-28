@@ -71,6 +71,7 @@ const protectedRoutes: Route[] = [
   { method: "GET", path: "/operations/product-batches/products" },
   { method: "GET", path: "/operations/product-batches/shelves" },
   { method: "GET", path: "/operations/product-batches/batch-1" },
+  { method: "POST", path: "/operations/product-batches/archived-products/purge", body: { dryRun: true } },
   ...["run-ai", "generate-barcodes", "shelf", "mark-labels-printed", "stock-in", "prepare-storage", "publish", "complete-and-publish", "cancel"].map((action): Route => ({
     method: "POST", path: `/operations/product-batches/batch-1/${action}`
   })),
