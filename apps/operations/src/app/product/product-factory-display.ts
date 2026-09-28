@@ -3,7 +3,10 @@ export const PRODUCT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "待上传",
   PHOTOGRAPHED: "待 AI 识别",
   AI_PROCESSING: "AI 识别中",
-  AI_PROCESSED: "待人工校准",
+  // AI has finished reading the photo but nobody has opened calibration yet. The AI job normally
+  // moves a garment straight on to CALIBRATION_PENDING, so this shows up mostly on restored items.
+  AI_PROCESSED: "AI 识别完成",
+  // Calibration is open (fresh from AI, or sent back to be recalibrated): a person must confirm.
   CALIBRATION_PENDING: "待人工校准",
   CALIBRATED: "校准完成",
   BARCODE_ASSIGNED: "待打印贴码",
@@ -15,6 +18,19 @@ export const PRODUCT_STATUS_LABELS: Record<string, string> = {
   UNPUBLISHED: "已下架",
   ARCHIVED: "已拒绝"
 };
+
+/**
+ * 商品管理 only shows garments that made it onto the shop, so its status filter has just these two
+ * choices, live first (the default). The API refuses any other status for that page.
+ */
+export const MANAGED_PRODUCT_STATUS_OPTIONS = [
+  ["PUBLISHED", "上架中"],
+  ["UNPUBLISHED", "已下架"]
+] as const;
+
+export type ManagedProductStatus = (typeof MANAGED_PRODUCT_STATUS_OPTIONS)[number][0];
+
+export const DEFAULT_MANAGED_PRODUCT_STATUS: ManagedProductStatus = "PUBLISHED";
 
 export const IMAGE_ISSUE_LABELS: Record<string, string> = {
   SUBJECT_OFF_CENTER: "主体丢失或严重偏离",

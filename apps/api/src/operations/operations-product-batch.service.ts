@@ -24,7 +24,7 @@ import {
   DEFAULT_PRODUCT_BATCH_SIZE,
   isAllowedProductBatchSize
 } from "./product-factory-batch-size";
-import { productFactoryVisibilityWhere } from "./product-factory-list-filter";
+import { managedProductStatus, productFactoryVisibilityWhere } from "./product-factory-list-filter";
 import { buildProductBatchImagePreviews } from "./product-batch-image-preview";
 import { canGenerateOrReuseBarcode } from "./product-storage-reservation";
 import { loadConfirmedDisplayImage } from "../product/product-publication-evidence";
@@ -50,7 +50,9 @@ type ProductQueue =
   | "review"
   | "published"
   | "rejected"
-  | "barcode";
+  | "barcode"
+  // 商品管理: only PUBLISHED (default) or UNPUBLISHED, picked by `status`.
+  | "managed";
 
 type ListInput = {
   adminUserId?: string;
@@ -297,8 +299,12 @@ export class OperationsProductBatchService {
   async listProducts(input: ListInput) {
     await this.access.requirePermission(input.adminUserId, PRODUCT_DIGITALIZE_PAGE);
     const where: Record<string, unknown> = { ...productFactoryVisibilityWhere(input.includeTestData) };
-    if (input.queue) Object.assign(where, this.queueWhere(input.queue));
-    if (input.status) where.status = input.status;
+    if (input.queue === "managed") {
+      where.status = managedProductStatus(input.status);
+    } else {
+      if (input.queue) Object.assign(where, this.queueWhere(input.queue));
+      if (input.status) where.status = input.status;
+    }
     if (input.batchId?.trim()) where.batchId = input.batchId.trim();
     if (input.category?.trim()) where.category = input.category.trim();
     if (input.employeeId?.trim()) where.createdByEmployeeId = input.employeeId.trim();

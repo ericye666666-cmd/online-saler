@@ -84,7 +84,7 @@ import {
   canUnpublishProduct,
   productControlLocationCode
 } from "../product-control-flow";
-import { imageIssueLabel, productStatusLabel } from "./product-factory-display";
+import { DEFAULT_MANAGED_PRODUCT_STATUS, MANAGED_PRODUCT_STATUS_OPTIONS, imageIssueLabel, productStatusLabel } from "./product-factory-display";
 import { frontImage } from "./product-factory-upload-flow";
 import { t } from "@/i18n/runtime";
 
@@ -370,7 +370,8 @@ export function ProductQueuePage({ queue, title, description, management = false
   const [products, setProducts] = useState<JsonRecord[]>([]);
   const [search, setSearch] = useState("");
   const [batchFilter, setBatchFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  // 商品管理 always opens on 上架中; the choice is deliberately not remembered between visits.
+  const [statusFilter, setStatusFilter] = useState<string>(management ? DEFAULT_MANAGED_PRODUCT_STATUS : "");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -395,7 +396,7 @@ export function ProductQueuePage({ queue, title, description, management = false
     setBusy("load");
     setError("");
     try {
-      const query = new URLSearchParams({ adminUserId: ids.adminUserId, queue, ...(!management ? { employeeId: ids.employeeId } : {}) });
+      const query = new URLSearchParams({ adminUserId: ids.adminUserId, queue: management ? "managed" : queue, ...(!management ? { employeeId: ids.employeeId } : {}) });
       if (search.trim()) query.set("search", search.trim());
       if (batchFilter.trim()) query.set("batchId", batchFilter.trim());
       if (statusFilter.trim()) query.set("status", statusFilter.trim());
@@ -446,7 +447,7 @@ export function ProductQueuePage({ queue, title, description, management = false
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `products-${queue}.csv`;
+    anchor.download = `products-${management ? statusFilter.toLowerCase() : queue}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -475,10 +476,16 @@ export function ProductQueuePage({ queue, title, description, management = false
         <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Input placeholder={t("搜索商品/Barcode/标题")} value={search} onChange={(event) => setSearch(event.target.value)} />
           <Input placeholder={t("批次 ID")} value={batchFilter} onChange={(event) => setBatchFilter(event.target.value)} />
-          <NativeSelect value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <NativeSelectOption value="">{t("全部状态")}</NativeSelectOption>
-            {PRODUCT_STATUS_OPTIONS.map((status) => <NativeSelectOption key={status} value={status}>{productStatusLabel(status)}</NativeSelectOption>)}
-          </NativeSelect>
+          {management ? (
+            <NativeSelect aria-label={t("状态")} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              {MANAGED_PRODUCT_STATUS_OPTIONS.map(([status, label]) => <NativeSelectOption key={status} value={status}>{t(label)}</NativeSelectOption>)}
+            </NativeSelect>
+          ) : (
+            <NativeSelect value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <NativeSelectOption value="">{t("全部状态")}</NativeSelectOption>
+              {PRODUCT_STATUS_OPTIONS.map((status) => <NativeSelectOption key={status} value={status}>{productStatusLabel(status)}</NativeSelectOption>)}
+            </NativeSelect>
+          )}
           <NativeSelect value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
             <NativeSelectOption value="">{t("全部分类")}</NativeSelectOption>
             {PRODUCT_CATEGORY_OPTIONS.map((category) => <NativeSelectOption key={category} value={category}>{optionLabel(category)}</NativeSelectOption>)}

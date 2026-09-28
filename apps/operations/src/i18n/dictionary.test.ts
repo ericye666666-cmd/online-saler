@@ -13,7 +13,7 @@ import {
   PRODUCT_FACTORY_STAGE_LABELS,
   PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS
 } from "../app/product/product-factory-batch-display";
-import { IMAGE_ISSUE_LABELS, PRODUCT_STATUS_LABELS } from "../app/product/product-factory-display";
+import { IMAGE_ISSUE_LABELS, MANAGED_PRODUCT_STATUS_OPTIONS, PRODUCT_STATUS_LABELS } from "../app/product/product-factory-display";
 import { operationsModules } from "../components/admin/operations-admin-shell";
 import { ROLE_LABEL_SOURCES } from "../app/system/role-labels";
 
@@ -51,6 +51,7 @@ assert.equal(normalizeOperationsLocale(undefined), "zh-CN");
 const labelSources = [
   ...Object.values(PRODUCT_STATUS_LABELS),
   ...Object.values(IMAGE_ISSUE_LABELS),
+  ...MANAGED_PRODUCT_STATUS_OPTIONS.map(([, label]) => label),
   ...Object.values(PRODUCT_FACTORY_STAGE_LABELS),
   ...Object.values(PRODUCT_FACTORY_WORKFLOW_STAGE_LABELS),
   ...ORDER_STATUS_TABS.map(([, label]) => label),

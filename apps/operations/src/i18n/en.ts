@@ -1994,6 +1994,8 @@ export const enDictionary: Record<string, string> = {
     "The AI product details have been updated. Sizes are still entered by staff.",
   "AI 失败": "AI failed",
   "AI 识别中": "AI reading in progress",
+  "AI 识别完成": "AI reading done",
+  "上架中": "Live",
   "AI 销售素材": "AI sales assets",
   "AI 鞋类识别已更新，请对照原图核对鞋码、鞋款和成双情况。":
     "The AI shoe reading has been updated. Check the size, style and pairing against the original photos.",
