@@ -59,7 +59,11 @@ sale.
 
 Until a domain is verified in Resend, mail is sent from `onboarding@resend.dev`
 and only reaches the Resend account owner's own address. To send to other people
-as well, verify a domain in Resend and set `BUSINESS_REPORT_EMAIL_FROM`.
+as well, verify a domain in Resend (it adds a few DNS records), then set the
+GitHub repository variable `BUSINESS_REPORT_EMAIL_FROM_PRODUCTION` to an address
+on that domain, e.g. `Direct Loop Reports <reports@your-domain>`, and deploy
+again. A sender address is not secret, so a plain variable is fine; left empty,
+the Resend test sender is used.
 
 If either secret is missing, the deploy prints a warning, the jobs still run,
 and the route answers `sent: false` with the reason. Nothing else is affected.
