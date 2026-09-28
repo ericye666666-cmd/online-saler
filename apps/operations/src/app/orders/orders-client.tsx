@@ -26,6 +26,9 @@ import { isTransitNodeOption, labelPrinted, needsDestination, planDispatchBatch,
 
 import { hasPermission, type OperationsSession } from "@/components/admin/operations-access";
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
+import { ListPaginationBar, useUrlPage } from "@/components/list-pagination-bar";
+import { ZoomableProductImage } from "@/components/product-image-lightbox";
+import { LIST_PAGE_SIZE, asPagedList, type PagedList } from "@/lib/list-pagination";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,6 +129,8 @@ export type OrderRow = {
     unitPriceKsh: number;
     quantity: number;
     displayImageUrl?: string | null;
+    /** Every photo of the garment for the enlarged view, the card's photo first. */
+    imageUrls?: string[];
     snapshot?: { title: string; barcode?: string | null; sizeLabel?: string | null; imageUrl?: string | null } | null;
     inventoryItem?: { id: string; barcode: string; status: string; location?: { id: string; locationCode: string } | null } | null;
   }>;
@@ -344,6 +349,11 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [labelOrders, setLabelOrders] = useState<OrderRow[] | null>(null);
+  // 30 a page, the page kept in the address bar (?page=3). A new tab or filter starts again at page 1.
+  const [page, setPage] = useUrlPage();
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  const [loaded, setLoaded] = useState(false);
   const meta = PAGE_META[scope];
 
   useEffect(() => {
@@ -360,19 +370,25 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
     const headers = authorizationHeaders(accessToken);
     try {
       const [nextOrders, nextCounts, nextEmployees] = await Promise.all([
-        request<OrderRow[]>("/operations/orders", { query, headers }),
+        request<PagedList<OrderRow> | OrderRow[]>("/operations/orders", { query: { ...query, page: String(page), pageSize: String(LIST_PAGE_SIZE) }, headers }),
         request<Record<OrderStatusTab, number>>("/operations/orders/summary", { query: { ...query, tab: "all" }, headers }),
         request<Employee[]>("/operations/orders/employees", { headers })
       ]);
-      setOrders(nextOrders);
+      const result = asPagedList(nextOrders);
+      setOrders(result.items);
+      setTotal(result.total);
+      setPageCount(result.pageCount);
+      setLoaded(true);
       setCounts(nextCounts);
       setEmployees(nextEmployees);
+      // Asked for a page past the end (orders moved on to another tab): show the last one.
+      if (result.page !== page) setPage(result.page);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("无法读取订单中心。 "));
     } finally {
       setBusy(false);
     }
-  }, [accessToken, appliedFilters, scope, tab]);
+  }, [accessToken, appliedFilters, page, scope, setPage, tab]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -397,6 +413,12 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
     setFilters(EMPTY_FILTERS);
     setAppliedFilters(EMPTY_FILTERS);
     setTab(scope === "after-sales" ? "after-sale" : "all");
+    setPage(1);
+  }
+
+  function goToPage(next: number) {
+    setPage(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
@@ -408,7 +430,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
       </PageHeader>
 
       {scope === "workbench" || scope === "all" ? (
-        <Tabs value={tab} onValueChange={(value) => setTab(value as OrderStatusTab)}>
+        <Tabs value={tab} onValueChange={(value) => { setTab(value as OrderStatusTab); setPage(1); }}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
             {ORDER_STATUS_TABS.map(([value, label]) => (
               <TabsTrigger key={value} value={value} className="shrink-0">
@@ -423,7 +445,7 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
         filters={filters}
         employees={employees}
         onChange={setFilters}
-        onApply={() => setAppliedFilters(filters)}
+        onApply={() => { setAppliedFilters(filters); setPage(1); }}
         onReset={resetFilters}
         busy={busy}
       />
@@ -435,6 +457,8 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+
+      {loaded && total > 0 ? <ListPaginationBar total={total} page={page} pageCount={pageCount} unit="单" busy={busy} onPage={goToPage} /> : null}
 
       <div className="flex flex-col gap-4">
         {orders.length ? orders.map((order) => (
@@ -458,6 +482,8 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
           </Empty>
         )}
       </div>
+
+      {loaded && pageCount > 1 ? <ListPaginationBar total={total} page={page} pageCount={pageCount} unit="单" busy={busy} onPage={goToPage} /> : null}
 
       <OrderActionDialog
         state={dialog}
@@ -484,11 +510,14 @@ export function OrderCenterPage({ scope }: { scope: Scope }) {
  * orders it will touch — because a mixed selection is normal and "领取拣货 12 单"
  * out of 20 ticked is the honest description of what the button does.
  */
-function BatchBar({ orders, session, busy, onClear, onPickingSheet, onLabels, onBatch }: {
+function BatchBar({ orders, pageOrderCount, session, busy, onClear, onSelectPage, onPickingSheet, onLabels, onBatch }: {
   orders: OrderRow[];
+  /** How many selectable orders are on this page: the selection never reaches past it. */
+  pageOrderCount: number;
   session: OperationsSession | null;
   busy: boolean;
   onClear: () => void;
+  onSelectPage: () => void;
   onPickingSheet: () => void;
   onLabels: (orders: OrderRow[]) => void;
   onBatch: (orders: OrderRow[], action: string, label: string) => Promise<void>;
@@ -503,7 +532,10 @@ function BatchBar({ orders, session, busy, onClear, onPickingSheet, onLabels, on
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-3 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
-        <span className="font-medium">{t("已选 {count} 单 · {items} 件", { count: orders.length, items: itemCount })}</span>
+        <span className="font-medium">{t("本页已选 {count} 单 · {items} 件", { count: orders.length, items: itemCount })}</span>
+        {orders.length < pageOrderCount ? (
+          <Button variant="outline" size="sm" onClick={onSelectPage}>{t("选中本页全部（{count} 单）", { count: pageOrderCount })}</Button>
+        ) : null}
         <Button variant="ghost" size="sm" onClick={onClear}>{t("取消选择")}</Button>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="outline" disabled={busy} onClick={onPickingSheet}>
@@ -577,43 +609,77 @@ export function DailyDispatchPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Each step is its own paged list, 30 a page, the page kept in the address bar.
+  const [page, setPage] = useUrlPage();
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  const [loaded, setLoaded] = useState(false);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const current = DISPATCH_STEPS.find((entry) => entry.key === step)!;
 
   const load = useCallback(async () => {
     if (!accessToken) return;
     setBusy(true);
     setError("");
     const headers = authorizationHeaders(accessToken);
+    const statuses = DISPATCH_STEPS.find((entry) => entry.key === step)!.statuses;
     try {
-      const [nextOrders, nextEmployees] = await Promise.all([
-        request<OrderRow[]>("/operations/orders", { query: { scope: "workbench", tab: "all" }, headers }),
+      const [nextOrders, nextCounts, nextEmployees] = await Promise.all([
+        request<PagedList<OrderRow> | OrderRow[]>("/operations/orders", {
+          query: { scope: "workbench", tab: "all", fulfillmentStatus: statuses.join(","), page: String(page), pageSize: String(LIST_PAGE_SIZE) },
+          headers
+        }),
+        request<Record<string, number>>("/operations/orders/fulfillment-counts", { query: { scope: "workbench" }, headers }),
         request<Employee[]>("/operations/orders/employees", { headers })
       ]);
-      setOrders(nextOrders);
+      const result = asPagedList(nextOrders);
+      setOrders(result.items);
+      setTotal(result.total);
+      setPageCount(result.pageCount);
+      setLoaded(true);
+      setStatusCounts(nextCounts);
       setEmployees(nextEmployees);
+      // Asked for a page past the end (orders moved on to the next step): show the last one.
+      if (result.page !== page) setPage(result.page);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("无法读取今天的出货任务。"));
     } finally {
       setBusy(false);
     }
-  }, [accessToken]);
+  }, [accessToken, page, setPage, step]);
 
   useEffect(() => { void load(); }, [load]);
-  // A selection only means anything within one step; carrying it across would
-  // act on orders that are no longer on screen.
-  useEffect(() => { setSelected(new Set()); }, [step]);
+  // A selection only means anything within one step and one page; carrying it
+  // across would act on orders that are no longer on screen.
+  useEffect(() => { setSelected(new Set()); }, [step, page]);
 
-  const byStep = useMemo(() => {
-    const map = {} as Record<DispatchStep, OrderRow[]>;
-    for (const entry of DISPATCH_STEPS) {
-      map[entry.key] = orders.filter((order) => (entry.statuses as readonly string[]).includes(order.fulfillment?.status ?? ""));
-    }
-    return map;
-  }, [orders]);
+  function changeStep(next: DispatchStep) {
+    setStep(next);
+    setPage(1);
+  }
 
-  const current = DISPATCH_STEPS.find((entry) => entry.key === step)!;
-  const stepOrders = byStep[step] ?? [];
+  function goToPage(next: number) {
+    setPage(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** The badge on each step counts every order in it, not only the page on screen. */
+  function stepCount(entry: (typeof DISPATCH_STEPS)[number]) {
+    return (entry.statuses as readonly string[]).reduce((sum, status) => sum + (statusCounts[status] ?? 0), 0);
+  }
+
+  // The server already sends only this step's orders; the filter keeps the
+  // previous step's reply off the screen while the next one loads.
+  const stepOrders = useMemo(
+    () => orders.filter((order) => (current.statuses as readonly string[]).includes(order.fulfillment?.status ?? "")),
+    [orders, current]
+  );
   const groups = useMemo(() => groupByDestination(stepOrders), [stepOrders]);
   const selectedOrders = useMemo(() => stepOrders.filter((order) => selected.has(order.id)), [stepOrders, selected]);
+
+  function selectPage() {
+    setSelected(new Set(stepOrders.map((order) => order.id)));
+  }
 
   function toggleOrder(orderId: string, value: boolean) {
     setSelected((currentSelection) => {
@@ -718,17 +784,31 @@ export function DailyDispatchPage() {
         </Button>
       </PageHeader>
 
-      <Tabs value={step} onValueChange={(value) => setStep(value as DispatchStep)}>
+      <Tabs value={step} onValueChange={(value) => changeStep(value as DispatchStep)}>
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
           {DISPATCH_STEPS.map((entry) => (
             <TabsTrigger key={entry.key} value={entry.key} className="shrink-0">
-              {t(entry.label)}<Badge variant="secondary">{(byStep[entry.key] ?? []).length}</Badge>
+              {t(entry.label)}<Badge variant="secondary">{stepCount(entry)}</Badge>
             </TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
 
       <p className="text-muted-foreground text-sm">{t(current.hint)}</p>
+
+      {loaded && total > 0 ? (
+        <div className="flex flex-col gap-2">
+          <ListPaginationBar total={total} page={page} pageCount={pageCount} unit="单" busy={busy} onPage={goToPage} />
+          {step !== "transit" && stepOrders.length ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" disabled={selectedOrders.length === stepOrders.length} onClick={selectPage}>
+                {t("选中本页全部（{count} 单）", { count: stepOrders.length })}
+              </Button>
+              {pageCount > 1 ? <span className="text-muted-foreground text-xs">{t("勾选和批量操作只作用于本页；翻页后请重新勾选。")}</span> : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {error ? (
         <Alert variant="destructive">
@@ -786,13 +866,16 @@ export function DailyDispatchPage() {
             </EmptyHeader>
           </Empty>
         )}
+        {loaded && pageCount > 1 ? <ListPaginationBar total={total} page={page} pageCount={pageCount} unit="单" busy={busy} onPage={goToPage} /> : null}
       </div>
 
       <BatchBar
         orders={selectedOrders}
+        pageOrderCount={stepOrders.length}
         session={session}
         busy={busy}
         onClear={() => setSelected(new Set())}
+        onSelectPage={selectPage}
         onPickingSheet={() => setPickingSheet(selectedOrders)}
         onLabels={(targets) => setLabelOrders(targets)}
         onBatch={batchAction}
@@ -1119,9 +1202,14 @@ function OrderCard(props: {
             const scan = fulfillment?.items.find((candidate) => candidate.orderItemId === item.id);
             return (
               <div key={item.id} className="grid gap-3 rounded-lg border p-2 sm:grid-cols-[72px_1fr_auto] sm:items-center">
-                <div className="flex h-20 w-18 items-center justify-center overflow-hidden rounded-md border bg-white">
+                <ZoomableProductImage
+                  images={orderItemImages(item)}
+                  title={item.snapshot?.title ?? t("未命名商品")}
+                  barcode={scan?.expectedBarcode ?? item.snapshot?.barcode ?? item.inventoryItem?.barcode}
+                  className="flex h-20 w-18 items-center justify-center overflow-hidden rounded-md border bg-white"
+                >
                   <OrderItemImage src={item.displayImageUrl ?? item.snapshot?.imageUrl} alt={item.snapshot?.title ?? t("商品图片")} />
-                </div>
+                </ZoomableProductImage>
                 <div className="min-w-0">
                   {/* The shelf code leads: it is the only thing on this row that
                       tells a picker where to walk. */}
@@ -1169,7 +1257,19 @@ function OrderItemImage({ src, alt }: { src?: string | null; alt: string }) {
       </div>
     );
   }
-  return <img src={src.startsWith("/") && !src.startsWith("/api-proxy/") ? `/api-proxy${src}` : src} alt={alt} loading="lazy" decoding="async" className="size-full object-contain" onError={() => setFailed(true)} />;
+  return <img src={proxiedImageUrl(src)} alt={alt} loading="lazy" decoding="async" className="size-full object-contain" onError={() => setFailed(true)} />;
+}
+
+/** API paths go through the console's proxy; full URLs (storage links) are used as they are. */
+function proxiedImageUrl(src: string): string {
+  return src.startsWith("/") && !src.startsWith("/api-proxy/") ? `${API_PROXY_URL}${src}` : src;
+}
+
+/** Every photo of the line's garment for the enlarged view, the card's own photo first. */
+function orderItemImages(item: OrderRow["items"][number]): string[] {
+  const first = item.displayImageUrl ?? item.snapshot?.imageUrl;
+  const all = [first, ...(item.imageUrls ?? [])].filter((url): url is string => Boolean(url)).map(proxiedImageUrl);
+  return [...new Set(all)];
 }
 
 type OrderAction = {

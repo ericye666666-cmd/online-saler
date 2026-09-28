@@ -5,7 +5,7 @@ import { BAG_STYLES, BAG_STYLE_LABELS } from "@online-saler/shared-types";
 import { operationsFetch } from "@/lib/operations-api";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   isShoeCategory,
   AI_AUDIENCES,
@@ -41,6 +41,9 @@ import {
 } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
+import { ListPaginationBar, useUrlPage } from "@/components/list-pagination-bar";
+import { ZoomableProductImage } from "@/components/product-image-lightbox";
+import { EXPORT_PAGE_SIZE, LIST_PAGE_SIZE, asPagedList, type PagedList } from "@/lib/list-pagination";
 import { ShoeCalibrationFields } from "./shoe-calibration-fields";
 import { BagStrapField } from "./bag-strap-field";
 import { ProductLabelPrinter } from "./product-label-printer";
@@ -391,31 +394,65 @@ export function ProductQueuePage({ queue, title, description, management = false
     if (batchId) setBatchFilter(batchId);
   }, []);
 
+  // 30 a page, the page kept in the address bar (?page=3) so a refresh stays put.
+  const [page, setPage] = useUrlPage();
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  const [loaded, setLoaded] = useState(false);
+
+  // The filters alone, without who is asking: a change here sends the list back to page 1.
+  const filterKey = JSON.stringify([search.trim(), batchFilter.trim(), statusFilter.trim(), categoryFilter.trim(), employeeFilter.trim(), dateFrom, dateTo, includeTestData]);
+
+  const listQuery = useCallback(() => {
+    const query = new URLSearchParams({ adminUserId: ids.adminUserId, queue: management ? "managed" : queue, ...(!management ? { employeeId: ids.employeeId } : {}) });
+    if (search.trim()) query.set("search", search.trim());
+    if (batchFilter.trim()) query.set("batchId", batchFilter.trim());
+    if (statusFilter.trim()) query.set("status", statusFilter.trim());
+    if (categoryFilter.trim()) query.set("category", categoryFilter.trim());
+    if (employeeFilter.trim()) query.set("employeeId", employeeFilter.trim());
+    if (dateFrom) query.set("dateFrom", dateFrom);
+    if (dateTo) query.set("dateTo", dateTo);
+    if (includeTestData) query.set("includeTestData", "true");
+    return query;
+  }, [batchFilter, categoryFilter, dateFrom, dateTo, employeeFilter, ids.adminUserId, ids.employeeId, includeTestData, management, queue, search, statusFilter]);
+
   const load = useCallback(async () => {
     if (!ids.adminUserId) return;
     setBusy("load");
     setError("");
     try {
-      const query = new URLSearchParams({ adminUserId: ids.adminUserId, queue: management ? "managed" : queue, ...(!management ? { employeeId: ids.employeeId } : {}) });
-      if (search.trim()) query.set("search", search.trim());
-      if (batchFilter.trim()) query.set("batchId", batchFilter.trim());
-      if (statusFilter.trim()) query.set("status", statusFilter.trim());
-      if (categoryFilter.trim()) query.set("category", categoryFilter.trim());
-      if (employeeFilter.trim()) query.set("employeeId", employeeFilter.trim());
-      if (dateFrom) query.set("dateFrom", dateFrom);
-      if (dateTo) query.set("dateTo", dateTo);
-      if (includeTestData) query.set("includeTestData", "true");
-      setProducts(await request<JsonRecord[]>(`/operations/product-batches/products?${query.toString()}`));
+      const query = listQuery();
+      query.set("page", String(page));
+      query.set("pageSize", String(LIST_PAGE_SIZE));
+      const result = asPagedList(await request<PagedList<JsonRecord> | JsonRecord[]>(`/operations/product-batches/products?${query.toString()}`));
+      setProducts(result.items);
+      setTotal(result.total);
+      setPageCount(result.pageCount);
+      setLoaded(true);
+      // Asked for a page past the end (items were taken down): show the last one.
+      if (result.page !== page) setPage(result.page);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("无法读取商品列表。"));
     } finally {
       setBusy("");
     }
-  }, [batchFilter, categoryFilter, dateFrom, dateTo, employeeFilter, ids.adminUserId, ids.employeeId, includeTestData, management, queue, search, statusFilter]);
+  }, [ids.adminUserId, listQuery, page, setPage]);
 
+  const lastFilterKey = useRef<string | null>(null);
   useEffect(() => {
+    if (lastFilterKey.current !== null && lastFilterKey.current !== filterKey && page !== 1) {
+      lastFilterKey.current = filterKey;
+      setPage(1);
+      return;
+    }
+    lastFilterKey.current = filterKey;
     void load();
-  }, [load]);
+  }, [filterKey, load, page, setPage]);
+
+  function goToPage(next: number) {
+    setPage(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   async function run(label: string, action: () => Promise<void>) {
     setBusy(label);
@@ -430,10 +467,33 @@ export function ProductQueuePage({ queue, title, description, management = false
     }
   }
 
-  function exportCsv() {
+  /**
+   * Exports every product that matches the filters, not only the 30 on screen:
+   * it walks the list 200 at a time and writes one file.
+   */
+  async function exportCsv() {
+    if (!ids.adminUserId) return;
+    setBusy("export");
+    setError("");
+    const everything: JsonRecord[] = [];
+    try {
+      for (let current = 1; ; current += 1) {
+        const query = listQuery();
+        query.set("page", String(current));
+        query.set("pageSize", String(EXPORT_PAGE_SIZE));
+        const result = asPagedList(await request<PagedList<JsonRecord> | JsonRecord[]>(`/operations/product-batches/products?${query.toString()}`), EXPORT_PAGE_SIZE);
+        everything.push(...result.items);
+        if (!result.items.length || result.page >= result.pageCount) break;
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("导出失败，请重试。"));
+      return;
+    } finally {
+      setBusy("");
+    }
     const lines = [
       ["productCode", "batch", "status", "title", "category", "barcode", "createdAt"].join(","),
-      ...products.map((product) => [
+      ...everything.map((product) => [
         csv(stringValue(product.productCode)),
         csv(stringValue(objectRecord(product.batch)?.batchCode)),
         csv(stringValue(product.status)),
@@ -460,10 +520,9 @@ export function ProductQueuePage({ queue, title, description, management = false
         description={description}
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={exportCsv}>
+            <Button variant="outline" disabled={busy === "export" || !ids.adminUserId} onClick={() => void exportCsv()} title={t("导出全部符合筛选的商品，不只是当前页")}>
               <DownloadIcon data-icon="inline-start" />
-              
-              {t("导出")}
+              {busy === "export" ? t("正在导出…") : t("导出全部")}
             </Button>
           </div>
         }
@@ -504,9 +563,13 @@ export function ProductQueuePage({ queue, title, description, management = false
       <Card>
         <CardHeader>
           <CardTitle>{t("商品列表")}</CardTitle>
-          <CardDescription>{products.length}  {t("件商品")}{products.length === 200 ? t(" · 当前显示前 200 件，请用搜索或筛选缩小范围") : ""}{management ? t(" · 修改详情前请先下架，完成详情审核后重新上架") : ""}</CardDescription>
+          <CardDescription>
+            {loaded ? t("共 {total} 件 · 第 {page} / {pages} 页", { total, page, pages: pageCount }) : t("正在读取商品…")}
+            {management ? t(" · 修改详情前请先下架，完成详情审核后重新上架") : ""}
+          </CardDescription>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="flex flex-col gap-3">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -584,6 +647,8 @@ export function ProductQueuePage({ queue, title, description, management = false
               {products.length === 0 ? <TableRow><TableCell colSpan={management ? 7 : 6} className="py-10 text-center text-muted-foreground">{busy === "load" ? t("正在读取商品…") : t("没有符合条件的商品。")}</TableCell></TableRow> : null}
             </TableBody>
           </Table>
+          </div>
+          {loaded && total > 0 ? <ListPaginationBar total={total} page={page} pageCount={pageCount} unit="件" busy={busy === "load"} onPage={goToPage} /> : null}
         </CardContent>
       </Card>
       <ProductShelfDialog key={`shelf-${stringValue(movingProduct?.id)}`} product={movingProduct} ids={ids} onClose={() => setMovingProduct(null)} onSaved={() => { setMovingProduct(null); void load(); }} />
@@ -1526,14 +1591,29 @@ function StatusMessage(props: { tone: "danger" | "neutral"; children: ReactNode 
   );
 }
 
+/** The row's small photo; clicking it opens every photo of the garment full size. */
 function Thumb({ product }: { product: JsonRecord }) {
   const image = latestImage(product);
   const url = image ? imageUrlFromImage(image) : "";
+  const title = stringValue(product.title) || stringValue(product.productCode);
   return (
-    <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
-      <SafeProductImage src={url} alt={stringValue(product.title) || stringValue(product.productCode)} className="size-full object-cover" compact />
-    </div>
+    <ZoomableProductImage
+      images={productImageUrls(product)}
+      title={title}
+      barcode={stringValue(product.barcode)}
+      className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted"
+    >
+      <SafeProductImage src={url} alt={title} className="size-full object-cover" compact />
+    </ZoomableProductImage>
   );
+}
+
+/** Every photo of a product for the enlarged view: the front photo first, then the rest newest first. */
+function productImageUrls(product: JsonRecord): string[] {
+  const images = Array.isArray(product.images) ? product.images.map((image) => objectRecord(image)).filter((image): image is JsonRecord => image !== null) : [];
+  const front = latestImage(product);
+  const ordered = front ? [front, ...images.filter((image) => image !== front)] : images;
+  return [...new Set(ordered.map(imageUrlFromImage).filter(Boolean))];
 }
 
 function SafeProductImage(props: { src: string; alt: string; className: string; compact?: boolean }) {
@@ -1552,7 +1632,7 @@ function SafeProductImage(props: { src: string; alt: string; className: string; 
     );
   }
 
-  return <img src={props.src} alt={props.alt} className={props.className} onError={() => setFailed(true)} />;
+  return <img src={props.src} alt={props.alt} loading="lazy" decoding="async" className={props.className} onError={() => setFailed(true)} />;
 }
 
 function AiPreview({ job }: { job: JsonRecord }) {

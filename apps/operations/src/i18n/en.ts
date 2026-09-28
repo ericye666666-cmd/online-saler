@@ -183,7 +183,6 @@ export const enDictionary: Record<string, string> = {
 
   // ——— Batch workflow, photos and publishing ———
   " · 待审核": " · Pending review",
-  " · 当前显示前 200 件，请用搜索或筛选缩小范围": " · Showing the first 200 items — use search or filters to narrow this down",
   " · 关联员工：{name}": " · Employee: {name}",
   " · 配送员：{name}": " · Rider: {name}",
   " · 失败 {failed}": " · {failed} failed",
@@ -3008,4 +3007,20 @@ export const enDictionary: Record<string, string> = {
     "Several labels print in a row: stick the first on the parcel (the store scans it to receive), put the rest inside.",
   "在中央仓直接交给顾客或骑手，不用贴面单。": "Handed to the customer or rider at the central warehouse — no label needed.",
   "这个账号不能做这一步，请主管在订单工作台处理。": "This account cannot do this step. Ask a supervisor to do it in the order workbench.",
+
+  // ——— Paged lists and the enlarged photo view ———
+  "共 {total} 件 · 第 {page} / {pages} 页": "{total} items · page {page} of {pages}",
+  "共 {total} 单 · 第 {page} / {pages} 页": "{total} orders · page {page} of {pages}",
+  "分页": "Pages",
+  "上一页": "Previous",
+  "下一页": "Next",
+  "导出全部": "Export all",
+  "正在导出…": "Exporting…",
+  "导出全部符合筛选的商品，不只是当前页": "Exports every item that matches the filters, not just this page",
+  "导出失败，请重试。": "Export failed. Please try again.",
+  "本页已选 {count} 单 · {items} 件": "{count} orders selected on this page · {items} items",
+  "选中本页全部（{count} 单）": "Select all on this page ({count} orders)",
+  "勾选和批量操作只作用于本页；翻页后请重新勾选。": "Ticks and batch actions apply to this page only. Tick again after changing page.",
+  "查看大图": "View large photo",
+  "无条码": "No barcode",
 };
