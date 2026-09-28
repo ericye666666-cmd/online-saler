@@ -33,7 +33,6 @@ import { refreshWarehouseLocationStatuses, WAREHOUSE_OCCUPYING_STATUSES } from "
 import { BatchCancellationError, planBatchCancellation } from "./product-batch-cancellation";
 import { ProductStateMachine } from "../product/product-state-machine";
 import { ProductRestorationError, planProductRestoration } from "./product-restoration";
-import { emptiedCancelledBatchIds, planProductPurge } from "./product-purge";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -1032,103 +1031,6 @@ export class OperationsProductBatchService {
       if (error instanceof ProductRestorationError) throw new BadRequestException(error.message);
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
         throw new BadRequestException("The products changed while restoring. Refresh and try again.");
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Permanently deletes every "Rejected" (archived) product, and the cancelled batches that leaves
-   * empty. Products a customer order touched are kept. With `dryRun` it only lists what would go;
-   * otherwise `expectedCount` must match the list the employee confirmed, so nothing they did not
-   * see is deleted.
-   */
-  async purgeArchivedProducts(input: { adminUserId?: string; employeeId?: string; dryRun?: boolean; expectedCount?: number }) {
-    const session = await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
-    const employeeId = employeeIdOrDefault(input.employeeId);
-    const dryRun = input.dryRun === true;
-
-    try {
-      return await prisma.$transaction(async (transaction) => {
-        const archived = await transaction.product.findMany({
-          where: { status: ProductStatus.ARCHIVED },
-          include: { batch: true, inventoryItem: true },
-          orderBy: [{ createdAt: "asc" }, { batchItemNumber: "asc" }]
-        });
-        const orderCounts = archived.length === 0 ? [] : await transaction.orderItem.groupBy({
-          by: ["productId"],
-          where: { productId: { in: archived.map((product) => product.id) } },
-          _count: { _all: true }
-        });
-        const orderCountById = new Map(orderCounts.map((row) => [row.productId, row._count._all]));
-        const plan = planProductPurge(archived.map((product) => ({
-          id: product.id,
-          productCode: product.productCode,
-          title: product.title,
-          status: product.status,
-          batchId: product.batchId,
-          batchCode: product.batch?.batchCode ?? null,
-          orderItemCount: orderCountById.get(product.id) ?? 0,
-          inventoryStatus: product.inventoryItem?.status ?? null
-        })));
-
-        const purgedIds = new Set(plan.purge.map((item) => item.id));
-        const cancelledBatches = await transaction.productBatch.findMany({
-          where: { status: ProductBatchStatus.CANCELLED },
-          include: { products: { select: { id: true } } }
-        });
-        const batchIds = emptiedCancelledBatchIds(
-          cancelledBatches.map((batch) => ({ id: batch.id, productIds: batch.products.map((product) => product.id) })),
-          purgedIds
-        );
-        const summary = {
-          products: plan.purge.map((item) => ({ productCode: item.productCode, title: item.title, batchCode: item.batchCode })),
-          kept: plan.kept,
-          batches: cancelledBatches.filter((batch) => batchIds.includes(batch.id)).map((batch) => batch.batchCode),
-          dryRun
-        };
-        if (dryRun) return summary;
-        if (input.expectedCount !== plan.purge.length) {
-          throw new BadRequestException("The list of rejected products changed. Open the delete dialog again and check the list.");
-        }
-
-        const productIds = [...purgedIds];
-        const shelfIds = [...new Set(archived
-          .filter((product) => purgedIds.has(product.id) && product.inventoryItem?.locationId)
-          .map((product) => product.inventoryItem!.locationId!))];
-        // These image tables hold a productId without a foreign key, so they are not cascaded.
-        await transaction.productImageVariantAsset.deleteMany({ where: { productId: { in: productIds } } });
-        await transaction.productImageProcessingJob.deleteMany({ where: { productId: { in: productIds } } });
-        await transaction.productMainImageSelection.deleteMany({ where: { productId: { in: productIds } } });
-        const deleted = await transaction.product.deleteMany({ where: { id: { in: productIds }, status: ProductStatus.ARCHIVED } });
-        if (deleted.count !== productIds.length) {
-          throw new BadRequestException("Some products changed while deleting. Refresh and try again.");
-        }
-        await transaction.productBatch.deleteMany({ where: { id: { in: batchIds }, status: ProductBatchStatus.CANCELLED } });
-        await refreshWarehouseLocationStatuses(transaction, shelfIds);
-        await transaction.auditLog.create({
-          data: {
-            actorType: ActorType.EMPLOYEE,
-            actorId: employeeId,
-            actorAdminUserId: session.adminUser?.id ?? null,
-            sourceApp: SourceApp.OPERATIONS,
-            module: "Product",
-            entityType: "Product",
-            entityId: null,
-            action: "PRODUCT_PURGE_ARCHIVED",
-            beforeJson: {
-              products: plan.purge.map((item) => ({ id: item.id, productCode: item.productCode, title: item.title, batchCode: item.batchCode })),
-              batches: summary.batches
-            },
-            afterJson: { deletedProducts: productIds.length, deletedBatches: batchIds.length },
-            reason: "Rejected products permanently deleted"
-          }
-        });
-        return summary;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60_000 });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-        throw new BadRequestException("The products changed while deleting. Refresh and try again.");
       }
       throw error;
     }
