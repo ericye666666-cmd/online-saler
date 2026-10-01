@@ -47,6 +47,22 @@ const GARMENT_SHARPEN_SIGMA = 1;
 const GARMENT_MASK_FROM = 45;
 const GARMENT_MASK_FULL = 75;
 
+/** Who made a display image, as recorded on its processing job. */
+export const AI_DISPLAY_PROVIDER = "openai-image-edit";
+export const CUTOUT_DISPLAY_PROVIDER = "local-cutout";
+export const ORIGINAL_PHOTO_DISPLAY_PROVIDER = "original-photo";
+
+// A framed AI image's subject is DISPLAY_SUBJECT_SIZE including the bleed band
+// kept on each side; the cutout has no bleed, so it is scaled to the size the
+// garment itself ends up in an AI image and the two read alike side by side.
+const CUTOUT_SUBJECT_SIZE = Math.round(DISPLAY_SUBJECT_SIZE / (1 + SUBJECT_BLEED * 2));
+const CUTOUT_SHADOW_TONE = 70;
+const CUTOUT_SHADOW_OPACITY = 0.28;
+const CUTOUT_SHADOW_BLUR = 14;
+const CUTOUT_SHADOW_PAD = 48;
+const CUTOUT_SHADOW_OFFSET_X = 0.025;
+const CUTOUT_SHADOW_OFFSET_Y = 0.02;
+
 @Injectable()
 export class ProductImageTransformerService {
   async orientUploadedImage(
@@ -106,6 +122,89 @@ export class ProductImageTransformerService {
       body: data,
       contentType: "image/jpeg",
       processorVersion: `${generated.processorVersion}+framed-v5-${DISPLAY_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
+      widthPx: DISPLAY_CANVAS_SIZE,
+      heightPx: DISPLAY_CANVAS_SIZE
+    };
+  }
+
+  /**
+   * The local stand-in for the AI display image, used when OpenAI refuses a
+   * photo. The background-removal cutout keeps every print and logo exactly as
+   * photographed; it is placed on the same white square, at the same subject
+   * size as a framed AI image, with one soft contact shadow on the same side
+   * the AI prompt would have put it.
+   */
+  async composeCutoutDisplay(
+    cutout: Buffer,
+    shadowSide: "left" | "right",
+    meta: { provider: string; processorVersion: string }
+  ): Promise<ProductImageTransformResult> {
+    const subject = await sharp(cutout)
+      .rotate()
+      .ensureAlpha()
+      .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 2 })
+      .resize(CUTOUT_SUBJECT_SIZE, CUTOUT_SUBJECT_SIZE, { fit: "inside", withoutEnlargement: false })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    const { width, height } = subject.info;
+    const left = Math.floor((DISPLAY_CANVAS_SIZE - width) / 2);
+    const top = Math.floor((DISPLAY_CANVAS_SIZE - height) / 2);
+
+    const alpha = await sharp(subject.data).extractChannel(3).raw().toBuffer();
+    const shadowPixels = Buffer.alloc(width * height * 4);
+    for (let pixel = 0; pixel < width * height; pixel += 1) {
+      shadowPixels[pixel * 4] = CUTOUT_SHADOW_TONE;
+      shadowPixels[pixel * 4 + 1] = CUTOUT_SHADOW_TONE;
+      shadowPixels[pixel * 4 + 2] = CUTOUT_SHADOW_TONE;
+      shadowPixels[pixel * 4 + 3] = Math.round((alpha[pixel] ?? 0) * CUTOUT_SHADOW_OPACITY);
+    }
+    const pad = CUTOUT_SHADOW_PAD;
+    const shadow = await sharp(shadowPixels, { raw: { width, height, channels: 4 } })
+      .extend({ top: pad, bottom: pad, left: pad, right: pad, background: { r: CUTOUT_SHADOW_TONE, g: CUTOUT_SHADOW_TONE, b: CUTOUT_SHADOW_TONE, alpha: 0 } })
+      .blur(CUTOUT_SHADOW_BLUR)
+      .png()
+      .toBuffer();
+    const offsetX = Math.round(width * CUTOUT_SHADOW_OFFSET_X) * (shadowSide === "left" ? -1 : 1);
+    const offsetY = Math.round(height * CUTOUT_SHADOW_OFFSET_Y);
+
+    const body = await sharp({
+      create: { width: DISPLAY_CANVAS_SIZE, height: DISPLAY_CANVAS_SIZE, channels: 3, background: "#ffffff" }
+    })
+      .composite([
+        { input: shadow, left: left - pad + offsetX, top: top - pad + offsetY },
+        { input: subject.data, left, top }
+      ])
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: 95, chromaSubsampling: "4:4:4" })
+      .toBuffer();
+    return {
+      body,
+      contentType: "image/jpeg",
+      provider: meta.provider,
+      processorVersion: `${meta.processorVersion}+cutout-display-v1-${CUTOUT_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
+      widthPx: DISPLAY_CANVAS_SIZE,
+      heightPx: DISPLAY_CANVAS_SIZE
+    };
+  }
+
+  /**
+   * The original photo itself, untouched apart from orientation, centred on the
+   * display square. Staff choose this when neither the AI nor the cutout gives
+   * a usable image, so one item never holds up its batch.
+   */
+  async frameOriginalAsDisplay(original: Buffer): Promise<ProductImageTransformResult> {
+    const subject = await sharp(original)
+      .rotate()
+      .resize(DISPLAY_SUBJECT_SIZE, DISPLAY_SUBJECT_SIZE, { fit: "inside", withoutEnlargement: false })
+      .flatten({ background: "#ffffff" })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    const body = await this.centreOnWhite(subject.data, subject.info.width, subject.info.height);
+    return {
+      body,
+      contentType: "image/jpeg",
+      provider: ORIGINAL_PHOTO_DISPLAY_PROVIDER,
+      processorVersion: `original-photo-v1-${DISPLAY_SUBJECT_SIZE}of${DISPLAY_CANVAS_SIZE}`,
       widthPx: DISPLAY_CANVAS_SIZE,
       heightPx: DISPLAY_CANVAS_SIZE
     };

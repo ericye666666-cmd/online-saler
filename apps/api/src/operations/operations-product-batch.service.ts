@@ -35,6 +35,11 @@ import { ProductStateMachine } from "../product/product-state-machine";
 import { ProductRestorationError, planProductRestoration } from "./product-restoration";
 import { hardDeleteProducts } from "./product-hard-delete";
 import { listPage, listPageRequest, listPageWindow } from "./list-page";
+import {
+  activeBatchProducts,
+  batchItemsAccountedFor,
+  DISPLAY_REVIEW_REJECTABLE_STATUSES
+} from "./product-batch-active-items";
 
 const PRODUCT_DIGITALIZE_PAGE = "page.product.digitalization";
 const PRODUCT_CONTROL_PAGE = "page.product.control";
@@ -411,19 +416,21 @@ export class OperationsProductBatchService {
 
   async moveBatchToShelf(batchId: string, input: { adminUserId?: string; employeeId?: string; locationId?: string }) {
     const batch = await this.requireBatch(batchId);
-    const products = await prisma.product.findMany({ where: { batchId: batch.id }, select: { id: true } });
-    return this.productControl.moveProductsToShelf(products.map((product) => product.id), { ...input, batchId: batch.id });
+    const products = await prisma.product.findMany({ where: { batchId: batch.id }, select: { id: true, status: true } });
+    return this.productControl.moveProductsToShelf(activeBatchProducts(products).map((product) => product.id), { ...input, batchId: batch.id });
   }
 
   async generateBatchBarcodes(batchId: string, input: { adminUserId?: string; employeeId?: string; locationId?: string }) {
     const employeeId = employeeIdOrDefault(input.employeeId);
     await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const batch = await this.requireBatch(batchId);
-    const products = await prisma.product.findMany({
+    const allProducts = await prisma.product.findMany({
       where: { batchId: batch.id },
       orderBy: { batchItemNumber: "asc" }
     });
-    if (products.length !== batch.targetCount || products.some((product) =>
+    // Items rejected on the image review page stay out of every step from here on.
+    const products = activeBatchProducts(allProducts);
+    if (!batchItemsAccountedFor(batch, allProducts) || products.some((product) =>
       !canGenerateOrReuseBarcode(product.status, product.barcode)
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must be calibrated before generating barcodes.`);
@@ -449,7 +456,7 @@ export class OperationsProductBatchService {
     await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const batch = await this.requireBatch(batchId);
     const products = await prisma.product.findMany({
-      where: { batchId: batch.id, barcode: { not: null } },
+      where: { batchId: batch.id, barcode: { not: null }, status: { not: ProductStatus.ARCHIVED } },
       select: { id: true }
     });
     return this.productControl.markLabelsPrinted({
@@ -463,12 +470,13 @@ export class OperationsProductBatchService {
     const session = await this.access.requirePermission(input.adminUserId, PRODUCT_EDIT_ACTION);
     const employeeId = employeeIdOrDefault(input.employeeId);
     const batch = await this.requireBatch(batchId);
-    const products = await prisma.product.findMany({
+    const allProducts = await prisma.product.findMany({
       where: { batchId: batch.id },
       include: { inventoryItem: true },
       orderBy: { batchItemNumber: "asc" }
     });
-    if (products.length !== batch.targetCount || products.some((product) =>
+    const products = activeBatchProducts(allProducts);
+    if (!batchItemsAccountedFor(batch, allProducts) || products.some((product) =>
       product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must be ready for storage.`);
@@ -502,8 +510,9 @@ export class OperationsProductBatchService {
   async prepareBatchStorage(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
     await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
     const batch = await this.requireBatch(batchId);
-    const products = await prisma.product.findMany({ where: { batchId }, orderBy: { batchItemNumber: "asc" } });
-    if (products.length !== batch.targetCount || products.some((product) =>
+    const allProducts = await prisma.product.findMany({ where: { batchId }, orderBy: { batchItemNumber: "asc" } });
+    const products = activeBatchProducts(allProducts);
+    if (!batchItemsAccountedFor(batch, allProducts) || products.some((product) =>
       product.status !== ProductStatus.APPROVED && product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must be approved before preparing storage.`);
@@ -520,12 +529,13 @@ export class OperationsProductBatchService {
   async publishBatch(batchId: string, input: { adminUserId?: string; employeeId?: string }) {
     await this.access.requirePermission(input.adminUserId, "action.product.publish");
     const batch = await this.requireBatch(batchId);
-    const products = await prisma.product.findMany({
+    const allProducts = await prisma.product.findMany({
       where: { batchId },
       include: this.productInclude(),
       orderBy: { batchItemNumber: "asc" }
     });
-    if (products.length !== batch.targetCount || products.some((product) =>
+    const products = activeBatchProducts(allProducts);
+    if (!batchItemsAccountedFor(batch, allProducts) || products.some((product) =>
       product.status !== ProductStatus.READY_FOR_STORAGE && product.status !== ProductStatus.PUBLISHED
     )) {
       throw new BadRequestException(`All ${batch.targetCount} products must complete storage before publishing.`);
@@ -557,7 +567,8 @@ export class OperationsProductBatchService {
     if (products.length !== batch.targetCount) {
       throw new BadRequestException(`Batch must contain exactly ${batch.targetCount} products.`);
     }
-    const pending = products.filter((product) => product.status !== ProductStatus.PUBLISHED);
+    // Rejected (archived) items are finished with; they are neither stocked in nor published.
+    const pending = activeBatchProducts(products).filter((product) => product.status !== ProductStatus.PUBLISHED);
     if (pending.length === 0) {
       await this.completeBatchIfDone(batch.id);
       return this.batchDetail(batch.id, input.adminUserId);
@@ -663,6 +674,39 @@ export class OperationsProductBatchService {
       where: { id: productId },
       include: this.productInclude()
     });
+  }
+
+  /**
+   * Rejects one garment from the white-background review page — for example
+   * when no usable display image can be made — so the rest of its batch can go
+   * on to labels and publishing without it. The garment is archived through the
+   * normal product transition (audit entry plus a REJECTED review) and can be
+   * restored later from the rejected list.
+   */
+  async rejectAtDisplayReview(productId: string, input: { adminUserId?: string; employeeId?: string; reason?: string }) {
+    const employeeId = employeeIdOrDefault(input.employeeId);
+    await this.access.requirePermission(input.adminUserId, PRODUCT_APPROVE_ACTION);
+    const reason = input.reason?.trim();
+    if (!reason) throw new BadRequestException("A reason is required to reject this item.");
+    const product = await prisma.product.findUnique({ where: { id: productId }, include: { batch: true } });
+    if (!product) throw new NotFoundException("Product not found.");
+    if (!product.batchId || !product.batch) throw new BadRequestException("Only an item in an intake batch can be rejected here.");
+    if (product.batch.status !== ProductBatchStatus.OPEN) throw new BadRequestException("This batch is no longer open.");
+    if (!DISPLAY_REVIEW_REJECTABLE_STATUSES.has(product.status)) {
+      throw new BadRequestException(
+        "Only an item still waiting for its white-background image review can be rejected here. After barcodes are generated, use the review decision instead."
+      );
+    }
+    const actor = { actorType: ActorType.EMPLOYEE, actorId: employeeId, sourceApp: SourceApp.OPERATIONS };
+    await this.products.transitionProduct({
+      productId,
+      toStatus: ProductStatus.ARCHIVED,
+      reason: `Rejected at white-background image review (batch ${product.batch.batchCode}): ${reason}`,
+      actor,
+      review: { result: ReviewResult.REJECTED, reviewerEmployeeId: employeeId, reason }
+    });
+    await this.completeBatchIfDone(product.batchId);
+    return prisma.product.findUnique({ where: { id: productId }, include: this.productInclude() });
   }
 
   async markProductForRecalibration(productId: string, input: { adminUserId?: string; employeeId?: string; reason?: string }) {

@@ -503,6 +503,8 @@ export class ProductDetailGenerationService {
     });
     if (!batch) throw new NotFoundException("Product batch not found");
     const profiles = batch.products.flatMap((product) => {
+      // A rejected item is not going on sale; its sales detail is never approved.
+      if (product.status === ProductStatus.ARCHIVED) return [];
       const profile = product.detailProfiles[0];
       if (!profile || profile.sourceDataVersion !== product.detailSourceVersion) return [];
       return profile.status === ProductDetailStatus.READY || profile.status === ProductDetailStatus.APPROVED

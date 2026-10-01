@@ -154,6 +154,11 @@ export class OperationsProductBatchController {
     return this.batches.reviewProduct(id, await this.identity.employeeInput(authorization, body));
   }
 
+  @Post("products/:id/reject-at-display-review")
+  async rejectAtDisplayReview(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: RetakeBody) {
+    return this.batches.rejectAtDisplayReview(id, await this.identity.employeeInput(authorization, body));
+  }
+
   @Post("products/:id/recalibration")
   async recalibration(@Headers("authorization") authorization: string | undefined, @Param("id") id: string, @Body() body: RetakeBody) {
     return this.batches.markProductForRecalibration(id, await this.identity.employeeInput(authorization, body));

@@ -63,6 +63,21 @@ export class ProductImageProcessingController {
     return job.status === "PENDING" ? this.jobRunner.run(job.id) : job;
   }
 
+  @Post("products/:productId/images/:imageId/use-original-display")
+  async useOriginalDisplay(
+    @Param("productId") productId: string,
+    @Param("imageId") imageId: string,
+    @Headers("authorization") authorization?: string
+  ) {
+    const session = await this.identity.permission(authorization, "action.product.edit");
+    return this.jobRunner.useOriginalAsDisplay({
+      productId,
+      sourceImageId: imageId,
+      adminUserId: session.adminUser?.id ?? null,
+      employeeId: session.adminUser?.linkedEmployeeId ?? null
+    });
+  }
+
   @Post("image-processing-jobs/:jobId/run")
   async run(
     @Param("jobId") jobId: string,

@@ -8,6 +8,11 @@ const OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits";
 const DEFAULT_MODEL = "gpt-image-2.5-sunburst";
 const DEFAULT_QUALITY = "high";
 const DEFAULT_TIMEOUT_MS = 180_000;
+// "low" asks the image model for less strict content filtering. Second-hand
+// stock is full of branded and printed garments (cartoon characters, team
+// crests, band logos); at the default strictness the edit endpoint refused a
+// Mickey Mouse sweatshirt outright. "auto" restores OpenAI's default.
+const DEFAULT_MODERATION = "low";
 // The model always returns a square. A portrait photo sent as it is gets scaled
 // until the garment fills that square top to bottom, which leaves no room under
 // it for the contact shadow the prompt asks for. Sending a square with the
@@ -78,8 +83,47 @@ export function shoeDisplayImagePrompt(side: ShadowSide): string {
 
 type OpenAIImageEditPayload = {
   data?: Array<{ b64_json?: string }>;
-  error?: { message?: string } | string;
+  error?: { message?: string; code?: string | null; type?: string | null; param?: string | null } | string;
 };
+
+export type OpenAIDisplayImageFailure = {
+  httpStatus: number | null;
+  openaiCode: string | null;
+  openaiType: string | null;
+  openaiMessage: string;
+  requestId: string | null;
+  /** OpenAI's safety system refused the photo; sending the same photo again will not help. */
+  safetyRejected: boolean;
+  /** A refusal a retry of the same photo will not change (any 4xx except 429, or no image back). */
+  permanent: boolean;
+};
+
+/**
+ * A failed call to the image edit endpoint, with what OpenAI said about it.
+ * Carries no image data and no credentials, so it is safe to log.
+ */
+export class OpenAIDisplayImageError extends BackgroundRemovalProviderError {
+  constructor(
+    code: BackgroundRemovalProviderError["code"],
+    message: string,
+    readonly details: OpenAIDisplayImageFailure
+  ) {
+    super(code, message);
+  }
+}
+
+const SAFETY_CODES = new Set(["moderation_blocked", "content_policy_violation", "content_policy", "safety_violation"]);
+
+export function isSafetyRejection(
+  httpStatus: number,
+  error: { code?: string | null; type?: string | null; message?: string }
+): boolean {
+  if (httpStatus !== 400) return false;
+  const code = error.code?.toLowerCase() ?? "";
+  const type = error.type?.toLowerCase() ?? "";
+  if (SAFETY_CODES.has(code) || SAFETY_CODES.has(type)) return true;
+  return /safety system|content policy|moderation_blocked/i.test(error.message ?? "");
+}
 
 @Injectable()
 export class OpenAIProductDisplayImageProvider {
@@ -96,45 +140,67 @@ export class OpenAIProductDisplayImageProvider {
       );
     }
 
-    const form = new FormData();
-    form.set("model", this.model());
     const shoes = isShoeCategory(input.category);
     const side = shadowSideFor(input.filename);
-    form.set("prompt", shoes ? shoeDisplayImagePrompt(side) : productDisplayImagePrompt(side));
-    form.set("size", "1024x1024");
-    form.set("quality", this.quality());
-    form.set("background", "opaque");
-    form.set("output_format", "png");
     const upload = await withRoomAroundPhoto(input);
-    form.append(
-      "image[]",
-      new Blob([new Uint8Array(upload.body)], { type: upload.contentType }),
-      upload.filename
-    );
+    const buildForm = (withModeration: boolean) => {
+      const form = new FormData();
+      form.set("model", this.model());
+      form.set("prompt", shoes ? shoeDisplayImagePrompt(side) : productDisplayImagePrompt(side));
+      form.set("size", "1024x1024");
+      form.set("quality", this.quality());
+      form.set("background", "opaque");
+      form.set("output_format", "png");
+      if (withModeration) form.set("moderation", this.moderation());
+      form.append(
+        "image[]",
+        new Blob([new Uint8Array(upload.body)], { type: upload.contentType }),
+        upload.filename
+      );
+      return form;
+    };
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs());
     try {
-      const response = await fetch(OPENAI_IMAGE_EDIT_URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: form,
-        signal: controller.signal
-      });
-      const responseText = await response.text();
-      const payload = parsePayload(responseText);
+      let response = await this.post(apiKey, buildForm(true), controller.signal);
+      if (rejectsModerationParameter(response)) {
+        // A model that does not accept the parameter would otherwise fail every
+        // item; send the request again exactly as it was sent before.
+        response = await this.post(apiKey, buildForm(false), controller.signal);
+      }
+      const payload = response.payload;
       if (!response.ok) {
-        throw new BackgroundRemovalProviderError(
+        const detail = errorDetail(payload);
+        throw new OpenAIDisplayImageError(
           response.status >= 500 || response.status === 429 ? "UNKNOWN" : "PROCESSOR_REJECTED_IMAGE",
-          `OpenAI display image generation failed (${response.status}): ${errorMessage(payload)}`
+          `OpenAI display image generation failed (${response.status}): ${detail.message}`,
+          {
+            httpStatus: response.status,
+            openaiCode: detail.code ?? null,
+            openaiType: detail.type ?? null,
+            openaiMessage: detail.message,
+            requestId: response.requestId,
+            safetyRejected: isSafetyRejection(response.status, detail),
+            permanent: response.status >= 400 && response.status < 500 && response.status !== 429
+          }
         );
       }
 
       const encoded = payload.data?.[0]?.b64_json;
       if (!encoded) {
-        throw new BackgroundRemovalProviderError(
+        throw new OpenAIDisplayImageError(
           "PROCESSOR_REJECTED_IMAGE",
-          "OpenAI display image generation returned no image data"
+          "OpenAI display image generation returned no image data",
+          {
+            httpStatus: response.status,
+            openaiCode: null,
+            openaiType: null,
+            openaiMessage: "no image data",
+            requestId: response.requestId,
+            safetyRejected: false,
+            permanent: true
+          }
         );
       }
 
@@ -163,8 +229,29 @@ export class OpenAIProductDisplayImageProvider {
     }
   }
 
+  private async post(apiKey: string, body: FormData, signal: AbortSignal) {
+    const response = await fetch(OPENAI_IMAGE_EDIT_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body,
+      signal
+    });
+    const responseText = await response.text();
+    return {
+      ok: response.ok,
+      status: response.status,
+      requestId: response.headers?.get?.("x-request-id") ?? null,
+      payload: parsePayload(responseText)
+    };
+  }
+
   private apiKey(): string {
     return process.env.OPENAI_API_KEY?.trim() ?? "";
+  }
+
+  private moderation(): "low" | "auto" {
+    const configured = process.env.OPENAI_IMAGE_EDIT_MODERATION?.trim().toLowerCase();
+    return configured === "auto" || configured === "low" ? configured : DEFAULT_MODERATION;
   }
 
   private model(): string {
@@ -193,9 +280,26 @@ function parsePayload(text: string): OpenAIImageEditPayload {
   }
 }
 
-function errorMessage(payload: OpenAIImageEditPayload): string {
-  if (typeof payload.error === "string") return payload.error.slice(0, 600);
-  return String(payload.error?.message ?? "unknown error").slice(0, 600);
+function errorDetail(payload: OpenAIImageEditPayload): {
+  message: string;
+  code?: string | null;
+  type?: string | null;
+  param?: string | null;
+} {
+  if (typeof payload.error === "string") return { message: payload.error.slice(0, 600) };
+  return {
+    message: String(payload.error?.message ?? "unknown error").slice(0, 600),
+    code: payload.error?.code ?? null,
+    type: payload.error?.type ?? null,
+    param: payload.error?.param ?? null
+  };
+}
+
+function rejectsModerationParameter(response: { status: number; payload: OpenAIImageEditPayload }): boolean {
+  if (response.status !== 400) return false;
+  const detail = errorDetail(response.payload);
+  return detail.param === "moderation" ||
+    /unknown parameter.*moderation|moderation.*(not supported|unsupported|unrecognized)/i.test(detail.message);
 }
 
 /**

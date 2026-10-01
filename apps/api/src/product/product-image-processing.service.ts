@@ -287,7 +287,24 @@ export class ProductImageProcessingService {
       throw new BadRequestException("Confirm product information before reviewing the display image.");
     }
     const comparison = await this.getComparison(input.productId);
-    if (comparison.aiDisplayMain?.imageId !== input.imageId) throw new BadRequestException("Review the current original's AI display image.");
+    if (comparison.aiDisplayMain?.imageId !== input.imageId) {
+      // The comparison shows the currently selected display image first, so a
+      // newer one made from the same original (regenerated, local cutout, or
+      // the original photo chosen by staff) is accepted too — but only one
+      // made from the current front original.
+      const current = comparison.original
+        ? await prisma.productImageVariantAsset.findFirst({
+          where: {
+            id: input.imageId,
+            productId: input.productId,
+            variant: DatabaseProductImageVariant.AI_DISPLAY_MAIN,
+            sourceImageId: comparison.original.imageId
+          },
+          select: { id: true }
+        })
+        : null;
+      if (!current) throw new BadRequestException("Review the current original's AI display image.");
+    }
     return this.selectMainImage(input, { recordDetailSourceChange: false, humanConfirmed: input.humanConfirmed !== false });
   }
 
