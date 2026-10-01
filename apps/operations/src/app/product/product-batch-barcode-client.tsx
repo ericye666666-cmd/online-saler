@@ -13,11 +13,13 @@ import {
   ArrowLeftIcon,
   BarcodeIcon,
   CheckCircle2Icon,
+  ImageIcon,
   LoaderCircleIcon,
   MapPinIcon,
   PackageCheckIcon,
   PrinterIcon,
-  RefreshCwIcon
+  RefreshCwIcon,
+  XCircleIcon
 } from "lucide-react";
 
 import { useOperationsSession } from "@/components/admin/operations-access-provider";
@@ -28,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_LABEL_SIZE, MACOS_PRINT_AGENT_DOWNLOAD_URL, PRINT_AGENT_DOWNLOAD_URL } from "../local-label-print";
 import { ProductLabelPrinter } from "./product-label-printer";
 import { productStatusLabel } from "./product-factory-display";
+import { displayMethod, displayMethodLabel, isRejected, latestFailedDisplayJob } from "./product-display-method";
 import { t } from "@/i18n/runtime";
 
 const API_PROXY_URL = "/api-proxy";
@@ -162,24 +165,27 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
     void load().catch((caught) => setError(errorMessage(caught, t("无法读取打印与归位工作台。"))));
   }, [batchId, load]);
 
-  const allAiDisplaysReady = Boolean(batch?.products.length) && batch!.products.every((product) =>
+  // Items rejected on this page stay listed but take no further part in the batch.
+  const activeProducts = useMemo(() => (batch?.products ?? []).filter((product) => !isRejected(product)), [batch]);
+
+  const allAiDisplaysReady = activeProducts.length > 0 && activeProducts.every((product) =>
     Boolean(comparisons[product.id]?.aiDisplayMain)
   );
 
-  const allDisplaysConfirmed = Boolean(batch?.products.length) && batch!.products.length === batch!.targetCount && batch!.products.every((product) =>
+  const allDisplaysConfirmed = activeProducts.length > 0 && batch!.products.length === batch!.targetCount && activeProducts.every((product) =>
     product.status === "PUBLISHED" || displayConfirmed(comparisons[product.id])
   );
-  const allDetailsReady = Boolean(batch?.products.length) && batch!.products.every((product) =>
+  const allDetailsReady = activeProducts.length > 0 && activeProducts.every((product) =>
     product.status === "PUBLISHED" || detailReady(product)
   );
 
   useEffect(() => {
-    if (!batch || busy || (allAiDisplaysReady && allDetailsReady) || batch.products.every((product) => product.status === "PUBLISHED")) return;
+    if (!batch || busy || (allAiDisplaysReady && allDetailsReady) || activeProducts.every((product) => product.status === "PUBLISHED")) return;
     const timer = window.setTimeout(() => {
       void load().catch(() => undefined);
     }, 3_000);
     return () => window.clearTimeout(timer);
-  }, [allAiDisplaysReady, allDetailsReady, batch, busy, load]);
+  }, [activeProducts, allAiDisplaysReady, allDetailsReady, batch, busy, load]);
 
   async function generateBarcodesAndLocations() {
     if (!batch || !allDisplaysConfirmed || !allDetailsReady) return;
@@ -193,7 +199,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
     try {
       // A candidate may be reviewed while sales copy is still rendering.
       // Synchronize the final assets from the confirmed selection before labels.
-      await runWithConcurrency(batch.products.filter((product) => product.status !== "PUBLISHED"), 2, async (product) => {
+      await runWithConcurrency(activeProducts.filter((product) => product.status !== "PUBLISHED"), 2, async (product) => {
         await request(`/product-detail-profiles/${product.detailProfiles![0]!.id}/assets/generate`, { method: "POST", body: "{}" });
       });
       await request(`/operations/product-batches/${batch.id}/generate-barcodes`, {
@@ -201,7 +207,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
         body: JSON.stringify({ ...ids, locationId: shelf.id })
       });
       await load();
-      setNotice(t("本批 {targetCount} 个 Barcode 已生成，整批放在货架 {locationCode}。", { targetCount: batch.targetCount, locationCode: shelf.locationCode }));
+      setNotice(t("本批 {targetCount} 个 Barcode 已生成，整批放在货架 {locationCode}。", { targetCount: activeProducts.length, locationCode: shelf.locationCode }));
       router.push(`/product/barcode?batchId=${encodeURIComponent(batch.id)}`);
     } catch (caught) {
       setError(errorMessage(caught, t("无法生成 Barcode 或预留货架位。")));
@@ -261,14 +267,86 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
       } else {
         await select(comparison.aiDisplayMain!.imageId, true);
         setNotice(t("本件展示图已确认。"));
-        const nextIndex = batch!.products.findIndex((item, index) => index > reviewIndex && item.status !== "PUBLISHED" && !displayConfirmed(comparisons[item.id]));
-        const firstPending = batch!.products.findIndex((item) => item.id !== product.id && item.status !== "PUBLISHED" && !displayConfirmed(comparisons[item.id]));
-        if (nextIndex >= 0 || firstPending >= 0) setReviewIndex(nextIndex >= 0 ? nextIndex : firstPending);
+        moveToNextPending(product.id);
       }
       await load();
     } catch (caught) {
       await load().catch(() => undefined);
       setError(errorMessage(caught, t("无法处理展示图，请重试。")));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function moveToNextPending(currentId: string) {
+    if (!batch) return;
+    const pending = (item: ProductRecord) => item.id !== currentId && item.status !== "PUBLISHED" && !isRejected(item) && !displayConfirmed(comparisons[item.id]);
+    const nextIndex = batch.products.findIndex((item, index) => index > reviewIndex && pending(item));
+    const firstPending = batch.products.findIndex(pending);
+    if (nextIndex >= 0 || firstPending >= 0) setReviewIndex(nextIndex >= 0 ? nextIndex : firstPending);
+  }
+
+  // Escape for one item: its own original photo, untouched, becomes the display image.
+  async function useOriginalPhoto(product: ProductRecord) {
+    const comparison = comparisons[product.id];
+    const profile = product.detailProfiles?.[0];
+    if (product.status === "PUBLISHED" || !comparison?.original) return;
+    if (!window.confirm(t("用第 {number} 件的正面原图（不经过 AI，不抠图）作为白底展示图，并确认本件？", { number: product.batchItemNumber ?? "-" }))) return;
+    setBusy(`original-${product.id}`);
+    setError("");
+    setNotice("");
+    try {
+      const job = await request<ImageProcessingJobRecord>(
+        `/products/${product.id}/images/${comparison.original.imageId}/use-original-display`, { method: "POST", body: "{}" }
+      );
+      if (job.status !== "SUCCEEDED" || !job.outputImageId) throw new Error(job.errorMessage || t("无法改用原图，请重试。"));
+      await request(
+        profile && detailReady(product) ? `/product-detail-profiles/${encodeURIComponent(profile.id)}/main-image` : `/products/${product.id}/display-image-selection`, {
+          method: "POST", body: JSON.stringify({ imageId: job.outputImageId, humanConfirmed: true })
+        }
+      );
+      // Sales details wait for a display image; one that failed with it is retried now.
+      if (profile?.status === "FAILED") {
+        await request(`/operations/product-batches/${batch!.id}/detail-generation/retry-failed`, {
+          method: "POST", headers: { "X-Admin-User-Id": ids.adminUserId }, body: JSON.stringify({})
+        }).catch(() => undefined);
+      }
+      setNotice(t("已改用原图作为展示图，本件已确认。"));
+      moveToNextPending(product.id);
+      await load();
+    } catch (caught) {
+      await load().catch(() => undefined);
+      setError(errorMessage(caught, t("无法改用原图，请重试。")));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  // Escape for one item: reject only this garment so the rest of the batch can go on.
+  async function rejectThisItem(product: ProductRecord) {
+    if (product.status !== "CALIBRATED") return;
+    const reason = window.prompt(
+      t("单独拒绝第 {number} 件？它会移到“已拒绝”列表（以后可恢复），本批其余衣服继续。请填写原因：", { number: product.batchItemNumber ?? "-" }),
+      t("白底展示图无法生成")
+    );
+    if (reason === null) return;
+    if (!reason.trim()) {
+      setError(t("请填写拒绝原因。"));
+      return;
+    }
+    setBusy(`reject-${product.id}`);
+    setError("");
+    setNotice("");
+    try {
+      await request(`/operations/product-batches/products/${product.id}/reject-at-display-review`, {
+        method: "POST", body: JSON.stringify({ reason: reason.trim() })
+      });
+      setNotice(t("第 {number} 件已单独拒绝，本批其余衣服可以继续。", { number: product.batchItemNumber ?? "-" }));
+      moveToNextPending(product.id);
+      await load();
+    } catch (caught) {
+      await load().catch(() => undefined);
+      setError(errorMessage(caught, t("无法拒绝这件，请重试。")));
     } finally {
       setBusy("");
     }
@@ -298,7 +376,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
 
   async function markPrinted(products: ProductRecord[]) {
     if (!batch) return;
-    if (products.length === batch.products.length) {
+    if (products.length === activeProducts.length) {
       await request(`/operations/product-batches/${batch.id}/mark-labels-printed`, {
         method: "POST",
         body: JSON.stringify(ids)
@@ -314,7 +392,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
 
   async function confirmPlacedAndPublish() {
     if (!batch) return;
-    if (!window.confirm(t("Have all items been placed in their assigned shelf locations?\n\n请确认本批 {targetCount} 件已贴好标签并按货架位放好；继续后将入仓并发布。", { targetCount: batch.targetCount }))) return;
+    if (!window.confirm(t("Have all items been placed in their assigned shelf locations?\n\n请确认本批 {targetCount} 件已贴好标签并按货架位放好；继续后将入仓并发布。", { targetCount: activeProducts.length }))) return;
     setBusy("publish");
     setError("");
     setNotice("");
@@ -324,7 +402,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
         body: JSON.stringify(ids)
       });
       await load();
-      setNotice(t("本批 {targetCount} 件已完成入仓并发布。", { targetCount: batch.targetCount }));
+      setNotice(t("本批 {targetCount} 件已完成入仓并发布。", { targetCount: activeProducts.length }));
     } catch (caught) {
       await load().catch(() => undefined);
       setError(errorMessage(caught, t("无法完成入仓与发布。已完成的动作会保留，可修复后继续。")));
@@ -335,21 +413,27 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
 
   if (!batch) return <StatusMessage tone={error ? "danger" : "neutral"}>{error || t("正在读取打印与归位工作台...")}</StatusMessage>;
 
-  const barcodeCount = batch.products.filter((product) => product.barcode).length;
-  const locationCount = batch.products.filter((product) => product.inventoryItem?.location?.locationCode).length;
-  const printedCount = batch.products.filter((product) => product.labelPrintedAt).length;
-  const publishedCount = batch.products.filter((product) => product.status === "PUBLISHED").length;
-  const allCalibrated = batch.products.every((product) => product.status === "CALIBRATED");
-  const allBarcodesReady = barcodeCount === batch.targetCount;
-  const allLocationsReady = locationCount === batch.targetCount;
-  const allPrinted = printedCount === batch.targetCount;
+  // Rejected items need no barcode, shelf, label or publishing.
+  const activeCount = activeProducts.length;
+  const rejectedCount = batch.products.length - activeCount;
+  const barcodeCount = activeProducts.filter((product) => product.barcode).length;
+  const locationCount = activeProducts.filter((product) => product.inventoryItem?.location?.locationCode).length;
+  const printedCount = activeProducts.filter((product) => product.labelPrintedAt).length;
+  const publishedCount = activeProducts.filter((product) => product.status === "PUBLISHED").length;
+  const allCalibrated = activeProducts.every((product) => product.status === "CALIBRATED");
+  const allBarcodesReady = activeCount > 0 && barcodeCount === activeCount;
+  const allLocationsReady = activeCount > 0 && locationCount === activeCount;
+  const allPrinted = activeCount > 0 && printedCount === activeCount;
   const readyToPublish = allBarcodesReady && allLocationsReady && allPrinted && allAiDisplaysReady && allDisplaysConfirmed;
-  const shelfGroups = groupProductsByShelf(batch.products);
+  const shelfGroups = groupProductsByShelf(activeProducts);
 
-  if (publishedCount < batch.targetCount && (reviewMode || !allDisplaysConfirmed || !allDetailsReady)) {
+  if (publishedCount < activeCount && (reviewMode || !allDisplaysConfirmed || !allDetailsReady)) {
     const product = batch.products[Math.min(reviewIndex, batch.products.length - 1)];
     const comparison = product ? comparisons[product.id] : undefined;
-    const confirmedCount = batch.products.filter((item) => item.status === "PUBLISHED" || displayConfirmed(comparisons[item.id])).length;
+    const confirmedCount = batch.products.filter((item) => item.status === "PUBLISHED" || isRejected(item) || displayConfirmed(comparisons[item.id])).length;
+    const method = displayMethod(comparison);
+    const failedJob = comparison?.aiDisplayMain ? null : latestFailedDisplayJob(comparison);
+    const itemBusy = Boolean(busy);
     return <div className="flex min-w-0 flex-col gap-5">
       <header>
         <Link href={`/product/calibration?batchId=${encodeURIComponent(batch.id)}`} className="text-sm text-muted-foreground">{t("返回商品信息校准")}</Link>
@@ -365,24 +449,37 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
       <nav className="flex flex-wrap gap-2" aria-label={t("选择待审核商品")}>
         {batch.products.map((item, index) => <Button key={item.id} variant={index === reviewIndex ? "default" : "outline"} disabled={Boolean(busy)} onClick={() => setReviewIndex(index)}>
           
-          {t("第")} {item.batchItemNumber ?? index + 1}  {t("件")}{item.status === "PUBLISHED" || displayConfirmed(comparisons[item.id]) ? t(" · 已确认") : t(" · 待审核")}
+          {t("第")} {item.batchItemNumber ?? index + 1}  {t("件")}{isRejected(item) ? t(" · 已拒绝") : item.status === "PUBLISHED" || displayConfirmed(comparisons[item.id]) ? t(" · 已确认") : t(" · 待审核")}
         </Button>)}
       </nav>
       {product ? <section className="rounded-md border p-4">
         <h2 className="mb-4 font-semibold">{product.title || product.productCode}</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <ReviewImage src={comparisonUrl(comparison?.original?.publicUrl)} label={t("正面原图")} />
-          <ReviewImage src={comparisonUrl(comparison?.aiDisplayMain?.publicUrl)} label={t("白底展示图")} />
+          <ReviewImage src={comparisonUrl(comparison?.aiDisplayMain?.publicUrl)} label={t("白底展示图")} tag={method ? displayMethodLabel(method) : undefined} />
         </div>
-        {product.status === "PUBLISHED" ? <p className="mt-4 text-sm">{t("本件已发布，无需重新审核。")}</p> : <>
+        {isRejected(product) ? <p className="mt-4 text-sm">{t("本件已单独拒绝，不进入后续步骤；本批其余衣服照常继续。需要时可在“已拒绝”列表里恢复。")}</p> : product.status === "PUBLISHED" ? <p className="mt-4 text-sm">{t("本件已发布，无需重新审核。")}</p> : <>
           <p className="mt-4 text-sm text-muted-foreground">{t("确认展示图没有改变实物的颜色、Logo、图案、口袋、纽扣、拉链、面料、磨损或瑕疵。点击图片可放大检查。")}</p>
+          {failedJob ? <div className="mt-4"><StatusMessage tone="danger">
+            {t("白底展示图生成失败：{message}", { message: failedJob.errorMessage || failedJob.failureCode || t("未知原因") })}
+            <span className="mt-1 block">{t("可以“重新生成”；也可以“用原图”或“单独拒绝这件”，不影响本批其余衣服。")}</span>
+          </StatusMessage></div> : null}
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button variant="outline" disabled={Boolean(busy) || !comparison?.original} onClick={() => void reviewDisplay(product, true)}>
+            <Button variant="outline" disabled={itemBusy || !comparison?.original} onClick={() => void reviewDisplay(product, true)}>
               {busy === `regenerate-${product.id}` ? <LoaderCircleIcon className="animate-spin" /> : <RefreshCwIcon />}{t("不满意，重新生成")}
             </Button>
-            <Button disabled={Boolean(busy) || !comparison?.aiDisplayMain || displayConfirmed(comparison)} onClick={() => void reviewDisplay(product, false)}>
+            <Button disabled={itemBusy || !comparison?.aiDisplayMain || displayConfirmed(comparison)} onClick={() => void reviewDisplay(product, false)}>
               <CheckCircle2Icon />{displayConfirmed(comparison) ? t("本件已确认") : t("图片正确，确认本件")}
             </Button>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 border-t pt-3">
+            <span className="text-xs text-muted-foreground">{t("这一件卡住时：")}</span>
+            <Button size="sm" variant="outline" disabled={itemBusy || !comparison?.original || (displayConfirmed(comparison) && method === "ORIGINAL")} onClick={() => void useOriginalPhoto(product)}>
+              {busy === `original-${product.id}` ? <LoaderCircleIcon className="animate-spin" /> : <ImageIcon />}{t("用原图")}
+            </Button>
+            {product.status === "CALIBRATED" ? <Button size="sm" variant="outline" className="text-destructive" disabled={itemBusy} onClick={() => void rejectThisItem(product)}>
+              {busy === `reject-${product.id}` ? <LoaderCircleIcon className="animate-spin" /> : <XCircleIcon />}{t("单独拒绝这件")}
+            </Button> : null}
           </div>
           {!detailReady(product) || !comparison?.aiDisplayMain ? <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>{t("未完成的展示图或销售详情正在后台处理，完成后自动更新；已有图片可以先审核。")}</span>
@@ -391,9 +488,12 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
         </>}
       </section> : null}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4">
-        <p className="text-sm">{allDisplaysConfirmed ? (allDetailsReady ? t("全部展示图已确认，可以继续。") : t("展示图已全部确认，销售详情仍在后台生成。")) : t("还有 {v0} 件展示图待确认。", { v0: batch.targetCount - confirmedCount })}</p>
+        <p className="text-sm">
+          {allDisplaysConfirmed ? (allDetailsReady ? t("全部展示图已确认，可以继续。") : t("展示图已全部确认，销售详情仍在后台生成。")) : t("还有 {v0} 件展示图待确认。", { v0: batch.targetCount - confirmedCount })}
+          {rejectedCount > 0 ? <span className="ml-1 text-muted-foreground">{t("（{count} 件已单独拒绝，不再处理）", { count: rejectedCount })}</span> : null}
+        </p>
         <div className="flex flex-wrap items-end gap-3">
-          {!allLocationsReady ? <ShelfPicker shelves={shelves} value={shelfId} needed={batch.targetCount - locationCount} onChange={setShelfId} /> : null}
+          {!allLocationsReady ? <ShelfPicker shelves={shelves} value={shelfId} needed={activeCount - locationCount} onChange={setShelfId} /> : null}
           <Button disabled={Boolean(busy) || !allDisplaysConfirmed || !allDetailsReady || (!allLocationsReady && !shelfId)} onClick={() => void generateBarcodesAndLocations()}>{t("继续：生成标签、打印入仓")}</Button>
         </div>
       </div>
@@ -411,17 +511,18 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild><a href={PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent.zip">{t("下载打印代理（Windows）")}</a></Button>
           <Button variant="outline" asChild><a href={MACOS_PRINT_AGENT_DOWNLOAD_URL} download="direct-loop-print-agent-macos.zip">{t("下载打印代理（Mac）")}</a></Button>
-          {publishedCount < batch.targetCount ? (
+          {publishedCount < activeCount ? (
             <Button variant="outline" asChild><Link href={`/product/display-review?batchId=${encodeURIComponent(batch.id)}`}><AlertTriangleIcon data-icon="inline-start" />{t("返回展示图审核")}</Link></Button>
           ) : null}
         </div>
       </header>
 
       <div className="grid grid-cols-3 gap-2">
-        <ProgressMetric label="Barcode" value={barcodeCount} total={batch.targetCount} />
-        <ProgressMetric label={t("货架位")} value={locationCount} total={batch.targetCount} />
-        <ProgressMetric label={t("已贴标")} value={printedCount} total={batch.targetCount} />
+        <ProgressMetric label="Barcode" value={barcodeCount} total={activeCount} />
+        <ProgressMetric label={t("货架位")} value={locationCount} total={activeCount} />
+        <ProgressMetric label={t("已贴标")} value={printedCount} total={activeCount} />
       </div>
+      {rejectedCount > 0 ? <p className="text-xs text-muted-foreground">{t("本批有 {count} 件在展示图审核时单独拒绝，不打印、不入仓、不发布。", { count: rejectedCount })}</p> : null}
       {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
       {notice ? <StatusMessage tone="neutral">{notice}</StatusMessage> : null}
 
@@ -430,7 +531,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
           <h2 className="font-semibold">{t("生成 Barcode 并预留货架位")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{t("先选这一批要放的货架。系统生成 Barcode 后，整批衣服都放在这个货架上。")}</p>
           <div className="mt-4 flex flex-wrap items-end gap-3">
-          <ShelfPicker shelves={shelves} value={shelfId} needed={batch.targetCount - locationCount} onChange={setShelfId} />
+          <ShelfPicker shelves={shelves} value={shelfId} needed={activeCount - locationCount} onChange={setShelfId} />
           <Button disabled={Boolean(busy) || !shelfId || (!allCalibrated && barcodeCount === 0)} onClick={() => void generateBarcodesAndLocations()}>
             {busy === "generate" ? <LoaderCircleIcon className="animate-spin" data-icon="inline-start" /> : <BarcodeIcon data-icon="inline-start" />}
             
@@ -440,7 +541,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
         </section>
       ) : null}
 
-      {printIndex !== null && allBarcodesReady && allLocationsReady && allDisplaysConfirmed ? <ProductLabelPrinter products={batch.products} initialIndex={printIndex} onClose={() => setPrintIndex(null)} onConfirm={products => markPrinted(products as ProductRecord[])} /> : null}
+      {printIndex !== null && allBarcodesReady && allLocationsReady && allDisplaysConfirmed ? <ProductLabelPrinter products={activeProducts} initialIndex={printIndex} onClose={() => setPrintIndex(null)} onConfirm={products => markPrinted(products as ProductRecord[])} /> : null}
 
       {allBarcodesReady ? (
         <>
@@ -487,7 +588,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
           ) : null}
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 print:grid-cols-2">
-            {batch.products.map((product) => (
+            {activeProducts.map((product) => (
               <LabelPreview
                 key={product.id}
                 batchCode={batch.batchCode}
@@ -495,7 +596,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
                 comparison={comparisons[product.id]}
                 targetCount={batch.targetCount}
                 disabled={Boolean(busy)}
-                onPrint={() => setPrintIndex(batch.products.findIndex(item => item.id === product.id))}
+                onPrint={() => setPrintIndex(activeProducts.findIndex(item => item.id === product.id))}
               />
             ))}
           </section>
@@ -509,7 +610,7 @@ export function ProductBatchBarcodePage({ batchId, reviewMode = false }: { batch
             </StatusMessage>
           ) : null}
 
-          {publishedCount < batch.targetCount ? (
+          {publishedCount < activeCount ? (
             <section className="rounded-md border p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -679,9 +780,12 @@ function detailReady(product: ProductRecord) {
   return Boolean(profile && profile.sourceDataVersion === product.detailSourceVersion && ["READY", "APPROVED"].includes(profile.status));
 }
 
-function ReviewImage({ src, label }: { src: string; label: string }) {
+function ReviewImage({ src, label, tag }: { src: string; label: string; tag?: string }) {
   return <figure className="min-w-0 rounded-md border bg-white p-2">
-    <figcaption className="mb-2 text-center text-sm font-medium text-black">{label}</figcaption>
+    <figcaption className="mb-2 flex flex-wrap items-center justify-center gap-2 text-center text-sm font-medium text-black">
+      {label}
+      {tag ? <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-normal text-amber-800">{tag}</span> : null}
+    </figcaption>
     {src ? <a href={src} target="_blank" rel="noreferrer" aria-label={t("放大{label}", { label: label })}><img src={src} alt={label} className="h-[min(55vh,520px)] w-full object-contain" /></a> : <div className="flex h-80 items-center justify-center text-sm text-gray-500">{t("图片尚未生成或加载失败，请刷新或重试")}</div>}
   </figure>;
 }

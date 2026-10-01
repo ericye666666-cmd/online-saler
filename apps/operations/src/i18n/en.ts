@@ -398,6 +398,34 @@ export const enDictionary: Record<string, string> = {
   "不可重新售卖": "Cannot be resold",
   "不可重新售卖，保留处理记录": "Cannot be resold — keep the handling record",
   "不满意，重新生成": "Not good enough — regenerate",
+  // ——— White-background review: one stuck item never blocks the batch ———
+  "用第 {number} 件的正面原图（不经过 AI，不抠图）作为白底展示图，并确认本件？":
+    "Use the original front photo of item {number} (no AI, no cutout) as its white-background image and confirm the item?",
+  "无法改用原图，请重试。": "Could not switch to the original photo. Please try again.",
+  "已改用原图作为展示图，本件已确认。": "The original photo is now the display image and this item is confirmed.",
+  "单独拒绝第 {number} 件？它会移到“已拒绝”列表（以后可恢复），本批其余衣服继续。请填写原因：":
+    "Reject item {number} on its own? It moves to the Rejected list (it can be restored later) and the rest of the batch carries on. Enter a reason:",
+  "白底展示图无法生成": "White-background image could not be made",
+  "请填写拒绝原因。": "Enter a reason for rejecting it.",
+  "第 {number} 件已单独拒绝，本批其余衣服可以继续。": "Item {number} was rejected on its own. The rest of the batch can carry on.",
+  "无法拒绝这件，请重试。": "Could not reject this item. Please try again.",
+  " · 已拒绝": " · Rejected",
+  "本件已单独拒绝，不进入后续步骤；本批其余衣服照常继续。需要时可在“已拒绝”列表里恢复。":
+    "This item was rejected on its own and takes no further steps; the rest of the batch carries on as normal. It can be restored from the Rejected list if needed.",
+  "白底展示图生成失败：{message}": "The white-background image failed: {message}",
+  "未知原因": "unknown reason",
+  "可以“重新生成”；也可以“用原图”或“单独拒绝这件”，不影响本批其余衣服。":
+    "You can regenerate it, or use the original photo, or reject just this item — the rest of the batch is not affected.",
+  "这一件卡住时：": "If this item is stuck:",
+  "用原图": "Use original photo",
+  "单独拒绝这件": "Reject just this item",
+  "（{count} 件已单独拒绝，不再处理）": "({count} rejected on their own and no longer processed)",
+  "本批有 {count} 件在展示图审核时单独拒绝，不打印、不入仓、不发布。":
+    "{count} item(s) in this batch were rejected at image review: no label, no stock-in, not published.",
+  "本地抠图（AI 拒绝）": "Local cutout (AI refused)",
+  "本地抠图（AI 失败）": "Local cutout (AI failed)",
+  "原图（员工选择）": "Original photo (staff choice)",
+  "AI 生成": "AI generated",
   "不适用": "Not applicable",
   "不需要": "Not needed",
   "擦除残留": "Erase leftovers",
