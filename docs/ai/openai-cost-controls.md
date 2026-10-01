@@ -36,6 +36,37 @@ and 1024-square PNG output. The provider sends the original bytes directly, with
 no intermediate cutout or rearrangement instructions. It retains supports that
 intersect the garment to avoid fabricating hidden details.
 
+### Refusals of printed and branded garments — 2026-10-01
+
+Second-hand stock is full of cartoon characters, team crests and brand logos.
+At OpenAI's default strictness the edit endpoint refused a Mickey Mouse
+sweatshirt (`400`, code `moderation_blocked`, "rejected by the safety system"),
+the item had no display image, and staff cancelled the whole batch to get past it.
+
+- The request now sends `moderation=low` (override with
+  `OPENAI_IMAGE_EDIT_MODERATION=auto`). If a model answers that it does not
+  accept the parameter, the request is sent once more without it.
+- When OpenAI still refuses — a safety refusal, any other `4xx` about the request
+  or photo (not `401`/`403`/`404`, which are key or model-access faults and stay
+  failures, and not `429`), or a reply with no image — the display image is made
+  locally instead: the
+  existing background-removal services (`lightweight-opencv`, then
+  `rembg-birefnet`) cut the garment out, and it is placed on the same white
+  1200 square at the size a framed AI image's garment has, with one soft contact
+  shadow on the same side. Prints and logos are exactly as photographed. The job
+  records `provider=local-cutout`, `fallbackFrom=openai-image-edit`,
+  `fallbackReason=OPENAI_SAFETY_REJECTED` (or `OPENAI_REJECTED_<status>`), and the
+  review page tags the image "本地抠图（AI 拒绝）". `429`, `5xx` and timeouts are
+  not answered this way: a plain retry usually succeeds and gives the AI image.
+- On the review page, staff can also use the original photo untouched
+  (`provider=original-photo`, `fallbackReason=STAFF_USE_ORIGINAL`, audit action
+  `PRODUCT_DISPLAY_IMAGE_USE_ORIGINAL`) or reject just that item; the rest of the
+  batch carries on.
+- Every failure and every fallback writes one JSON log line
+  (`display_image_generation_failed` / `display_image_openai_rejected_used_cutout`)
+  with job, product code, batch code, HTTP status, OpenAI error code and type,
+  OpenAI's message and the `x-request-id`. Never the key or image bytes.
+
 High-quality image editing costs more than the former mini/low configuration.
 Actual billing includes both input and output tokens. Do not reuse the old mini
 price estimate for this configuration. There is no automatic lower-quality fallback

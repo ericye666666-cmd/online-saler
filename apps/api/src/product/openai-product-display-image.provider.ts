@@ -94,7 +94,7 @@ export type OpenAIDisplayImageFailure = {
   requestId: string | null;
   /** OpenAI's safety system refused the photo; sending the same photo again will not help. */
   safetyRejected: boolean;
-  /** A refusal a retry of the same photo will not change (any 4xx except 429, or no image back). */
+  /** A refusal of this photo a retry will not change (see isPermanentImageRefusal, or no image back). */
   permanent: boolean;
 };
 
@@ -110,6 +110,15 @@ export class OpenAIDisplayImageError extends BackgroundRemovalProviderError {
   ) {
     super(code, message);
   }
+}
+
+/**
+ * A 4xx about this request or photo. Not 401/403/404 — a wrong key or a model
+ * the account cannot use is a configuration fault that must surface, not be
+ * papered over item by item — and not 429, which clears on its own.
+ */
+export function isPermanentImageRefusal(httpStatus: number): boolean {
+  return httpStatus >= 400 && httpStatus < 500 && ![401, 403, 404, 429].includes(httpStatus);
 }
 
 const SAFETY_CODES = new Set(["moderation_blocked", "content_policy_violation", "content_policy", "safety_violation"]);
@@ -182,7 +191,7 @@ export class OpenAIProductDisplayImageProvider {
             openaiMessage: detail.message,
             requestId: response.requestId,
             safetyRejected: isSafetyRejection(response.status, detail),
-            permanent: response.status >= 400 && response.status < 500 && response.status !== 429
+            permanent: isPermanentImageRefusal(response.status)
           }
         );
       }
