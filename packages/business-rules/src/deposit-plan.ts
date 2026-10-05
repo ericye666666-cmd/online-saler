@@ -35,8 +35,8 @@ export const DEPOSIT_LAPSE_REFUND_RATE_BPS = 3000;
 /**
  * A shopper cannot hold more than this many garments on deposit at once.
  * Seven days is long enough that an unlimited allowance would let one phone
- * empty a rail; the five-item cart reservation cap is a separate, shorter
- * leash and both apply.
+ * empty a rail; the per-phone checkout reservation cap
+ * (MAX_ACTIVE_RESERVATIONS_PER_PHONE) is a separate, shorter leash and both apply.
  */
 export const MAX_DEPOSIT_HOLDS_PER_PHONE = 3;
 

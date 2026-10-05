@@ -50,12 +50,43 @@ async function main() {
       create: { code: `${prefix}-node`, name: "Integration pickup point", type: "STORE" }
     });
   }
-  async function checkout(f: Awaited<ReturnType<typeof fixture>>) {
+  async function checkout(f: Awaited<ReturnType<typeof fixture>>, phone = "0712345678") {
     const node = await pickupNode();
     return startCheckout({
-      customerId: f.customer.id, productIds: [f.product.id], phone: "0712345678",
+      customerId: f.customer.id, productIds: [f.product.id], phone,
       fulfillmentMethod: "PICKUP", fulfillmentNodeId: node.id
     });
+  }
+  // A shopper with their own phone, so the per-phone allowance tests below are
+  // not affected by reservations other tests leave on the shared fixture phone.
+  async function shopper(phone: string) {
+    const key = `${prefix}-${++count}`;
+    const customer = await prisma.customer.create({ data: {
+      googleSubjectId: key, email: `${key}@example.invalid`, normalizedEmail: `${key}@example.invalid`, phone
+    } });
+    customers.push(customer.id);
+    return customer;
+  }
+  async function garments(howMany: number) {
+    const ids: string[] = [];
+    for (let index = 0; index < howMany; index += 1) {
+      const key = `${prefix}-${++count}`;
+      const product = await prisma.product.create({ data: {
+        productCode: key, barcode: key, status: "PUBLISHED", title: "Integration test item", priceKsh: 200,
+        inventoryItem: { create: { barcode: key, status: "AVAILABLE" } }
+      } });
+      products.push(product.id);
+      ids.push(product.id);
+    }
+    return ids;
+  }
+  async function checkoutPieces(customerId: string, productIds: string[], phone: string) {
+    const node = await pickupNode();
+    return startCheckout({ customerId, productIds, phone, fulfillmentMethod: "PICKUP", fulfillmentNodeId: node.id });
+  }
+  async function stockOf(productIds: string[]) {
+    const rows = await prisma.inventoryItem.findMany({ where: { productId: { in: productIds } } });
+    return productIds.map((id) => rows.find((row) => row.productId === id)?.status);
   }
   function provider(error?: Error) {
     let calls = 0;
@@ -69,13 +100,13 @@ async function main() {
     };
     return { client, calls: () => calls };
   }
-  function callback(checkoutRequestId: string, options: { code?: number; amount?: number; receipt?: string } = {}) {
+  function callback(checkoutRequestId: string, options: { code?: number; amount?: number; receipt?: string; phone?: number } = {}) {
     return { Body: { stkCallback: {
       CheckoutRequestID: checkoutRequestId, MerchantRequestID: "integration-merchant", ResultCode: options.code ?? 0, ResultDesc: "integration callback",
       CallbackMetadata: { Item: [
         { Name: "Amount", Value: options.amount ?? 200 },
         { Name: "MpesaReceiptNumber", Value: options.receipt ?? `receipt-${randomUUID()}` },
-        { Name: "PhoneNumber", Value: 254712345678 }
+        { Name: "PhoneNumber", Value: options.phone ?? 254712345678 }
       ] }
     } } };
   }
@@ -99,13 +130,85 @@ async function main() {
       assert.equal(await prisma.order.count({ where: { customerId: f.customer.id } }), 1);
       await releaseCustomerCheckoutReservations(f.customer.id, [f.product.id]);
     });
-    await test("an active reservation cannot be silently moved to another payment phone", async () => {
-      const f = await fixture();
-      await checkout(f);
+    await test("a payment that may still land cannot be silently moved to another payment phone", async () => {
+      const f = await pending();
       const node = await pickupNode();
-      await assert.rejects(startCheckout({ customerId: f.customer.id, productIds: [f.product.id], phone: "0799999999", fulfillmentMethod: "PICKUP", fulfillmentNodeId: node.id }), /before changing/);
+      await assert.rejects(startCheckout({ customerId: f.customer.id, productIds: [f.product.id], phone: "0799999999", fulfillmentMethod: "PICKUP", fulfillmentNodeId: node.id }), /previous payment is still being confirmed/);
       assert.equal((await prisma.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).phone, "254712345678");
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: f.order.orderId } })).status, "PAYMENT_PROCESSING");
       await releaseCustomerCheckoutReservations(f.customer.id, [f.product.id]);
+    });
+    await test("an unpaid attempt with no prompt sent is released when the shopper switches phone", async () => {
+      const f = await fixture();
+      const first = await checkout(f);
+      const second = await checkout(f, "0799999998");
+      assert.notEqual(second.orderId, first.orderId);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: first.orderId } })).status, "CANCELLED");
+      assert.equal((await prisma.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).phone, "254799999998");
+      assert.deepEqual(await stockOf([f.product.id]), ["RESERVED"]);
+      await releaseCustomerCheckoutReservations(f.customer.id, [f.product.id]);
+    });
+    await test("one phone can check out fifty pieces at once", async () => {
+      const phone = "0722000050";
+      const customer = await shopper("254722000050");
+      const ids = await garments(50);
+      const order = await checkoutPieces(customer.id, ids, phone);
+      assert.equal(order.items.length, 50);
+      assert.ok((await stockOf(ids)).every((status) => status === "RESERVED"));
+      await releaseCustomerCheckoutReservations(customer.id, ids);
+      assert.ok((await stockOf(ids)).every((status) => status === "AVAILABLE"));
+    });
+    await test("a fifty-first piece is refused and costs no earlier attempt", async () => {
+      const phone = "0722000051";
+      const customer = await shopper("254722000051");
+      const ids = await garments(51);
+      const earlier = await checkoutPieces(customer.id, ids.slice(0, 2), phone);
+      await assert.rejects(checkoutPieces(customer.id, ids, phone), /You can pay for up to 50 pieces at once\./);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: earlier.orderId } })).status, "PENDING_PAYMENT");
+      assert.deepEqual(await stockOf(ids.slice(0, 3)), ["RESERVED", "RESERVED", "AVAILABLE"]);
+      await releaseCustomerCheckoutReservations(customer.id, ids.slice(0, 2));
+    });
+    await test("checking out again on the same phone releases the earlier unpaid attempt", async () => {
+      // Staff paying for two shoppers on one shared phone: two accounts, one phone.
+      const phone = "0722000052";
+      const first = await shopper("254722000052");
+      const second = await shopper("254722000052");
+      const [kept, released, extra] = await garments(3);
+      const earlier = await checkoutPieces(first.id, [kept, released], phone);
+      const later = await checkoutPieces(second.id, [kept, extra], phone);
+      const earlierOrder = await prisma.order.findUniqueOrThrow({ where: { id: earlier.orderId }, include: { sourceDraft: true } });
+      assert.equal(earlierOrder.status, "CANCELLED");
+      assert.equal(earlierOrder.sourceDraft?.status, "ABANDONED");
+      // The piece the new attempt did not take is back on sale, as after expiry.
+      assert.deepEqual(await stockOf([kept, released, extra]), ["RESERVED", "AVAILABLE", "RESERVED"]);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: later.orderId } })).status, "PENDING_PAYMENT");
+      // The same account starting over is released the same way.
+      const again = await checkoutPieces(second.id, [released], phone);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: later.orderId } })).status, "CANCELLED");
+      assert.deepEqual(await stockOf([kept, released, extra]), ["AVAILABLE", "RESERVED", "AVAILABLE"]);
+      await releaseCustomerCheckoutReservations(second.id, [released]);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: again.orderId } })).status, "CANCELLED");
+    });
+    await test("an earlier attempt whose M-Pesa prompt is still out is kept and can still be paid", async () => {
+      const phone = "0722000053";
+      const customer = await shopper("254722000053");
+      const [inFlight, other] = await garments(2);
+      const earlier = await checkoutPieces(customer.id, [inFlight], phone);
+      const payment = await initiateMpesaPayment(earlier.orderId, customer.id, provider().client);
+      // A different piece can still be checked out alongside it...
+      const later = await checkoutPieces(customer.id, [other], phone);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: earlier.orderId } })).status, "PAYMENT_PROCESSING");
+      assert.deepEqual(await stockOf([inFlight, other]), ["RESERVED", "RESERVED"]);
+      // ...but the piece the prompt is for is not taken away from it.
+      await assert.rejects(checkoutPieces(customer.id, [inFlight, other], phone), /previous payment is still being confirmed/);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: earlier.orderId } })).status, "PAYMENT_PROCESSING");
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: later.orderId } })).status, "PENDING_PAYMENT");
+      // The shopper answers the prompt: the money lands on a garment.
+      assert.equal((await handleMpesaCallback(callback(payment.checkoutRequestId!, { phone: 254722000053 }))).status, "SUCCESS");
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: earlier.orderId } })).status, "PAID");
+      assert.deepEqual(await stockOf([inFlight]), ["PAID"]);
+      await releaseCustomerCheckoutReservations(customer.id, [other]);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: later.orderId } })).status, "CANCELLED");
     });
     await test("payment initiation refuses lost inventory before sending any STK", async () => {
       const f = await fixture();
@@ -119,7 +222,9 @@ async function main() {
     await test("two customers cannot reserve the same one-of-one item", concurrencyOptions, async () => {
       const a = await fixture();
       const b = await fixture(a.product.id);
-      const results = await Promise.allSettled([checkout(a), checkout(b)]);
+      // Two phones: on one phone the later checkout replaces the earlier
+      // unpaid one by design, which is not what this race is about.
+      const results = await Promise.allSettled([checkout(a), checkout(b, "0799999997")]);
       assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
       const active = await prisma.checkoutDraft.count({ where: { customerId: { in: [a.customer.id, b.customer.id] }, status: "ACTIVE" } });
       assert.equal(active, 1);

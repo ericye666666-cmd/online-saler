@@ -1,10 +1,16 @@
+import { MAX_ACTIVE_RESERVATIONS_PER_PHONE } from "@online-saler/business-rules";
 import type { PublicProduct } from "./storefront-products";
 import type { Product as CatalogProduct } from "./data/products";
 
 export const CART_STORAGE_KEY = "online-saler-cart-v1";
 export const CART_STORAGE_VERSION = 1;
 export const CART_UPDATED_EVENT = "online-saler-cart-updated";
-export const CART_MAX_ITEMS = 10;
+/**
+ * The bag holds as many pieces as one phone may pay for at once (owner,
+ * 2026-10-05; was 10). A full bag refuses the next piece out loud — see
+ * tryAddCartItem — instead of quietly dropping it.
+ */
+export const CART_MAX_ITEMS = MAX_ACTIVE_RESERVATIONS_PER_PHONE;
 
 export type CartItem = {
   productId: string;
@@ -43,6 +49,29 @@ export function createCartSnapshot(items: CartItem | CartItem[] = [], updatedAt 
 export function addCartItem(snapshot: CartSnapshot | null, item: CartItem, updatedAt = new Date().toISOString()): CartSnapshot {
   const existing = snapshot?.items ?? [];
   return createCartSnapshot([...existing, item], updatedAt);
+}
+
+export type AddCartItemResult =
+  | { status: "added"; snapshot: CartSnapshot }
+  | { status: "alreadyInBag"; snapshot: CartSnapshot }
+  | { status: "full"; snapshot: CartSnapshot | null };
+
+/**
+ * Adds a piece unless the bag is already full. A full bag is reported back so
+ * the shopper is told, rather than the piece vanishing from the bag unseen.
+ */
+export function tryAddCartItem(snapshot: CartSnapshot | null, item: CartItem, updatedAt = new Date().toISOString()): AddCartItemResult {
+  const existing = snapshot?.items ?? [];
+  const productId = item.productId.trim();
+  if (existing.some((entry) => entry.productId === productId)) {
+    return { status: "alreadyInBag", snapshot: snapshot! };
+  }
+  if (isCartFull(snapshot)) return { status: "full", snapshot };
+  return { status: "added", snapshot: addCartItem(snapshot, item, updatedAt) };
+}
+
+export function isCartFull(snapshot: CartSnapshot | null): boolean {
+  return cartItemCount(snapshot) >= CART_MAX_ITEMS;
 }
 
 export function removeCartItem(snapshot: CartSnapshot | null, productId: string, updatedAt = new Date().toISOString()): CartSnapshot {

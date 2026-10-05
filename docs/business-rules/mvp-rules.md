@@ -9,7 +9,16 @@ These rules define the first 1,000-item Kikuyu MVP.
 - The cart does not reserve inventory.
 - Inventory is reserved only after payment is initiated.
 - Reservation duration is 5 minutes (2026-09-23; previously 15).
-- One phone number may reserve at most 5 items at the same time.
+- The bag holds at most 50 pieces. Adding one more to a full bag is refused
+  with a message telling the shopper to check out first; nothing is dropped
+  silently (2026-10-05, owner decision; previously 10, with extras dropped).
+- One phone number may have at most 50 pieces locked for payment at the same
+  time (2026-10-05, owner decision; previously 5). Starting a new checkout
+  first releases that phone's earlier unpaid attempts — and the same
+  account's — back to sale, exactly as an expiry would. An earlier attempt
+  whose M-Pesa prompt has been sent and may still be paid is kept until it
+  is answered or its five minutes run out, and still counts against the 50.
+- Deposit holds keep their own, separate allowance of 3 pieces per phone.
 - Closing an order always settles its stock. An unpaid cancellation returns the
   garment to sale; a paid order that can never be fulfilled is written off with
   an explicit outcome — back on the shelf, or recorded as lost.

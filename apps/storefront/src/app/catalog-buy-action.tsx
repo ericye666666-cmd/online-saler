@@ -8,10 +8,11 @@ import { useStorefrontI18n } from "../i18n/use-storefront-i18n";
 import {
   CART_STORAGE_KEY,
   CART_UPDATED_EVENT,
-  addCartItem,
+  CART_MAX_ITEMS,
   catalogProductToCartItem,
   notifyCartUpdated,
-  parseCartSnapshot
+  parseCartSnapshot,
+  tryAddCartItem
 } from "./storefront-cart";
 
 function bagHolds(productId: string): boolean {
@@ -33,6 +34,7 @@ export function CatalogBuyAction({ product, chatHref, chatLabel, similarHref }: 
 }) {
   const { t } = useStorefrontI18n();
   const [toast, setToast] = useState("");
+  const [bagFull, setBagFull] = useState(false);
   const [buying, setBuying] = useState(false);
   const [inBag, setInBag] = useState(false);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -56,15 +58,18 @@ export function CatalogBuyAction({ product, chatHref, chatLabel, similarHref }: 
   function addToBag() {
     if (!available) return;
     const snapshot = parseCartSnapshot(window.localStorage.getItem(CART_STORAGE_KEY));
-    const nextSnapshot = addCartItem(snapshot, catalogProductToCartItem(product));
-    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextSnapshot));
-    notifyCartUpdated();
+    const result = tryAddCartItem(snapshot, catalogProductToCartItem(product));
+    if (result.status === "added") {
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(result.snapshot));
+      notifyCartUpdated();
+    }
     // On phones the buttons are pinned to the bottom edge while this box sits
     // far up the page, so confirmation has to appear beside the thumb that
-    // tapped, not back where the box is.
-    setToast(t("product.addedToBag"));
+    // tapped, not back where the box is. A full bag says so here, too.
+    setBagFull(result.status === "full");
+    setToast(result.status === "full" ? t("product.bagFull", { count: CART_MAX_ITEMS }) : t("product.addedToBag"));
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(""), 3500);
+    toastTimer.current = window.setTimeout(() => setToast(""), result.status === "full" ? 6000 : 3500);
   }
 
   function buyNow() {
@@ -104,7 +109,7 @@ export function CatalogBuyAction({ product, chatHref, chatLabel, similarHref }: 
       {available ? <p>{t("product.notReserved")}</p> : product.status === "Reserved" ? <p>{t("product.reservedMayReturn")}</p> : null}
       {toast ? (
         <p className="catalogBuyToast" role="status">
-          <Check size={16} aria-hidden="true" /> {toast} <Link href="/cart">{t("product.viewBag")}</Link>
+          {bagFull ? null : <Check size={16} aria-hidden="true" />} {toast} <Link href="/cart">{t("product.viewBag")}</Link>
         </p>
       ) : null}
     </div>

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
-import { normalizeKenyaPhone } from "./checkout-service";
-import { normalizeNotificationPhone } from "@online-saler/database";
-import { KIKUYU_DELIVERY_FEE_KSH, getDeliveryFeeKsh, calculateOrderAmounts, formatDeliveryAddress, parseDeliveryAddress, deliveryMapUrl } from "@online-saler/business-rules";
+import {
+  CHECKOUT_PREVIOUS_PAYMENT_IN_FLIGHT_MESSAGE,
+  CHECKOUT_TOO_MANY_PIECES_MESSAGE,
+  earlierAttemptMayStillBePaid,
+  normalizeKenyaPhone,
+  reservationAllowanceError
+} from "./checkout-service";
+import { PaymentStatus, normalizeNotificationPhone } from "@online-saler/database";
+import { MAX_ACTIVE_RESERVATIONS_PER_PHONE, MAX_DEPOSIT_HOLDS_PER_PHONE, KIKUYU_DELIVERY_FEE_KSH, getDeliveryFeeKsh, calculateOrderAmounts, formatDeliveryAddress, parseDeliveryAddress, deliveryMapUrl } from "@online-saler/business-rules";
 
 // Pickup is free; Nairobi delivery charges the shopper a flat KSh 200 that the
 // node's actual Bolt fare is later measured against.
@@ -30,5 +36,32 @@ assert.throws(() => normalizeKenyaPhone("07123"), /valid Kenyan/);
 assert.equal(normalizeNotificationPhone(undefined), null);
 assert.equal(normalizeNotificationPhone(null), null);
 assert.equal(normalizeNotificationPhone(""), null);
+
+// One phone may pay for 50 pieces at once (owner, 2026-10-05; was 5).
+assert.equal(MAX_ACTIVE_RESERVATIONS_PER_PHONE, 50);
+assert.equal(reservationAllowanceError({ requestedPieces: 50, piecesInEarlierPayments: 0 }), null);
+assert.equal(reservationAllowanceError({ requestedPieces: 51, piecesInEarlierPayments: 0 }), CHECKOUT_TOO_MANY_PIECES_MESSAGE);
+assert.equal(CHECKOUT_TOO_MANY_PIECES_MESSAGE, "You can pay for up to 50 pieces at once.");
+// Whatever still counts after earlier unpaid attempts were released belongs
+// to a payment that may still land, and the message says so.
+assert.equal(reservationAllowanceError({ requestedPieces: 49, piecesInEarlierPayments: 1 }), null);
+assert.equal(reservationAllowanceError({ requestedPieces: 50, piecesInEarlierPayments: 1 }), CHECKOUT_PREVIOUS_PAYMENT_IN_FLIGHT_MESSAGE);
+assert.equal(reservationAllowanceError({ requestedPieces: 51, piecesInEarlierPayments: 3 }), CHECKOUT_TOO_MANY_PIECES_MESSAGE);
+assert.doesNotMatch(CHECKOUT_PREVIOUS_PAYMENT_IN_FLIGHT_MESSAGE, /five/);
+
+// Which earlier attempts a new checkout may release. No PENDING row means no
+// STK prompt was ever sent, so nothing can land on it; a failed, cancelled or
+// timed-out prompt is finished. A prompt still out, or one whose outcome is
+// unknown, could still take the shopper's money, so it is kept.
+assert.equal(earlierAttemptMayStillBePaid([]), false);
+assert.equal(earlierAttemptMayStillBePaid([{ status: PaymentStatus.FAILED }]), false);
+assert.equal(earlierAttemptMayStillBePaid([{ status: PaymentStatus.CANCELLED }, { status: PaymentStatus.TIMEOUT }]), false);
+assert.equal(earlierAttemptMayStillBePaid([{ status: PaymentStatus.EXPIRED }]), false);
+assert.equal(earlierAttemptMayStillBePaid([{ status: PaymentStatus.PENDING }]), true);
+assert.equal(earlierAttemptMayStillBePaid([{ status: PaymentStatus.FAILED }, { status: PaymentStatus.MANUAL_REVIEW }]), true);
+assert.equal(earlierAttemptMayStillBePaid([{ status: PaymentStatus.SUCCESS }]), true);
+
+// The deposit allowance is its own, unchanged rule.
+assert.equal(MAX_DEPOSIT_HOLDS_PER_PHONE, 3);
 
 console.log("Checkout service tests passed");

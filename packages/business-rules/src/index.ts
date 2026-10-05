@@ -1,5 +1,11 @@
 export const RESERVATION_MINUTES = 5;
-export const MAX_ACTIVE_RESERVATIONS_PER_PHONE = 5;
+/**
+ * Pieces one M-Pesa phone may have locked for payment at once, across all of
+ * its open checkouts. Matches the bag size (owner, 2026-10-05; was 5). A new
+ * checkout first releases that phone's earlier unpaid attempts, so only
+ * payments that may still complete count against it.
+ */
+export const MAX_ACTIVE_RESERVATIONS_PER_PHONE = 50;
 /** Door-to-door delivery within Nairobi, one flat fee (owner, 2026-09-26). Pickup is free. */
 export const KIKUYU_DELIVERY_FEE_KSH = 200;
 export const AFFILIATE_ATTRIBUTION_DAYS = 7;

@@ -9,6 +9,7 @@ import {
   PaymentStatus,
   ProductStatus,
   Prisma,
+  lockReservationOrder,
   normalizeNotificationPhone,
   releaseUnpaidOrderReservation,
   prisma,
@@ -67,6 +68,41 @@ export async function activeFulfillmentNodes() {
 export class CheckoutConflictError extends Error {}
 export class CheckoutValidationError extends Error {}
 
+export const CHECKOUT_TOO_MANY_PIECES_MESSAGE =
+  `You can pay for up to ${MAX_ACTIVE_RESERVATIONS_PER_PHONE} pieces at once.`;
+export const CHECKOUT_PREVIOUS_PAYMENT_IN_FLIGHT_MESSAGE =
+  "Your previous payment is still being confirmed. Wait a moment or complete it on your phone.";
+
+/**
+ * Whether an earlier, still-active checkout attempt could still be paid.
+ *
+ * Checkout claims a PENDING payment row before the STK prompt leaves for
+ * Safaricom, so an attempt with no PENDING row never had a prompt sent and
+ * nothing can land on it. MANUAL_REVIEW on a draft that is still open means
+ * the prompt went out but its outcome is unknown, and SUCCESS means money has
+ * already landed. In any of those cases the earlier attempt is kept: releasing
+ * it could leave the shopper's money with no garment behind it.
+ */
+export function earlierAttemptMayStillBePaid(payments: Array<{ status: PaymentStatus }>): boolean {
+  return payments.some((payment) =>
+    payment.status === PaymentStatus.PENDING
+    || payment.status === PaymentStatus.MANUAL_REVIEW
+    || payment.status === PaymentStatus.SUCCESS);
+}
+
+/**
+ * The per-phone allowance, checked after this phone's unpaid earlier attempts
+ * have been released. Whatever is still counted belongs to a payment that may
+ * yet succeed, so the message says so instead of quoting a number.
+ */
+export function reservationAllowanceError(input: { requestedPieces: number; piecesInEarlierPayments: number }): string | null {
+  if (input.requestedPieces > MAX_ACTIVE_RESERVATIONS_PER_PHONE) return CHECKOUT_TOO_MANY_PIECES_MESSAGE;
+  if (input.requestedPieces + input.piecesInEarlierPayments > MAX_ACTIVE_RESERVATIONS_PER_PHONE) {
+    return CHECKOUT_PREVIOUS_PAYMENT_IN_FLIGHT_MESSAGE;
+  }
+  return null;
+}
+
 export function normalizeKenyaPhone(value: string): string {
   const digits = value.replace(/\D/g, "");
   if (/^0[17]\d{8}$/.test(digits)) return `254${digits.slice(1)}`;
@@ -109,15 +145,7 @@ export async function startCheckout(input: StartCheckoutInput) {
     await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${input.customerId} FOR UPDATE`;
     const now = new Date();
     const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { phone: true } });
-    // Customer.phone is the existing draft's phone source. Until a dedicated
-    // immutable draft phone exists, do not silently redirect active payments or
-    // move reservations to a different phone's five-item allowance.
-    if (customer?.phone && customer.phone !== phone) {
-      const activeDrafts = await tx.checkoutDraft.count({
-        where: { customerId: input.customerId, status: CheckoutDraftStatus.ACTIVE, expiresAt: { gt: now } }
-      });
-      if (activeDrafts) throw new CheckoutConflictError("Finish or release your active payment reservations before changing the M-Pesa phone number.");
-    }
+    const keepsPhone = !customer?.phone || customer.phone === phone;
     const products = await tx.product.findMany({
       where: {
         OR: [
@@ -144,9 +172,17 @@ export async function startCheckout(input: StartCheckoutInput) {
     if (uniqueProducts.length !== resolvedProducts.length) {
       throw new CheckoutValidationError("A one-of-one item cannot appear twice in the same order.");
     }
+    if (uniqueProducts.length > MAX_ACTIVE_RESERVATIONS_PER_PHONE) {
+      // Refused before anything is released: an oversized request must not
+      // cost the shopper an earlier attempt.
+      throw new CheckoutValidationError(CHECKOUT_TOO_MANY_PIECES_MESSAGE);
+    }
 
     const productIds = uniqueProducts.map((product) => product.id);
-    const existingDrafts = await tx.checkoutDraft.findMany({
+    // A double-tapped Pay button resubmits the same cart; hand back the order
+    // it already made. Only on the same phone: an attempt is charged to the
+    // phone it was started with.
+    const existingDrafts = !keepsPhone ? [] : await tx.checkoutDraft.findMany({
       where: {
         customerId: input.customerId,
         status: CheckoutDraftStatus.ACTIVE,
@@ -189,14 +225,42 @@ export async function startCheckout(input: StartCheckoutInput) {
       };
     }
 
+    // Starting a new checkout replaces this shopper's earlier unfinished ones:
+    // the same phone (a shopper on two devices, or staff paying on a shared
+    // phone) or the same account. Earlier attempts that could still be paid
+    // are kept and counted below. All of it rolls back if this checkout fails.
+    await releaseEarlierUnpaidAttempts(tx, { customerId: input.customerId, phone, now });
+
+    if (!keepsPhone) {
+      // Customer.phone is the existing draft's phone source. Until a dedicated
+      // immutable draft phone exists, do not silently redirect a payment that
+      // may still complete on the old phone.
+      const activeDrafts = await tx.checkoutDraft.count({
+        where: { customerId: input.customerId, status: CheckoutDraftStatus.ACTIVE, expiresAt: { gt: now } }
+      });
+      if (activeDrafts) throw new CheckoutConflictError(CHECKOUT_PREVIOUS_PAYMENT_IN_FLIGHT_MESSAGE);
+    }
+
+    // Read stock again: the release above may just have put pieces back.
+    const inventoryNow = new Map((await tx.inventoryItem.findMany({
+      where: { productId: { in: productIds } },
+      select: { productId: true, status: true }
+    })).map((item) => [item.productId, item.status]));
     const invalidProducts = uniqueProducts.filter((product) => (
       product.status !== ProductStatus.PUBLISHED ||
       !product.priceKsh ||
       product.priceKsh <= 0 ||
       !product.inventoryItem ||
-      product.inventoryItem.status !== InventoryItemStatus.AVAILABLE
+      inventoryNow.get(product.id) !== InventoryItemStatus.AVAILABLE
     ));
     if (invalidProducts.length) {
+      const heldByOwnPayment = await tx.orderItem.count({
+        where: {
+          productId: { in: invalidProducts.map((product) => product.id) },
+          order: { sourceDraft: { is: ownActiveDraftWhere(input.customerId, phone, now) } }
+        }
+      });
+      if (heldByOwnPayment) throw new CheckoutConflictError(CHECKOUT_PREVIOUS_PAYMENT_IN_FLIGHT_MESSAGE);
       throw new CheckoutConflictError("One or more cart items changed before payment. Refresh the cart and try again.");
     }
 
@@ -213,9 +277,11 @@ export async function startCheckout(input: StartCheckoutInput) {
         }
       }
     });
-    if (activeReservedItems + uniqueProducts.length > MAX_ACTIVE_RESERVATIONS_PER_PHONE) {
-      throw new CheckoutConflictError("This phone number already has five active payment reservations.");
-    }
+    const allowanceError = reservationAllowanceError({
+      requestedPieces: uniqueProducts.length,
+      piecesInEarlierPayments: activeReservedItems
+    });
+    if (allowanceError) throw new CheckoutConflictError(allowanceError);
 
     // A deposit takes a garment off sale for a week, so the allowance is much
     // tighter than the five-minute cart cap and is counted separately.
@@ -424,6 +490,46 @@ function sameProductSet(left: string[], right: string[]): boolean {
   const sortedLeft = [...left].sort();
   const sortedRight = [...right].sort();
   return sortedLeft.every((value, index) => value === sortedRight[index]);
+}
+
+function ownActiveDraftWhere(customerId: string, phone: string, now: Date): Prisma.CheckoutDraftWhereInput {
+  return {
+    status: CheckoutDraftStatus.ACTIVE,
+    expiresAt: { gt: now },
+    OR: [{ customerId }, { customer: { is: { phone } } }]
+  };
+}
+
+/**
+ * Releases this shopper's earlier checkout attempts that can no longer be
+ * paid, through the same path the expiry sweep and the bag's "release my
+ * lock" button use: the order lock is taken first, the draft and order close,
+ * and every garment the attempt owned goes back to AVAILABLE. Attempts whose
+ * payment may still land are left untouched (see earlierAttemptMayStillBePaid).
+ */
+async function releaseEarlierUnpaidAttempts(
+  tx: Prisma.TransactionClient,
+  input: { customerId: string; phone: string; now: Date }
+) {
+  const drafts = await tx.checkoutDraft.findMany({
+    where: { ...ownActiveDraftWhere(input.customerId, input.phone, input.now), convertedOrderId: { not: null } },
+    select: { convertedOrderId: true },
+    orderBy: { createdAt: "asc" }
+  });
+  let releasedItems = 0;
+  for (const draft of drafts) {
+    const orderId = draft.convertedOrderId!;
+    // Decide under the order lock, the same lock payment initiation takes
+    // before it claims a PENDING row and sends a prompt.
+    await lockReservationOrder(tx, orderId);
+    const payments = await tx.payment.findMany({ where: { orderId }, select: { status: true } });
+    if (earlierAttemptMayStillBePaid(payments)) continue;
+    const released = await releaseUnpaidOrderReservation(
+      tx, orderId, CheckoutDraftStatus.ABANDONED, OrderStatus.CANCELLED, input.now
+    );
+    releasedItems += released.releasedItems;
+  }
+  return { releasedItems };
 }
 
 export async function releaseExpiredReservations(now = new Date()) {

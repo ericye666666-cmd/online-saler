@@ -84,7 +84,7 @@ commerce site, not an internal catalog.
 - Cart does not reserve inventory.
 - Checkout must re-check availability before payment initiation.
 - Payment initiation reserves inventory for 15 minutes.
-- One customer phone number may reserve at most 5 items at once.
+- One customer phone number may reserve at most 50 items at once (2026-10-05; see `docs/business-rules/mvp-rules.md`).
 - Product quantity is always 1.
 - Product price is platform-controlled.
 - Delivery fee is not commissionable.
