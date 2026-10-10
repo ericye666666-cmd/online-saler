@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { buildAffiliateTeam, matchStaffAffiliates, normalizePhone, type AffiliateRow, type StaffRow } from "./affiliate-team";
 import { change, renderBusinessReportEmail } from "./business-report-email";
 import type { BusinessReport } from "./business-report-service";
 import { reportRecipients, sendReportEmail } from "./email-sender";
@@ -55,6 +56,150 @@ assert.equal(change({ current: 3, previous: 3 }, "上周"), "和上周持平");
 assert.equal(change({ current: 0, previous: 0 }, "上周"), "和上周持平");
 assert.equal(change({ current: 4, previous: 0 }, "上周"), "上周为 0");
 
+// --- Affiliate team: staff vs external, dormant, previous period ----------------
+
+assert.equal(normalizePhone("0712 345 678"), "254712345678");
+assert.equal(normalizePhone("+254 712-345-678"), "254712345678");
+assert.equal(normalizePhone("712345678"), "254712345678");
+assert.equal(normalizePhone("Faith2026"), null, "a login name is not a phone");
+assert.equal(normalizePhone(null), null);
+
+const day = 24 * 60 * 60 * 1000;
+const at = (daysBeforeReport: number) => new Date(mondayMorning.getTime() - daysBeforeReport * day);
+function affiliate(id: string, overrides: Partial<AffiliateRow> = {}): AffiliateRow {
+  return {
+    id,
+    displayName: id,
+    affiliateCode: id.toUpperCase(),
+    phone: null,
+    email: null,
+    status: "ACTIVE",
+    createdAt: at(60),
+    disabledAt: null,
+    customer: null,
+    ...overrides
+  };
+}
+
+const team: AffiliateRow[] = [
+  // Staff by phone: 07xx on the promoter, +2547xx on the operations account.
+  affiliate("faith", { displayName: "Faith Nyambura", affiliateCode: "FAITH", phone: "0712345678" }),
+  // Staff by email, found on the shop account the promoter was enabled from.
+  affiliate("peter", { displayName: "Peter Otieno", customer: { phone: null, email: "Peter@Example.com" } }),
+  // Staff by full name only.
+  affiliate("john", { displayName: "john  KAMAU" }),
+  // A lone first name equal to a staff first name proves nothing.
+  affiliate("mary", { displayName: "Mary" }),
+  // External, joined during the report day, with a name that must be escaped.
+  affiliate("ext", { displayName: "Wanjiru <b>& Co", affiliateCode: "WANJ", phone: "0799000111", createdAt: at(1) }),
+  // External, quiet for eight days.
+  affiliate("quiet", { displayName: "Quiet One", createdAt: at(30) }),
+  // External, joined the day before and never clicked.
+  affiliate("never", { displayName: "Never Clicked", createdAt: at(2) }),
+  // Disabled before both periods: not a current promoter anywhere.
+  affiliate("gone", { status: "DISABLED", disabledAt: at(5), createdAt: at(40) })
+];
+const staffAccounts: StaffRow[] = [
+  { label: "Faith2026", name: "Faith", phones: ["+254712345678", "Faith2026"], emails: [null, "Faith2026"] },
+  { label: "peter.o", name: "Peter O.", phones: [null], emails: ["peter@example.com"] },
+  { label: "EMP-007", name: "John Kamau", phones: ["0700111222"], emails: [] },
+  { label: "EMP-008", name: "Mary", phones: [], emails: [] }
+];
+
+const matches = matchStaffAffiliates(team, staffAccounts);
+assert.deepEqual(matches.get("faith"), { staffLabel: "Faith2026", by: "phone" });
+assert.deepEqual(matches.get("peter"), { staffLabel: "peter.o", by: "email" });
+assert.deepEqual(matches.get("john"), { staffLabel: "EMP-007", by: "name" });
+assert.equal(matches.has("mary"), false, "a single first name is not a match");
+assert.equal(matches.has("ext"), false);
+assert.equal(matches.size, 3);
+
+// daily is 2026-09-27 in Nairobi; the previous period is 2026-09-26.
+const inPeriod = new Date(daily.start.getTime() + 2 * 60 * 60 * 1000);
+const affiliateTeam = buildAffiliateTeam({
+  period: daily,
+  now: mondayMorning,
+  affiliates: team,
+  staff: staffAccounts,
+  clicks: {
+    current: [
+      { affiliateId: "faith", count: 40 },
+      { affiliateId: "ext", count: 10 }
+    ],
+    previous: [{ affiliateId: "faith", count: 20 }]
+  },
+  lastClicks: [
+    { affiliateId: "faith", lastClickAt: inPeriod },
+    { affiliateId: "ext", lastClickAt: inPeriod },
+    { affiliateId: "peter", lastClickAt: at(6) },
+    { affiliateId: "john", lastClickAt: at(6) },
+    { affiliateId: "mary", lastClickAt: at(6) },
+    { affiliateId: "quiet", lastClickAt: at(8) }
+  ],
+  orders: {
+    current: [
+      { affiliateId: "faith", itemSubtotalKsh: 1000 },
+      { affiliateId: "faith", itemSubtotalKsh: 500 },
+      { affiliateId: "ext", itemSubtotalKsh: 800 },
+      { affiliateId: null, itemSubtotalKsh: 9999 }
+    ],
+    previous: [{ affiliateId: "ext", itemSubtotalKsh: 400 }]
+  },
+  commission: {
+    current: [
+      { affiliateId: "faith", amountKsh: 150 },
+      { affiliateId: "ext", amountKsh: 80 }
+    ],
+    previous: [{ affiliateId: "ext", amountKsh: 40 }]
+  },
+  commissionPaidKsh: 60
+});
+
+assert.deepEqual(affiliateTeam.totalAffiliates, { current: 7, previous: 6 }, "as of each period end");
+assert.deepEqual(affiliateTeam.newAffiliates, { current: 1, previous: 1 });
+assert.deepEqual(affiliateTeam.activeAffiliates, { current: 2, previous: 1 });
+assert.deepEqual(affiliateTeam.all, {
+  clicks: { current: 50, previous: 20 },
+  orders: { current: 3, previous: 1 },
+  gmvKsh: { current: 2300, previous: 400 },
+  commissionKsh: { current: 230, previous: 40 }
+});
+assert.deepEqual(affiliateTeam.external, {
+  clicks: { current: 10, previous: 0 },
+  orders: { current: 1, previous: 1 },
+  gmvKsh: { current: 800, previous: 400 },
+  commissionKsh: { current: 80, previous: 40 }
+});
+assert.equal(affiliateTeam.staff.orders.current, 2, "Faith's orders are staff orders");
+assert.deepEqual(
+  affiliateTeam.ranking.map((row) => [row.code, row.orders, row.clicks, row.isStaff]),
+  [
+    ["FAITH", 2, 40, true],
+    ["WANJ", 1, 10, false]
+  ],
+  "ranked by orders, then clicks"
+);
+
+// Dormant: active promoters with no click in the 7 days before the report.
+// Six days ago is still awake; eight days ago and never are asleep.
+assert.equal(affiliateTeam.dormant.of, 7);
+assert.equal(affiliateTeam.dormant.count, 2);
+assert.deepEqual(
+  affiliateTeam.dormant.list.map((row) => [row.name, row.daysSinceLastClick, row.daysSinceJoined]),
+  [
+    ["Quiet One", 8, 30],
+    ["Never Clicked", null, 2]
+  ]
+);
+assert.deepEqual(
+  affiliateTeam.staffAffiliates.map((row) => [row.name, row.by]),
+  [
+    ["Faith Nyambura", "phone"],
+    ["Peter Otieno", "email"],
+    ["john  KAMAU", "name"]
+  ]
+);
+
 // --- Email ---------------------------------------------------------------------
 
 function sampleReport(): BusinessReport {
@@ -95,13 +240,7 @@ function sampleReport(): BusinessReport {
       deliveryFailures: 0,
       byEmployee: [{ name: "Wanjiku", picked: 3, packed: 4 }]
     },
-    affiliates: {
-      affiliateOrders: 2,
-      affiliateRevenueKsh: 1500,
-      commissionEarnedKsh: 150,
-      commissionPaidKsh: 0,
-      topAffiliates: []
-    },
+    affiliates: affiliateTeam,
     afterSales: {
       returnsRequested: same(1, 0),
       returnsReceived: 0,
@@ -116,7 +255,7 @@ function sampleReport(): BusinessReport {
 
 const email = renderBusinessReportEmail(sampleReport());
 assert.equal(email.subject, "Direct Loop 日报 · 2026-09-27 · 收款 KSh 3,500");
-for (const heading of ["销售和收款", "库存和上架", "仓库作业", "分销", "退货和客服"]) {
+for (const heading of ["销售和收款", "库存和上架", "仓库作业", "分销团队增长", "退货和客服"]) {
   assert.ok(email.html.includes(heading), `html has ${heading}`);
   assert.ok(email.text.includes(`【${heading}】`), `text has ${heading}`);
 }
@@ -124,7 +263,31 @@ assert.ok(email.html.includes("比前一天↑ 100%"), "revenue doubled against 
 assert.ok(email.html.includes("⚠ 待人工核对的付款"), "a payment waiting for review is flagged");
 assert.ok(email.html.includes("⚠ 付款超过 48 小时还没交付"), "late orders are flagged");
 assert.ok(!email.html.includes("⚠ 异常订单"), "no exceptions, no warning");
-assert.ok(email.html.includes("期间没有分销订单"), "an empty table says so instead of vanishing");
+
+// The affiliate team section.
+for (const label of ["推广员总数", "新增推广员", "活跃推广员", "总点击", "点击→下单转化率", "推广员排行（前 10）", "⚠ 现在沉睡的推广员"]) {
+  assert.ok(email.html.includes(label), `html has ${label}`);
+}
+assert.ok(email.html.includes("比前一天↑ 150%"), "clicks 20 → 50 against the day before");
+assert.ok(email.text.includes("- 点击→下单转化率：6.0% — 已付款订单 ÷ 点击；前一天 5.0%"), "conversion now and before");
+assert.ok(email.text.includes("  订单 | 3 | 1 和前一天持平"), "external orders sit next to the total");
+assert.ok(email.text.includes("  点击 | 50 | 10 前一天为 0"));
+assert.ok(email.text.includes("  Faith Nyambura FAITH · 员工 | 40 | 2 | KSh 1,500 | KSh 150"));
+assert.ok(email.text.includes("  Quiet One QUIET | 8 天"));
+assert.ok(email.text.includes("  Never Clicked NEVER | 从没有点击（加入 2 天）"));
+assert.ok(email.text.includes("Faith Nyambura（手机号对上员工账号 Faith2026）"), "the staff rule is shown");
+// Promoter names come from people and must not become markup.
+assert.ok(email.html.includes("Wanjiru &lt;b&gt;&amp; Co"));
+assert.ok(!email.html.includes("<b>&"));
+assert.ok(email.text.includes("  Wanjiru <b>& Co WANJ | 10 | 1 | KSh 800 | KSh 80"));
+
+const quietReport = sampleReport();
+quietReport.affiliates = { ...affiliateTeam, ranking: [], dormant: { count: 0, of: 7, list: [] }, staffAffiliates: [] };
+const quietEmail = renderBusinessReportEmail(quietReport);
+assert.ok(quietEmail.html.includes("期间没有推广点击或分销订单"), "an empty table says so instead of vanishing");
+assert.ok(quietEmail.html.includes("没有沉睡的推广员"));
+assert.ok(!quietEmail.html.includes("⚠ 现在沉睡的推广员"));
+assert.ok(quietEmail.html.includes("全部算外部推广员"));
 
 // Product titles come from staff input and must not become markup.
 assert.ok(email.html.includes("Denim &lt;jacket&gt; &amp; co"));

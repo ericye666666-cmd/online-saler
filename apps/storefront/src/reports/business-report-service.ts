@@ -1,7 +1,9 @@
 import {
+  AdminUserStatus,
   AfterSaleReturnStatus,
   CommissionStatus,
   CustomerServiceCaseStatus,
+  EmployeeStatus,
   FulfillmentStatus,
   InventoryItemStatus,
   PaymentKind,
@@ -10,6 +12,7 @@ import {
   RefundRequestStatus,
   prisma
 } from "@online-saler/database";
+import { buildAffiliateTeam, type AffiliateTeamReport, type Comparable, type StaffRow } from "./affiliate-team";
 import type { ReportPeriod } from "./report-period";
 
 /**
@@ -24,7 +27,7 @@ import type { ReportPeriod } from "./report-period";
  *   at the moment the report is built. They are the to-do list, not history.
  */
 
-export type Comparable = { current: number; previous: number };
+export type { Comparable };
 
 export type BusinessReport = {
   period: ReportPeriod;
@@ -76,13 +79,8 @@ export type BusinessReport = {
     deliveryFailures: number;
     byEmployee: Array<{ name: string; picked: number; packed: number }>;
   };
-  affiliates: {
-    affiliateOrders: number;
-    affiliateRevenueKsh: number;
-    commissionEarnedKsh: number;
-    commissionPaidKsh: number;
-    topAffiliates: Array<{ name: string; orders: number; commissionKsh: number }>;
-  };
+  /** 分销团队增长: see affiliate-team.ts for every definition. */
+  affiliates: AffiliateTeamReport;
   afterSales: {
     returnsRequested: Comparable;
     returnsReceived: number;
@@ -170,7 +168,7 @@ export async function collectBusinessReport(period: ReportPeriod, now = new Date
     prisma.payment.count({ where: { status: PaymentStatus.MANUAL_REVIEW, reviewDecision: null } }),
     collectInventory(current, previous, now),
     collectWarehouse(current, previous, now),
-    collectAffiliates(current),
+    readAffiliateTeam(current, previous),
     collectAfterSales(current, previous, now)
   ]);
 
@@ -195,11 +193,12 @@ export async function collectBusinessReport(period: ReportPeriod, now = new Date
     },
     inventory,
     warehouse,
-    affiliates: {
+    affiliates: buildAffiliateTeam({
       ...affiliates,
-      affiliateOrders: settled.filter((o) => o.affiliateId).length,
-      affiliateRevenueKsh: sum(settled.filter((o) => o.affiliateId), (o) => o.totalKsh)
-    },
+      period,
+      now,
+      orders: { current: settled, previous: salesBefore.orders }
+    }),
     afterSales
   };
 }
@@ -215,14 +214,24 @@ async function settledOrders(range: Range) {
     select: {
       orderId: true,
       order: {
-        select: { totalKsh: true, fulfillmentMethod: true, affiliateId: true, _count: { select: { items: true } } }
+        select: {
+          totalKsh: true,
+          itemSubtotalKsh: true,
+          fulfillmentMethod: true,
+          affiliateId: true,
+          _count: { select: { items: true } }
+        }
       }
     }
   });
-  const byOrder = new Map<string, { totalKsh: number; fulfillmentMethod: string; affiliateId: string | null; items: number }>();
+  const byOrder = new Map<
+    string,
+    { totalKsh: number; itemSubtotalKsh: number; fulfillmentMethod: string; affiliateId: string | null; items: number }
+  >();
   for (const payment of payments) {
     byOrder.set(payment.orderId, {
       totalKsh: payment.order.totalKsh,
+      itemSubtotalKsh: payment.order.itemSubtotalKsh,
       fulfillmentMethod: payment.order.fulfillmentMethod,
       affiliateId: payment.order.affiliateId,
       items: payment.order._count.items
@@ -334,37 +343,72 @@ async function collectWarehouse(current: Range, previous: Range, now: Date): Pro
   };
 }
 
-async function collectAffiliates(current: Range) {
-  const [earned, paid, top] = await Promise.all([
-    prisma.commission.aggregate({
-      where: { createdAt: current, status: { not: CommissionStatus.REJECTED } },
-      _sum: { commissionAmountKsh: true }
-    }),
-    prisma.commission.aggregate({ where: { paidAt: current }, _sum: { commissionAmountKsh: true } }),
-    prisma.commission.groupBy({
-      by: ["affiliateId"],
-      where: { createdAt: current, status: { not: CommissionStatus.REJECTED } },
-      _count: true,
-      _sum: { commissionAmountKsh: true },
-      orderBy: { _sum: { commissionAmountKsh: "desc" } },
-      take: 5
-    })
-  ]);
-  const affiliates = top.length
-    ? await prisma.affiliate.findMany({
-        where: { id: { in: top.map((row) => row.affiliateId) } },
-        select: { id: true, displayName: true }
-      })
-    : [];
-  const names = new Map(affiliates.map((affiliate) => [affiliate.id, affiliate.displayName]));
-  return {
-    commissionEarnedKsh: earned._sum.commissionAmountKsh ?? 0,
-    commissionPaidKsh: paid._sum.commissionAmountKsh ?? 0,
-    topAffiliates: top.map((row) => ({
-      name: names.get(row.affiliateId) ?? "Unknown",
-      orders: row._count,
-      commissionKsh: row._sum.commissionAmountKsh ?? 0
+/**
+ * Reads what the 分销团队增长 section needs. The counting, and the rule that
+ * tells staff promoters from external ones, live in affiliate-team.ts.
+ */
+async function readAffiliateTeam(current: Range, previous: Range) {
+  const notRejected = { not: CommissionStatus.REJECTED };
+  const [affiliates, employees, adminUsers, clicksNow, clicksBefore, lastClicks, commissionNow, commissionBefore, paid] =
+    await Promise.all([
+      prisma.affiliate.findMany({
+        select: {
+          id: true,
+          displayName: true,
+          affiliateCode: true,
+          phone: true,
+          email: true,
+          status: true,
+          createdAt: true,
+          disabledAt: true,
+          customer: { select: { phone: true, email: true } }
+        }
+      }),
+      prisma.employee.findMany({
+        where: { status: EmployeeStatus.ACTIVE },
+        select: { employeeCode: true, name: true, phone: true }
+      }),
+      prisma.adminUser.findMany({
+        where: { status: AdminUserStatus.ACTIVE },
+        select: { loginAccount: true, name: true, phone: true, email: true }
+      }),
+      prisma.affiliateClick.groupBy({ by: ["affiliateId"], where: { clickedAt: current }, _count: { _all: true } }),
+      prisma.affiliateClick.groupBy({ by: ["affiliateId"], where: { clickedAt: previous }, _count: { _all: true } }),
+      prisma.affiliateClick.groupBy({ by: ["affiliateId"], _max: { clickedAt: true } }),
+      prisma.commission.groupBy({
+        by: ["affiliateId"],
+        where: { createdAt: current, status: notRejected },
+        _sum: { commissionAmountKsh: true }
+      }),
+      prisma.commission.groupBy({
+        by: ["affiliateId"],
+        where: { createdAt: previous, status: notRejected },
+        _sum: { commissionAmountKsh: true }
+      }),
+      prisma.commission.aggregate({ where: { paidAt: current }, _sum: { commissionAmountKsh: true } })
+    ]);
+
+  const staff: StaffRow[] = [
+    ...employees.map((e) => ({ label: e.employeeCode, name: e.name, phones: [e.phone], emails: [] })),
+    // The login account is often a phone number or an email address.
+    ...adminUsers.map((u) => ({
+      label: u.loginAccount,
+      name: u.name,
+      phones: [u.phone, u.loginAccount],
+      emails: [u.email, u.loginAccount]
     }))
+  ];
+  const counts = (rows: typeof clicksNow) => rows.map((r) => ({ affiliateId: r.affiliateId, count: r._count._all }));
+  const amounts = (rows: typeof commissionNow) =>
+    rows.map((r) => ({ affiliateId: r.affiliateId, amountKsh: r._sum.commissionAmountKsh ?? 0 }));
+
+  return {
+    affiliates,
+    staff,
+    clicks: { current: counts(clicksNow), previous: counts(clicksBefore) },
+    lastClicks: lastClicks.map((r) => ({ affiliateId: r.affiliateId, lastClickAt: r._max.clickedAt })),
+    commission: { current: amounts(commissionNow), previous: amounts(commissionBefore) },
+    commissionPaidKsh: paid._sum.commissionAmountKsh ?? 0
   };
 }
 

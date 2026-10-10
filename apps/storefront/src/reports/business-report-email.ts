@@ -16,7 +16,9 @@ const PREVIOUS_NAME: Record<ReportKind, string> = { daily: "前一天", weekly: 
 
 /** worseWhenUp marks rows where a rise is bad news (refunds, returns, cases). */
 type Row = { label: string; value: string; change?: string; hint?: string; worseWhenUp?: boolean };
-type Section = { title: string; rows: Row[]; table?: { headers: string[]; rows: string[][]; empty: string } };
+/** Table cells are HTML: escape anything that came from people before putting it in. */
+type Table = { headers: string[]; rows: string[][]; empty: string };
+type Section = { title: string; rows: Row[]; tables?: Table[]; note?: string };
 
 export function renderBusinessReportEmail(report: BusinessReport): RenderedEmail {
   const { period } = report;
@@ -63,7 +65,7 @@ function buildSections(report: BusinessReport, vs: string): Section[] {
         { label: "定金保留中", value: count(inventory.heldByDeposit) },
         { label: "还在数字化流程里", value: count(inventory.inDigitisation), hint: "拍照、AI、校准、审核等，还没上架" }
       ],
-      table: {
+      tables: [{
         headers: ["上架最久没卖掉", "价格", "已挂天数"],
         rows: inventory.slowestSellers.map((item) => [
           `${escapeHtml(item.title)} <span style="color:#888">${escapeHtml(item.productCode)}</span>`,
@@ -71,7 +73,7 @@ function buildSections(report: BusinessReport, vs: string): Section[] {
           `${item.daysListed} 天`
         ]),
         empty: "没有在售商品"
-      }
+      }]
     },
     {
       title: "仓库作业",
@@ -90,31 +92,13 @@ function buildSections(report: BusinessReport, vs: string): Section[] {
           value: count(warehouse.overdue)
         }
       ],
-      table: {
+      tables: [{
         headers: ["员工", "拣货", "打包"],
         rows: warehouse.byEmployee.map((row) => [escapeHtml(row.name), String(row.picked), String(row.packed)]),
         empty: "期间没有拣货或打包记录"
-      }
+      }]
     },
-    {
-      title: "分销",
-      rows: [
-        {
-          label: "分销带来的订单",
-          value: count(affiliates.affiliateOrders),
-          hint: sales.paidOrders.current
-            ? `占成交订单 ${Math.round((affiliates.affiliateOrders / sales.paidOrders.current) * 100)}%，金额 ${ksh(affiliates.affiliateRevenueKsh)}`
-            : undefined
-        },
-        { label: "期间产生佣金", value: ksh(affiliates.commissionEarnedKsh), hint: "不含已驳回" },
-        { label: "期间已付佣金", value: ksh(affiliates.commissionPaidKsh) }
-      ],
-      table: {
-        headers: ["分销员", "订单", "佣金"],
-        rows: affiliates.topAffiliates.map((row) => [escapeHtml(row.name), String(row.orders), ksh(row.commissionKsh)]),
-        empty: "期间没有分销订单"
-      }
-    },
+    affiliateSection(affiliates, sales.paidOrders.current, vs),
     {
       title: "退货和客服",
       rows: [
@@ -133,6 +117,94 @@ function buildSections(report: BusinessReport, vs: string): Section[] {
   ];
 }
 
+const MATCHED_BY: Record<"phone" | "email" | "name", string> = { phone: "手机号", email: "邮箱", name: "姓名" };
+
+function affiliateSection(team: BusinessReport["affiliates"], paidOrders: number, vs: string): Section {
+  const { all, external } = team;
+  const rate = (orders: number, clicks: number) => (clicks ? `${((orders / clicks) * 100).toFixed(1)}%` : "—");
+  const small = (text: string, color = "#999") => `<div style="font-size:12px;font-weight:400;color:${color};margin-top:2px;">${escapeHtml(text)}</div>`;
+  const withChange = (value: string, comparable: Comparable) => {
+    const text = change(comparable, vs);
+    return `${escapeHtml(value)}${small(text, changeColor(text))}`;
+  };
+  const who = (name: string, code: string, isStaff: boolean) =>
+    `${escapeHtml(name)}<div style="font-size:12px;color:#888;">${escapeHtml(code)}${isStaff ? " · 员工" : ""}</div>`;
+
+  return {
+    title: "分销团队增长",
+    rows: [
+      { label: "推广员总数", value: count(team.totalAffiliates.current), change: change(team.totalAffiliates, vs), hint: "截至期末，不含已停用" },
+      { label: "新增推广员", value: count(team.newAffiliates.current), change: change(team.newAffiliates, vs) },
+      {
+        label: "活跃推广员",
+        value: count(team.activeAffiliates.current),
+        change: change(team.activeAffiliates, vs),
+        hint: "期间链接至少被点过一次"
+      },
+      { label: "总点击", value: count(all.clicks.current), change: change(all.clicks, vs) },
+      {
+        label: "分销订单",
+        value: count(all.orders.current),
+        change: change(all.orders, vs),
+        hint: paidOrders ? `占成交订单 ${Math.round((all.orders.current / paidOrders) * 100)}%` : undefined
+      },
+      { label: "分销销售额", value: ksh(all.gmvKsh.current), change: change(all.gmvKsh, vs), hint: "商品金额，不含配送费" },
+      {
+        label: "点击→下单转化率",
+        value: rate(all.orders.current, all.clicks.current),
+        hint: `已付款订单 ÷ 点击；${vs} ${rate(all.orders.previous, all.clicks.previous)}`
+      },
+      { label: "期间产生佣金", value: ksh(all.commissionKsh.current), change: change(all.commissionKsh, vs), hint: "不含已驳回" },
+      { label: "期间已付佣金", value: ksh(team.commissionPaidKsh) },
+      {
+        label: team.dormant.count ? "⚠ 现在沉睡的推广员" : "现在沉睡的推广员",
+        value: `${count(team.dormant.count)} / ${count(team.dormant.of)}`,
+        hint: "在用的推广员里，最近 7 天链接没有被点过的人数"
+      }
+    ],
+    tables: [
+      {
+        headers: ["全部 vs 外部", "全部", "外部推广员"],
+        rows: [
+          ["点击", escapeHtml(count(all.clicks.current)), withChange(count(external.clicks.current), external.clicks)],
+          ["订单", escapeHtml(count(all.orders.current)), withChange(count(external.orders.current), external.orders)],
+          ["销售额", escapeHtml(ksh(all.gmvKsh.current)), withChange(ksh(external.gmvKsh.current), external.gmvKsh)],
+          ["佣金", escapeHtml(ksh(all.commissionKsh.current)), withChange(ksh(external.commissionKsh.current), external.commissionKsh)],
+          ["转化率", rate(all.orders.current, all.clicks.current), rate(external.orders.current, external.clicks.current)]
+        ],
+        empty: ""
+      },
+      {
+        headers: ["推广员排行（前 10）", "点击", "订单", "销售额", "佣金"],
+        rows: team.ranking.map((row) => [
+          who(row.name, row.code, row.isStaff),
+          count(row.clicks),
+          count(row.orders),
+          escapeHtml(ksh(row.gmvKsh)),
+          escapeHtml(ksh(row.commissionKsh))
+        ]),
+        empty: "期间没有推广点击或分销订单"
+      },
+      {
+        headers: [
+          team.dormant.count > team.dormant.list.length ? `沉睡推广员（前 ${team.dormant.list.length} 位）` : "沉睡推广员",
+          "多久没点击"
+        ],
+        rows: team.dormant.list.map((row) => [
+          who(row.name, row.code, row.isStaff),
+          row.daysSinceLastClick === null ? `从没有点击（加入 ${row.daysSinceJoined} 天）` : `${row.daysSinceLastClick} 天`
+        ]),
+        empty: "没有沉睡的推广员"
+      }
+    ],
+    note: team.staffAffiliates.length
+      ? `算作员工的推广员（外部数字不含他们）：${team.staffAffiliates
+          .map((row) => `${row.name}（${MATCHED_BY[row.by]}对上员工账号 ${row.staffLabel}）`)
+          .join("、")}。`
+      : "没有推广员和在职员工账号的手机号、邮箱或全名对上，全部算外部推广员。"
+  };
+}
+
 function renderHtml(report: BusinessReport, subject: string, sections: Section[]): string {
   const cell = "padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;vertical-align:top;";
   const body = sections
@@ -145,18 +217,22 @@ function renderHtml(report: BusinessReport, subject: string, sections: Section[]
 </tr>`
         )
         .join("\n");
-      const table = section.table
-        ? section.table.rows.length
+      const tables = (section.tables ?? [])
+        .map((table) =>
+          table.rows.length
           ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:12px;">
-<tr>${section.table.headers.map((h, i) => `<th style="${cell}background:#fafafa;color:#666;font-weight:600;text-align:${i ? "right" : "left"};">${escapeHtml(h)}</th>`).join("")}</tr>
-${section.table.rows.map((r) => `<tr>${r.map((c, i) => `<td style="${cell}text-align:${i ? "right" : "left"};">${c}</td>`).join("")}</tr>`).join("\n")}
+<tr>${table.headers.map((h, i) => `<th style="${cell}background:#fafafa;color:#666;font-weight:600;text-align:${i ? "right" : "left"};">${escapeHtml(h)}</th>`).join("")}</tr>
+${table.rows.map((r) => `<tr>${r.map((c, i) => `<td style="${cell}text-align:${i ? "right" : "left"};">${c}</td>`).join("")}</tr>`).join("\n")}
 </table>`
-          : `<p style="font-size:13px;color:#999;margin:12px 0 0;">${escapeHtml(section.table.empty)}</p>`
-        : "";
+          : `<p style="font-size:13px;color:#999;margin:12px 0 0;">${escapeHtml(table.empty)}</p>`
+        )
+        .join("\n");
+      const note = section.note ? `<p style="font-size:12px;color:#999;margin:12px 0 0;">${escapeHtml(section.note)}</p>` : "";
       return `<tr><td style="padding:20px 20px 4px;">
 <h2 style="font-size:16px;margin:0 0 8px;color:#111;">${escapeHtml(section.title)}</h2>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${rows}</table>
-${table}
+${tables}
+${note}
 </td></tr>`;
     })
     .join("\n");
@@ -184,11 +260,12 @@ function renderText(report: BusinessReport, subject: string, sections: Section[]
     for (const row of section.rows) {
       lines.push(`- ${row.label}：${row.value}${row.change ? `（${row.change}）` : ""}${row.hint ? ` — ${row.hint}` : ""}`);
     }
-    if (section.table) {
-      lines.push(`  ${section.table.headers.join(" | ")}`);
-      if (!section.table.rows.length) lines.push(`  ${section.table.empty}`);
-      for (const row of section.table.rows) lines.push(`  ${row.map(stripTags).join(" | ")}`);
+    for (const table of section.tables ?? []) {
+      lines.push(`  ${table.headers.join(" | ")}`);
+      if (!table.rows.length) lines.push(`  ${table.empty}`);
+      for (const row of table.rows) lines.push(`  ${row.map(stripTags).join(" | ")}`);
     }
+    if (section.note) lines.push(`  ${section.note}`);
     lines.push("");
   }
   return lines.join("\n");
@@ -227,5 +304,6 @@ function escapeHtml(value: string) {
 }
 
 function stripTags(value: string) {
-  return value.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  // A line break inside a cell (<div>) becomes a space in plain text.
+  return value.replace(/<div[^>]*>/g, " ").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
